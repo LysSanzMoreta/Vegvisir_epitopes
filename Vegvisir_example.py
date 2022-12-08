@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""
+=======================
+2022: Lys Sanz Moreta
+vegvisir :
+=======================
+"""
+import pyro
+import torch
+import argparse
+import os,sys,ntpath
+import datetime
+import json
+from argparse import RawTextHelpFormatter
+local_repository=True
+script_dir = os.path.dirname(os.path.abspath(__file__))
+if local_repository: #TODO: The local imports are extremely slow
+     sys.path.insert(1, "{}/vegvisir/src".format(script_dir))
+     import vegvisir
+else:#pip installed module
+     import vegvisir
+from vegvisir import str2bool,str2None
+import vegvisir.utils as VegvisirUtils
+print("Loading Vegvisir module from {}".format(vegvisir.__file__))
+now = datetime.datetime.now()
+def main():
+    """Executes vegvisir:
+    1) Select the train/validation/test dataset
+    2) Execute Vegvisir"""
+
+    vegvisir_dataset = vegvisir.select_dataset(args.dataset_name, script_dir,args, update=False)
+    exit()
+    results_dir = "{}/PLOTS_Vegvisir_{}_{}_{}epochs".format(script_dir, args.dataset_name, now.strftime("%Y_%m_%d_%Hh%Mmin%Ss%fms"),args.num_epochs)
+    VegvisirUtils.folders(ntpath.basename(results_dir), script_dir)
+    VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Train"), script_dir)
+    VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Valid"), script_dir)
+    VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Test"), script_dir)
+
+    json.dump(args.__dict__, open('{}/commandline_args.txt'.format(results_dir), 'w'), indent=2)
+
+    vegvisir.run(vegvisir_dataset,results_dir,args)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
+    parser.add_argument('-name','--dataset-name', type=str, nargs='?',
+                        default="viral",
+                        help='Dataset project name, look at vegvisir.available_datasets()')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=50, help='Number of epochs (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
+    parser.add_argument('-aa-types', type=int, nargs='?', default=21, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. ')
+    #TODO: include more blosum matrix types?
+    parser.add_argument('-subs_matrix', default="BLOSUM62", type=str,
+                        help='blosum matrix to create blosum embeddings, choose one from /home/lys/anaconda3/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data')
+
+    parser.add_argument('-k-folds', type=int, nargs='?', default=2, help='Number of k-fold for k-fold cross validation')
+    parser.add_argument('-batch-size', type=int, nargs='?', default=64, help='Batch size')
+    parser.add_argument('-optimizer_name', type=str, nargs='?', default="ClippedAdam", help='Gradient optimizer name')
+    parser.add_argument('-loss-func', type=str, nargs='?', default="elbo_graph", help="Error loss function to be optimized, options are:"
+                                                                                    "<nnl>: Negative log likelihood function"
+                                                                                    "<softloss>: Diffpool soft clustering loss function "
+                                                                                    "<elbo>: Trace ELBO for VAE "
+                                                                                    "<elbo_graph> error loss from adjacency/nodes reconstructions plus ELBO")
+    parser.add_argument('-guide', type=str, nargs='?', default="custom",
+                        help="Guide:"
+                             "<custom>: Custom encoder/guide ")
+    parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
+    #Highlight: DIFFPOOL parameters
+    parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='')
+    parser.add_argument('-embedding-dim', type=int, nargs='?', default=50, help='')
+    parser.add_argument('-z-dim', type=int, nargs='?', default=25, help='Latent space dimension')
+    parser.add_argument('-num_classes', type=int, nargs='?', default=2, help='')
+
+    args = parser.parse_args()
+    if args.use_cuda:
+        if torch.cuda.is_available():
+            torch.set_default_tensor_type(torch.cuda.DoubleTensor)
+            parser.add_argument('--device',type=str,default="cuda" ,nargs='?', help='Device choice (cpu, cuda:0, cuda:1), linked to use_cuda')
+        else:
+            print("Cuda (gpu) not found falling back to cpu")
+            torch.set_default_tensor_type(torch.DoubleTensor)
+            parser.add_argument('--device',type=str,default="cpu" ,nargs='?', help='Device choice (cpu, cuda:0, cuda:1), linked to use_cuda')
+    else:
+        torch.set_default_tensor_type(torch.DoubleTensor)
+        parser.add_argument('--device', type=str, default="cpu", nargs='?',help='Device choice (cpu, cuda:0, cuda:1), linked to use_cuda')
+    args = parser.parse_args()
+    #pyro.set_rng_seed(0)
+    #torch.manual_seed(0)
+    pyro.enable_validation(False)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    main()

@@ -1,7 +1,4 @@
 data/Immnunogenicity/*
 data/*
-!data/AA_bonds_interactions.tsv
-!data/AA_properties.txt
-!data/Amino-acid_free_energies_dissociation.tsv
 vegvisir/dist/*
 vegvisir/src/vegvisir.egg-info/*
