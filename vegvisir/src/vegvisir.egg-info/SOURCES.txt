@@ -1,0 +1,13 @@
+LICENSE.md
+README.md
+setup.cfg
+setup.py
+src/__init__.py
+src/vegvisir/__init__.py
+src/vegvisir/main.py
+src/vegvisir.egg-info/PKG-INFO
+src/vegvisir.egg-info/SOURCES.txt
+src/vegvisir.egg-info/dependency_links.txt
+src/vegvisir.egg-info/not-zip-safe
+src/vegvisir.egg-info/requires.txt
+src/vegvisir.egg-info/top_level.txt
