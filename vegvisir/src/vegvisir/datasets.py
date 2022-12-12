@@ -1,10 +1,10 @@
 import os
 import pandas as pd
 import operator,functools
+import nnalign as VegvisirNNalign
 def available_datasets():
     """Prints the available datasets"""
-    datasets = {0:"viral"
-                }
+    datasets = {0:"viral"}
     return datasets
 def select_dataset(dataset_name,script_dir,args,update=True):
     """Selects from available datasets
@@ -84,6 +84,10 @@ def viral_dataset(dataset_name,current_path,storage_folder,args,update):
     nnalign_input_eval.drop('training', inplace=True,axis=1)
     nnalign_input_train.to_csv("{}/viral_dataset/viral_nnalign_input_train.tsv".format(storage_folder),sep="\t",index=False)
     nnalign_input_eval.to_csv("{}/viral_dataset/viral_nnalign_input_eval.tsv".format(storage_folder), sep="\t",index=False)
+
+    if args.run_nnalign:
+        VegvisirNNalign.run_nnalign(storage_folder)
+
     exit()
 
 
