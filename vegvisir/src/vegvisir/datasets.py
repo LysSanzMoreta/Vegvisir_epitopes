@@ -58,7 +58,7 @@ def viral_dataset(dataset_name,current_path,storage_folder,args,update):
     sequence_column = ["Core","Icore"][0]
     score_column = ["Rnk_EL","target"][1]
     data = pd.read_csv("{}/viral_dataset/Viruses_db_partitions.tsv".format(storage_folder),sep="\t")
-    nnalign_input = data[[sequence_column,score_column,"training"]]
+    nnalign_input = data[[sequence_column,score_column,"training","partition"]]
     # print(nnalign_input.shape)
     # peptides = nnalign_input[["Icore"]].values.tolist()
     # peptides = functools.reduce(operator.iconcat, peptides, []) #flatten list of lists
@@ -82,9 +82,11 @@ def viral_dataset(dataset_name,current_path,storage_folder,args,update):
     nnalign_input_eval = nnalign_input_eval.drop_duplicates(sequence_column, keep="first")
     nnalign_input_train.drop('training',inplace=True,axis=1)
     nnalign_input_eval.drop('training', inplace=True,axis=1)
+    nnalign_input_eval.drop('partition', inplace=True, axis=1)
     nnalign_input_train.to_csv("{}/viral_dataset/viral_nnalign_input_train.tsv".format(storage_folder),sep="\t",index=False)
     nnalign_input_eval.to_csv("{}/viral_dataset/viral_nnalign_input_eval.tsv".format(storage_folder), sep="\t",index=False)
 
+    exit()
     if args.run_nnalign:
         VegvisirNNalign.run_nnalign(args,storage_folder)
 
