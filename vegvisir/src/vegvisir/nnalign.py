@@ -10,7 +10,7 @@ def run_nnalign(args,storage_folder,script_dir= "/home/projects/vaccine/people/l
     motif_len = str(6)
     working_dir = script_dir
     subprocess.Popen(args=[nnalign_location,"-f",train_data,"-name","viral1", "-testset",test_data, "-Logo", seq2logo_location,
-                           "-lgt",motif_len,"-nh", str(80), "-split",str(3),"-encoding",str(2),"-ishort","-fl",str(0),"-stop-iter",str(250)],
+                           "-lgt",motif_len,"-nh", str(80), "-split",str(3),"-encoding",str(2),"-ishort","-fl",str(0),"-stop","-iter",str(250)],
                            cwd=working_dir)
                            #,stdout=open(os.devnull, 'wb'),stderr=open(os.devnull, 'wb')) #stdin=PIPE, stderr=PIPE, stdout=PIPE
 
