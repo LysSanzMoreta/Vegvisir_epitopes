@@ -1,10 +1,10 @@
 import os
 import pandas as pd
 import operator,functools
-import nnalign as VegvisirNNalign
+import vegvisir.nnalign as VegvisirNNalign
 def available_datasets():
     """Prints the available datasets"""
-    datasets = {0:"viral"}
+    datasets = {0:"viral_dataset"}
     return datasets
 def select_dataset(dataset_name,script_dir,args,update=True):
     """Selects from available datasets
@@ -12,7 +12,7 @@ def select_dataset(dataset_name,script_dir,args,update=True):
     :param script_dir: Path from where the scriptis being executed
     :param update: If true it will download and update the most recent version of the dataset
     """
-    func_dict = {"viral": viral_dataset}
+    func_dict = {"viral_dataset": viral_dataset}
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
 
     dataset_load_fx = lambda f,dataset_name,current_path,storage_folder,args,update: lambda dataset_name,current_path,storage_folder,args,update: f(dataset_name,current_path,storage_folder,args,update)
@@ -86,7 +86,7 @@ def viral_dataset(dataset_name,current_path,storage_folder,args,update):
     nnalign_input_eval.to_csv("{}/viral_dataset/viral_nnalign_input_eval.tsv".format(storage_folder), sep="\t",index=False)
 
     if args.run_nnalign:
-        VegvisirNNalign.run_nnalign(storage_folder)
+        VegvisirNNalign.run_nnalign(args,storage_folder)
 
     exit()
 
