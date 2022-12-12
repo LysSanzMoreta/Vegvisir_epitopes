@@ -86,7 +86,6 @@ def viral_dataset(dataset_name,current_path,storage_folder,args,update):
     nnalign_input_train.to_csv("{}/viral_dataset/viral_nnalign_input_train.tsv".format(storage_folder),sep="\t",index=False)
     nnalign_input_eval.to_csv("{}/viral_dataset/viral_nnalign_input_eval.tsv".format(storage_folder), sep="\t",index=False)
 
-    exit()
     if args.run_nnalign:
         VegvisirNNalign.run_nnalign(args,storage_folder)
 
