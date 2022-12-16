@@ -55,7 +55,7 @@ def viral_dataset(dataset_name,current_path,storage_folder,args,update):
     #partition: number of training partition the datapoint is assigned to (0 to 4). The training is done in a 5-fold cross-validation scheme.
     """
     alphabet = list("ACDEFGHIKLMNPQRSTVWY")
-    sequence_column = ["Core","Icore"][0]
+    sequence_column = ["Core","Icore"][1]
     score_column = ["Rnk_EL","target"][1]
     data = pd.read_csv("{}/viral_dataset/Viruses_db_partitions.tsv".format(storage_folder),sep="\t")
     nnalign_input = data[[sequence_column,score_column,"training","partition"]]
@@ -89,7 +89,6 @@ def viral_dataset(dataset_name,current_path,storage_folder,args,update):
     if args.run_nnalign:
         VegvisirNNalign.run_nnalign(args,storage_folder)
 
-    exit()
 
 
 
