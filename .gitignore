@@ -1,5 +1,6 @@
 data/*
 data/Immnunogenicity/*
+data*
 src/vegvisir/data/*
 vegvisir/dist/*
 vegvisir/src/vegvisir.egg-info/*

@@ -1,10 +1,14 @@
 import os
 import pandas as pd
 import operator,functools
+import matplotlib.pyplot as plt
+import numpy as np
 import vegvisir.nnalign as VegvisirNNalign
+import vegvisir.utils as VegvisirUtils
 def available_datasets():
     """Prints the available datasets"""
-    datasets = {0:"viral_dataset"}
+    datasets = {0:"viral_dataset",
+                1:"viral_dataset2"}
     return datasets
 def select_dataset(dataset_name,script_dir,args,update=True):
     """Selects from available datasets
@@ -12,7 +16,8 @@ def select_dataset(dataset_name,script_dir,args,update=True):
     :param script_dir: Path from where the scriptis being executed
     :param update: If true it will download and update the most recent version of the dataset
     """
-    func_dict = {"viral_dataset": viral_dataset}
+    func_dict = {"viral_dataset": viral_dataset,
+                 "viral_dataset2":viral_dataset2}
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
 
     dataset_load_fx = lambda f,dataset_name,current_path,storage_folder,args,update: lambda dataset_name,current_path,storage_folder,args,update: f(dataset_name,current_path,storage_folder,args,update)
@@ -23,7 +28,13 @@ def select_dataset(dataset_name,script_dir,args,update=True):
     return dataset
 
 def viral_dataset(dataset_name,current_path,storage_folder,args,update):
-    """Loads the viral dataset generated from ...
+    """Loads the viral dataset generated from **IEDB** using parameters:
+           -Epitope: Linear peptide
+           -Assay: T-cell
+           -Epitope source: Organism: Virus
+           -MHC Restriction: Class I
+           -Host: Human
+           -Disease: Any
 
     The dataset is organized as follows:
     ####################
@@ -84,11 +95,104 @@ def viral_dataset(dataset_name,current_path,storage_folder,args,update):
     nnalign_input_eval.drop('training', inplace=True,axis=1)
     nnalign_input_eval.drop('partition', inplace=True, axis=1)
     nnalign_input_train.to_csv("{}/viral_dataset/viral_nnalign_input_train.tsv".format(storage_folder),sep="\t",index=False)
-    nnalign_input_eval.to_csv("{}/viral_dataset/viral_nnalign_input_eval.tsv".format(storage_folder), sep="\t",index=False)
+    nnalign_input_eval.to_csv("{}/viral_dataset/viral_nnalign_input_eval.tsv".format(storage_folder), sep="\t",index=False) #TODO: Header None?
 
     if args.run_nnalign:
         VegvisirNNalign.run_nnalign(args,storage_folder)
 
 
 
+def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
+    """Loads the viral dataset generated from **IEDB** database using parameters:
+           -Epitope: Linear peptide
+           -Assay: T-cell
+           -Epitope source: Organism: Virus
+           -MHC Restriction: Class I
+           -Host: Human
+           -Disease: Any
 
+    The dataset is organized as follows:
+    ####################
+    #HEADER DESCRIPTIONS#
+    ####################
+    ('Reference', 'Date')
+    ('Epitope', 'Description')
+    ('Epitope', 'Organism Name')
+    ('Epitope', 'Parent Species ID')
+    ('Epitope', 'Parent Protein Accession')
+    ('Assay', 'Qualitative Measure')
+    ('Assay', 'Number of Subjects Tested'):Number of people in the study evaluated for immunogenicity against the epitope
+    ('Assay', 'Number of Subjects Responded')
+    ('Assay', 'Response Frequency')
+    ('MHC', 'Allele Name'): HLA alelle name (MHC allele)
+    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1)
+    Rnk_EL: The %rank value reflects the likelihood of binding of the peptide to the reported MHC-I, computed with NetMHCpan-4.1.
+
+    return
+      Icore:Interaction peptide core
+      Confidence_score: Number of + / Number of tested ---> Normalized to 0-1
+      Rnk_EL: Average rank score per peptide by NetMHC ---> Normalized to 0-1
+    """
+    alphabet = list("ACDEFGHIKLMNPQRSTVWY")
+    data = pd.read_csv("{}/viral_dataset/Viruses_predict_hla.csv".format(storage_folder),sep="\t")
+    columns = ["Reference_data","Epitope_description","Epitope_organism_name","Parent_species_id","Parent_protein_accession",
+               "Assay_qualitative_measure","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded",
+               "Assay_response_frequency","MHC_allele_name","Icore","Rnk_EL"]
+    data.columns = columns
+    data_a = data.groupby('Icore',as_index=False)[["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
+    data_b = data.groupby('Icore',as_index=False)[["Rnk_EL"]].agg(lambda x: sum(list(x))/len(list(x)))
+    #max_number_subjects = data["Assay_number_of_subjects_tested"].max()
+    data_a["confidence_score"] = data_a["Assay_number_of_subjects_responded"]/data_a["Assay_number_of_subjects_tested"]
+    #data["confidence_score"] = data["Assay_number_of_subjects_responded"] / max_number_subjects
+    data_a.fillna(0,inplace=True)
+    max_conf = data_a["confidence_score"].max()
+    min_conf = data_a["confidence_score"].min()
+    data_a["confidence_score"] = (data_a["confidence_score"] - min_conf)/max_conf-min_conf
+    #Likelihood rank
+    max_conf = data_b["Rnk_EL"].max()
+    min_conf = data_b["Rnk_EL"].min()
+    data_b["Rnk_EL"] = (data_b["Rnk_EL"] - min_conf) / max_conf - min_conf
+    data_a["Rnk_EL"] = data_b["Rnk_EL"]
+
+    data_b.fillna(0, inplace=True)
+    fig, ax = plt.subplots()
+    # the histogram of the data
+    num_bins = 50
+    ax.hist(data_a["confidence_score"].to_numpy() , num_bins, density=True)
+    ax.set_ylabel('Probability density')
+    ax.set_title(r'Histogram of confidence scores ')
+    fig.tight_layout()
+    plt.savefig("{}/viral_dataset/Viruses_histogram_dataset_labels".format(storage_folder),dpi=300)
+
+    fig, ax = plt.subplots()
+    # the histogram of the data
+    num_bins = 50
+    ax.hist(data_a["Rnk_EL"].to_numpy(), num_bins, density=True)
+    ax.set_ylabel('Probability density')
+    ax.set_title(r'Histogram of Rnk_EL scores')
+    fig.tight_layout()
+    plt.savefig("{}/viral_dataset/Viruses_histogram_dataset_rank".format(storage_folder), dpi=300)
+    data = process_data(data_a,args)
+
+    return data
+
+def process_data(data,args):
+    """
+    :param pandas dataframe data: Contains Icore, Confidence_score and Rnk_EL
+    """
+    blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(args.aa_types, args.subs_matrix)
+    epitopes = data[["Icore"]].values.tolist()
+    epitopes = functools.reduce(operator.iconcat, epitopes, [])  # flatten list of lists
+    epitopes_max_len = len(max(epitopes, key=len))
+    epitopes_lens = np.array(list(map(len, epitopes)))
+
+    #Pad the sequences
+    epitopes = [list(seq.ljust(epitopes_max_len, "*")) for seq in epitopes]
+
+    array = np.array(epitopes)
+    print(array)
+    exit()
+    comparison = np.char.add(array[:,None], array[None,:]) #a = np.array([["A","R","T","#"],["Y","M","T","P"],["I","R","T","#"]])
+
+    print(comparison)
+    exit()

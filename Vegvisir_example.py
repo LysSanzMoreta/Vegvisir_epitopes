@@ -44,12 +44,12 @@ def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
-                        default="viral_dataset",
+                        default="viral_dataset2",
                         help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data')
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=True, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
     parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=50, help='Number of epochs (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
-    parser.add_argument('-aa-types', type=int, nargs='?', default=21, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. ')
+    parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. ')
     #TODO: include more blosum matrix types?
     parser.add_argument('-subs_matrix', default="BLOSUM62", type=str,
                         help='blosum matrix to create blosum embeddings, choose one from /home/lys/anaconda3/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data')
