@@ -177,19 +177,30 @@ def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
     return data
 
 
-def cosine_similarity(kmer_a,kmer_b,correlation_matrix=False):
+def cosine_similarity(a,b,correlation_matrix=False):
     """Calculates the cosine similarity between matrices of k-mers.
-    :param numpy array kmer_a: (kmer_dim, aa_types)
-    :param numpy array kmer_b: (kmer_dim, aa_types)
+    :param numpy array a: (max_len,aa_types) or (num_seq,max_len, aa_types)
+    :param numpy array b: (max_len,aa_types) or (num_seq,max_len, aa_types)
     :param bool:Calculate matrix correlation(as in numpy coorcoef)"""
-    if correlation_matrix:
-        kmer_b = kmer_b - kmer_b.mean(axis=1)[:, None]
-        kmer_a = kmer_a - kmer_a.mean(axis=1)[:, None]
-    num = np.dot(kmer_a, kmer_b.T)
-    p1 =np.sqrt(np.sum(kmer_a**2,axis=1))[:,None]
-    p2 = np.sqrt(np.sum(kmer_b ** 2, axis=1))[None, :]
-    cosine_sim = num / (p1 * p2)
-    return cosine_sim
+    if np.ndim(a) == 2:
+        if correlation_matrix:
+            b = b - b.mean(axis=1)[:, None]
+            a = a - a.mean(axis=1)[:, None]
+        num = np.dot(a, b.T)
+        p1 =np.sqrt(np.sum(a**2,axis=1))[:,None]
+        p2 = np.sqrt(np.sum(b ** 2, axis=1))[None, :]
+        cosine_sim = num / (p1 * p2)
+        #patristic_distances = (mutant_sequences.shape[1]-np.sum((mutant_sequences[:,None,:] == mutant_sequences[None,:,:]),axis=-1))/mutant_sequences.shape[1]
+        #np.matmul(v[:,:,None,:],w[:,:,:,None])
+        return cosine_sim
+    else:
+        if correlation_matrix:
+            b = b - b.mean(axis=2)[:,:, None]
+            a = a - a.mean(axis=2)[:,:, None]
+        num = np.matmul(a[None,:,None],b[:,None,:,:,None])
+        p1 = np.sqrt(np.sum(a ** 2, axis=1))[:, None]
+        p2 = np.sqrt(np.sum(b ** 2, axis=1))[None, :]
+        cosine_sim = num / (p1 * p2)
 
 
 def extract_windows_vectorized(array, clearing_time_index, max_time, sub_window_size,only_windows=True):
@@ -219,16 +230,17 @@ def calculate_similarity_matrix(array,batch_size=300,ksize=3):
     splits = np.array_split(array,split_size)
     print("Generated {} splits".format(len(splits)))
     idx = list(range(len(splits)))
-    overlapping_kmers = extract_windows_vectorized(splits[0],1,array.shape[1]-ksize,ksize,only_windows=True)
+    overlapping_kmers = extract_windows_vectorized(splits[0],1,array.shape[1]-ksize,ksize,only_windows=True) #TODO:Might not be necessary
     for i in idx:
         curr_array = splits[i] #TODO: Calculate distance to itself for sanity check
         rest_splits = splits.copy()
         del rest_splits[i]
         distances = []
-        for r_j in rest_splits:
-            print(curr_array[:,overlapping_kmers].shape)
+        for r_j in rest_splits: #calculate distance among all kmers per sequence in the block (n, n_kmers,n_kmers)
+            # kmers_i = curr_array[:,overlapping_kmers]
+            # kmers_j = r_j[:,overlapping_kmers]
+            # pairwise_comparison = (kmers_i[None,:] == kmers_j[:,None]).astype(int)
 
-            print(r_j[:,overlapping_kmers])
             exit()
 
         #distance = cosine_similarity()
