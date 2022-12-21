@@ -176,23 +176,85 @@ def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
 
     return data
 
+
+def cosine_similarity(kmer_a,kmer_b,correlation_matrix=False):
+    """Calculates the cosine similarity between matrices of k-mers.
+    :param numpy array kmer_a: (kmer_dim, aa_types)
+    :param numpy array kmer_b: (kmer_dim, aa_types)
+    :param bool:Calculate matrix correlation(as in numpy coorcoef)"""
+    if correlation_matrix:
+        kmer_b = kmer_b - kmer_b.mean(axis=1)[:, None]
+        kmer_a = kmer_a - kmer_a.mean(axis=1)[:, None]
+    num = np.dot(kmer_a, kmer_b.T)
+    p1 =np.sqrt(np.sum(kmer_a**2,axis=1))[:,None]
+    p2 = np.sqrt(np.sum(kmer_b ** 2, axis=1))[None, :]
+    cosine_sim = num / (p1 * p2)
+    return cosine_sim
+
+
+def extract_windows_vectorized(array, clearing_time_index, max_time, sub_window_size,only_windows=True):
+    """
+    From https://towardsdatascience.com/fast-and-robust-sliding-window-vectorization-with-numpy-3ad950ed62f5
+    :param int clearing_time_index: Indicates the starting index (0-python idx == 1 clearing_time_index;-1-python idx == 0 clearing_time_index)
+    :param max_time: max sequence len
+    :param sub_window_size:kmer size
+    """
+    start = clearing_time_index + 1 - sub_window_size + 1
+    sub_windows = (
+            start +
+            # expand_dims are used to convert a 1D array to 2D array.
+            np.arange(sub_window_size)[None,:]  + #[0,1,2] ---> [[0,1,2]]
+            np.arange(max_time + 1)[None,:].T  #[0,...,max_len+1] ---expand dim ---> [[[0,...,max_len+1] ]], indicates the
+    ) # The first row is the sum of the first row of a + the first element of b, and so on (in the diagonal the result of a[None,:] + b[None,:] is placed (without transposing b). )
+
+    if only_windows:
+        return sub_windows
+    else:
+        return array[:,sub_windows]
+
+def calculate_similarity_matrix(array,batch_size=300,ksize=3):
+    """Batched methodto calculate the """
+
+    split_size = int(array.shape[0]/batch_size)
+    splits = np.array_split(array,split_size)
+    print("Generated {} splits".format(len(splits)))
+    idx = list(range(len(splits)))
+    overlapping_kmers = extract_windows_vectorized(splits[0],1,array.shape[1]-ksize,ksize,only_windows=True)
+    for i in idx:
+        curr_array = splits[i] #TODO: Calculate distance to itself for sanity check
+        rest_splits = splits.copy()
+        del rest_splits[i]
+        distances = []
+        for r_j in rest_splits:
+            print(curr_array[:,overlapping_kmers].shape)
+
+            print(r_j[:,overlapping_kmers])
+            exit()
+
+        #distance = cosine_similarity()
+
+
+    print(splits)
+    exit()
+
 def process_data(data,args):
     """
     :param pandas dataframe data: Contains Icore, Confidence_score and Rnk_EL
     """
     blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(args.aa_types, args.subs_matrix)
+    aa_dict = VegvisirUtils.aminoacid_names_dict(args.aa_types, zero_characters=["#"])
     epitopes = data[["Icore"]].values.tolist()
     epitopes = functools.reduce(operator.iconcat, epitopes, [])  # flatten list of lists
     epitopes_max_len = len(max(epitopes, key=len))
     epitopes_lens = np.array(list(map(len, epitopes)))
 
     #Pad the sequences
-    epitopes = [list(seq.ljust(epitopes_max_len, "*")) for seq in epitopes]
+    epitopes = [list(seq.ljust(epitopes_max_len, "#")) for seq in epitopes]
 
-    array = np.array(epitopes)
-    print(array)
-    exit()
-    comparison = np.char.add(array[:,None], array[None,:]) #a = np.array([["A","R","T","#"],["Y","M","T","P"],["I","R","T","#"]])
+    epitopes_array = np.array(epitopes)
+    epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
+    epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
+    calculate_similarity_matrix(epitopes_array_int)
 
-    print(comparison)
-    exit()
+    #comparison = np.char.add(epitopes_array [:,None], epitopes_array [None,:]) #a = np.array([["A","R","T","#"],["Y","M","T","P"],["I","R","T","#"]])
+

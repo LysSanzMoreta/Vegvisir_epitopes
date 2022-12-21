@@ -55,7 +55,7 @@ def score_match(pair, matrix):
         return matrix[(tuple(reversed(pair)))]
     else:
         return matrix[pair]
-def score_pairwise(seq1, seq2, matrix, gap_s, gap_e):
+def score_pairwise(seq1, seq2, matrix, gap_s, gap_e): #TODO: remove
     """
     Calculates the blosum score of the true sequence against the predictions
     :param matrix matrix: Blosum matrix containing the log-odds scores (he logarithm for the ratio of the
@@ -84,6 +84,8 @@ def score_pairwise(seq1, seq2, matrix, gap_s, gap_e):
                 gap = True
                 score += gap_e
     return score
+
+
 
 def create_blosum(aa_types,subs_matrix_name):
     """
