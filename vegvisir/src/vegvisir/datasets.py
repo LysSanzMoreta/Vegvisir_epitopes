@@ -186,9 +186,11 @@ def cosine_similarity(a,b,correlation_matrix=False):
         if correlation_matrix:
             b = b - b.mean(axis=1)[:, None]
             a = a - a.mean(axis=1)[:, None]
+
         num = np.dot(a, b.T)
-        p1 =np.sqrt(np.sum(a**2,axis=1))[:,None]
-        p2 = np.sqrt(np.sum(b ** 2, axis=1))[None, :]
+        p1 =np.sqrt(np.sum(a**2,axis=1))[:,None] #[n,1]
+        p2 = np.sqrt(np.sum(b ** 2, axis=1))[None, :] #[1,n]
+
         cosine_sim = num / (p1 * p2)
         #patristic_distances = (mutant_sequences.shape[1]-np.sum((mutant_sequences[:,None,:] == mutant_sequences[None,:,:]),axis=-1))/mutant_sequences.shape[1]
         #np.matmul(v[:,:,None,:],w[:,:,:,None])
@@ -197,10 +199,15 @@ def cosine_similarity(a,b,correlation_matrix=False):
         if correlation_matrix:
             b = b - b.mean(axis=2)[:,:, None]
             a = a - a.mean(axis=2)[:,:, None]
-        num = np.matmul(a[None,:,None],b[:,None,:,:,None])
-        p1 = np.sqrt(np.sum(a ** 2, axis=1))[:, None]
-        p2 = np.sqrt(np.sum(b ** 2, axis=1))[None, :]
+        num = np.matmul(a[:,None], np.transpose(b,(0,2,1))[:,None])
+
+        p1 = np.sqrt(np.sum(a ** 2, axis=2))[:, :,None]
+        p2 = np.sqrt(np.sum(b ** 2, axis=2))[:,None, :]
+
         cosine_sim = num / (p1 * p2)
+
+
+        return cosine_sim
 
 
 def extract_windows_vectorized(array, clearing_time_index, max_time, sub_window_size,only_windows=True):
@@ -224,15 +231,16 @@ def extract_windows_vectorized(array, clearing_time_index, max_time, sub_window_
         return array[:,sub_windows]
 
 def calculate_similarity_matrix(array,batch_size=300,ksize=3):
-    """Batched methodto calculate the """
+    """Batched method to calculate the cosine similarity between the blosum encoded sequences"""
 
+    print(array.shape)
     split_size = int(array.shape[0]/batch_size)
     splits = np.array_split(array,split_size)
     print("Generated {} splits".format(len(splits)))
     idx = list(range(len(splits)))
     overlapping_kmers = extract_windows_vectorized(splits[0],1,array.shape[1]-ksize,ksize,only_windows=True) #TODO:Might not be necessary
     for i in idx:
-        curr_array = splits[i] #TODO: Calculate distance to itself for sanity check
+        curr_array = splits[i] #TODO: Calculate distance to itself for sanity check---> Plot correlation %ID and cosine sim
         rest_splits = splits.copy()
         del rest_splits[i]
         distances = []
@@ -240,10 +248,14 @@ def calculate_similarity_matrix(array,batch_size=300,ksize=3):
             # kmers_i = curr_array[:,overlapping_kmers]
             # kmers_j = r_j[:,overlapping_kmers]
             # pairwise_comparison = (kmers_i[None,:] == kmers_j[:,None]).astype(int)
-
+            cosine_sim = cosine_similarity(curr_array,r_j)
+            print(cosine_sim[0][0])
+            print("first sequence")
+            print(curr_array[0][0])
+            print("second sequence")
+            print(r_j[0][1])
             exit()
 
-        #distance = cosine_similarity()
 
 
     print(splits)
@@ -254,6 +266,7 @@ def process_data(data,args):
     :param pandas dataframe data: Contains Icore, Confidence_score and Rnk_EL
     """
     blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(args.aa_types, args.subs_matrix)
+    print(blosum_array_dict)
     aa_dict = VegvisirUtils.aminoacid_names_dict(args.aa_types, zero_characters=["#"])
     epitopes = data[["Icore"]].values.tolist()
     epitopes = functools.reduce(operator.iconcat, epitopes, [])  # flatten list of lists
@@ -264,9 +277,10 @@ def process_data(data,args):
     epitopes = [list(seq.ljust(epitopes_max_len, "#")) for seq in epitopes]
 
     epitopes_array = np.array(epitopes)
+    print(epitopes_array[0])
     epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
-    calculate_similarity_matrix(epitopes_array_int)
+    calculate_similarity_matrix(epitopes_array_blosum)
 
     #comparison = np.char.add(epitopes_array [:,None], epitopes_array [None,:]) #a = np.array([["A","R","T","#"],["Y","M","T","P"],["I","R","T","#"]])
 
