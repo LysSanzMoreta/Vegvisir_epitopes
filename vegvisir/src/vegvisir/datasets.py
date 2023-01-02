@@ -1,8 +1,11 @@
 import os
+import time,datetime
+import dill
 import pandas as pd
 import operator,functools
 import matplotlib.pyplot as plt
 import numpy as np
+from collections import defaultdict
 import vegvisir.nnalign as VegvisirNNalign
 import vegvisir.utils as VegvisirUtils
 def available_datasets():
@@ -134,7 +137,7 @@ def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
       Rnk_EL: Average rank score per peptide by NetMHC ---> Normalized to 0-1
     """
     alphabet = list("ACDEFGHIKLMNPQRSTVWY")
-    data = pd.read_csv("{}/viral_dataset/Viruses_predict_hla.csv".format(storage_folder),sep="\t")
+    data = pd.read_csv("{}/{}/Viruses_predict_hla.csv".format(storage_folder,args.dataset_name),sep="\t")
     columns = ["Reference_data","Epitope_description","Epitope_organism_name","Parent_species_id","Parent_protein_accession",
                "Assay_qualitative_measure","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded",
                "Assay_response_frequency","MHC_allele_name","Icore","Rnk_EL"]
@@ -162,7 +165,7 @@ def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
     ax.set_ylabel('Probability density')
     ax.set_title(r'Histogram of confidence scores ')
     fig.tight_layout()
-    plt.savefig("{}/viral_dataset/Viruses_histogram_dataset_labels".format(storage_folder),dpi=300)
+    plt.savefig("{}/{}/Viruses_histogram_dataset_labels".format(storage_folder,args.dataset_name),dpi=300)
 
     fig, ax = plt.subplots()
     # the histogram of the data
@@ -171,17 +174,26 @@ def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
     ax.set_ylabel('Probability density')
     ax.set_title(r'Histogram of Rnk_EL scores')
     fig.tight_layout()
-    plt.savefig("{}/viral_dataset/Viruses_histogram_dataset_rank".format(storage_folder), dpi=300)
-    data = process_data(data_a,args)
+    plt.savefig("{}/{}/Viruses_histogram_dataset_rank".format(storage_folder,args.dataset_name), dpi=300)
+    data = process_data(data_a,args,storage_folder)
 
     return data
-
 
 def cosine_similarity(a,b,correlation_matrix=False):
     """Calculates the cosine similarity between matrices of k-mers.
     :param numpy array a: (max_len,aa_types) or (num_seq,max_len, aa_types)
     :param numpy array b: (max_len,aa_types) or (num_seq,max_len, aa_types)
     :param bool:Calculate matrix correlation(as in numpy coorcoef)"""
+    n_a = a.shape[0]
+    n_b = b.shape[0]
+    diff_sizes = False
+    if n_a != n_b:
+        dummy_row = np.zeros((np.abs(n_a-n_b),) + a.shape[1:])
+        diff_sizes = True
+        if n_a < n_b:
+            a = np.concatenate((a,dummy_row),axis=0)
+        else:
+            b = np.concatenate((b,dummy_row),axis=0)
     if np.ndim(a) == 2:
         if correlation_matrix:
             b = b - b.mean(axis=1)[:, None]
@@ -196,19 +208,27 @@ def cosine_similarity(a,b,correlation_matrix=False):
         #np.matmul(v[:,:,None,:],w[:,:,:,None])
         return cosine_sim
     else:
-        if correlation_matrix:
-            b = b - b.mean(axis=2)[:,:, None]
-            a = a - a.mean(axis=2)[:,:, None]
-        num = np.matmul(a[:,None], np.transpose(b,(0,2,1))[:,None])
 
-        p1 = np.sqrt(np.sum(a ** 2, axis=2))[:, :,None]
-        p2 = np.sqrt(np.sum(b ** 2, axis=2))[:,None, :]
+        if correlation_matrix:
+            b = b - b.mean(axis=2)[:, :, None]
+
+            a = a - a.mean(axis=2)[:, :, None]
+        num = np.matmul(a[:, None], np.transpose(b, (0, 2, 1))[:, None])
+
+        #print(num.shape)
+        p1 = np.sqrt(np.sum(a ** 2, axis=2))[:, :, None]
+        p2 = np.sqrt(np.sum(b ** 2, axis=2))[:, None, :]
+
 
         cosine_sim = num / (p1 * p2)
-
+        if diff_sizes: #remove the dummy creation that was made avoid shape conflicts
+            remove = np.abs(n_a-n_b)
+            if n_a < n_b:
+                cosine_sim = cosine_sim[:-remove]
+            else:
+                cosine_sim = cosine_sim[:,:-remove]
 
         return cosine_sim
-
 
 def extract_windows_vectorized(array, clearing_time_index, max_time, sub_window_size,only_windows=True):
     """
@@ -230,43 +250,124 @@ def extract_windows_vectorized(array, clearing_time_index, max_time, sub_window_
     else:
         return array[:,sub_windows]
 
-def calculate_similarity_matrix(array,batch_size=300,ksize=3):
-    """Batched method to calculate the cosine similarity between the blosum encoded sequences"""
+def view1D(a): # a is array #TODO: Remove or investigate, is supposed to speed the comparisons up
+    a = np.ascontiguousarray(a)
+    void_dt = np.dtype((np.void, a.dtype.itemsize * a.shape[1]))
+    return a.view(void_dt).ravel()
 
-    print(array.shape)
+def calculate_similarity_matrix(array,max_len,array_mask,batch_size=200,ksize=3):
+    """Batched method to calculate the cosine similarity and percent identity/pairwise distance between the blosum encoded sequences.
+    :param numpy array: [n,max_len] or [n,max_len,aa_types]
+    NOTE: Use smaller batches for faster results ( obviously to certain extent, check into balancing the batch size and the number of for loops)
+    returns
+        pairwise_similarity_matrices: [n,n,max-len,max_len] : Per sequence compare all amino acids from one sequence compared against all amino acids of the other sequence ---> useful for k-mers calculation
+        percent_identity: [n,n,max_len] ---> Percent identity
+        cosine_similarities: [n,n,max-len,max_len] ---> Per sequence calculate the cosine similarity among all the "amino acids blosum vectors" from one sequence compared against all "amino acids blosum vectors" of the other sequence ---> Useful for k-mers calculation
+                            1 means the two aa are identical and −1 means the two aa are not similar."""
+    array = array[:300]
+    n_data = array.shape[0]
+    #print(array.shape)
+    #array = np.ma.masked_array(array,array_mask[:300][:,:,None].repeat(array.shape[-1],axis= -1))
+    batch_size = array.shape[0]
     split_size = int(array.shape[0]/batch_size)
     splits = np.array_split(array,split_size)
     print("Generated {} splits".format(len(splits)))
     idx = list(range(len(splits)))
-    overlapping_kmers = extract_windows_vectorized(splits[0],1,array.shape[1]-ksize,ksize,only_windows=True) #TODO:Might not be necessary
+    if ksize >= max_len:
+        ksize = max_len
+    overlapping_kmers = extract_windows_vectorized(splits[0],1,max_len-ksize,ksize,only_windows=True) #TODO:Might not be necessary o yes
+    nkmers = overlapping_kmers.shape[0]
+    #results_dict = defaultdict(lambda : defaultdict())
+    if np.ndim(array) == 2: #TODO: this approach might be limited by memory
+        pairwise_similarity_matrices = np.zeros((array.shape[0],) + array.shape[-2:] + (array.shape[-1],))  # [n,n,max_len,max_len]
+        percent_identity = np.zeros(((array.shape[0],) + array.shape[-2:]))  # [n,n,max_len]
+        cosine_similarities = np.zeros((( (array.shape[0],) + array.shape[-2:] + (array.shape[-1],))))  # [n,n,max_len,max_len]
+    else:
+        pairwise_similarity_matrices = np.zeros((( (array.shape[0],) + array.shape[-3:-1] + (array.shape[-2],))) ) # [n,n,max_len,max_len]
+        percent_identity = np.zeros((( (array.shape[0],) + array.shape[-3:-1])))  # [n,n,max_len]
+        cosine_similarities = np.zeros(((array.shape[0],) + array.shape[-3:-1] + (array.shape[-2],)))  # [n,n,max_len.max_len]
+
+    kmers_matrix = np.zeros((n_data,n_data,nkmers,nkmers,ksize,ksize )) # [n,n,nkmers,nkmers,ksize,ksize]
+    start_store_point = 0
+    end_store_point = splits[0].shape[0]
+    start = time.time()
     for i in idx:
+        print("i ------------ {}".format(i))
         curr_array = splits[i] #TODO: Calculate distance to itself for sanity check---> Plot correlation %ID and cosine sim
         rest_splits = splits.copy()
-        del rest_splits[i]
-        distances = []
-        for r_j in rest_splits: #calculate distance among all kmers per sequence in the block (n, n_kmers,n_kmers)
+        #del rest_splits[i] #remove the current split from the list?
+        #Highlight: Define storing arrays
+        if np.ndim(curr_array) == 2:
+            pairwise_similarity_matrices_i = np.zeros(((curr_array.shape[0],) + array.shape[-2:] + (array.shape[-1],))) # [m,n,max_len,max_len]
+            percent_identity_i = np.zeros(((curr_array.shape[0],) + array.shape[-2:]))  # [m,n,max_len]
+            cosine_similarities_i = np.zeros(((curr_array.shape[0],) + array.shape[-2:] + (array.shape[-1],)))  # [m,n,max_len,max_len]
+        else:
+            pairwise_similarity_matrices_i = np.zeros(((curr_array.shape[0],) + array.shape[-3:-1] + (array.shape[-2],))) #[m,n,max_len,max_len]
+            percent_identity_i = np.zeros(((curr_array.shape[0],) + array.shape[-3:-1])) #[m,n,max_len]
+            cosine_similarities_i = np.zeros(((curr_array.shape[0],) + array.shape[-3:-1] + (array.shape[-2],))) #[m,n,max_len.max_len]
+        kmers_matrix_i = np.zeros((curr_array.shape[0], n_data, nkmers, nkmers, ksize, ksize))  # [n,n,nkmers,nkmers,ksize,ksize]
+        start_store_point_i = 0
+        end_store_point_i = rest_splits[0].shape[0] #initialize
+        start_i = time.time()
+        for j,r_j in enumerate(rest_splits): #calculate distance among all kmers per sequence in the block (n, n_kmers,n_kmers)
+            #print("j {}".format(j))
             # kmers_i = curr_array[:,overlapping_kmers]
             # kmers_j = r_j[:,overlapping_kmers]
             # pairwise_comparison = (kmers_i[None,:] == kmers_j[:,None]).astype(int)
-            cosine_sim = cosine_similarity(curr_array,r_j)
-            print(cosine_sim[0][0])
-            print("first sequence")
-            print(curr_array[0][0])
-            print("second sequence")
-            print(r_j[0][1])
-            exit()
+            cosine_sim = cosine_similarity(curr_array,r_j, correlation_matrix=False)
+            if np.ndim(curr_array) == 2:
+                pairwise_sim = (curr_array[None, :] == r_j[:, None]).astype(int)
+            else:
+                pairwise_sim = (curr_array[:, None] == r_j[None, :]).all((-1)).astype(int)  # .all((-2,-1))
+            if np.ndim(curr_array) == 2:
+                pairwise_matrix = (curr_array[:, None, :, None] == r_j[None, :, None, :]).astype(int)
+            else:
+                # pairwise_matrix = (curr_array[:, None,:,None] == r_j[None, :,None,:]).astype(float).sum(-1)  # .all((-2,-1))
+                # pairwise_matrix /= curr_array.shape[-1]
+                # pairwise_matrix[pairwise_matrix != 1.] = 0
+                pairwise_matrix = (curr_array[:, None, :, None] == r_j[None, :, None, :]).all((-1)).astype(float)  # .all((-2,-1))
 
+            percent_identity_i[:,start_store_point_i:end_store_point_i] = pairwise_sim
+            pairwise_similarity_matrices_i[:,start_store_point_i:end_store_point_i] = pairwise_matrix
+            cosine_similarities_i[:,start_store_point_i:end_store_point_i] = cosine_sim
+            #Highlight: further transformations: Basically slice the overlapping kmers and organize them to have shape [m,n,kmers,nkmers,ksize,ksize], where the diagonal contains the pairwise values between the kmers
+            kmers_matrix_ = pairwise_matrix[:,:,:,overlapping_kmers][:,:,overlapping_kmers].reshape((curr_array.shape[0],n_data,nkmers,ksize,nkmers,ksize),order="A").transpose(0,1,4,2,3,5)
+            kmers_matrix_i[:,start_store_point_i:end_store_point_i] = kmers_matrix_
 
+            start_store_point_i = end_store_point_i
+            if j +1  != len(rest_splits):
+                end_store_point_i += rest_splits[j+1].shape[0] #it has to be the next r_j
+        end_i = time.time()
+        print("Time for j {}".format(str(datetime.timedelta(seconds=end_i-start_i))))
+        pairwise_similarity_matrices[start_store_point:end_store_point] = pairwise_similarity_matrices_i
+        percent_identity[start_store_point:end_store_point] = percent_identity_i
+        cosine_similarities[start_store_point:end_store_point] = cosine_similarities_i
+        # Highlight: further transformations
+        kmers_matrix[start_store_point:end_store_point] = kmers_matrix_i
 
-    print(splits)
+        start_store_point = end_store_point
+        if i + 1 != len(splits):
+            end_store_point += splits[i + 1].shape[0]  # it has to be the next curr_array
+    end = time.time()
+    print("Overall calculation time {}".format(str(datetime.timedelta(seconds=end - start))))
+    #print(percent_identity[0][1])
+    percent_identity_mean = np.mean(percent_identity,axis=-1)
+
+    #b[:,:,:,idx.flatten()][:,:,idx.flatten()].reshape((2,2,4,3,4,3),order="A").transpose(0,1,4,2,3,5)[0][0][0]
+    #kmers_matrix = pairwise_similarity_matrices[:,:,:,overlapping_kmers][:,:,overlapping_kmers].reshape((n_data,n_data,overlapping_kmers.shape[0],ksize,overlapping_kmers.shape[0],ksize),order="A").transpose(0,1,4,2,3,5)
+    #print(pairwise_similarity_matrices[:,:,:,overlapping_kmers.flatten()][:,:,overlapping_kmers.flatten()][0][0])
+    print(kmers_matrix[0][0][0])
+    #b = a[:,:,:,:,overlapping_kmers]
     exit()
+    return pairwise_similarity_matrices,percent_identity,cosine_similarities
 
-def process_data(data,args):
+def process_data(data,args,storage_folder):
     """
     :param pandas dataframe data: Contains Icore, Confidence_score and Rnk_EL
+    :param args
+    :param storage_folder
     """
     blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(args.aa_types, args.subs_matrix)
-    print(blosum_array_dict)
     aa_dict = VegvisirUtils.aminoacid_names_dict(args.aa_types, zero_characters=["#"])
     epitopes = data[["Icore"]].values.tolist()
     epitopes = functools.reduce(operator.iconcat, epitopes, [])  # flatten list of lists
@@ -275,12 +376,24 @@ def process_data(data,args):
 
     #Pad the sequences
     epitopes = [list(seq.ljust(epitopes_max_len, "#")) for seq in epitopes]
-
+    print(epitopes[0])
+    #print(epitopes[1])
     epitopes_array = np.array(epitopes)
-    print(epitopes_array[0])
     epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
+    epitopes_mask = epitopes_array_int.astype(bool)
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
-    calculate_similarity_matrix(epitopes_array_blosum)
+    if not os.path.exists("{}/{}/pairwise_similarity_matrices.npy".format(storage_folder,args.dataset_name)):
+        print("Epitopes similarity matrices not existing, calculating ....")
+        pairwise_similarity_matrices,percent_identity,cosine_similarities = calculate_similarity_matrix(epitopes_array_blosum,epitopes_max_len,epitopes_mask)
+        np.save("{}/{}/pairwise_similarity_matrices.npy".format(storage_folder,args.dataset_name), pairwise_similarity_matrices)
+        np.save("{}/{}/percent_identity.npy".format(storage_folder,args.dataset_name), percent_identity)
+        np.save("{}/{}/cosine_similarities.npy".format(storage_folder,args.dataset_name), cosine_similarities)
 
+    else:
+        print("Loading pre-calculated similarity matrices")
+        pairwise_similarity_matrices = np.load("{}/{}/pairwise_similarity_matrices.npy".format(storage_folder,args.dataset_name))
+        percent_identity = np.load("{}/{}/percent_identity.npy".format(storage_folder,args.dataset_name))
+        cosine_similarities = np.load("{}/{}/cosine_similarities.npy".format(storage_folder,args.dataset_name))
+    print(pairwise_similarity_matrices.shape)
     #comparison = np.char.add(epitopes_array [:,None], epitopes_array [None,:]) #a = np.array([["A","R","T","#"],["Y","M","T","P"],["I","R","T","#"]])
 
