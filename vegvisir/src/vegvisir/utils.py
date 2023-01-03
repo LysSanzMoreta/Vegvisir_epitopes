@@ -97,8 +97,8 @@ def create_blosum(aa_types,subs_matrix_name):
         warnings.warn("Your dataset contains special amino acids. Switching your substitution matrix to PAM70")
         subs_matrix_name = "PAM70"
     subs_matrix = Bio.Align.substitution_matrices.load(subs_matrix_name)
-    aa_list = list(aminoacid_names_dict(aa_types,zero_characters=["-"]).keys())
-    index_gap = aa_list.index("-")
+    aa_list = list(aminoacid_names_dict(aa_types,zero_characters=["#"]).keys())
+    index_gap = aa_list.index("#")
     aa_list[index_gap] = "*" #in the blosum matrix gaps are represanted as *
 
     subs_dict = defaultdict()
@@ -122,5 +122,4 @@ def create_blosum(aa_types,subs_matrix_name):
 
     #blosum_array_dict = dict(enumerate(subs_array[1:,2:])) # Highlight: Changed to [1:,2:] instead of [1:,1:] to skip the scores for non-aa elements
     blosum_array_dict = dict(enumerate(subs_array[1:,1:])) # Highlight: Changed to [1:,2:] instead of [1:,1:] to skip the scores for non-aa elements
-
     return subs_array, subs_dict, blosum_array_dict
