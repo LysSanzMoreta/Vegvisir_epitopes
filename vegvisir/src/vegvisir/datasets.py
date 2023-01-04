@@ -262,7 +262,8 @@ def view1D(a): # a is array #TODO: Remove or investigate, is supposed to speed t
 
 def calculate_similarity_matrix(array,max_len,array_mask,batch_size=200,ksize=3):
     """Batched method to calculate the cosine similarity and percent identity/pairwise distance between the blosum encoded sequences.
-    :param numpy array: [n,max_len] or [n,max_len,aa_types]
+    :param numpy array: Integer representation [n,max_len] or Blosum encoded [n,max_len,aa_types]
+    :param numpy array_nan: Integer representation as [n,max_len] or Blosum encoded as [n,max_len,aa_types]. The values of the padding values (#) are represented as np.nan
     NOTE: Use smaller batches for faster results ( obviously to certain extent, check into balancing the batch size and the number of for loops)
     returns
         pairwise_similarity_matrices: [n,n,max-len,max_len] : Per sequence compare all amino acids from one sequence compared against all amino acids of the other sequence ---> useful for k-mers calculation
@@ -270,8 +271,9 @@ def calculate_similarity_matrix(array,max_len,array_mask,batch_size=200,ksize=3)
         cosine_similarities: [n,n,max-len,max_len] ---> Per sequence calculate the cosine similarity among all the "amino acids blosum vectors" from one sequence compared against all "amino acids blosum vectors" of the other sequence ---> Useful for k-mers calculation
                             1 means the two aa are identical and −1 means the two aa are not similar."""
     #TODO: Make it run with Cython (faster indexing): https://cython.readthedocs.io/en/latest/src/tutorial/cython_tutorial.html
-    array = array[:3]
+    array = array[:4]
     n_data = array.shape[0]
+    array_mask = array_mask[:n_data]
     #print(array.shape)
     #array = np.ma.masked_array(array,array_mask[:300][:,:,None].repeat(array.shape[-1],axis= -1))
     #batch_size = array.shape[0]
@@ -284,9 +286,10 @@ def calculate_similarity_matrix(array,max_len,array_mask,batch_size=200,ksize=3)
     overlapping_kmers = extract_windows_vectorized(splits[0],1,max_len-ksize,ksize,only_windows=True) #TODO:Might not be necessary o yes
 
     diag_idx = np.diag_indices(ksize)
-    tril_idx  = np.tril_indices(ksize,-1)
     nkmers = overlapping_kmers.shape[0]
     diag_idx_nkmers = np.diag_indices(nkmers)
+    diag_idx_maxlen = np.diag_indices(max_len)
+
     #results_dict = defaultdict(lambda : defaultdict())
     if np.ndim(array) == 2: #TODO: this approach might be limited by memory
         pairwise_similarity_matrices = np.zeros((array.shape[0],) + array.shape[-2:] + (array.shape[-1],))  # [n,n,max_len,max_len]
@@ -335,6 +338,7 @@ def calculate_similarity_matrix(array,max_len,array_mask,batch_size=200,ksize=3)
                 # pairwise_matrix = (curr_array[:, None,:,None] == r_j[None, :,None,:]).astype(float).sum(-1)  # .all((-2,-1))
                 # pairwise_matrix /= curr_array.shape[-1]
                 # pairwise_matrix[pairwise_matrix != 1.] = 0
+                #TODO: Problem when calculating self.similarity because np.nan == np.nan is False
                 pairwise_matrix = (curr_array[:, None, :, None] == r_j[None, :, None, :]).all((-1)).astype(float)  # .all((-2,-1))
 
             percent_identity_i[:,start_store_point_i:end_store_point_i] = pairwise_sim
@@ -342,9 +346,11 @@ def calculate_similarity_matrix(array,max_len,array_mask,batch_size=200,ksize=3)
             cosine_similarities_i[:,start_store_point_i:end_store_point_i] = cosine_sim
             #Highlight: further transformations: Basically slice the overlapping kmers and organize them to have shape [m,n,kmers,nkmers,ksize,ksize], where the diagonal contains the pairwise values between the kmers
 
-            kmers_matrix_ = pairwise_matrix[:,:,:,overlapping_kmers][:,:,overlapping_kmers].reshape((curr_array.shape[0],curr_array.shape[0],nkmers,ksize,nkmers,ksize),order="A").transpose(0,1,4,2,3,5)
+            #kmers_matrix_ = pairwise_matrix[:,:,:,overlapping_kmers][:,:,overlapping_kmers].reshape((curr_array.shape[0],curr_array.shape[0],nkmers,ksize,nkmers,ksize),order="A").transpose(0,1,4,2,3,5)
+            kmers_matrix_ = pairwise_matrix[:,:,:,overlapping_kmers][:,:,overlapping_kmers].transpose(0,1,4,2,3,5)
             kmers_matrix_i[:,start_store_point_i:end_store_point_i] = kmers_matrix_
-            kmers_matrix_cosine_ = cosine_sim[:,:,:,overlapping_kmers][:,:,overlapping_kmers].reshape((curr_array.shape[0],curr_array.shape[0],nkmers,ksize,nkmers,ksize),order="A").transpose(0,1,4,2,3,5)
+            kmers_matrix_cosine_ = cosine_sim[:,:,:,overlapping_kmers][:,:,overlapping_kmers].transpose(0,1,4,2,3,5)
+            #kmers_matrix_cosine_ = cosine_sim[:,:,:,overlapping_kmers][:,:,overlapping_kmers].reshape((curr_array.shape[0],curr_array.shape[0],nkmers,ksize,nkmers,ksize),order="A").transpose(0,1,4,2,3,5)
             kmers_matrix_cosine_i[:, start_store_point_i:end_store_point_i] = kmers_matrix_cosine_
 
             start_store_point_i = end_store_point_i
@@ -365,33 +371,51 @@ def calculate_similarity_matrix(array,max_len,array_mask,batch_size=200,ksize=3)
     end = time.time()
     print("Overall calculation time {}".format(str(datetime.timedelta(seconds=end - start))))
 
-
     #kmers_matrix = pairwise_similarity_matrices[:,:,:,overlapping_kmers][:,:,overlapping_kmers].reshape((n_data,n_data,overlapping_kmers.shape[0],ksize,overlapping_kmers.shape[0],ksize),order="A").transpose(0,1,4,2,3,5)
-    #print(pairwise_similarity_matrices[:,:,:,overlapping_kmers.flatten()][:,:,overlapping_kmers.flatten()][0][0])
+    #Highlight: Create masks to ignore the paddings of the sequences
+    kmers_mask = array_mask[:,overlapping_kmers] #TODO also in the for loop?
+    kmers_mask = (kmers_mask[:,None]*kmers_mask[None,:]).mean(-1) #TODO: not 100% this is correct
+    kmers_mask[kmers_mask!=1.] = 0.
+    kmers_mask = kmers_mask.astype(bool)
+    pid_mask = array_mask[:,None]*array_mask[None,:]
+
+    #Highlight: Apply masks to calculate the similarities. NOTE: To get the data with the filled value use k = np.ma.getdata(kmers_matrix_diag_masked)
+    ##PERCENT IDENTITY (binary pairwise comparison) ###############
+    percent_identity_mean = np.ma.masked_array(percent_identity,mask=~pid_mask,fill_value=0.).mean(-1) #Highlight: In the mask if True means to mask and ignore!!!!
+    print(percent_identity_mean)
+    ##COSINE SIMILARITY (pairwise comparison)########################
+    #TODO: diagonal values only
+    cosine_similarities_mean = np.ma.masked_array(cosine_similarities[:,:,diag_idx_maxlen[0],diag_idx_maxlen[1]],mask=~pid_mask,fill_value=0.).mean(-1) #Highlight: In the mask if True means to mask and ignore!!!!
+    #KMERS PERCENT IDENTITY ############
     kmers_matrix_diag = kmers_matrix[:,:,:,:,diag_idx[0],diag_idx[1]] #does not seem expensive
+    kmers_matrix_diag_2 = np.mean(kmers_matrix_diag,axis=4)[:,:,diag_idx_nkmers[0],diag_idx_nkmers[1]] #if we mask this only it should be fine
+    kmers_similarity= np.ma.masked_array(kmers_matrix_diag_2,mask=~kmers_mask,fill_value=0.).mean(axis=2)
+    #KMERS COSINE SIMILARITY
     kmers_matrix_cosine_diag = kmers_matrix_cosine[:,:,:,:,diag_idx[0],diag_idx[1]] #does not seem expensive
-
-    #kmers_matrix_tril_1 = kmers_matrix[:,:,:,:,tril_idx[0]]
-    #kmers_matrix_tril_2 = kmers_matrix[:,:,:,:,:,tril_idx[1]]
-    #https://stackoverflow.com/questions/40579415/computing-jaccard-similarity-in-python
-    # n11v = np.einsum('...j,...j->...', kmers_matrix_tril_1, kmers_matrix_tril_2)
-    # n00v = np.einsum('...j,...j->...', 1-kmers_matrix_tril_1, 1-kmers_matrix_tril_2)
-    # kmers_jaccard_similarity = n11v / (ksize - n00v)
-    kmers_similarity = kmers_matrix_diag.mean(-1)[:,:,diag_idx_nkmers[0],diag_idx_nkmers[1]].mean(-1)
-    kmers_similarity_cosine = kmers_matrix_cosine_diag.mean(-1)[:,:,diag_idx_nkmers[0],diag_idx_nkmers[1]].mean(-1)
-    percent_identity_mean = percent_identity.mean(-1)
+    kmers_matrix_cosine_diag_2 = np.nanmean(kmers_matrix_cosine_diag,axis=4)[:,:,diag_idx_nkmers[0],diag_idx_nkmers[1]]
+    kmers_similarity_cosine = np.ma.masked_array(kmers_matrix_cosine_diag_2,mask=~kmers_mask,fill_value=0.).mean(axis=2)
+    #percent_identity_mean = percent_identity.mean(-1)
     #TODO: exclude gaps from computations
+    print("Kmers % ID")
     print(kmers_similarity[0][0:4])
+    print("Kmers Cosine similarity")
     print(kmers_similarity_cosine[0][0:4])
+    print("Percent ID")
     print(percent_identity_mean[0][0:4])
+    print("Cosine similarity")
+    print(cosine_similarities_mean[0][0:4])
+    print("--------------------")
+    print("Kmers % ID")
+    print(kmers_similarity[1][0:4])
+    print("Kmers Cosine similarity")
+    print(kmers_similarity_cosine[1][0:4])
+    print("Percent ID")
+    print(percent_identity_mean[1][0:4])
+    print("Cosine similarity")
+    print(cosine_similarities_mean[1][0:4])
     exit()
 
-    #kmers fractional distance: F = Σ τ min [nX(τ), nY(τ) ] / [min (LX, LY) - k + 1 ].
-    # Here τ is a k-mer, LX, LY are the sequence lengths, and nX(τ) and nY(τ) are the number of times τ occurs in X and Y respectively.
-    # This definition can be motivated by considering an alignment of X to Y and defining the similarity to be the fraction of k-mers
-    # that are conserved between the two sequences. The denominator of F is the maximum number of k-mers that could be aligned.
 
-    exit()
     return pairwise_similarity_matrices,percent_identity,cosine_similarities,kmers_matrix_cosine,kmers_matrix
 
 def process_data(data,args,storage_folder,plot_blosum=False):
