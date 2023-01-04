@@ -122,4 +122,7 @@ def create_blosum(aa_types,subs_matrix_name):
 
     #blosum_array_dict = dict(enumerate(subs_array[1:,2:])) # Highlight: Changed to [1:,2:] instead of [1:,1:] to skip the scores for non-aa elements
     blosum_array_dict = dict(enumerate(subs_array[1:,1:])) # Highlight: Changed to [1:,2:] instead of [1:,1:] to skip the scores for non-aa elements
+    print(blosum_array_dict)
+    exit()
+
     return subs_array, subs_dict, blosum_array_dict

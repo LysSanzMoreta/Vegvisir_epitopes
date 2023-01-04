@@ -198,43 +198,34 @@ def cosine_similarity(a,b,correlation_matrix=False):
         else:
             b = np.concatenate((b,dummy_row),axis=0)
     if np.ndim(a) == 1:
-        num = np.dot(a, b)
-        p1 =  np.sqrt(np.sum(a**2))  #equivalent to np.linalg.norm(a)
-        p2 =  np.sqrt(np.sum(b**2)) #equivalent to np.linalg.norm(b)
-        cosine_sim = num / (p1 * p2)
+        num = np.dot(a,b)
+        #p1 = np.linalg.norm(a)
+        p1 = np.sqrt(np.sum(a**2))
+        #p2 = np.linalg.norm(b)
+        p2 = np.sqrt(np.sum(b**2))
+        cosine_sim = num/(p1*p2)
         return cosine_sim
+
     elif np.ndim(a) == 2:
         if correlation_matrix:
             b = b - b.mean(axis=1)[:, None]
             a = a - a.mean(axis=1)[:, None]
 
-        num = np.dot(a, b.T)
-        p1 =np.sqrt(np.sum(a**2,axis=1))[:,None] #[n,1] ---> Norm
-        p2 = np.sqrt(np.sum(b ** 2, axis=1))[None, :] #[1,n] --> Norm
-
+        num = np.dot(a, b.T) #[seq_len,21]@[21,seq_len] = [seq_len,seq_len]
+        p1 =np.sqrt(np.sum(a**2,axis=1))[:,None] #[seq_len,1]
+        p2 = np.sqrt(np.sum(b ** 2, axis=1))[None, :] #[1,seq_len]
+        #print(p1*p2)
         cosine_sim = num / (p1 * p2)
-
-        if diff_sizes:  # remove the dummy creation that was made avoid shape conflicts #TODO: Review for the 2D case
-            remove = np.abs(n_a - n_b)
-            if n_a < n_b:
-                cosine_sim = cosine_sim[:-remove]
-            else:
-                cosine_sim = cosine_sim[:, :-remove]
-
         return cosine_sim
-    else:
-
+    else: #TODO: use elipsis?
         if correlation_matrix:
             b = b - b.mean(axis=2)[:, :, None]
-
             a = a - a.mean(axis=2)[:, :, None]
         num = np.matmul(a[:, None], np.transpose(b, (0, 2, 1))[None,:]) #[n,n,seq_len,seq_len]
+        p1 = np.sqrt(np.sum(a ** 2, axis=2))[:, :, None] #Equivalent to np.linalg.norm(a,axis=2)[:,:,None]
+        p2 = np.sqrt(np.sum(b ** 2, axis=2))[:, None, :] #Equivalent to np.linalg.norm(b,axis=2)[:,None,:]
+        cosine_sim = num / (p1[:,None]*p2[None,:])
 
-        p1 = np.sqrt(np.sum(a ** 2, axis=2))[:, :, None] #---Norm
-        p2 = np.sqrt(np.sum(b ** 2, axis=2))[:, None, :] #---Norm
-
-
-        cosine_sim = num / (p1 * p2)
         if diff_sizes: #remove the dummy creation that was made avoid shape conflicts
             remove = np.abs(n_a-n_b)
             if n_a < n_b:
@@ -333,14 +324,7 @@ def calculate_similarity_matrix(array,max_len,array_mask,batch_size=200,ksize=3)
         start_i = time.time()
         for j,r_j in enumerate(rest_splits): #calculate distance among all kmers per sequence in the block (n, n_kmers,n_kmers)
             #print("j {}".format(j))
-            # kmers_i = curr_array[:,overlapping_kmers]
-            # kmers_j = r_j[:,overlapping_kmers]
-            # pairwise_comparison = (kmers_i[None,:] == kmers_j[:,None]).astype(int)
-            print(curr_array[0].shape)
-            exit()
-            cosine_sim = cosine_similarity(curr_array[0],r_j[0], correlation_matrix=False)
-            print(cosine_sim)
-            exit()
+            cosine_sim = cosine_similarity(curr_array,r_j, correlation_matrix=False)
             if np.ndim(curr_array) == 2:
                 pairwise_sim = (curr_array[None, :] == r_j[:, None]).astype(int)
             else:
@@ -353,9 +337,6 @@ def calculate_similarity_matrix(array,max_len,array_mask,batch_size=200,ksize=3)
                 # pairwise_matrix[pairwise_matrix != 1.] = 0
                 pairwise_matrix = (curr_array[:, None, :, None] == r_j[None, :, None, :]).all((-1)).astype(float)  # .all((-2,-1))
 
-            print(cosine_sim[:,:,np.diag_indices(max_len)[0],np.diag_indices(max_len)[1]].shape)
-            print(cosine_sim[:,:,np.diag_indices(max_len)[0],np.diag_indices(max_len)[1]])
-            exit()
             percent_identity_i[:,start_store_point_i:end_store_point_i] = pairwise_sim
             pairwise_similarity_matrices_i[:,start_store_point_i:end_store_point_i] = pairwise_matrix
             cosine_similarities_i[:,start_store_point_i:end_store_point_i] = cosine_sim
@@ -398,10 +379,8 @@ def calculate_similarity_matrix(array,max_len,array_mask,batch_size=200,ksize=3)
     # kmers_jaccard_similarity = n11v / (ksize - n00v)
     kmers_similarity = kmers_matrix_diag.mean(-1)[:,:,diag_idx_nkmers[0],diag_idx_nkmers[1]].mean(-1)
     kmers_similarity_cosine = kmers_matrix_cosine_diag.mean(-1)[:,:,diag_idx_nkmers[0],diag_idx_nkmers[1]].mean(-1)
-    percent_identity_mean = np.mean(percent_identity, axis=-1)
+    percent_identity_mean = percent_identity.mean(-1)
     #TODO: exclude gaps from computations
-    #print(kmers_matrix_diag[0][0].mean(-1).astype(bool))
-    #print(array[0:4])
     print(kmers_similarity[0][0:4])
     print(kmers_similarity_cosine[0][0:4])
     print(percent_identity_mean[0][0:4])
@@ -422,8 +401,6 @@ def process_data(data,args,storage_folder,plot_blosum=False):
     :param storage_folder
     """
     blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(args.aa_types, args.subs_matrix)
-    print(blosum_array)
-    exit()
     if plot_blosum:
         blosum_cosine = cosine_similarity(blosum_array[1:, 1:], blosum_array[1:, 1:])
         aa_dict = VegvisirUtils.aminoacid_names_dict(args.aa_types,zero_characters=["#"])

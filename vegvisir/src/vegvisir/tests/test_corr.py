@@ -60,45 +60,23 @@ def cosine_similarity(a,b,correlation_matrix=False):
             b = b - b.mean(axis=1)[:, None]
             a = a - a.mean(axis=1)[:, None]
 
-
         num = np.dot(a, b.T) #[seq_len,21]@[21,seq_len] = [seq_len,seq_len]
         p1 =np.sqrt(np.sum(a**2,axis=1))[:,None] #[seq_len,1]
         p2 = np.sqrt(np.sum(b ** 2, axis=1))[None, :] #[1,seq_len]
-        # print("ppppppppp")
-        # print(p2)
-        # print("ppppppppppp")
-        # print("trrrr")
-        # print(p1*p2)
+        #print(p1*p2)
         cosine_sim = num / (p1 * p2)
-        #patristic_distances = (mutant_sequences.shape[1]-np.sum((mutant_sequences[:,None,:] == mutant_sequences[None,:,:]),axis=-1))/mutant_sequences.shape[1]
-        #np.matmul(v[:,:,None,:],w[:,:,:,None])
-        print("cosine")
-        print(cosine_sim)
         return cosine_sim
-    else: #TODO: use elipsis
-
+    else: #TODO: use elipsis?
         if correlation_matrix:
             b = b - b.mean(axis=2)[:, :, None]
-
             a = a - a.mean(axis=2)[:, :, None]
         num = np.matmul(a[:, None], np.transpose(b, (0, 2, 1))[None,:]) #[n,n,seq_len,seq_len]
-        print(num.shape)
+        p1 = np.sqrt(np.sum(a ** 2, axis=2))[:, :, None] #Equivalent to np.linalg.norm(a,axis=2)
+        p2 = np.sqrt(np.sum(b ** 2, axis=2))[:, None, :]
+        #p1 = np.linalg.norm(a,axis=2)[:,:,None]#TODO: 90% this is correct?
+        #p2 = np.linalg.norm(b,axis=2)[:,None,:]
+        cosine_sim = num / (p1[:,None]*p2[None,:])
 
-        #p1 = np.sqrt(np.sum(a ** 2, axis=2))[:, :, None] #Equivalent to np.linalg.norm(a,axis=2)
-        #p2 = np.sqrt(np.sum(b ** 2, axis=2))[:, None, :]
-        p1 = np.linalg.norm(a,axis=2)[:,:,None] #TODO: 90% this is correct?
-        p2 = np.linalg.norm(b,axis=2)[:,None,:]
-        # print(p1)
-        # print(p2)
-        # print((p1*p2))
-        # print((p1*p2).shape)
-        print(p1.shape)
-        print(p2.shape)
-        exit()
-        cosine_sim = num / (p1 * p2) #TODO: Should it be element-wise multiplication like this?
-        print("cosine----------------------------")
-        print(cosine_sim)
-        exit()
         if diff_sizes: #remove the dummy creation that was made avoid shape conflicts
             remove = np.abs(n_a-n_b)
             if n_a < n_b:
@@ -121,20 +99,15 @@ cos1= cosine_similarity(r,h)
 #cos3 = 1- distance.cosine(b,d)
 cos2 = cosine_similarity(h,d)
 
-
 seq1 = np.concatenate((r[None,:],h[None,:],k[None,:]),axis=0)
 seq2 = np.concatenate((h[None,:],k[None,:],d[None,:]),axis=0)
 
-cos3 = cosine_similarity(seq1,seq1)
-cos4 = cosine_similarity(seq1,seq2)
-cos5 = cosine_similarity(seq2,seq2)
-cos6 = cosine_similarity(seq2,seq1)
-#print(cos6)
-print("-----------------------------------------------------------")
+cos3 = cosine_similarity(seq1,seq1,correlation_matrix=True)
+cos4 = cosine_similarity(seq1,seq2,correlation_matrix=True)
+cos5 = cosine_similarity(seq2,seq2,correlation_matrix=True)
+cos6 = cosine_similarity(seq2,seq1,correlation_matrix=True)
 group1 = np.concatenate((seq1[None,:],seq2[None,:]),axis=0)
 group2 = np.concatenate((seq1[None,:],seq2[None,:]),axis=0)
 
 
-cos7 = cosine_similarity(group1,group2)
-
-#print(cos7)
+cos7 = cosine_similarity(group1,group2,correlation_matrix=True)
