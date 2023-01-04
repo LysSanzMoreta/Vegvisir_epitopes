@@ -271,7 +271,7 @@ def calculate_similarity_matrix(array,max_len,array_mask,batch_size=200,ksize=3)
         cosine_similarities: [n,n,max-len,max_len] ---> Per sequence calculate the cosine similarity among all the "amino acids blosum vectors" from one sequence compared against all "amino acids blosum vectors" of the other sequence ---> Useful for k-mers calculation
                             1 means the two aa are identical and −1 means the two aa are not similar."""
     #TODO: Make it run with Cython (faster indexing): https://cython.readthedocs.io/en/latest/src/tutorial/cython_tutorial.html
-    array = array[:4]
+    array = array[:8325]
     n_data = array.shape[0]
     array_mask = array_mask[:n_data]
     #print(array.shape)
@@ -300,6 +300,7 @@ def calculate_similarity_matrix(array,max_len,array_mask,batch_size=200,ksize=3)
         percent_identity = np.zeros((( (array.shape[0],) + array.shape[-3:-1])))  # [n,n,max_len]
         cosine_similarities = np.zeros(((array.shape[0],) + array.shape[-3:-1] + (array.shape[-2],)))  # [n,n,max_len.max_len]
 
+    #TODO: Avoid storing these matrices
     kmers_matrix = np.zeros((n_data,n_data,nkmers,nkmers,ksize,ksize )) # [n,n,nkmers,nkmers,ksize,ksize]
     kmers_matrix_cosine = np.zeros((n_data,n_data,nkmers,nkmers,ksize,ksize )) # [n,n,nkmers,nkmers,ksize,ksize]
 
@@ -357,7 +358,7 @@ def calculate_similarity_matrix(array,max_len,array_mask,batch_size=200,ksize=3)
             if j +1  != len(rest_splits):
                 end_store_point_i += rest_splits[j+1].shape[0] #it has to be the next r_j
         end_i = time.time()
-        print("Time for j {}".format(str(datetime.timedelta(seconds=end_i-start_i))))
+        print("Time for finishing loop (j) {}".format(str(datetime.timedelta(seconds=end_i-start_i))))
         pairwise_similarity_matrices[start_store_point:end_store_point] = pairwise_similarity_matrices_i
         percent_identity[start_store_point:end_store_point] = percent_identity_i
         cosine_similarities[start_store_point:end_store_point] = cosine_similarities_i
@@ -382,41 +383,35 @@ def calculate_similarity_matrix(array,max_len,array_mask,batch_size=200,ksize=3)
     #Highlight: Apply masks to calculate the similarities. NOTE: To get the data with the filled value use k = np.ma.getdata(kmers_matrix_diag_masked)
     ##PERCENT IDENTITY (binary pairwise comparison) ###############
     percent_identity_mean = np.ma.masked_array(percent_identity,mask=~pid_mask,fill_value=0.).mean(-1) #Highlight: In the mask if True means to mask and ignore!!!!
-    print(percent_identity_mean)
     ##COSINE SIMILARITY (pairwise comparison)########################
-    #TODO: diagonal values only
-    cosine_similarities_mean = np.ma.masked_array(cosine_similarities[:,:,diag_idx_maxlen[0],diag_idx_maxlen[1]],mask=~pid_mask,fill_value=0.).mean(-1) #Highlight: In the mask if True means to mask and ignore!!!!
+    cosine_similarity_mean = np.ma.masked_array(cosine_similarities[:,:,diag_idx_maxlen[0],diag_idx_maxlen[1]],mask=~pid_mask,fill_value=0.).mean(-1) #Highlight: In the mask if True means to mask and ignore!!!!
     #KMERS PERCENT IDENTITY ############
     kmers_matrix_diag = kmers_matrix[:,:,:,:,diag_idx[0],diag_idx[1]] #does not seem expensive
     kmers_matrix_diag_2 = np.mean(kmers_matrix_diag,axis=4)[:,:,diag_idx_nkmers[0],diag_idx_nkmers[1]] #if we mask this only it should be fine
-    kmers_similarity= np.ma.masked_array(kmers_matrix_diag_2,mask=~kmers_mask,fill_value=0.).mean(axis=2)
+    kmers_pid_similarity= np.ma.masked_array(kmers_matrix_diag_2,mask=~kmers_mask,fill_value=0.).mean(axis=2)
     #KMERS COSINE SIMILARITY
     kmers_matrix_cosine_diag = kmers_matrix_cosine[:,:,:,:,diag_idx[0],diag_idx[1]] #does not seem expensive
     kmers_matrix_cosine_diag_2 = np.nanmean(kmers_matrix_cosine_diag,axis=4)[:,:,diag_idx_nkmers[0],diag_idx_nkmers[1]]
-    kmers_similarity_cosine = np.ma.masked_array(kmers_matrix_cosine_diag_2,mask=~kmers_mask,fill_value=0.).mean(axis=2)
-    #percent_identity_mean = percent_identity.mean(-1)
-    #TODO: exclude gaps from computations
-    print("Kmers % ID")
-    print(kmers_similarity[0][0:4])
-    print("Kmers Cosine similarity")
-    print(kmers_similarity_cosine[0][0:4])
-    print("Percent ID")
-    print(percent_identity_mean[0][0:4])
-    print("Cosine similarity")
-    print(cosine_similarities_mean[0][0:4])
-    print("--------------------")
-    print("Kmers % ID")
-    print(kmers_similarity[1][0:4])
-    print("Kmers Cosine similarity")
-    print(kmers_similarity_cosine[1][0:4])
-    print("Percent ID")
-    print(percent_identity_mean[1][0:4])
-    print("Cosine similarity")
-    print(cosine_similarities_mean[1][0:4])
-    exit()
+    kmers_cosine_similarity = np.ma.masked_array(kmers_matrix_cosine_diag_2,mask=~kmers_mask,fill_value=0.).mean(axis=2)
+    # print("Kmers % ID")
+    # print(kmers_similarity[0][0:4])
+    # print("Kmers Cosine similarity")
+    # print(kmers_similarity_cosine[0][0:4])
+    # print("Percent ID")
+    # print(percent_identity_mean[0][0:4])
+    # print("Cosine similarity")
+    # print(cosine_similarities_mean[0][0:4])
+    # print("--------------------")
+    # print("Kmers % ID")
+    # print(kmers_similarity[1][0:4])
+    # print("Kmers Cosine similarity")
+    # print(kmers_similarity_cosine[1][0:4])
+    # print("Percent ID")
+    # print(percent_identity_mean[1][0:4])
+    # print("Cosine similarity")
+    # print(cosine_similarities_mean[1][0:4])
 
-
-    return pairwise_similarity_matrices,percent_identity,cosine_similarities,kmers_matrix_cosine,kmers_matrix
+    return np.ma.getdata(percent_identity_mean),np.ma.getdata(cosine_similarity_mean),np.ma.getdata(kmers_pid_similarity),np.ma.getdata(kmers_cosine_similarity)
 
 def process_data(data,args,storage_folder,plot_blosum=False):
     """
@@ -452,24 +447,21 @@ def process_data(data,args,storage_folder,plot_blosum=False):
     epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
     epitopes_mask = epitopes_array_int.astype(bool)
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
+    ksize = 3
     if not os.path.exists("{}/{}/pairwise_similarity_matrices.npy".format(storage_folder,args.dataset_name)):
         print("Epitopes similarity matrices not existing, calculating ....")
-        pairwise_similarity_matrices,percent_identity,cosine_similarities,kmers_matrix_cosine,kmers_matrix = calculate_similarity_matrix(epitopes_array_blosum,epitopes_max_len,epitopes_mask)
-        np.save("{}/{}/pairwise_similarity_matrices.npy".format(storage_folder,args.dataset_name), pairwise_similarity_matrices)
-        np.save("{}/{}/percent_identity.npy".format(storage_folder,args.dataset_name), percent_identity)
-        np.save("{}/{}/cosine_similarities.npy".format(storage_folder,args.dataset_name), cosine_similarities)
-        np.save("{}/{}/kmers_matrix_cosine.npy".format(storage_folder,args.dataset_name), kmers_matrix_cosine)
-        np.save("{}/{}/kmers_matrix.npy".format(storage_folder,args.dataset_name), kmers_matrix)
-
+        percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = calculate_similarity_matrix(epitopes_array_blosum,epitopes_max_len,epitopes_mask,ksize=ksize)
+        np.save("{}/{}/percent_identity_mean.npy".format(storage_folder,args.dataset_name), percent_identity_mean)
+        np.save("{}/{}/cosine_similarities_mean.npy".format(storage_folder,args.dataset_name), cosine_similarity_mean)
+        np.save("{}/{}/kmers_pid_similarities_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_pid_similarity)
+        np.save("{}/{}/kmers_cosine_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_cosine_similarity)
 
     else:
         print("Loading pre-calculated similarity matrices")
-        pairwise_similarity_matrices = np.load("{}/{}/pairwise_similarity_matrices.npy".format(storage_folder,args.dataset_name))
-        percent_identity = np.load("{}/{}/percent_identity.npy".format(storage_folder,args.dataset_name))
-        cosine_similarities = np.load("{}/{}/cosine_similarities.npy".format(storage_folder,args.dataset_name))
-        kmers_matrix_cosine = np.load("{}/{}/kmers_matrix_cosine.npy".format(storage_folder, args.dataset_name))
-        kmers_matrix = np.save("{}/{}/kmers_matrix.npy".format(storage_folder, args.dataset_name))
+        percent_identity_mean = np.load("{}/{}/percent_identity_mean.npy".format(storage_folder,args.dataset_name))
+        cosine_similarity_mean = np.load("{}/{}/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name))
+        kmers_pid_similarity = np.load("{}/{}/kmers_pid_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,ksize))
+        kmers_cosine_similarity = np.save("{}/{}/kmers_cosine_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,ksize))
 
-    percent_identity_mean = np.mean(percent_identity,axis=-1)
     #comparison = np.char.add(epitopes_array [:,None], epitopes_array [None,:]) #a = np.array([["A","R","T","#"],["Y","M","T","P"],["I","R","T","#"]])
 
