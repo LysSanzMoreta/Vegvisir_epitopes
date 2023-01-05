@@ -179,7 +179,7 @@ def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksiz
         cosine_similarities: [n,n,max-len,max_len] ---> Per sequence calculate the cosine similarity among all the "amino acids blosum vectors" from one sequence compared against all "amino acids blosum vectors" of the other sequence ---> Useful for k-mers calculation
                             1 means the two aa are identical and −1 means the two aa are not similar."""
     # TODO: Make it run with Cython (faster indexing): https://cython.readthedocs.io/en/latest/src/tutorial/cython_tutorial.html
-    #array = array[:500]
+    array = array[:100]
     n_data = array.shape[0]
     array_mask = array_mask[:n_data]
     split_size = [int(array.shape[0] / batch_size) if not batch_size > array.shape[0] else 1][0]
@@ -258,6 +258,15 @@ def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksiz
             kmers_matrix_cosine_diag_mean_ij = np.nanmean(kmers_matrix_cosine_diag_ij, axis=4)[:, :, diag_idx_nkmers[0],diag_idx_nkmers[1]]
             kmers_cosine_similarity_ij = np.ma.masked_array(kmers_matrix_cosine_diag_mean_ij, mask=~kmers_mask_ij,fill_value=0.).mean(axis=2)
             kmers_cosine_similarity_i[:,start_store_point_i:end_store_point_i] = kmers_cosine_similarity_ij
+            #Freeing memory: Might help
+            percent_identity_mean_ij = None
+            cosine_similarity_mean_ij = None
+            kmers_pid_similarity_ij = None
+            kmers_cosine_similarity_ij = None
+            del percent_identity_mean_ij
+            del cosine_similarity_mean_ij
+            del kmers_pid_similarity_ij
+            del kmers_cosine_similarity_ij
             start_store_point_i = end_store_point_i
             if j + 1 != len(rest_splits):
                 end_store_point_i += rest_splits[j + 1].shape[0]  # it has to be the next r_j
@@ -267,12 +276,19 @@ def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksiz
         cosine_similarity_mean[start_store_point:end_store_point] = cosine_similarity_mean_i
         kmers_cosine_similarity[start_store_point:end_store_point] = kmers_cosine_similarity_i
         kmers_pid_similarity[start_store_point:end_store_point] = kmers_pid_similarity_i
+        percent_identity_mean_ij = None
+        cosine_similarity_mean_ij = None
+        kmers_pid_similarity_ij = None
+        kmers_cosine_similarity_ij = None
+        del percent_identity_mean_i
+        del cosine_similarity_mean_i
+        del kmers_cosine_similarity_i
+        del kmers_pid_similarity_i
         start_store_point = end_store_point
         if i + 1 != len(splits):
             end_store_point += splits[i + 1].shape[0]  # it has to be the next curr_array
     end = time.time()
     print("Overall calculation time {}".format(str(datetime.timedelta(seconds=end - start))))
-
 
     print("Kmers % ID")
     print(kmers_pid_similarity[0][0:4])
@@ -327,3 +343,21 @@ def autolabel(rects, ax):
         ax.text(rect.get_x() + rect.get_width() / 2., label_position,
                 '%d' % int(height),
                 ha='center', va='bottom',fontsize=8,fontweight="bold")
+
+def euclidean_2d_norm(A,B,squared=True):
+    """
+    Computes euclidean distance among matrix/arrays according to https://medium.com/swlh/euclidean-distance-matrix-4c3e1378d87f
+    Equivalent to scipy.spatial.distance_matrix(A,B)
+    Note: To calculate vector euclidean distance or euclidean_1d_norm, use:
+        euclidean_1d_norm = torch.sqrt(torch.sum((X1[:, None, :] - X2) ** 2,dim=2))  # equal to torch.cdist(X1,X2) or scipy.spatial.distance.cdist , which is for 1D space, for more dimensions we need the dot product
+    """
+
+    diag_AA_T = np.sum(A**2,axis=1)[:,None]
+    diag_BB_T = np.sum(B**2,axis=1)
+    third_component = -2*np.dot(A,B.T)
+    distance = diag_AA_T + third_component + diag_BB_T
+    if squared:
+        distance = np.sqrt(distance)
+        return distance.clip(min=0) #to avoid nan/negative values, set them to 0
+    else:
+        return distance.clip(min=0)

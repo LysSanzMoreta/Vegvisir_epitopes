@@ -10,6 +10,7 @@ import seaborn as sns
 import dataframe_image as dfi
 import vegvisir.nnalign as VegvisirNNalign
 import vegvisir.utils as VegvisirUtils
+import vegvisir.plots as VegvisirPlots
 def available_datasets():
     """Prints the available datasets"""
     datasets = {0:"viral_dataset",
@@ -193,26 +194,29 @@ def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
     data_subjects.columns = columns
     #Reattach partition, training ... information
     data = pd.merge(data_subjects,data_partitions[["Icore","partition","target","training"]], on='Icore', how='outer')
-    #Clean missing data
-    data = data.dropna(subset=['partition', 'target','training'],how="all")
-    data = data.dropna(subset=["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"],how="all")
     #Group data by Icore
     data_a = data.groupby('Icore',as_index=False)[["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
     data_b = data.groupby('Icore',as_index=False)[["Rnk_EL"]].agg(lambda x: sum(list(x))/len(list(x)))
     data_part_info = data.groupby('Icore',as_index=False)[["partition","target","training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
-    #Reattach missing info
+    #Reattach info on training
     data_a = pd.merge(data_a,data_part_info, on='Icore', how='outer')
     nprefilter = data_a.shape[0]
-    dataset_info_file.write("Initial data size is {} (with data points with missing information eliminated) \n".format(nprefilter))
+    dataset_info_file.write("Pre-filtering data size {} \n".format(nprefilter))
+    #Clean missing data
+    nprefilter = data_a.shape[0]
+    data_a = data_a.dropna(subset=["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"],how="all")
+    data_a = data_a.dropna(subset=['partition', 'target','training'],how="all")
+    nfiltered = data_a.shape[0]
+    dataset_info_file.write("Filter 1: Missing data (partition, target,training, n_subjects). Drops {} data points, remaining {} \n".format(nprefilter-nfiltered,nfiltered))
     #Highlight: Grab only 9-mers
     data_a = data_a[data_a["Icore"].apply(lambda x: len(x) == 9)]
     nfiltered = data_a.shape[0]
-    dataset_info_file.write("Filter 1: Filtered {} Icores whose length is different than 9. Remaining {} \n".format(nprefilter-nfiltered,nfiltered))
-    #Highlight: Filter the low subject count only if all "negative"
-    nprefilter = nfiltered
-    data_a = data_a[(data_a["Assay_number_of_subjects_tested"] > 5) & (data_a["Assay_number_of_subjects_responded"].apply(lambda x: x >= 1))]
+    dataset_info_file.write("Filter 2: Icores whose length is different than 9. Drops {} data points, remaining {} \n".format(nprefilter-nfiltered,nfiltered))
+    #Highlight: Filter the points with low subject count and only keep if all "negative"
+    nprefilter = data_a.shape[0]
+    data_a = data_a[(data_a["Assay_number_of_subjects_tested"] > 10)] #& (data_a["Assay_number_of_subjects_responded"].apply(lambda x: x >= 1))
     nfiltered = data_a.shape[0]
-    dataset_info_file.write("Filter 2: Filtered {} Icores with number of subjects lower than 5 and all negatives. Remaining {} \n".format(nprefilter-nfiltered,nfiltered))
+    dataset_info_file.write("Filter 3: Icores with number of subjects lower than 10. Drops {} data points, remaining {} \n".format(nprefilter-nfiltered,nfiltered))
     #max_number_subjects = data["Assay_number_of_subjects_tested"].max()
     data_a["confidence_score"] = data_a["Assay_number_of_subjects_responded"]/data_a["Assay_number_of_subjects_tested"]
     data_a["Rnk_EL"] =data_b["Rnk_EL"]
@@ -222,27 +226,27 @@ def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
     data_a = VegvisirUtils.minmax_scale(data_a,"confidence_score")
     data_a = VegvisirUtils.minmax_scale(data_a,"Rnk_EL") #Likelihood rank
     data_b.fillna(0, inplace=True)
-    #print(data_a.sort_values(by="confidence_score",ascending=True)[["confidence_score","target"]])
+    # print(data_a["target"].value_counts())
+    # print(data_a.sort_values(by="confidence_score",ascending=True)[["confidence_score","target"]])
     data_a.loc[data_a["confidence_score"] <= 0.,"target"] = 0 #["target"] = 0. #Strict target reassignment
     #print(data_a.sort_values(by="confidence_score", ascending=True)[["confidence_score","target"]])
     data_a.loc[data_a["confidence_score"] > 0.,"target"] = 1.
-    print(data_a["target"].value_counts())
+    # print(data_a["target"].value_counts())
+    # print("--------------------")
+    # print(data_a["partition"].value_counts())
+    # print("--------------------")
+    # print(data_a["training"].value_counts())
     ndata = data_a.shape[0]
     fig, ax = plt.subplots(3, figsize=(7, 10))
     num_bins = 50
     ############LABELS #############
     freq, bins, patches = ax[0].hist(data_a["target"].to_numpy() , bins=2, density=True)
-    ax[0].set_xlabel('Normalized confidence score (N_+ / Subjects)')
+    ax[0].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
     ax[0].set_title(r'Histogram of targets/labels')
+    ax[0].xaxis.set_ticks([0.25,0.75])
+    ax[0].set_xticklabels([0,1])
     # Annotate the bars.
-    # Iterating over the bars one-by-one
-    for bar in patches:
-        # Using Matplotlib's annotate function and
-        # passing the coordinates where the annotation shall be done
-        # x-coordinate: bar.get_x() + bar.get_width() / 2
-        # y-coordinate: bar.get_height()
-        # free space to be left to make graph pleasing: (0, 8)
-        # ha and va stand for the horizontal and vertical alignment
+    for bar in patches: #iterate over the bars
         n_data_bin = (bar.get_height()*ndata)/2
         ax[0].annotate(format(n_data_bin, '.2f'),
                        (bar.get_x() + bar.get_width() / 2,
@@ -250,14 +254,10 @@ def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
                        size=15, xytext=(0, 8),
                        textcoords='offset points')
     #######CONFIDENCE SCORES
-    #fig, ax = plt.subplots()
-    #num_bins = 50
     ax[1].hist(data_a["confidence_score"].to_numpy() , num_bins, density=True)
-    ax[1].set_xlabel('Normalized confidence score (N_+ / Subjects)')
+    ax[1].set_xlabel('Minmax scaled confidence score (N_+ / Subjects)')
     ax[1].set_title(r'Histogram of confidence scores')
     ##########RANK###################
-    #fig, ax = plt.subplots()
-    #num_bins = 50
     ax[2].hist(data_a["Rnk_EL"].to_numpy(), num_bins, density=True)
     ax[2].set_xlabel("Binding rank estimated by NetMHCpan-4.1")
     ax[2].set_title(r'Histogram of Rnk_EL scores')
@@ -265,9 +265,6 @@ def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
     fig.tight_layout()
     plt.savefig("{}/{}/Viruses_histograms".format(storage_folder,args.dataset_name), dpi=300)
     plt.clf()
-
-    exit()
-
     data = process_data(data_a,args,storage_folder)
 
     return data
@@ -297,30 +294,45 @@ def process_data(data,args,storage_folder,plot_blosum=False):
 
     #Pad the sequences
     epitopes = [list(seq.ljust(epitopes_max_len, "#")) for seq in epitopes]
-    print(epitopes[0])
-    print(epitopes[1])
-    print(epitopes[2])
-    print(epitopes[3])
-    #print(epitopes[1])
+    # print(epitopes[0])
+    # print(epitopes[1])
+    # print(epitopes[2])
+    # print(epitopes[3])
     epitopes_array = np.array(epitopes)
     epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
     epitopes_mask = epitopes_array_int.astype(bool)
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     ksize = 3 #TODO: manage in args
-    if not os.path.exists("{}/{}/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
+    if not os.path.exists("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
         print("Epitopes similarity matrices not existing, calculating ....")
         percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirUtils.calculate_similarity_matrix(epitopes_array_blosum,epitopes_max_len,epitopes_mask,ksize=ksize)
-        np.save("{}/{}/percent_identity_mean.npy".format(storage_folder,args.dataset_name), percent_identity_mean)
-        np.save("{}/{}/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name), cosine_similarity_mean)
-        np.save("{}/{}/kmers_pid_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_pid_similarity)
-        np.save("{}/{}/kmers_cosine_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_cosine_similarity)
-
+        np.save("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name), percent_identity_mean)
+        np.save("{}/{}/similarities/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name), cosine_similarity_mean)
+        np.save("{}/{}/similarities/kmers_pid_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_pid_similarity)
+        np.save("{}/{}/similarities/kmers_cosine_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_cosine_similarity)
     else:
         print("Loading pre-calculated epitopes similarity matrices")
-        percent_identity_mean = np.load("{}/{}/percent_identity_mean.npy".format(storage_folder,args.dataset_name))
-        cosine_similarity_mean = np.load("{}/{}/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name))
-        kmers_pid_similarity = np.load("{}/{}/kmers_pid_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,ksize))
-        kmers_cosine_similarity = np.load("{}/{}/kmers_cosine_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,ksize))
+        percent_identity_mean = np.load("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name))
+        cosine_similarity_mean = np.load("{}/{}/similarities/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name))
+        kmers_pid_similarity = np.load("{}/{}/similarities/kmers_pid_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,ksize))
+        kmers_cosine_similarity = np.load("{}/{}/similarities/kmers_cosine_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,ksize))
+
+    if not os.path.exists("{}/{}/similarities/HEATMAP_percent_identity_mean.png".format(storage_folder,args.dataset_name)):
+
+        VegvisirPlots.plot_heatmap(percent_identity_mean, "Percent Identity","{}/{}/similarities/HEATMAP_percent_identity_mean.png".format(storage_folder,args.dataset_name))
+        VegvisirPlots.plot_heatmap(cosine_similarity_mean, "Cosine similarity","{}/{}/similarities/HEATMAP_cosine_similarity_mean.png".format(storage_folder,args.dataset_name))
+        VegvisirPlots.plot_heatmap(kmers_pid_similarity, "Kmers ({}) percent identity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_pid_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
+        VegvisirPlots.plot_heatmap(kmers_cosine_similarity, "Kmers ({}) cosine similarity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_cosine_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
+
+    #TODO: Review this because the mask might be doing funky stuff --> 2 elements off? or because of the for loops order?
+    print(cosine_similarity_mean.shape)
+    diag_idx = np.diag_indices(cosine_similarity_mean.shape[0])
+    print(np.all(cosine_similarity_mean[diag_idx[0],diag_idx[1]] == 1))
+    idx = np.argwhere(cosine_similarity_mean == 1.0)
+    print(cosine_similarity_mean[idx[0],idx[1]].shape)
+    exit()
+    distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
+
 
 
 
