@@ -46,7 +46,7 @@ if __name__ == "__main__":
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
                         default="viral_dataset2",
                         help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data')
-    parser.add_argument('--run-nnalign', type=bool, nargs='?', default=True, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
+    parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
     parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=50, help='Number of epochs (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. ')
