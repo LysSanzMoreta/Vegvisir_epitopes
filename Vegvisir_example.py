@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 =======================
-2022: Lys Sanz Moreta
+2023: Lys Sanz Moreta
 vegvisir :
 =======================
 """
@@ -29,7 +29,6 @@ def main():
     2) Execute Vegvisir"""
 
     vegvisir_dataset = vegvisir.select_dataset(args.dataset_name, script_dir,args, update=False)
-    exit()
     results_dir = "{}/PLOTS_Vegvisir_{}_{}_{}epochs".format(script_dir, args.dataset_name, now.strftime("%Y_%m_%d_%Hh%Mmin%Ss%fms"),args.num_epochs)
     VegvisirUtils.folders(ntpath.basename(results_dir), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Train"), script_dir)
@@ -46,6 +45,10 @@ if __name__ == "__main__":
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
                         default="viral_dataset2",
                         help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data')
+    parser.add_argument('-subset_data', type=str, default="no",
+                        help="Pick only the first <n> datapoints (epitopes) for testing the pipeline\n"
+                             "<no>: Keep all \n"
+                             "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
     parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=50, help='Number of epochs (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
@@ -57,20 +60,13 @@ if __name__ == "__main__":
     parser.add_argument('-k-folds', type=int, nargs='?', default=2, help='Number of k-fold for k-fold cross validation')
     parser.add_argument('-batch-size', type=int, nargs='?', default=64, help='Batch size')
     parser.add_argument('-optimizer_name', type=str, nargs='?', default="ClippedAdam", help='Gradient optimizer name')
-    parser.add_argument('-loss-func', type=str, nargs='?', default="elbo_graph", help="Error loss function to be optimized, options are:"
-                                                                                    "<nnl>: Negative log likelihood function"
-                                                                                    "<softloss>: Diffpool soft clustering loss function "
-                                                                                    "<elbo>: Trace ELBO for VAE "
-                                                                                    "<elbo_graph> error loss from adjacency/nodes reconstructions plus ELBO")
-    parser.add_argument('-guide', type=str, nargs='?', default="custom",
-                        help="Guide:"
-                             "<custom>: Custom encoder/guide ")
+    parser.add_argument('-loss-func', type=str, nargs='?', default="weighted_loss", help="Error loss function to be optimized, options are: \n"
+                                                                                         "<weighted_loss> \n")
     parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
     #Highlight: DIFFPOOL parameters
-    parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='')
+    parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=50, help='')
-    parser.add_argument('-z-dim', type=int, nargs='?', default=25, help='Latent space dimension')
-    parser.add_argument('-num_classes', type=int, nargs='?', default=2, help='')
+    parser.add_argument('-num_classes', type=int, nargs='?', default=2, help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')
 
     args = parser.parse_args()
     if args.use_cuda:

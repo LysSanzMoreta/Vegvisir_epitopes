@@ -1,3 +1,9 @@
+"""
+=======================
+2023: Lys Sanz Moreta
+Vegvisir :
+=======================
+"""
 import os
 import time,datetime
 import dill
@@ -5,12 +11,16 @@ import pandas as pd
 import operator,functools
 import matplotlib.pyplot as plt
 import numpy as np
-from collections import defaultdict
+from collections import defaultdict,namedtuple
 import seaborn as sns
 import dataframe_image as dfi
+import torch
 import vegvisir.nnalign as VegvisirNNalign
 import vegvisir.utils as VegvisirUtils
 import vegvisir.plots as VegvisirPlots
+DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_array_raw","data_array_int","data_array_int_mask",
+                                        "data_array_blosum_encoding","data_array_blosum_encoding_mask","data_array_onehot_encoding","blosum",
+                                        "n_data","max_len","corrected_aa_types","input_dim","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity"])
 def available_datasets():
     """Prints the available datasets"""
     datasets = {0:"viral_dataset",
@@ -107,7 +117,7 @@ def viral_dataset(dataset_name,current_path,storage_folder,args,update):
         VegvisirNNalign.run_nnalign(args,storage_folder)
 
 
-def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
+def viral_dataset2(dataset_name,script_dir,storage_folder,args,update):
     """Loads the viral dataset generated from **IEDB** database using parameters:
            -Epitope: Linear peptide
            -Assay: T-cell
@@ -162,9 +172,13 @@ def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
     Rnk_EL: The %rank value reflects the likelihood of binding of the peptide to the reported MHC-I, computed with NetMHCpan-4.1.
 
     return
-      Icore:Interaction peptide core
-      Confidence_score: Number of + / Number of tested ---> Normalized to 0-1
-      Rnk_EL: Average rank score per peptide by NetMHC ---> Normalized to 0-1
+      :param pandas dataframe: Results pandas dataframe with the following structure
+          Icore:Interaction peptide core
+          confidence_score: Number of + / Number of tested
+          onfidence_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range
+          training: True assign data point to train , else assign to Test
+          partition: Indicates partition assignment within 5-fold cross validation
+          Rnk_EL: Average rank score per peptide by NetMHC ---> Normalized to 0-1
     """
     dataset_info_file = open("{}/{}/dataset_info.txt".format(storage_folder,args.dataset_name), 'w')
 
@@ -222,15 +236,14 @@ def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
     data_a["Rnk_EL"] =data_b["Rnk_EL"]
     data_a.fillna(0,inplace=True)
     #Highlight: Scale-standarize values #TODO: Do separately for train, eval and test
-    #TODO: Why small negative values appear?
-    data_a = VegvisirUtils.minmax_scale(data_a,"confidence_score")
-    data_a = VegvisirUtils.minmax_scale(data_a,"Rnk_EL") #Likelihood rank
+    data_a = VegvisirUtils.minmax_scale(data_a,"confidence_score",suffix="_scaled")
+    data_a = VegvisirUtils.minmax_scale(data_a,"Rnk_EL",suffix="_scaled") #Likelihood rank
     data_b.fillna(0, inplace=True)
     # print(data_a["target"].value_counts())
     # print(data_a.sort_values(by="confidence_score",ascending=True)[["confidence_score","target"]])
-    data_a.loc[data_a["confidence_score"] <= 0.,"target"] = 0 #["target"] = 0. #Strict target reassignment
+    data_a.loc[data_a["confidence_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
     #print(data_a.sort_values(by="confidence_score", ascending=True)[["confidence_score","target"]])
-    data_a.loc[data_a["confidence_score"] > 0.,"target"] = 1.
+    data_a.loc[data_a["confidence_score_scaled"] > 0.,"target_corrected"] = 1.
     # print(data_a["target"].value_counts())
     # print("--------------------")
     # print(data_a["partition"].value_counts())
@@ -254,7 +267,7 @@ def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
                        size=15, xytext=(0, 8),
                        textcoords='offset points')
     #######CONFIDENCE SCORES
-    ax[1].hist(data_a["confidence_score"].to_numpy() , num_bins, density=True)
+    ax[1].hist(data_a["confidence_score_scaled"].to_numpy() , num_bins, density=True)
     ax[1].set_xlabel('Minmax scaled confidence score (N_+ / Subjects)')
     ax[1].set_title(r'Histogram of confidence scores')
     ##########RANK###################
@@ -265,17 +278,51 @@ def viral_dataset2(dataset_name,current_path,storage_folder,args,update):
     fig.tight_layout()
     plt.savefig("{}/{}/Viruses_histograms".format(storage_folder,args.dataset_name), dpi=300)
     plt.clf()
-    data = process_data(data_a,args,storage_folder)
+    data_info = process_data(data_a,args,storage_folder,script_dir)
 
-    return data
+    return data_info
 
-def process_data(data,args,storage_folder,plot_blosum=False):
+def process_data(data,args,storage_folder,script_dir,plot_blosum=False):
     """
-    :param pandas dataframe data: Contains Icore, Confidence_score and Rnk_EL
-    :param args
-    :param storage_folder
+    :param pandas dataframe data: Contains Icore, confidence_score, confidence_score_scaled, training , partition and Rnk_EL
+    :param args: Commmand line arguments
+    :param storage_folder: Data location path
     """
-    blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(args.aa_types, args.subs_matrix)
+
+
+    epitopes = data[["Icore"]].values.tolist()
+    epitopes = functools.reduce(operator.iconcat, epitopes, [])  # flatten list of lists
+    max_len = len(max(epitopes, key=len))
+    epitopes_lens = np.array(list(map(len, epitopes)))
+    unique_lens = list(set(epitopes_lens))
+    corrected_aa_types = [args.aa_types + 1 if len(unique_lens) > 1 and (args.aa_types == 20 or args.aa_types == 24) else args.aa_types][0]
+    if len(unique_lens) > 1:
+        aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types , zero_characters=["#"])
+        #Pad the sequences (relevant when not all of them are 9-mers)
+        epitopes = [list(seq.ljust(max_len, "#")) for seq in epitopes]
+        blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types , args.subs_matrix,
+                                                                                   zero_characters= ["#"],
+                                                                                   include_zero_characters=True)
+
+    else:
+        aa_dict = VegvisirUtils.aminoacid_names_dict(args.aa_types)
+        epitopes = [list(seq) for seq in epitopes]
+        blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, args.subs_matrix,
+                                                                                   zero_characters=["#"],
+                                                                                   include_zero_characters=False)
+
+
+    # print(epitopes[0])
+    # print(epitopes[1])
+    # print(epitopes[2])
+    # print(epitopes[3])
+    epitopes_array = np.array(epitopes)
+    if args.subset_data != "no":
+        print("WARNING : Using a subset of the data of {}".format(args.subset_data))
+        epitopes_array = epitopes_array[:args.subset_data]
+    epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
+    epitopes_mask = epitopes_array_int.astype(bool)
+
     if plot_blosum:
         blosum_cosine = VegvisirUtils.cosine_similarity(blosum_array[1:, 1:], blosum_array[1:, 1:])
         aa_dict = VegvisirUtils.aminoacid_names_dict(args.aa_types,zero_characters=["#"])
@@ -286,32 +333,20 @@ def process_data(data,args,storage_folder,plot_blosum=False):
                     yticklabels=blosum_cosine_df.columns.values,annot=True,annot_kws={"size": 4},fmt=".2f")
         plt.savefig('{}/{}/blosum_cosine.png'.format(storage_folder,args.dataset_name),dpi=600)
 
-    aa_dict = VegvisirUtils.aminoacid_names_dict(args.aa_types, zero_characters=["#"])
-    epitopes = data[["Icore"]].values.tolist()
-    epitopes = functools.reduce(operator.iconcat, epitopes, [])  # flatten list of lists
-    epitopes_max_len = len(max(epitopes, key=len))
-    epitopes_lens = np.array(list(map(len, epitopes)))
-
-    #Pad the sequences
-    epitopes = [list(seq.ljust(epitopes_max_len, "#")) for seq in epitopes]
-    # print(epitopes[0])
-    # print(epitopes[1])
-    # print(epitopes[2])
-    # print(epitopes[3])
-    epitopes_array = np.array(epitopes)
-    epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
-    epitopes_mask = epitopes_array_int.astype(bool)
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
+    epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
+
+    n_data = epitopes_array.shape[0]
     ksize = 3 #TODO: manage in args
     if not os.path.exists("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
         print("Epitopes similarity matrices not existing, calculating ....")
-        percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirUtils.calculate_similarity_matrix(epitopes_array_blosum,epitopes_max_len,epitopes_mask,ksize=ksize)
+        percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirUtils.calculate_similarity_matrix(epitopes_array_blosum,max_len,epitopes_mask,ksize=ksize)
         np.save("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name), percent_identity_mean)
         np.save("{}/{}/similarities/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name), cosine_similarity_mean)
         np.save("{}/{}/similarities/kmers_pid_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_pid_similarity)
         np.save("{}/{}/similarities/kmers_cosine_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_cosine_similarity)
     else:
-        print("Loading pre-calculated epitopes similarity matrices")
+        print("Loading pre-calculated epitopes similarity matrices located at {}".format("{}/{}/similarities/".format(storage_folder,args.dataset_name)))
         percent_identity_mean = np.load("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name))
         cosine_similarity_mean = np.load("{}/{}/similarities/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name))
         kmers_pid_similarity = np.load("{}/{}/similarities/kmers_pid_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,ksize))
@@ -324,14 +359,53 @@ def process_data(data,args,storage_folder,plot_blosum=False):
         VegvisirPlots.plot_heatmap(kmers_pid_similarity, "Kmers ({}) percent identity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_pid_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
         VegvisirPlots.plot_heatmap(kmers_cosine_similarity, "Kmers ({}) cosine similarity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_cosine_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
 
-    #TODO: Review this because the mask might be doing funky stuff --> 2 elements off? or because of the for loops order?
-    print(cosine_similarity_mean.shape)
-    diag_idx = np.diag_indices(cosine_similarity_mean.shape[0])
-    print(np.all(cosine_similarity_mean[diag_idx[0],diag_idx[1]] == 1))
-    idx = np.argwhere(cosine_similarity_mean == 1.0)
-    print(cosine_similarity_mean[idx[0],idx[1]].shape)
-    exit()
-    distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
+    #TODO: Reattatch partition, identifier, label, confidence score
+    labels = data[["target_corrected"]].values.tolist()
+    identifiers = data.index.values.tolist() #TODO: reset index?
+    partitions = data[["partition"]].values.tolist()
+    training = data[["training"]].values.tolist()
+
+    identifiers_labels_array = np.zeros((n_data,1,max_len))
+    identifiers_labels_array[:,0,0] = np.array(labels).squeeze(-1)
+    identifiers_labels_array[:,0,1] = np.array(identifiers)
+    identifiers_labels_array[:,0,2] = np.array(partitions).squeeze(-1)
+    identifiers_labels_array[:,0,3] = np.array(training).squeeze(-1).astype(int)
+
+
+    data_array_raw = np.concatenate([identifiers_labels_array, epitopes_array[:,None]], axis=1)
+    data_array_int = np.concatenate([identifiers_labels_array, epitopes_array_int[:,None]], axis=1)
+
+    identifiers_labels_array_blosum = np.zeros((n_data,1, max_len, epitopes_array_blosum.shape[2]))
+    identifiers_labels_array_blosum[:,0,0,0] = np.array(labels).squeeze(-1)
+    identifiers_labels_array_blosum[:,0,0,1] = np.array(identifiers)
+    identifiers_labels_array_blosum[:,0,0,2] = np.array(partitions).squeeze(-1)
+    identifiers_labels_array_blosum[:,0,0,3] = np.array(training).squeeze(-1).astype(int)
+
+
+    data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:,None]], axis=1)
+    data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:,None]], axis=1)
+    data_array_blosum_encoding_mask = epitopes_mask.repeat(data_array_blosum_encoding.shape[1], axis=1).repeat(corrected_aa_types, axis=-1).reshape((n_data, data_array_int.shape[1], max_len,corrected_aa_types))
+
+    #distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
+    data_info = DatasetInfo(script_dir=script_dir,
+                            storage_folder=storage_folder,
+                            data_array_raw=data_array_raw,
+                            data_array_int=torch.from_numpy(data_array_int),
+                            data_array_int_mask=epitopes_mask,
+                            data_array_blosum_encoding=torch.from_numpy(data_array_blosum_encoding),
+                            data_array_blosum_encoding_mask=torch.from_numpy(data_array_blosum_encoding_mask),
+                            data_array_onehot_encoding=torch.from_numpy(data_array_onehot_encoding),
+                            blosum=blosum_array,
+                            n_data=n_data,
+                            max_len=max_len,
+                            corrected_aa_types = corrected_aa_types,
+                            input_dim=corrected_aa_types, # + 1 if gaps are present
+                            percent_identity_mean=percent_identity_mean,
+                            cosine_similarity_mean=cosine_similarity_mean,
+                            kmers_pid_similarity=kmers_pid_similarity,
+                            kmers_cosine_similarity=kmers_cosine_similarity
+                            )
+    return data_info
 
 
 
