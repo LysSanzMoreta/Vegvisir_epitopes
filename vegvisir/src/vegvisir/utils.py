@@ -11,6 +11,11 @@ import numpy as np
 import os,shutil
 from collections import defaultdict
 import time,datetime
+
+import pandas as pd
+import torch
+
+
 def str2bool(v):
     """Converts a string into a boolean, useful for boolean arguments
     :param str v"""
@@ -120,6 +125,118 @@ def create_blosum(aa_types,subs_matrix_name,zero_characters=[],include_zero_char
     #blosum_array_dict[0] = np.full((aa_types+1),np.nan)  #np.nan == np.nan is False ...
 
     return subs_array, subs_dict, blosum_array_dict
+
+class AUK:
+    """Slighlty re-adapted implementation from https://towardsdatascience.com/auk-a-simple-alternative-to-auc-800e61945be5
+      """
+    def __init__(self, probabilities, labels, integral='trapezoid'):
+        self.probabilities = probabilities
+        self.labels = labels
+        self.integral = integral
+        if integral not in ['trapezoid', 'max', 'min']:
+            raise ValueError('"' + str(
+                integral) + '"' + ' is not a valid integral value. Choose between "trapezoid", "min" or "max"')
+        self.probabilities_set = sorted(list(set(probabilities)))#[0.1]
+        self.n_data = len(probabilities)
+    # make predictions based on the threshold value and self.probabilities
+    def _make_predictions(self, threshold):
+        predictions = np.zeros(self.n_data)
+        probabilities_arr = np.array(self.probabilities)
+        idx, = np.where(probabilities_arr >= threshold)
+        predictions[idx] = 1
+        return predictions
+
+    # make list with kappa scores for each threshold
+    def kappa_curve(self):
+        kappa_list = []
+
+        for thres in self.probabilities_set:
+            preds = self._make_predictions(thres)
+            tp, tn, fp, fn = self.confusion_matrix(preds)
+            k = self.calculate_kappa(tp, tn, fp, fn)
+            kappa_list.append(k)
+        return self._add_zero_to_curve(kappa_list)
+
+    # make list with fpr scores for each threshold
+    def fpr_curve(self):
+        fpr_list = []
+        for thres in self.probabilities_set:
+            preds = self._make_predictions(thres)
+            tp, tn, fp, fn = self.confusion_matrix(preds)
+            fpr = self.calculate_fpr(fp, tn)
+            fpr_list.append(fpr)
+
+        return self._add_zero_to_curve(fpr_list)
+
+    # calculate confusion matrix
+    def confusion_matrix(self, predictions):
+        """Calculates true positives, true negatives, false positives and false negatives"""
+        labels_arr = self.labels
+        idx = predictions == self.labels
+        positives, = np.where(predictions[idx]==1)
+        tp = len(positives)
+        negatives, = np.where(predictions[idx]!=1)
+        tn = len(negatives)
+        idx_positives, = np.where((predictions==1)&(predictions!=labels_arr))
+        fp = len(predictions[idx_positives])
+        idx_negatives, = np.where((predictions!=1)&(predictions!=labels_arr))
+        fn = len(predictions[idx_negatives])
+        total = tp + tn + fp + fn
+
+        return tp / total, tn / total, fp / total, fn / total
+
+    # Calculate AUK
+    def calculate_auk(self):
+        auk = 0
+        fpr_list = self.fpr_curve()
+
+        for i, prob in enumerate(self.probabilities_set[:-1]):
+            x_dist = abs(fpr_list[i + 1] - fpr_list[i])
+
+            preds = self._make_predictions(prob)
+            tp, tn, fp, fn = self.confusion_matrix(preds)
+            kapp1 = self.calculate_kappa(tp, tn, fp, fn)
+
+            preds = self._make_predictions(self.probabilities_set[i + 1])
+            tp, tn, fp, fn = self.confusion_matrix(preds)
+            kapp2 = self.calculate_kappa(tp, tn, fp, fn)
+
+            y_dist = abs(kapp2 - kapp1)
+            bottom = min(kapp1, kapp2) * x_dist
+            auk += bottom
+            if self.integral == 'trapezoid':
+                top = (y_dist * x_dist) / 2
+                auk += top
+            elif self.integral == 'max':
+                top = (y_dist * x_dist)
+                auk += top
+            else:
+                continue
+        return auk
+
+    # Calculate the false-positive rate
+    def calculate_fpr(self, fp, tn):
+        return fp / (fp + tn)
+
+    # Calculate kappa score
+    def calculate_kappa(self, tp, tn, fp, fn):
+        acc = tp + tn
+        p = tp + fn
+        p_hat = tp + fp
+        n = fp + tn
+        n_hat = fn + tn
+        p_c = p * p_hat + n * n_hat
+        return (acc - p_c) / (1 - p_c)
+
+    # Add zero to appropriate position in list
+    def _add_zero_to_curve(self, curve):
+        min_index = curve.index(min(curve))
+        if min_index > 0:
+            curve.append(0)
+        else:
+            curve.insert(0, 0)
+        return curve  # Add zero to appropriate position in list
+
 
 def cosine_similarity(a,b,correlation_matrix=False):
     """Calculates the cosine similarity between matrices of k-mers.
@@ -524,17 +641,30 @@ def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksiz
         kmers_pid_similarity), np.ma.getdata(kmers_cosine_similarity)
 
 
-def minmax_scale(df,column_name,suffix,low=0.,high=1.):
+def minmax_scale(array,suffix=None,column_name=None,low=0.,high=1.):
     """Following https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.minmax_scale.html#sklearn.preprocessing.minmax_scale
     WARNING USE SEPARATELY FOR TRAIN AND TEST DATASETS, OTHERWISE INFORMATION FROM THE TEST GETS TRANSFERRED TO THE TRAIN
     """
-    mean_val = df[column_name].mean()
-    std_val = df[column_name].std()
-    max_val = df[column_name].max()
-    min_val = df[column_name].min()
-    df["{}{}".format(column_name,suffix)] = (df[column_name] - min_val)/max_val-min_val
-    df["{}{}".format(column_name,suffix)] = df["{}{}".format(column_name,suffix)] * (high - low) + low #Scale in range min_val,max_val
-    return df
+    if isinstance(array,pd.DataFrame):
+        assert column_name is not None
+        assert suffix is not None
+        mean_val = array[column_name].mean()
+        std_val = array[column_name].std()
+        max_val = array[column_name].max()
+        min_val = array[column_name].min()
+        array["{}{}".format(column_name,suffix)] = (array[column_name] - min_val)/max_val-min_val
+        array["{}{}".format(column_name,suffix)] = array["{}{}".format(column_name,suffix)] * (high - low) + low #Scale in range min_val,max_val
+        return array
+    elif isinstance(array,torch.Tensor):
+        mean_val = array.mean()
+        std_val = array.std(dim=-1)
+        max_val = array.max()
+        min_val = array.min()
+        array_scaled = (array - min_val)/max_val-min_val
+        array_scaled = array_scaled * (high - low) + low #Scale in range min_val,max_val
+        return array_scaled
+    else:
+        raise ValueError("Not implemented for this data type")
 
 def autolabel(rects, ax):
     # Get y-axis height to calculate label position from.

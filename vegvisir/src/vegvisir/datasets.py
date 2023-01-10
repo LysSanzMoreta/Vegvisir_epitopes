@@ -236,8 +236,8 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,update):
     data_a["Rnk_EL"] =data_b["Rnk_EL"]
     data_a.fillna(0,inplace=True)
     #Highlight: Scale-standarize values #TODO: Do separately for train, eval and test
-    data_a = VegvisirUtils.minmax_scale(data_a,"confidence_score",suffix="_scaled")
-    data_a = VegvisirUtils.minmax_scale(data_a,"Rnk_EL",suffix="_scaled") #Likelihood rank
+    data_a = VegvisirUtils.minmax_scale(data_a,column_name ="confidence_score",suffix="_scaled")
+    data_a = VegvisirUtils.minmax_scale(data_a,column_name="Rnk_EL",suffix="_scaled") #Likelihood rank
     data_b.fillna(0, inplace=True)
     # print(data_a["target"].value_counts())
     # print(data_a.sort_values(by="confidence_score",ascending=True)[["confidence_score","target"]])
@@ -364,12 +364,14 @@ def process_data(data,args,storage_folder,script_dir,plot_blosum=False):
     identifiers = data.index.values.tolist() #TODO: reset index?
     partitions = data[["partition"]].values.tolist()
     training = data[["training"]].values.tolist()
+    confidence_scores = data[["confidence_score"]].values.tolist()
 
     identifiers_labels_array = np.zeros((n_data,1,max_len))
     identifiers_labels_array[:,0,0] = np.array(labels).squeeze(-1)
     identifiers_labels_array[:,0,1] = np.array(identifiers)
     identifiers_labels_array[:,0,2] = np.array(partitions).squeeze(-1)
     identifiers_labels_array[:,0,3] = np.array(training).squeeze(-1).astype(int)
+    identifiers_labels_array[:,0,4] = np.array(confidence_scores).squeeze(-1)
 
 
     data_array_raw = np.concatenate([identifiers_labels_array, epitopes_array[:,None]], axis=1)
@@ -380,6 +382,7 @@ def process_data(data,args,storage_folder,script_dir,plot_blosum=False):
     identifiers_labels_array_blosum[:,0,0,1] = np.array(identifiers)
     identifiers_labels_array_blosum[:,0,0,2] = np.array(partitions).squeeze(-1)
     identifiers_labels_array_blosum[:,0,0,3] = np.array(training).squeeze(-1).astype(int)
+    identifiers_labels_array_blosum[:,0,0,4] = np.array(confidence_scores).squeeze(-1)
 
 
     data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:,None]], axis=1)

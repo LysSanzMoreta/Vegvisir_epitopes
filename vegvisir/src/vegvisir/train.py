@@ -1,5 +1,5 @@
-import time
-
+import time,os
+from collections import defaultdict
 import numpy as np
 import pyro.optim
 from scipy import stats
@@ -9,12 +9,13 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from collections import namedtuple
-import vegvisir.utils as vegvisirUtils
-import vegvisir.load_utils as vegvisirLoadUtils
-import vegvisir.plots as vegvisirPlots
-import vegvisir.models as vegvisirModels
-import vegvisir.model_utils as vegvisirModelUtils
-ModelLoad = namedtuple("ModelLoad",["args","max_len","n_sequences","input_dim"])
+import vegvisir
+import vegvisir.utils as VegvisirUtils
+import vegvisir.load_utils as VegvisirLoadUtils
+import vegvisir.plots as VegvisirPlots
+import vegvisir.models as VegvisirModels
+import vegvisir.model_utils as VegvisirModelUtils
+ModelLoad = namedtuple("ModelLoad",["args","max_len","n_data","input_dim","aa_types","blosum"])
 
 
 def train_loop(model,loss_func,optimizer, data_loader, args):
@@ -25,7 +26,7 @@ def train_loop(model,loss_func,optimizer, data_loader, args):
     :param DataLoader data_loader: Pytorch dataloader
     :param namedtuple args
     """
-    model.train() #I think this is useless?
+    model.train() #Highlight: look at https://stackoverflow.com/questions/60018578/what-does-model-eval-do-in-pytorch
     train_loss = 0.0
     correct = 0
     total = 0
@@ -37,6 +38,7 @@ def train_loop(model,loss_func,optimizer, data_loader, args):
             batch_data_blosum = batch_data_blosum.cuda()
             batch_mask = batch_mask.cuda()
         true_labels = batch_data_blosum[:,0,0,0]
+        confidence_scores = batch_data_blosum[:,0,0,4]
         optimizer.zero_grad() #set gradients to zero
         #Forward pass
         model_outputs = model(batch_data_blosum,batch_mask)
@@ -44,7 +46,7 @@ def train_loop(model,loss_func,optimizer, data_loader, args):
         total += true_labels.size(0)
         correct += (predicted_labels == true_labels).sum().item()
         predictions.append(predicted_labels.detach().cpu().numpy())
-        loss = loss_func(model_outputs,true_labels,batch_mask) #TODO: Change to logits?
+        loss = loss_func(confidence_scores,true_labels,model_outputs)
         #loss.requires_grad = True #not sure why it does not do this automatically for the nnl loss
         #Backward pass: backpropagate the error loss
         loss.backward()#retain_graph=True
@@ -57,33 +59,36 @@ def train_loop(model,loss_func,optimizer, data_loader, args):
 def valid_loop(model,loss_func, data_loader, args):
     """Regular batch training
     :param svi: pyro infer engine
-    :param dataloader train_loader: Pytorch dataloader
+    :param dataloader data_loader: Pytorch dataloader
     :param namedtuple args
     """
-    model.eval() #TODO: necessary?
+    model.eval()
     valid_loss = 0.0
     total = 0.
     correct = 0.
     predictions = []
-    for batch_number, batch_dataset in enumerate(data_loader):
-        batch_data_blosum = batch_dataset["batch_data_blosum"]
-        batch_mask = batch_dataset["batch_mask"]
-        if args.use_cuda:
-            batch_data_blosum = batch_data_blosum.cuda()
-            batch_mask = batch_mask.cuda()
-        true_labels = batch_data_blosum[:,0,0,0] #TODO: Automatize for any kind of input (blosum encoding, integers, one-hot)
-        model_outputs = model(batch_data_blosum,batch_mask)
-        _, predicted_labels = torch.max(model_outputs,dim= 1) #find the class with highest energy
-        total += true_labels.size(0)
-        correct += (predicted_labels == true_labels).sum().item()
-        predictions.append(predicted_labels.cpu().numpy())
-        loss = loss_func(model_outputs,true_labels,batch_mask)
-        valid_loss += loss.item() #TODO: Multiply by the data size?
+    with torch.no_grad(): #do not update parameters with the evaluation data
+        for batch_number, batch_dataset in enumerate(data_loader):
+            batch_data_blosum = batch_dataset["batch_data_blosum"]
+            batch_mask = batch_dataset["batch_mask"]
+            if args.use_cuda:
+                batch_data_blosum = batch_data_blosum.cuda() #TODO: Automatize for any kind of input (blosum encoding, integers, one-hot)
+                batch_mask = batch_mask.cuda()
+            true_labels = batch_data_blosum[:,0,0,0] #
+            confidence_scores = batch_data_blosum[:, 0, 0, 4]
+            model_outputs = model(batch_data_blosum,batch_mask)
+            _, predicted_labels = torch.max(model_outputs,dim= 1) #find the class with highest energy
+            total += true_labels.size(0)
+            correct += (predicted_labels == true_labels).sum().item()
+            predictions.append(predicted_labels.cpu().numpy())
+            loss = loss_func(confidence_scores, true_labels, model_outputs) #NOTE: not backprogagate error since evaluating
+            valid_loss += loss.item() #TODO: Multiply by the data size?
     #TODO: normalize loss?
     predictions_arr = np.concatenate(predictions,axis=0)
     accuracy= 100 * correct // total
     return valid_loss,accuracy,predictions_arr
 def test_loop(data_loader,model,args):
+    model.train(False)
     correct = 0
     total = 0
     predictions = []
@@ -108,14 +113,22 @@ def test_loop(data_loader,model,args):
     print(f'Accuracy of the TCR-pMHC: {100 * correct // total} %')
 
     return predictions_arr
-
+def save_script(results_dir,output_name,script_name):
+    """Saves the python script and its contents"""
+    out_file = open("{}/{}.py".format(results_dir,output_name), "a+")
+    script_file = open("{}/{}.py".format(os.path.dirname(vegvisir.__file__),script_name), "r+")
+    text = script_file.readlines()
+    out_file.write("".join(text))
+    out_file.close()
 def select_model(model_load,results_dir,fold):
     """Select among the available models at models.py"""
-    vegvisir_model = vegvisirModels.vegvisirDiffPool(model_load)
+    vegvisir_model = VegvisirModels.VegvisirModel1(model_load)
     if fold == 0:
         text_file = open("{}/Hyperparameters.txt".format(results_dir), "a")
         text_file.write("Model Class:  {} \n".format(vegvisir_model.get_class()))
         text_file.close()
+        save_script(results_dir, "ModelFunction", "models")
+        save_script(results_dir, "ModelUtilsFunction", "model_utils")
     return vegvisir_model
 
 def config_build(args):
@@ -148,33 +161,33 @@ def fold_auc(predictions_fold,labels,fold,mode="Training"):
     # total_predictions = np.column_stack(predictions_fold)
     # model_predictions = stats.mode(total_predictions, axis=1) #mode_predictions.mode
     auc_score = roc_auc_score(y_true=labels.numpy(), y_score=predictions_fold)
-    auk_score = vegvisirUtils.AUK(predictions_fold, labels.numpy()).calculate_auk()
+    auk_score = VegvisirUtils.AUK(predictions_fold, labels.numpy()).calculate_auk()
     print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score))
-def dataset_proportions(data,type="Train",encoding="blosum_encoding"):
+def dataset_proportions(data,results_dir,type="TrainEval"):
     """Calculates distribution of data points based on their labeling"""
     #TODO: make it work (the indexing) both for blosum encoding and else
     positives = torch.sum(data[:,0,0,0])
     positives_proportion = (positives*100)/torch.tensor([data.shape[0]])
     negatives = data.shape[0] - positives
     negatives_proportion = 100-positives_proportion
-    print("{} dataset: \n \t Number positives : {}; \n \t Proportion positives : {} ; \n \t Number negatives : {} ; \n \t Proportion negatives : {}".format(type,positives,positives_proportion.item(),negatives,negatives_proportion.item()))
+    print("{} dataset: \n \t Total number of data points: {} \n \t Number positives : {}; \n \t Proportion positives : {} ; \n \t Number negatives : {} ; \n \t Proportion negatives : {}".format(type,data.shape[0],positives,positives_proportion.item(),negatives,negatives_proportion.item()))
     return (positives,positives_proportion),(negatives,negatives_proportion)
 
-def trainevaltest_split(data,args,method="predefined_partitions"):
+def trainevaltest_split(data,args,results_dir,method="predefined_partitions"):
     """Perform train-test split"""
     if method == "predefined_partitions":
         #Train - Test split
         traineval_data,test_data = data[data[:,0,0,3] == 1.], data[data[:,0,0,3] == 0.]
-        dataset_proportions(traineval_data)
-        dataset_proportions(test_data, type="Test")
+        dataset_proportions(traineval_data,results_dir)
+        dataset_proportions(test_data,results_dir,type="Test")
         #Train - Eval split
         kfolds = StratifiedGroupKFold(n_splits=args.k_folds).split(traineval_data, traineval_data[:,0,0,0], traineval_data[:,0,0,2])
         return traineval_data,test_data,kfolds
-    elif method == "random_stratified": #TODO: not reviewed
+    elif method == "random_stratified":
         data_labels = data[:,0,0,0]
         traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
-        dataset_proportions(traineval_data)
-        dataset_proportions(test_data, type="Test")
+        dataset_proportions(traineval_data,results_dir)
+        dataset_proportions(test_data,results_dir, type="Test")
         # Train - Eval split
         kfolds = StratifiedShuffleSplit(n_splits=args.k_folds, random_state=13, test_size=0.2).split(traineval_data,traineval_data[:,0,0,0])
         return traineval_data,test_data,kfolds
@@ -185,58 +198,83 @@ def trainevaltest_split(data,args,method="predefined_partitions"):
 def kfold_crossvalidation(dataset_info,additional_info,args):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
-    data = dataset_info.data_array_blosum_encoding
+    data_blosum = dataset_info.data_array_blosum_encoding
+    data_int = dataset_info.data_array_int
+    data_onehot = dataset_info.data_array_onehot_encoding
     data_array_blosum_encoding_mask = dataset_info.data_array_blosum_encoding_mask
-
+    results_dir = additional_info.results_dir
     kwargs = {'num_workers': 0, 'pin_memory': args.use_cuda}  # pin-memory has to do with transferring CPU tensors to GPU
     #TODO: Detect and correct batch_size automatically?
     #Highlight: Train- Test split and kfold generator
+    #TODO: Develop method to partition sequences, sequences in train and test must differ. Partitions must have similar distributions (Tree based on distance matrix?
+    # In the loop computer another cosine similarity among the vectors of cos sim of each sequence?)
+    traineval_data_blosum,test_data_blosum,kfolds = trainevaltest_split(data_blosum,args,results_dir,method="random_stratified")
 
-    traineval_data,test_data,kfolds = trainevaltest_split(data,args,method="predefined_partitions")
-
-    exit()
-    #Also split the adjacency and edge matrices, according to the identifiers # Highlight. Double check again
-    traineval_idx = (data[:,0,0,1][..., None] == traineval_data[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
-    train_mask = data_array_blosum_encoding_mask[traineval_idx]
+    #Also split the rest of arrays
+    traineval_idx = (data_blosum[:,0,0,1][..., None] == traineval_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
+    traineval_mask = data_array_blosum_encoding_mask[traineval_idx]
     test_mask = data_array_blosum_encoding_mask[~traineval_idx]
+    traineval_data_int = data_int[traineval_idx]
+    test_data_int = data_int[~traineval_idx]
+    traineval_data_onehot = data_onehot[traineval_idx]
+    test_data_onehot = data_onehot[~traineval_idx]
     #Split the rest of the data (train_data) for train and validation
     batch_size = args.batch_size
-
-
     check_point_epoch = [5 if args.num_epochs < 100 else int(args.num_epochs / 50)][0]
     model_load = ModelLoad(args=args,
                            max_len =dataset_info.max_len,
-                           n_sequences = dataset_info.n_sequences,
-                           input_dim = dataset_info.input_dim)
+                           n_data = dataset_info.n_data,
+                           input_dim = dataset_info.input_dim,
+                           aa_types = dataset_info.corrected_aa_types,
+                           blosum = dataset_info.blosum)
 
-    # vegvisir_model = select_model(model_load,additional_info.results_dir)
-    # params_config = config_build(args)
-    # if args.optimizer_name == "Adam":
-    #     optimizer = torch.optim.Adam(vegvisir_model.parameters(), lr=params_config["lr"],betas=(params_config["beta1"], params_config["beta2"]),eps=params_config["eps"],weight_decay=params_config["weight_decay"])
-    # elif args.optimizer_name == "ClippedAdam":
-    #     optimizer = pyro.optim.ClippedAdam(vegvisir_model.parameters())   #TODO: Easy introduction of Clipped Adam or just use pyro?
-    #
-    # loss_func_dict = {"nll": nn.NLLLoss(),"softloss":vegvisir_model.softloss}
-    # loss_func = loss_func_dict[args.loss_func]
     valid_predictions_fold = None
     train_predictions_fold = None
     for fold, (train_idx, valid_idx) in enumerate(kfolds): #returns k-splits for train and validation
         print("---------------------------------------------------------------------")
         print('Fold number : {}'.format(fold))
-        print('\t Number train data points: {}; Proportion: {}'.format(len(train_idx),(len(train_idx)*100)/train_data.shape[0]))
-        print('\t Number valid data points: {}; Proportion: {}'.format(len(valid_idx),(len(valid_idx)*100)/train_data.shape[0]))
+        print('\t Number train data points: {}; Proportion: {}'.format(len(train_idx),(len(train_idx)*100)/traineval_data_blosum.shape[0]))
+        print('\t Number valid data points: {}; Proportion: {}'.format(len(valid_idx),(len(valid_idx)*100)/traineval_data_blosum.shape[0]))
 
-        custom_dataset_train = vegvisirLoadUtils.CustomDataset(train_data[train_idx],
-                                             train_mask[train_idx])
-        custom_dataset_valid = vegvisirLoadUtils.CustomDataset(train_data[valid_idx],
-                                             train_mask[valid_idx])
-        fold_train_data = train_data[train_idx]
-        valid_data = train_data[valid_idx]
+        #Highlight: Minmax scale the confidence scores #TODO: function or for loop?
+        fold_train_data_blosum = traineval_data_blosum[train_idx]
+        fold_train_data_int = traineval_data_int[train_idx]
+        fold_train_data_onehot = traineval_data_onehot[train_idx]
+        fold_train_data_blosum[:,0,0,4] = VegvisirUtils.minmax_scale(fold_train_data_blosum[:,0,0,4])
+        idx_train = (fold_train_data_blosum[:,0,0,4][..., None] == 0.).any(-1)*(fold_train_data_blosum[:,0,0,4][..., None] == 1.).any(-1)
+        #Assign weight 1 to the classification scores with int(1) or int(0), else 1-classification score
+        fold_train_data_blosum[idx_train, 0, 0, 5] = 1.
+        fold_train_data_blosum[~idx_train, 0, 0, 5] = 1 - fold_train_data_blosum[:,0,0,4]
+        fold_train_data_int[:,0,4] = fold_train_data_blosum[:,0,0,4]
+        fold_train_data_onehot[:,0,0,5] = fold_train_data_blosum[:,0,0,5]
+        #Highlight: valid
+        fold_valid_data_blosum = traineval_data_blosum[valid_idx]
+        fold_valid_data_int = traineval_data_int[valid_idx]
+        fold_valid_data_onehot = traineval_data_onehot[valid_idx]
+        fold_valid_data_blosum[:,0,0,4] = VegvisirUtils.minmax_scale(fold_valid_data_blosum[:,0,0,4])
+        idx_valid = (fold_valid_data_blosum[:,0,0,4][..., None] == 0.).any(-1)*(fold_valid_data_blosum[:,0,0,4][..., None] == 1.).any(-1)
+        fold_valid_data_blosum[idx_valid, 0, 0, 5] = 1.
+        fold_valid_data_blosum[~idx_valid, 0, 0, 5] = 1 - fold_valid_data_blosum[:, 0, 0, 4]
+        fold_valid_data_int[:,0,5] = fold_valid_data_blosum[:,0,0,5]
+        fold_valid_data_onehot[:,0,0,5] = fold_valid_data_blosum[:,0,0,5]
+
+
+        custom_dataset_train = VegvisirLoadUtils.CustomDataset(fold_train_data_blosum,
+                                                               fold_train_data_int,
+                                                               fold_train_data_onehot,
+                                                                traineval_mask[train_idx])
+        custom_dataset_valid = VegvisirLoadUtils.CustomDataset(fold_valid_data_blosum,
+                                                               fold_valid_data_int,
+                                                               fold_valid_data_onehot,
+                                                               traineval_mask[valid_idx])
         train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
         valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device),**kwargs)
 
+
         #Restart the model each fold
         vegvisir_model = select_model(model_load, additional_info.results_dir,fold)
+
+
         params_config = config_build(args)
         if args.optimizer_name == "Adam":
             optimizer = torch.optim.Adam(vegvisir_model.parameters(), lr=params_config["lr"],
@@ -245,10 +283,9 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         elif args.optimizer_name == "ClippedAdam":
             optimizer = pyro.optim.ClippedAdam(
                 vegvisir_model.parameters())  # TODO: Easy introduction of Clipped Adam or just use pyro?
-
-        loss_func_dict = {"nll": nn.NLLLoss(), "softloss": vegvisir_model.softloss}
-        loss_func = loss_func_dict[args.loss_func]
-
+        else:
+            raise ValueError("optimizer not implemented")
+        loss_func = vegvisir_model.loss
 
         #TODO: Dictionary that gathers the results from each fold
         train_loss = []
@@ -261,7 +298,8 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         train_auk = []
         valid_auk = []
         epoch = 0.
-        while epoch <= args.num_epochs: #TODO: Plot gradients? perhaps expensive
+        gradient_norms = defaultdict(list)
+        while epoch <= args.num_epochs:
             start = time.time()
             train_epoch_loss,train_accuracy,train_predictions = train_loop(vegvisir_model, loss_func, optimizer, train_loader, args)
             stop = time.time()
@@ -270,42 +308,48 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
             train_loss.append(train_epoch_loss)
             train_accuracies.append(train_accuracy)
             if (check_point_epoch > 0 and epoch > 0 and epoch % check_point_epoch == 0) or epoch == args.num_epochs :
+                for name_i, value in vegvisir_model.named_parameters():
+                    value.register_hook(lambda g, name_i=name_i: gradient_norms[name_i].append(g.norm().item()))
                 valid_epoch_loss,valid_accuracy,valid_predictions = valid_loop(vegvisir_model, loss_func, valid_loader, args)
                 valid_loss.append(valid_epoch_loss)
                 epochs_list.append(epoch)
                 valid_accuracies.append(valid_accuracy)
-                train_auc_score = roc_auc_score(y_true=fold_train_data[:,0,0,0], y_score=train_predictions)
-                train_auk_score = vegvisirUtils.AUK(probabilities= train_predictions,labels=fold_train_data[:,0,0,0].numpy()).calculate_auk()
+                train_auc_score = roc_auc_score(y_true=fold_train_data_blosum[:,0,0,0], y_score=train_predictions)
+                train_auk_score = VegvisirUtils.AUK(probabilities= train_predictions,labels=fold_train_data_blosum[:,0,0,0].numpy()).calculate_auk()
                 train_auk.append(train_auk_score)
                 train_auc.append(train_auc_score)
-                valid_auc_score = roc_auc_score(y_true=valid_data[:,0,0,0], y_score=valid_predictions)
-                valid_auk_score = vegvisirUtils.AUK(probabilities= valid_predictions,labels = valid_data[:,0,0,0].numpy()).calculate_auk()
+                valid_auc_score = roc_auc_score(y_true=fold_valid_data_blosum[:,0,0,0], y_score=valid_predictions)
+                valid_auk_score = VegvisirUtils.AUK(probabilities= valid_predictions,labels = fold_valid_data_blosum[:,0,0,0].numpy()).calculate_auk()
                 valid_auk.append(valid_auk_score)
                 valid_auc.append(valid_auc_score)
-                vegvisirPlots.plot_ELBO(train_loss,valid_loss,epochs_list,fold,additional_info.results_dir)
-                vegvisirPlots.plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,additional_info.results_dir)
-                vegvisirPlots.plot_classification_score(train_auc,valid_auc,fold,additional_info.results_dir,method="AUC")
-                vegvisirPlots.plot_classification_score(train_auk,valid_auk,fold,additional_info.results_dir,method="AUK")
+                VegvisirPlots.plot_ELBO(train_loss,valid_loss,epochs_list,fold,additional_info.results_dir)
+                VegvisirPlots.plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,additional_info.results_dir)
+                VegvisirPlots.plot_classification_score(train_auc,valid_auc,fold,additional_info.results_dir,method="AUC")
+                VegvisirPlots.plot_classification_score(train_auk,valid_auk,fold,additional_info.results_dir,method="AUK")
                 if epoch == args.num_epochs:
                     print("Saving final results")
                     train_predictions_fold = train_predictions
                     valid_predictions_fold = valid_predictions
+                    VegvisirPlots.plot_gradients(gradient_norms, results_dir, fold)
             torch.cuda.empty_cache()
             epoch += 1 #TODO: early stop?
-        fold_auc(valid_predictions_fold,valid_data[:,0,0,0],fold,mode="Validation")
-        fold_auc(train_predictions_fold,fold_train_data[:,0,0,0],fold,mode="Training")
-        #Highlight: Reset the parameters for each fold!!!!!!!!!---> watch out because each nn function needs to be specified manually, so if anything new is added
-        #vegvisir_model.apply(fn=vegvisirModelUtils.reset_all_weights)
+        fold_auc(valid_predictions_fold,fold_valid_data_blosum[:,0,0,0],fold,mode="Validation")
+        fold_auc(train_predictions_fold,fold_train_data_blosum[:,0,0,0],fold,mode="Training")
 
 
     if args.test:
         print("Final testing")
-        custom_dataset_test = vegvisirLoadUtils.CustomDataset(test_data,
+        test_data_blosum[:,0,0,4] = VegvisirUtils.minmax_scale(test_data_blosum[:,0,0,4])
+        test_data_int[:,0,4] = test_data_blosum[:,0,0,4]
+        test_data_onehot[:,0,0,4] = test_data_blosum[:,0,0,4]
+        custom_dataset_test = VegvisirLoadUtils.CustomDataset(test_data_blosum,
+                                                              test_data_int,
+                                                              test_data_onehot,
                                                               test_mask)
         test_loader = DataLoader(custom_dataset_test, batch_size=batch_size, shuffle=True,
                                  generator=torch.Generator(device=args.device), **kwargs)
         predictions = test_loop(test_loader, vegvisir_model, args)
-        score = roc_auc_score(y_true=test_data[:, 0, 0, 0].numpy(), y_score=predictions)
+        score = roc_auc_score(y_true=test_data_blosum[:, 0, 0, 0].numpy(), y_score=predictions)
         print("Final AUC score : {}".format( score))
 
 
