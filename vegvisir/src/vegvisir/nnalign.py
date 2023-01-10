@@ -1,3 +1,9 @@
+"""
+=======================
+2023: Lys Sanz Moreta
+Vegvisir :
+=======================
+"""
 import subprocess,os,time
 def run_nnalign(args,storage_folder,script_dir= "/home/projects/vaccine/people/lyssan/vegvisir_epitopes"):
     """:param str storage folder location of the data
