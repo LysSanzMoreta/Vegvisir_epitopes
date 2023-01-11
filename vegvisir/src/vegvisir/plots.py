@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import pandas as pd
+plt.style.use('ggplot')
 def plot_heatmap(array, title,file_name):
     plt.figure(figsize=(20, 20))
     sns.heatmap(array, cmap='RdYlGn_r',yticklabels=False,xticklabels=False)
@@ -49,8 +50,8 @@ def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir
     epochs_idx = np.array(epochs_list)
     train_accuracies = train_accuracies[epochs_idx.astype(int)] #select the same epochs as the vaidation
 
-    plt.plot(train_accuracies, color="deepskyblue",label="train")
-    plt.plot(valid_accuracies, color="salmon", label="validation")
+    plt.plot(epochs_idx,train_accuracies, color="deepskyblue",label="train")
+    plt.plot(epochs_idx,valid_accuracies, color="salmon", label="validation")
     plt.xlabel("Epochs")
     plt.ylabel("Accuracy (number of correct predictions)")
     plt.title("Accuracy (Train/valid)")
@@ -58,17 +59,16 @@ def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir
     plt.savefig("{}/accuracies_{}fold.png".format(results_dir,fold))
     plt.close()
     plt.clf()
-
-def plot_classification_score(train_auc,valid_auc,fold,results_dir,method):
+def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,method):
     """Plots the AUC/AUK scores while training
     :param list train_auc: list of accumulated AUC during training
     :param list valid_auc: list of accumulated AUC during validation
     :param str results_dict: path to results directory
     :param str method: AUC or AUK
     """
-
-    plt.plot(train_auc, color="deepskyblue",label="train")
-    plt.plot(valid_auc, color="salmon", label="validation")
+    epochs_idx = np.array(epochs_list)
+    plt.plot(epochs_idx,train_auc, color="deepskyblue",label="train")
+    plt.plot(epochs_idx,valid_auc, color="salmon", label="validation")
     plt.xlabel("Epochs")
     plt.ylabel("{}".format(method))
     plt.title("{} (Train/valid)".format(method))
@@ -76,7 +76,6 @@ def plot_classification_score(train_auc,valid_auc,fold,results_dir,method):
     plt.savefig("{}/{}_{}fold.png".format(results_dir,method,fold))
     plt.close()
     plt.clf()
-
 def plot_gradients(gradient_norms,results_dir,fold):
     print("Plotting gradients")
     #fig = plt.figure(figsize=(13, 6), dpi=100).set_facecolor('white')
@@ -92,4 +91,16 @@ def plot_gradients(gradient_norms,results_dir,fold):
     ax1.set_title('Gradient norms during SVI')
 
     plt.savefig("{}/gradients_fold{}".format(results_dir,fold))
+    plt.clf()
+def plot_ROC_curve(fpr,tpr,roc_auc,auk_score,results_dir,fold):
+    plt.title('Receiver Operating Characteristic',fontdict={"size":20})
+    plt.plot(fpr, tpr, 'b', label='AUC = %0.2f \n '
+                                  'AUK = %0.2f' % (roc_auc,auk_score))
+    plt.legend(loc='lower right',prop={'size': 15})
+    plt.plot([0, 1], [0, 1], 'r--')
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    plt.ylabel('True Positive Rate',fontsize=20)
+    plt.xlabel('False Positive Rate',fontsize=20)
+    plt.savefig("{}/ROC_curve_fold{}".format(results_dir,fold))
     plt.clf()

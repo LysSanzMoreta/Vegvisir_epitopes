@@ -60,9 +60,9 @@ if __name__ == "__main__":
     parser.add_argument('-k-folds', type=int, nargs='?', default=2, help='Number of k-fold for k-fold cross validation')
     parser.add_argument('-batch-size', type=int, nargs='?', default=64, help='Batch size')
     parser.add_argument('-optimizer_name', type=str, nargs='?', default="Adam", help='Gradient optimizer name')
-    parser.add_argument('-loss-func', type=str, nargs='?', default="weighted_loss", help="Error loss function to be optimized, options are: \n"
+    parser.add_argument('-loss-func', type=str, nargs='?', default="weighted_bce", help="Error loss function to be optimized, options are: \n"
                                                                                          "<bce>: Binary Cross Entropy"
-                                                                                         "<weighted_loss>: Weighted Binary Cross Entropy \n")
+                                                                                         "<weighted_bce>: Weighted Binary Cross Entropy \n")
 
     parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
     #Highlight: DIFFPOOL parameters

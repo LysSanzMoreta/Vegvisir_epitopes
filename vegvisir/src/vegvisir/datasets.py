@@ -18,6 +18,7 @@ import torch
 import vegvisir.nnalign as VegvisirNNalign
 import vegvisir.utils as VegvisirUtils
 import vegvisir.plots as VegvisirPlots
+plt.style.use('ggplot')
 DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_array_raw","data_array_int","data_array_int_mask",
                                         "data_array_blosum_encoding","data_array_blosum_encoding_mask","data_array_onehot_encoding","blosum",
                                         "n_data","max_len","corrected_aa_types","input_dim","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity"])
@@ -241,6 +242,7 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,update):
     data_b.fillna(0, inplace=True)
     # print(data_a["target"].value_counts())
     # print(data_a.sort_values(by="confidence_score",ascending=True)[["confidence_score","target"]])
+    #Highlight: Strict target reassignment
     data_a.loc[data_a["confidence_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
     #print(data_a.sort_values(by="confidence_score", ascending=True)[["confidence_score","target"]])
     data_a.loc[data_a["confidence_score_scaled"] > 0.,"target_corrected"] = 1.
@@ -250,36 +252,49 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,update):
     # print("--------------------")
     # print(data_a["training"].value_counts())
     ndata = data_a.shape[0]
-    fig, ax = plt.subplots(3, figsize=(7, 10))
+    fig, ax = plt.subplots(2,2, figsize=(7, 10))
     num_bins = 50
     ############LABELS #############
-    freq, bins, patches = ax[0].hist(data_a["target"].to_numpy() , bins=2, density=True)
-    ax[0].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
-    ax[0].set_title(r'Histogram of targets/labels')
-    ax[0].xaxis.set_ticks([0.25,0.75])
-    ax[0].set_xticklabels([0,1])
+    freq, bins, patches = ax[0][0].hist(data_a["target"].to_numpy() , bins=2, density=True)
+    ax[0][0].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][0].set_title(r'Histogram of targets/labels')
+    ax[0][0].xaxis.set_ticks([0.25,0.75])
+    ax[0][0].set_xticklabels([0,1])
     # Annotate the bars.
     for bar in patches: #iterate over the bars
         n_data_bin = (bar.get_height()*ndata)/2
-        ax[0].annotate(format(n_data_bin, '.2f'),
+        ax[0][0].annotate(format(n_data_bin, '.2f'),
+                       (bar.get_x() + bar.get_width() / 2,
+                        bar.get_height()), ha='center', va='center',
+                       size=15, xytext=(0, 8),
+                       textcoords='offset points')
+    ############LABELS CORRECTED #############
+    freq, bins, patches = ax[0][1].hist(data_a["target_corrected"].to_numpy() , bins=2, density=True)
+    ax[0][1].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][1].set_title(r'Histogram of re-assigned targets/labels')
+    ax[0][1].xaxis.set_ticks([0.25,0.75])
+    ax[0][1].set_xticklabels([0,1])
+    # Annotate the bars.
+    for bar in patches: #iterate over the bars
+        n_data_bin = (bar.get_height()*ndata)/2
+        ax[0][1].annotate(format(n_data_bin, '.2f'),
                        (bar.get_x() + bar.get_width() / 2,
                         bar.get_height()), ha='center', va='center',
                        size=15, xytext=(0, 8),
                        textcoords='offset points')
     #######CONFIDENCE SCORES
-    ax[1].hist(data_a["confidence_score_scaled"].to_numpy() , num_bins, density=True)
-    ax[1].set_xlabel('Minmax scaled confidence score (N_+ / Subjects)')
-    ax[1].set_title(r'Histogram of confidence scores')
+    ax[1][0].hist(data_a["confidence_score_scaled"].to_numpy() , num_bins, density=True)
+    ax[1][0].set_xlabel('Minmax scaled confidence score (N_+ / Subjects)')
+    ax[1][0].set_title(r'Histogram of confidence scores')
     ##########RANK###################
-    ax[2].hist(data_a["Rnk_EL"].to_numpy(), num_bins, density=True)
-    ax[2].set_xlabel("Binding rank estimated by NetMHCpan-4.1")
-    ax[2].set_title(r'Histogram of Rnk_EL scores')
+    ax[1][1].hist(data_a["Rnk_EL"].to_numpy(), num_bins, density=True)
+    ax[1][1].set_xlabel("Binding rank estimated by NetMHCpan-4.1")
+    ax[1][1].set_title(r'Histogram of Rnk_EL scores')
     plt.ylabel("Counts")
     fig.tight_layout()
     plt.savefig("{}/{}/Viruses_histograms".format(storage_folder,args.dataset_name), dpi=300)
     plt.clf()
     data_info = process_data(data_a,args,storage_folder,script_dir)
-
     return data_info
 
 def process_data(data,args,storage_folder,script_dir,plot_blosum=False):
@@ -339,7 +354,7 @@ def process_data(data,args,storage_folder,script_dir,plot_blosum=False):
     n_data = epitopes_array.shape[0]
     ksize = 3 #TODO: manage in args
     if not os.path.exists("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
-        print("Epitopes similarity matrices not existing, calculating ....")
+        print("Epitopes similarity matrices not existing, calculating (approx 2-3 min) ....")
         percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirUtils.calculate_similarity_matrix(epitopes_array_blosum,max_len,epitopes_mask,ksize=ksize)
         np.save("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name), percent_identity_mean)
         np.save("{}/{}/similarities/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name), cosine_similarity_mean)

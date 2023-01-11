@@ -4,7 +4,7 @@ import numpy as np
 import pyro.optim
 from scipy import stats
 from sklearn.model_selection import KFold,train_test_split,StratifiedShuffleSplit,StratifiedGroupKFold
-from sklearn.metrics import auc,roc_auc_score,cohen_kappa_score
+from sklearn.metrics import auc,roc_auc_score,cohen_kappa_score,roc_curve
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
@@ -38,7 +38,7 @@ def train_loop(model,loss_func,optimizer, data_loader, args):
             batch_data_blosum = batch_data_blosum.cuda()
             batch_mask = batch_mask.cuda()
         true_labels = batch_data_blosum[:,0,0,0]
-        confidence_scores = batch_data_blosum[:,0,0,4]
+        confidence_scores = batch_data_blosum[:,0,0,5]
         optimizer.zero_grad() #set gradients to zero
         #Forward pass
         model_outputs = model(batch_data_blosum,batch_mask)
@@ -75,7 +75,7 @@ def valid_loop(model,loss_func, data_loader, args):
                 batch_data_blosum = batch_data_blosum.cuda() #TODO: Automatize for any kind of input (blosum encoding, integers, one-hot)
                 batch_mask = batch_mask.cuda()
             true_labels = batch_data_blosum[:,0,0,0] #
-            confidence_scores = batch_data_blosum[:, 0, 0, 4]
+            confidence_scores = batch_data_blosum[:, 0, 0, 5]
             model_outputs = model(batch_data_blosum,batch_mask)
             _, predicted_labels = torch.max(model_outputs,dim= 1) #find the class with highest energy
             total += true_labels.size(0)
@@ -139,7 +139,7 @@ def config_build(args):
     # else:
     "Default hyperparameters (Clipped Adam optimizer), z dim and GRU"
     config = {
-        "lr": 1e-3,
+        "lr": 1e-3, #default is 1e-3
         "beta1": 0.9, #coefficients used for computing running averages of gradient and its square (default: (0.9, 0.999))
         "beta2": 0.999,
         "eps": 1e-8,#term added to the denominator to improve numerical stability (default: 1e-8)
@@ -155,13 +155,15 @@ def config_build(args):
 def reset_weights(m):
     if isinstance(m, nn.RNN) or isinstance(m, nn.Linear) or isinstance(m, nn.GRU):
         m.reset_parameters()
-def fold_auc(predictions_fold,labels,fold,mode="Training"):
+def fold_auc(predictions_fold,labels,fold,results_dir,mode="Train"):
     #TODO: Implement per peptide
 
     # total_predictions = np.column_stack(predictions_fold)
     # model_predictions = stats.mode(total_predictions, axis=1) #mode_predictions.mode
     auc_score = roc_auc_score(y_true=labels.numpy(), y_score=predictions_fold)
     auk_score = VegvisirUtils.AUK(predictions_fold, labels.numpy()).calculate_auk()
+    fpr, tpr, threshold = roc_curve(y_true=labels.numpy(), y_score=predictions_fold)
+    VegvisirPlots.plot_ROC_curve(fpr,tpr,auc_score,auk_score,"{}/{}".format(results_dir,mode),fold)
     print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score))
 def dataset_proportions(data,results_dir,type="TrainEval"):
     """Calculates distribution of data points based on their labeling"""
@@ -244,8 +246,8 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         idx_train = (fold_train_data_blosum[:,0,0,4][..., None] == 0.).any(-1)*(fold_train_data_blosum[:,0,0,4][..., None] == 1.).any(-1)
         #Assign weight 1 to the classification scores with int(1) or int(0), else 1-classification score
         fold_train_data_blosum[idx_train, 0, 0, 5] = 1.
-        fold_train_data_blosum[~idx_train, 0, 0, 5] = 1 - fold_train_data_blosum[:,0,0,4]
-        fold_train_data_int[:,0,4] = fold_train_data_blosum[:,0,0,4]
+        #fold_train_data_blosum[~idx_train, 0, 0, 5] = 1 - fold_train_data_blosum[:,0,0,4]
+        fold_train_data_int[:,0,5] = fold_train_data_blosum[:,0,0,5]
         fold_train_data_onehot[:,0,0,5] = fold_train_data_blosum[:,0,0,5]
         #Highlight: valid
         fold_valid_data_blosum = traineval_data_blosum[valid_idx]
@@ -254,7 +256,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         fold_valid_data_blosum[:,0,0,4] = VegvisirUtils.minmax_scale(fold_valid_data_blosum[:,0,0,4])
         idx_valid = (fold_valid_data_blosum[:,0,0,4][..., None] == 0.).any(-1)*(fold_valid_data_blosum[:,0,0,4][..., None] == 1.).any(-1)
         fold_valid_data_blosum[idx_valid, 0, 0, 5] = 1.
-        fold_valid_data_blosum[~idx_valid, 0, 0, 5] = 1 - fold_valid_data_blosum[:, 0, 0, 4]
+        #fold_valid_data_blosum[~idx_valid, 0, 0, 5] = 1 - fold_valid_data_blosum[:, 0, 0, 4]
         fold_valid_data_int[:,0,5] = fold_valid_data_blosum[:,0,0,5]
         fold_valid_data_onehot[:,0,0,5] = fold_valid_data_blosum[:,0,0,5]
 
@@ -324,8 +326,8 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                 valid_auc.append(valid_auc_score)
                 VegvisirPlots.plot_ELBO(train_loss,valid_loss,epochs_list,fold,additional_info.results_dir)
                 VegvisirPlots.plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,additional_info.results_dir)
-                VegvisirPlots.plot_classification_score(train_auc,valid_auc,fold,additional_info.results_dir,method="AUC")
-                VegvisirPlots.plot_classification_score(train_auk,valid_auk,fold,additional_info.results_dir,method="AUK")
+                VegvisirPlots.plot_classification_score(train_auc,valid_auc,epochs_list,fold,additional_info.results_dir,method="AUC")
+                VegvisirPlots.plot_classification_score(train_auk,valid_auk,epochs_list,fold,additional_info.results_dir,method="AUK")
                 if epoch == args.num_epochs:
                     print("Saving final results")
                     train_predictions_fold = train_predictions
@@ -333,8 +335,8 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                     VegvisirPlots.plot_gradients(gradient_norms, results_dir, fold)
             torch.cuda.empty_cache()
             epoch += 1 #TODO: early stop?
-        fold_auc(valid_predictions_fold,fold_valid_data_blosum[:,0,0,0],fold,mode="Validation")
-        fold_auc(train_predictions_fold,fold_train_data_blosum[:,0,0,0],fold,mode="Training")
+        fold_auc(valid_predictions_fold,fold_valid_data_blosum[:,0,0,0],fold,results_dir,mode="Valid")
+        fold_auc(train_predictions_fold,fold_train_data_blosum[:,0,0,0],fold,results_dir,mode="Train")
 
 
     if args.test:
