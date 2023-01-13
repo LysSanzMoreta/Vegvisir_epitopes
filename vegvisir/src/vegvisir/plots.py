@@ -5,9 +5,11 @@ Vegvisir :
 =======================
 """
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import seaborn as sns
 import numpy as np
 import pandas as pd
+import umap
 plt.style.use('ggplot')
 def plot_heatmap(array, title,file_name):
     plt.figure(figsize=(20, 20))
@@ -15,6 +17,22 @@ def plot_heatmap(array, title,file_name):
     plt.title(title)
     plt.savefig(file_name)
     plt.clf()
+
+def plot_umap1(array,labels,storage_folder,args,title_name,file_name):
+    print("Plotting UMAP ---")
+    labels = np.array(labels).squeeze(-1)
+    colors_dict = {0:"red",1:"green"}
+    color_labels = np.vectorize(colors_dict.get)(labels)
+    reducer = umap.UMAP()
+    v_pr = reducer.fit_transform(array)
+    fig = plt.figure(figsize=(18, 18))
+    plt.scatter(v_pr[:, 0], v_pr[:, 1],c = color_labels ,alpha=0.7, s=30)
+    patches = [mpatches.Patch(color=color, label='Class {}'.format(label)) for label,color in colors_dict.items() ]
+    fig.legend(handles=patches, prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5))
+    plt.title("UMAP dimensionality reduction of {}".format(title_name),fontsize=20)
+    plt.savefig("{}/{}/similarities/{}.png".format(storage_folder,args.dataset_name,file_name))
+    plt.clf()
+
 def plot_ELBO(train_loss,valid_loss,epochs_list,fold,results_dir):
     """Plots the model's error loss
     :param list train_elbo: list of accumulated error losses during training

@@ -1,3 +1,4 @@
+import json
 import time,os
 from collections import defaultdict
 import numpy as np
@@ -131,7 +132,7 @@ def select_model(model_load,results_dir,fold):
         save_script(results_dir, "ModelUtilsFunction", "model_utils")
     return vegvisir_model
 
-def config_build(args):
+def config_build(args,results_dir):
     """Select a default configuration dictionary. It can load a string dictionary from the command line (using json) or use the default parameters
     :param namedtuple args"""
     # if args.parameter_search:
@@ -148,7 +149,10 @@ def config_build(args):
         "lrd": 1, #rate at which learning rate decays (default: 1.0)
         "z_dim": 30,
         "gru_hidden_dim": 60, #60
+        "momentum":0.9
     }
+    json.dump(config, open('{}/params_dict.txt'.format(results_dir), 'w'), indent=2)
+
     return config
 
 
@@ -210,9 +214,9 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
     #Highlight: Train- Test split and kfold generator
     #TODO: Develop method to partition sequences, sequences in train and test must differ. Partitions must have similar distributions (Tree based on distance matrix?
     # In the loop computer another cosine similarity among the vectors of cos sim of each sequence?)
-    traineval_data_blosum,test_data_blosum,kfolds = trainevaltest_split(data_blosum,args,results_dir,method="random_stratified")
+    traineval_data_blosum,test_data_blosum,kfolds = trainevaltest_split(data_blosum,args,results_dir,method="predefined_partitions")
 
-    #Also split the rest of arrays
+    #Highlight:Also split the rest of arrays
     traineval_idx = (data_blosum[:,0,0,1][..., None] == traineval_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
     traineval_mask = data_array_blosum_encoding_mask[traineval_idx]
     test_mask = data_array_blosum_encoding_mask[~traineval_idx]
@@ -244,9 +248,9 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         fold_train_data_onehot = traineval_data_onehot[train_idx]
         fold_train_data_blosum[:,0,0,4] = VegvisirUtils.minmax_scale(fold_train_data_blosum[:,0,0,4])
         idx_train = (fold_train_data_blosum[:,0,0,4][..., None] == 0.).any(-1)*(fold_train_data_blosum[:,0,0,4][..., None] == 1.).any(-1)
-        #Assign weight 1 to the classification scores with int(1) or int(0), else 1-classification score
-        fold_train_data_blosum[idx_train, 0, 0, 5] = 1.
-        #fold_train_data_blosum[~idx_train, 0, 0, 5] = 1 - fold_train_data_blosum[:,0,0,4]
+        #Assign weight <1 to the classification scores with int(1) or int(0), else 1 + (1-classification score)
+        fold_train_data_blosum[idx_train, 0, 0, 5] = 1
+        fold_train_data_blosum[~idx_train, 0, 0, 5] = 1 + (1 - fold_train_data_blosum[:,0,0,4])
         fold_train_data_int[:,0,5] = fold_train_data_blosum[:,0,0,5]
         fold_train_data_onehot[:,0,0,5] = fold_train_data_blosum[:,0,0,5]
         #Highlight: valid
@@ -255,10 +259,11 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         fold_valid_data_onehot = traineval_data_onehot[valid_idx]
         fold_valid_data_blosum[:,0,0,4] = VegvisirUtils.minmax_scale(fold_valid_data_blosum[:,0,0,4])
         idx_valid = (fold_valid_data_blosum[:,0,0,4][..., None] == 0.).any(-1)*(fold_valid_data_blosum[:,0,0,4][..., None] == 1.).any(-1)
-        fold_valid_data_blosum[idx_valid, 0, 0, 5] = 1.
-        #fold_valid_data_blosum[~idx_valid, 0, 0, 5] = 1 - fold_valid_data_blosum[:, 0, 0, 4]
+        fold_valid_data_blosum[idx_valid, 0, 0, 5] = 1
+        fold_valid_data_blosum[~idx_valid, 0, 0, 5] = 1+ (1 - fold_valid_data_blosum[:, 0, 0, 4])
         fold_valid_data_int[:,0,5] = fold_valid_data_blosum[:,0,0,5]
         fold_valid_data_onehot[:,0,0,5] = fold_valid_data_blosum[:,0,0,5]
+
 
 
         custom_dataset_train = VegvisirLoadUtils.CustomDataset(fold_train_data_blosum,
@@ -277,16 +282,15 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         vegvisir_model = select_model(model_load, additional_info.results_dir,fold)
 
 
-        params_config = config_build(args)
+        params_config = config_build(args,results_dir)
         if args.optimizer_name == "Adam":
             optimizer = torch.optim.Adam(vegvisir_model.parameters(), lr=params_config["lr"],
                                          betas=(params_config["beta1"], params_config["beta2"]),
                                          eps=params_config["eps"], weight_decay=params_config["weight_decay"])
-        elif args.optimizer_name == "ClippedAdam":
-            optimizer = pyro.optim.ClippedAdam(
-                vegvisir_model.parameters())  # TODO: Easy introduction of Clipped Adam or just use pyro?
+        elif args.optimizer_name == "SGD":
+            optimizer = torch.optim.SGD(vegvisir_model.parameters(),lr=params_config["lr"],momentum=params_config["momentum"])
         else:
-            raise ValueError("optimizer not implemented")
+            raise ValueError("selected optimizer {} not implemented".format(args.optimizer_name))
         loss_func = vegvisir_model.loss
 
         #TODO: Dictionary that gathers the results from each fold

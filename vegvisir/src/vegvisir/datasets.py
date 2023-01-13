@@ -15,6 +15,7 @@ from collections import defaultdict,namedtuple
 import seaborn as sns
 import dataframe_image as dfi
 import torch
+import umap
 import vegvisir.nnalign as VegvisirNNalign
 import vegvisir.utils as VegvisirUtils
 import vegvisir.plots as VegvisirPlots
@@ -25,7 +26,8 @@ DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_arra
 def available_datasets():
     """Prints the available datasets"""
     datasets = {0:"viral_dataset",
-                1:"viral_dataset2"}
+                1:"viral_dataset2",
+                2:"viral_dataset3"}
     return datasets
 def select_dataset(dataset_name,script_dir,args,update=True):
     """Selects from available datasets
@@ -34,7 +36,8 @@ def select_dataset(dataset_name,script_dir,args,update=True):
     :param update: If true it will download and update the most recent version of the dataset
     """
     func_dict = {"viral_dataset": viral_dataset,
-                 "viral_dataset2":viral_dataset2}
+                 "viral_dataset2":viral_dataset2,
+                 "viral_dataset3":viral_dataset3}
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
 
     dataset_load_fx = lambda f,dataset_name,current_path,storage_folder,args,update: lambda dataset_name,current_path,storage_folder,args,update: f(dataset_name,current_path,storage_folder,args,update)
@@ -117,7 +120,6 @@ def viral_dataset(dataset_name,current_path,storage_folder,args,update):
     if args.run_nnalign:
         VegvisirNNalign.run_nnalign(args,storage_folder)
 
-
 def viral_dataset2(dataset_name,script_dir,storage_folder,args,update):
     """Loads the viral dataset generated from **IEDB** database using parameters:
            -Epitope: Linear peptide
@@ -145,8 +147,8 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,update):
     #org_id: id of the organism the peptide derives from, reported by the IEDB.
     #prot_name: protein name (reported by the IEDB).
     #uniprot_id: UniProt ID (reported by the IEDB).
-    #number_of_papers_positive: number of papers where the peptide-MHC was reported positive.
-    #number_of_papers_negative: number of papers where the peptide-MHC was reported negative.
+    #number_of_papers_positive: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
+    #number_of_papers_negative: number of papers where the peptide-MHC was reported to have a negative interaction with the TCR.
     #target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
     #target_bin_2: corrected target value, where positives are considered as "1" only if they are reported as positives in 2 or more papers.
     #start_prot: aa position (index) where the peptide starts within its source protein.
@@ -236,7 +238,7 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,update):
     data_a["confidence_score"] = data_a["Assay_number_of_subjects_responded"]/data_a["Assay_number_of_subjects_tested"]
     data_a["Rnk_EL"] =data_b["Rnk_EL"]
     data_a.fillna(0,inplace=True)
-    #Highlight: Scale-standarize values #TODO: Do separately for train, eval and test
+    #Highlight: Scale-standarize values . This is done here for visualization purposes, it is done afterwards separately for train, eval and test
     data_a = VegvisirUtils.minmax_scale(data_a,column_name ="confidence_score",suffix="_scaled")
     data_a = VegvisirUtils.minmax_scale(data_a,column_name="Rnk_EL",suffix="_scaled") #Likelihood rank
     data_b.fillna(0, inplace=True)
@@ -294,10 +296,122 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,update):
     fig.tight_layout()
     plt.savefig("{}/{}/Viruses_histograms".format(storage_folder,args.dataset_name), dpi=300)
     plt.clf()
-    data_info = process_data(data_a,args,storage_folder,script_dir)
+    data_info = process_data(data_a,args,storage_folder,script_dir,"Icore")
     return data_info
 
-def process_data(data,args,storage_folder,script_dir,plot_blosum=False):
+def viral_dataset3(dataset_name,script_dir,storage_folder,args,update):
+    """
+    ####################
+    #HEADER DESCRIPTIONS#
+    ####################
+    allele
+    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
+    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
+    Number of Subjects Responded
+    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
+    training
+    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
+    partition
+
+    return
+          :param pandas dataframe: Results pandas dataframe with the following structure
+          Icore:Interaction peptide core
+          confidence_score: Number of + / Number of tested
+          onfidence_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range
+          training: True assign data point to train , else assign to Test
+          partition: Indicates partition assignment within 5-fold cross validation
+          Rnk_EL: Average rank score per peptide by NetMHC ---> Normalized to 0-1
+    """
+    dataset_info_file = open("{}/{}/dataset_info.tsv".format(storage_folder,args.dataset_name), 'w')
+    data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
+    # Highlight: Filter the points with low subject count and only keep if all "negative"
+    nprefilter = data.shape[0]
+    data = data[(data["Assay_number_of_subjects_tested"] > 10)]  # & (data_a["Assay_number_of_subjects_responded"].apply(lambda x: x >= 1))
+    nfiltered = data.shape[0]
+    dataset_info_file.write("Filter 1: Icores with number of subjects lower than 10. Drops {} data points, remaining {} \n".format(nprefilter - nfiltered, nfiltered))
+    # max_number_subjects = data["Assay_number_of_subjects_tested"].max()
+    data["confidence_score"] = data["Assay_number_of_subjects_responded"] / data["Assay_number_of_subjects_tested"]
+    # Highlight: Scale-standarize values . This is done here for visualization purposes, it is done afterwards separately for train, eval and test
+    data = VegvisirUtils.minmax_scale(data, column_name="confidence_score", suffix="_scaled")
+    #Highlight: Grab only 9-mers
+    data = data[data["Icore"].apply(lambda x: len(x) == 9)]
+    #data = data[data["Icore_non_anchor"].apply(lambda x: len(x) == 7)]
+    nfiltered = data.shape[0]
+    #dataset_info_file.write("Filter 2: Icore_non_anchor whose length is different than 7. Drops {} data points, remaining {} \n".format(nprefilter-nfiltered,nfiltered))
+    dataset_info_file.write("Filter 2: Icore whose length is different than 9. Drops {} data points, remaining {} \n".format(nprefilter-nfiltered,nfiltered))
+    #Highlight: Filter the points with low subject count and only keep if all "negative"
+    nprefilter = data.shape[0]
+    data = data[(data["Assay_number_of_subjects_tested"] > 10)] #& (data_a["Assay_number_of_subjects_responded"].apply(lambda x: x >= 1))
+    nfiltered = data.shape[0]
+    dataset_info_file.write("Filter 3: Icores with number of subjects lower than 10. Drops {} data points, remaining {} \n".format(nprefilter-nfiltered,nfiltered))
+    #max_number_subjects = data["Assay_number_of_subjects_tested"].max()
+
+    #Highlight: Strict target reassignment
+    data.loc[data["confidence_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
+    #print(data_a.sort_values(by="confidence_score", ascending=True)[["confidence_score","target"]])
+    data.loc[data["confidence_score_scaled"] > 0.,"target_corrected"] = 1.
+    # print("------TARGET CORRECTED--------")
+    # print(data["target"].value_counts())
+    # print("------TARGET-----------")
+    # print(data["target"].value_counts())
+    # print("-------PARTITION--------")
+    # print(data["partition"].value_counts())
+    # print("-------TRAINING----------")
+    # print(data["training"].value_counts())
+    #Highlight: Filter data points with low confidence
+    # nprefilter = data.shape[0]
+    # data = data[data["confidence_score"].isin([0.,1.])]
+    # nfiltered = data.shape[0]
+    # dataset_info_file.write("Filter 4: Remove data points with low confidence score. Drops {} data points, remaining {} \n".format(nprefilter - nfiltered, nfiltered))
+
+    ndata = data.shape[0]
+    fig, ax = plt.subplots(2,2, figsize=(9, 10))
+    num_bins = 50
+    ############LABELS #############
+    freq, bins, patches = ax[0][0].hist(data["target"].to_numpy() , bins=2, density=True)
+    ax[0][0].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][0].set_title(r'Histogram of targets/labels')
+    ax[0][0].xaxis.set_ticks([0.25,0.75])
+    ax[0][0].set_xticklabels([0,1])
+    # Annotate the bars.
+    for bar in patches: #iterate over the bars
+        n_data_bin = (bar.get_height()*ndata)/2
+        ax[0][0].annotate(format(n_data_bin, '.2f'),
+                       (bar.get_x() + bar.get_width() / 2,
+                        bar.get_height()), ha='center', va='center',
+                       size=15, xytext=(0, 8),
+                       textcoords='offset points')
+    ############LABELS CORRECTED #############
+    freq, bins, patches = ax[0][1].hist(data["target_corrected"].to_numpy() , bins=2, density=True)
+    ax[0][1].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][1].set_title(r'Histogram of re-assigned targets/labels')
+    ax[0][1].xaxis.set_ticks([0.25,0.75])
+    ax[0][1].set_xticklabels([0,1])
+    # Annotate the bars.
+    for bar in patches: #iterate over the bars
+        n_data_bin = (bar.get_height()*ndata)/2
+        ax[0][1].annotate(format(n_data_bin, '.2f'),
+                       (bar.get_x() + bar.get_width() / 2,
+                        bar.get_height()), ha='center', va='center',
+                       size=15, xytext=(0, 8),
+                       textcoords='offset points')
+    #######CONFIDENCE SCORES
+    ax[1][0].hist(data["confidence_score_scaled"].to_numpy() , num_bins, density=True)
+    ax[1][0].set_xlabel('Minmax scaled confidence score (N_+ / Subjects)')
+    ax[1][0].set_title(r'Histogram of confidence scores')
+
+
+    fig.tight_layout()
+    plt.savefig("{}/{}/Viruses_histograms".format(storage_folder,args.dataset_name), dpi=300)
+    plt.clf()
+
+    data_info = process_data(data,args,storage_folder,script_dir,"Icore_non_anchor")
+
+    return data_info
+
+
+def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blosum=False,plot_umap=False):
     """
     :param pandas dataframe data: Contains Icore, confidence_score, confidence_score_scaled, training , partition and Rnk_EL
     :param args: Commmand line arguments
@@ -305,12 +419,14 @@ def process_data(data,args,storage_folder,script_dir,plot_blosum=False):
     """
 
 
-    epitopes = data[["Icore"]].values.tolist()
+    epitopes = data[[use_column]].values.tolist()
     epitopes = functools.reduce(operator.iconcat, epitopes, [])  # flatten list of lists
     max_len = len(max(epitopes, key=len))
     epitopes_lens = np.array(list(map(len, epitopes)))
     unique_lens = list(set(epitopes_lens))
-    corrected_aa_types = [args.aa_types + 1 if len(unique_lens) > 1 and (args.aa_types == 20 or args.aa_types == 24) else args.aa_types][0]
+    corrected_aa_types = len(set().union(*epitopes))
+    corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
+
     if len(unique_lens) > 1:
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types , zero_characters=["#"])
         #Pad the sequences (relevant when not all of them are 9-mers)
@@ -325,7 +441,6 @@ def process_data(data,args,storage_folder,script_dir,plot_blosum=False):
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, args.subs_matrix,
                                                                                    zero_characters=["#"],
                                                                                    include_zero_characters=False)
-
 
     # print(epitopes[0])
     # print(epitopes[1])
@@ -374,12 +489,22 @@ def process_data(data,args,storage_folder,script_dir,plot_blosum=False):
         VegvisirPlots.plot_heatmap(kmers_pid_similarity, "Kmers ({}) percent identity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_pid_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
         VegvisirPlots.plot_heatmap(kmers_cosine_similarity, "Kmers ({}) cosine similarity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_cosine_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
 
-    #TODO: Reattatch partition, identifier, label, confidence score
+
+    #Highlight: Reattatch partition, identifier, label, confidence score
     labels = data[["target_corrected"]].values.tolist()
-    identifiers = data.index.values.tolist() #TODO: reset index?
+    identifiers = data.index.values.tolist() #TODO: reset index in process data?
     partitions = data[["partition"]].values.tolist()
     training = data[["training"]].values.tolist()
     confidence_scores = data[["confidence_score"]].values.tolist()
+
+
+
+    if plot_umap:
+        VegvisirPlots.plot_umap1(percent_identity_mean,labels,storage_folder,args,"Percent Identity Mean","UMAP_percent_identity_mean")
+        VegvisirPlots.plot_umap1(cosine_similarity_mean, labels, storage_folder, args, "Cosine similarity Mean","UMAP_cosine_similarity_mean")
+        VegvisirPlots.plot_umap1(kmers_pid_similarity, labels, storage_folder, args, "Kmers Percent Identity Mean","UMAP_kmers_percent_identity")
+        VegvisirPlots.plot_umap1(kmers_cosine_similarity, labels, storage_folder, args, "Kmers Cosine similarity Mean","UMAP_kmers_cosine_similarity")
+
 
     identifiers_labels_array = np.zeros((n_data,1,max_len))
     identifiers_labels_array[:,0,0] = np.array(labels).squeeze(-1)
@@ -403,7 +528,6 @@ def process_data(data,args,storage_folder,script_dir,plot_blosum=False):
     data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:,None]], axis=1)
     data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:,None]], axis=1)
     data_array_blosum_encoding_mask = epitopes_mask.repeat(data_array_blosum_encoding.shape[1], axis=1).repeat(corrected_aa_types, axis=-1).reshape((n_data, data_array_int.shape[1], max_len,corrected_aa_types))
-
     #distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
     data_info = DatasetInfo(script_dir=script_dir,
                             storage_folder=storage_folder,
