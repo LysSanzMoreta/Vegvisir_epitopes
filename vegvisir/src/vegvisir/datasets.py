@@ -426,7 +426,6 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
     unique_lens = list(set(epitopes_lens))
     corrected_aa_types = len(set().union(*epitopes))
     corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
-
     if len(unique_lens) > 1:
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types , zero_characters=["#"])
         #Pad the sequences (relevant when not all of them are 9-mers)
@@ -436,7 +435,7 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
                                                                                    include_zero_characters=True)
 
     else:
-        aa_dict = VegvisirUtils.aminoacid_names_dict(args.aa_types)
+        aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types)
         epitopes = [list(seq) for seq in epitopes]
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, args.subs_matrix,
                                                                                    zero_characters=["#"],
@@ -452,22 +451,20 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
         epitopes_array = epitopes_array[:args.subset_data]
     epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
     epitopes_mask = epitopes_array_int.astype(bool)
-    #TODO: Norm or else of blos vectors---> UMAP, calculate hydrophobicity/aromaticity
-
     blosum_norm = np.linalg.norm(blosum_array[1:, 1:], axis=0)
     aa_list = [val for key, val in aa_dict.items() if val in list(blosum_array[:, 0])]
     blosum_norm_dict = dict(zip(aa_list,blosum_norm.tolist()))
     epitopes_array_blosum_norm = np.vectorize(blosum_norm_dict.get)(epitopes_array_int)
+    plot_blosum=True
     if plot_blosum:
         blosum_cosine = VegvisirUtils.cosine_similarity(blosum_array[1:, 1:], blosum_array[1:, 1:])
-        aa_dict = VegvisirUtils.aminoacid_names_dict(args.aa_types,zero_characters=["#"])
+        aa_dict = VegvisirUtils.aminoacid_names_dict(21,zero_characters=["#"])
         aa_list =[key for key,val in aa_dict.items() if val in list(blosum_array[:,0])]
         blosum_cosine_df = pd.DataFrame(blosum_cosine,columns=aa_list,index=aa_list)
         sns.heatmap(blosum_cosine_df.to_numpy(),
                     xticklabels=blosum_cosine_df.columns.values,
-                    yticklabels=blosum_cosine_df.columns.values,annot=True,annot_kws={"size": 4},fmt=".2f")
+                    yticklabels=blosum_cosine_df.columns.values,annot=True,annot_kws={"size": 8},fmt=".2f")
         plt.savefig('{}/{}/blosum_cosine.png'.format(storage_folder,args.dataset_name),dpi=600)
-
 
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
@@ -502,8 +499,6 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
     partitions = data[["partition"]].values.tolist()
     training = data[["training"]].values.tolist()
     confidence_scores = data[["confidence_score"]].values.tolist()
-
-
 
 
     if plot_umap:
