@@ -34,26 +34,31 @@ def train_loop(model,loss_func,optimizer, data_loader, args):
     predictions = []
     for batch_number, batch_dataset in enumerate(data_loader):
         batch_data_blosum = batch_dataset["batch_data_blosum"]
+        batch_data_onehot = batch_dataset["batch_data_onehot"]
         batch_mask = batch_dataset["batch_mask"]
         if args.use_cuda:
             batch_data_blosum = batch_data_blosum.cuda()
+            batch_data_onehot = batch_data_onehot.cuda()
             batch_mask = batch_mask.cuda()
         true_labels = batch_data_blosum[:,0,0,0]
         confidence_scores = batch_data_blosum[:,0,0,5]
         optimizer.zero_grad() #set gradients to zero
         #Forward pass
         model_outputs = model(batch_data_blosum,batch_mask)
-        _, predicted_labels = torch.max(model_outputs,dim= 1) #find the class with highest energy
+        _, predicted_labels = torch.max(model_outputs.class_out,dim= 1) #find the class with highest energy
         total += true_labels.size(0)
         correct += (predicted_labels == true_labels).sum().item()
         predictions.append(predicted_labels.detach().cpu().numpy())
-        loss = loss_func(confidence_scores,true_labels,model_outputs)
+        loss = loss_func(confidence_scores,true_labels,model_outputs,batch_data_onehot)
         #loss.requires_grad = True #not sure why it does not do this automatically for the nnl loss
         #Backward pass: backpropagate the error loss
         loss.backward()#retain_graph=True
+        if args.clip_gradients:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5, norm_type=2)
         optimizer.step()
         train_loss += loss.item()
-    #TODO: normalize loss?
+    #Normalize train loss
+    train_loss /= len(data_loader)
     predictions_arr = np.concatenate(predictions,axis=0)
     accuracy= 100 * correct // total
     return train_loss,accuracy,predictions_arr
@@ -71,20 +76,22 @@ def valid_loop(model,loss_func, data_loader, args):
     with torch.no_grad(): #do not update parameters with the evaluation data
         for batch_number, batch_dataset in enumerate(data_loader):
             batch_data_blosum = batch_dataset["batch_data_blosum"]
+            batch_data_onehot = batch_dataset["batch_data_onehot"]
             batch_mask = batch_dataset["batch_mask"]
             if args.use_cuda:
                 batch_data_blosum = batch_data_blosum.cuda() #TODO: Automatize for any kind of input (blosum encoding, integers, one-hot)
+                batch_data_onehot = batch_data_onehot.cuda()
                 batch_mask = batch_mask.cuda()
             true_labels = batch_data_blosum[:,0,0,0] #
             confidence_scores = batch_data_blosum[:, 0, 0, 5]
             model_outputs = model(batch_data_blosum,batch_mask)
-            _, predicted_labels = torch.max(model_outputs,dim= 1) #find the class with highest energy
+            _, predicted_labels = torch.max(model_outputs.class_out,dim= 1) #find the class with highest energy
             total += true_labels.size(0)
             correct += (predicted_labels == true_labels).sum().item()
             predictions.append(predicted_labels.cpu().numpy())
-            loss = loss_func(confidence_scores, true_labels, model_outputs) #NOTE: not backprogagate error since evaluating
+            loss = loss_func(confidence_scores, true_labels, model_outputs,batch_data_onehot) #NOTE: not backprogagate error since evaluating
             valid_loss += loss.item() #TODO: Multiply by the data size?
-    #TODO: normalize loss?
+    valid_loss /= len(data_loader)
     predictions_arr = np.concatenate(predictions,axis=0)
     accuracy= 100 * correct // total
     return valid_loss,accuracy,predictions_arr
@@ -96,16 +103,18 @@ def test_loop(data_loader,model,args):
     # since we're not training, we don't need to calculate the gradients for our outputs
     with torch.no_grad():
         for batch_number, batch_dataset in enumerate(data_loader):
-            batch_data = batch_dataset["batch_data_blosum"]
+            batch_data_blosum = batch_dataset["batch_data_blosum"]
+            batch_data_onehot = batch_dataset["batch_data_onehot"]
             batch_mask = batch_dataset["batch_mask"]
             if args.use_cuda:
-                batch_data = batch_data.cuda()
+                batch_data_blosum = batch_data_blosum.cuda()
+                batch_data_onehot = batch_data_onehot.cuda()
                 batch_mask = batch_mask.cuda()
-            true_labels = batch_data[:,0,0,0]
+            true_labels = batch_data_blosum[:,0,0,0]
             # calculate outputs by running images through the network
-            outputs = model(batch_data,batch_mask).detach()
+            model_outputs = model(batch_data_blosum,batch_mask).detach()
             # the class with the highest energy is what we choose as prediction
-            _, predicted_labels = torch.max(outputs, dim=1)
+            _, predicted_labels = torch.max(model_outputs.class_out, dim=1)
             total += true_labels.size(0)
             correct += (predicted_labels == true_labels).sum().item()
             predictions.append(predicted_labels.cpu().numpy())
@@ -130,8 +139,10 @@ def select_model(model_load,results_dir,fold):
         text_file.close()
         save_script(results_dir, "ModelFunction", "models")
         save_script(results_dir, "ModelUtilsFunction", "model_utils")
+    #Initialize the weights
+    with torch.no_grad():
+        vegvisir_model.apply(init_weights)
     return vegvisir_model
-
 def config_build(args,results_dir):
     """Select a default configuration dictionary. It can load a string dictionary from the command line (using json) or use the default parameters
     :param namedtuple args"""
@@ -154,31 +165,51 @@ def config_build(args,results_dir):
     json.dump(config, open('{}/params_dict.txt'.format(results_dir), 'w'), indent=2)
 
     return config
-
-
-def reset_weights(m):
-    if isinstance(m, nn.RNN) or isinstance(m, nn.Linear) or isinstance(m, nn.GRU):
-        m.reset_parameters()
+def init_weights(m):
+    """Xavier or Glorot parameter initialization is meant to be used with Tahn activation
+    kaiming or He parameter initialization is for ReLU activation
+    nn.Linear is initialized with kaiming_uniform by default
+    Notes:
+        -https://shiyan.medium.com/xavier-initialization-and-batch-normalization-my-understanding-b5b91268c25c
+    """
+    if isinstance(m, nn.Module) and hasattr(m, 'weight') and not isinstance(m,nn.BatchNorm1d):
+        nn.init.kaiming_normal_(m.weight,nonlinearity="relu")
+        if m.bias is not None:
+            nn.init.zeros_(m.bias)
+def clip_backprop(model, clip_value):
+    "Norm Clip the gradients of the model parameters to orient them towards the minimum"
+    handles = []
+    for p in model.parameters():
+        if p.requires_grad:
+            func = lambda grad: torch.clamp(grad,
+                                            -clip_value,
+                                            clip_value)
+            handle = p.register_hook(func)
+            handles.append(handle)
+    return handles
 def fold_auc(predictions_fold,labels,fold,results_dir,mode="Train"):
-    #TODO: Implement per peptide
-
+    if isinstance(labels,torch.Tensor):
+        labels = labels.numpy()
     # total_predictions = np.column_stack(predictions_fold)
     # model_predictions = stats.mode(total_predictions, axis=1) #mode_predictions.mode
-    auc_score = roc_auc_score(y_true=labels.numpy(), y_score=predictions_fold)
-    auk_score = VegvisirUtils.AUK(predictions_fold, labels.numpy()).calculate_auk()
-    fpr, tpr, threshold = roc_curve(y_true=labels.numpy(), y_score=predictions_fold)
+    auc_score = roc_auc_score(y_true=labels, y_score=predictions_fold)
+    auk_score = VegvisirUtils.AUK(predictions_fold, labels).calculate_auk()
+    fpr, tpr, threshold = roc_curve(y_true=labels, y_score=predictions_fold)
     VegvisirPlots.plot_ROC_curve(fpr,tpr,auc_score,auk_score,"{}/{}".format(results_dir,mode),fold)
     print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score))
 def dataset_proportions(data,results_dir,type="TrainEval"):
     """Calculates distribution of data points based on their labeling"""
-    #TODO: make it work (the indexing) both for blosum encoding and else
-    positives = torch.sum(data[:,0,0,0])
+    if isinstance(data,np.ndarray):
+        data = torch.from_numpy(data)
+    if data.ndim == 4:
+        positives = torch.sum(data[:,0,0,0])
+    else:
+        positives = torch.sum(data[:,0,0])
     positives_proportion = (positives*100)/torch.tensor([data.shape[0]])
     negatives = data.shape[0] - positives
     negatives_proportion = 100-positives_proportion
     print("{} dataset: \n \t Total number of data points: {} \n \t Number positives : {}; \n \t Proportion positives : {} ; \n \t Number negatives : {} ; \n \t Proportion negatives : {}".format(type,data.shape[0],positives,positives_proportion.item(),negatives,negatives_proportion.item()))
     return (positives,positives_proportion),(negatives,negatives_proportion)
-
 def trainevaltest_split(data,args,results_dir,method="predefined_partitions"):
     """Perform train-test split"""
     if method == "predefined_partitions":
@@ -199,8 +230,6 @@ def trainevaltest_split(data,args,results_dir,method="predefined_partitions"):
         return traineval_data,test_data,kfolds
     else:
         raise ValueError("train test split method not available")
-
-
 def kfold_crossvalidation(dataset_info,additional_info,args):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
@@ -337,6 +366,11 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                     train_predictions_fold = train_predictions
                     valid_predictions_fold = valid_predictions
                     VegvisirPlots.plot_gradients(gradient_norms, results_dir, fold)
+                    vegvisir_model.save_checkpoint("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer)
+                    # params = vegvisir_model.capture_parameters([name for name,val in vegvisir_model.named_parameters()])
+                    # gradients = vegvisir_model.capture_gradients([name for name,val in vegvisir_model.named_parameters()])
+                    # activations = vegvisir_model.attach_hooks([name for name,val in vegvisir_model.named_parameters() if name.starstwith("a")])
+
             torch.cuda.empty_cache()
             epoch += 1 #TODO: early stop?
         fold_auc(valid_predictions_fold,fold_valid_data_blosum[:,0,0,0],fold,results_dir,mode="Valid")

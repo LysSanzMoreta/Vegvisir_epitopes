@@ -122,3 +122,106 @@ def plot_ROC_curve(fpr,tpr,roc_auc,auk_score,results_dir,fold):
     plt.xlabel('False Positive Rate',fontsize=20)
     plt.savefig("{}/ROC_curve_fold{}".format(results_dir,fold))
     plt.clf()
+
+def plot_layers(model,layer_name,results_dir): #TODO: Check
+    # Gets the layer object from the model
+    for name in layer_name.split('.'):
+        layer = getattr(model, name) # Gets the layer object from the model
+
+    # We are only looking at filters for 2D convolutions
+    # Takes the weight information
+    weights = layer.weight.data.cpu().numpy()
+    # The weights have channels_out (filter), channels_in, H, W shape
+    n_filters, n_channels, _, _ = weights.shape
+
+    # Builds a figure
+    size = (2 * n_channels + 2, 2 * n_filters)
+    fig, axes = plt.subplots(n_filters, n_channels, figsize=size)
+    axes = np.atleast_2d(axes).reshape(n_filters, n_channels)
+    # For each channel_out (filter)
+    for i in range(n_filters):
+        axs= axes[i,:]
+        x= weights[i]
+        yhat = None
+        y= None
+        title = 'Channel' if (i == 0) else None
+        layer_name = 'Filter #{}'.format(i),
+        # The number of images is the number of subplots in a row
+        n_images = len(axs)
+        # Gets max and min values for scaling the grayscale
+        minv, maxv = np.min(x[:n_images]), np.max(x[:n_images])
+        # For each image
+        for j, image in enumerate(x[:n_images]):
+            ax = axs[j]
+            # Sets title, labels, and removes ticks
+            if title is not None:
+                ax.set_title('{} #{}'.format(title, j), fontsize=12)
+            ax.set_ylabel(
+                '{}\n{}x{}'.format(layer_name, *np.atleast_2d(image).shape),
+                rotation=0, labelpad=40
+            )
+            xlabel1 = '' if y is None else '\nLabel: {}'.format(y[j])
+            xlabel2 = '' if yhat is None else '\nPredicted: {}'.format(yhat[j])
+            xlabel = '{}{}'.format(xlabel1, xlabel2)
+            if len(xlabel):
+                ax.set_xlabel(xlabel, fontsize=12)
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+            # Plots weight as an image
+            ax.imshow(
+                np.atleast_2d(image.squeeze()),
+                cmap='gray',
+                vmin=minv,
+                vmax=maxv
+            )
+
+
+    for ax in axes.flat:
+        ax.label_outer()
+
+    fig.tight_layout()
+
+    plt.savefig("{}/layers.png".format(results_dir),dpi=200)
+
+
+    return fig
+
+
+def plot_model_parameters(train_loader, n_layers=5, hidden_units=100, activation_fn=None, use_bn=False, before=True,
+                  model=None):
+    #(train_loader, n_layers=5, hidden_units=100, activation_fn=None, use_bn=False, before=True,model=None)
+    import sys
+    sys.path.append('..')
+    from stepbystep.v3 import StepByStep
+
+    if model is None:
+        n_features = train_loader.dataset.tensors[0].shape[1]
+        if activation_fn is None:
+            activation_fn = nn.ReLU
+        model = build_model(n_layers, n_features, hidden_units, activation_fn, use_bn, before)
+
+    loss_fn = nn.BCEWithLogitsLoss()
+    optimizer = optim.SGD(model.parameters(), lr=1e-2)
+
+    n_layers = len(list(filter(lambda c: c[0][0] == 'h', model.named_children())))
+
+    sbs = StepByStep(model, loss_fn, optimizer)
+    sbs.set_loaders(train_loader)
+    sbs.capture_parameters([f'h{i}' for i in range(1, n_layers + 1)])
+    sbs.capture_gradients([f'h{i}' for i in range(1, n_layers + 1)])
+    sbs.attach_hooks([f'a{i}' for i in range(1, n_layers + 1)])
+    sbs.train(1)
+
+    names = [f'h{i}' for i in range(1, n_layers + 1)]
+
+    parameters = [[np.array(sbs._parameters[f'h{i}']['weight']).reshape(-1, ) for i in range(1, n_layers + 1)]]
+    parms_data = LayerViolinsData(names=names, values=parameters)
+
+    gradients = [[np.array(sbs._gradients[f'h{i}']['weight']).reshape(-1, ) for i in range(1, n_layers + 1)]]
+    gradients_data = LayerViolinsData(names=names, values=gradients)
+
+    activations = [[np.array(sbs.visualization[f'a{i}']).reshape(-1, ) for i in range(1, n_layers + 1)]]
+    activations_data = LayerViolinsData(names=names, values=activations)
+
+    return parms_data, gradients_data, activations_data

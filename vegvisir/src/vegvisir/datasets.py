@@ -21,7 +21,7 @@ import vegvisir.utils as VegvisirUtils
 import vegvisir.plots as VegvisirPlots
 plt.style.use('ggplot')
 DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_array_raw","data_array_int","data_array_int_mask",
-                                        "data_array_blosum_encoding","data_array_blosum_encoding_mask","data_array_onehot_encoding","blosum",
+                                        "data_array_blosum_encoding","data_array_blosum_encoding_mask","data_array_onehot_encoding","data_array_blosum_norm","blosum",
                                         "n_data","max_len","corrected_aa_types","input_dim","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity"])
 def available_datasets():
     """Prints the available datasets"""
@@ -406,7 +406,7 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,update):
     plt.savefig("{}/{}/Viruses_histograms".format(storage_folder,args.dataset_name), dpi=300)
     plt.clf()
 
-    data_info = process_data(data,args,storage_folder,script_dir,"Icore_non_anchor")
+    data_info = process_data(data,args,storage_folder,script_dir,"Icore")
 
     return data_info
 
@@ -452,7 +452,12 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
         epitopes_array = epitopes_array[:args.subset_data]
     epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
     epitopes_mask = epitopes_array_int.astype(bool)
+    #TODO: Norm or else of blos vectors---> UMAP, calculate hydrophobicity/aromaticity
 
+    blosum_norm = np.linalg.norm(blosum_array[1:, 1:], axis=0)
+    aa_list = [val for key, val in aa_dict.items() if val in list(blosum_array[:, 0])]
+    blosum_norm_dict = dict(zip(aa_list,blosum_norm.tolist()))
+    epitopes_array_blosum_norm = np.vectorize(blosum_norm_dict.get)(epitopes_array_int)
     if plot_blosum:
         blosum_cosine = VegvisirUtils.cosine_similarity(blosum_array[1:, 1:], blosum_array[1:, 1:])
         aa_dict = VegvisirUtils.aminoacid_names_dict(args.aa_types,zero_characters=["#"])
@@ -462,6 +467,7 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
                     xticklabels=blosum_cosine_df.columns.values,
                     yticklabels=blosum_cosine_df.columns.values,annot=True,annot_kws={"size": 4},fmt=".2f")
         plt.savefig('{}/{}/blosum_cosine.png'.format(storage_folder,args.dataset_name),dpi=600)
+
 
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
@@ -499,11 +505,13 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
 
 
 
+
     if plot_umap:
-        VegvisirPlots.plot_umap1(percent_identity_mean,labels,storage_folder,args,"Percent Identity Mean","UMAP_percent_identity_mean")
-        VegvisirPlots.plot_umap1(cosine_similarity_mean, labels, storage_folder, args, "Cosine similarity Mean","UMAP_cosine_similarity_mean")
-        VegvisirPlots.plot_umap1(kmers_pid_similarity, labels, storage_folder, args, "Kmers Percent Identity Mean","UMAP_kmers_percent_identity")
-        VegvisirPlots.plot_umap1(kmers_cosine_similarity, labels, storage_folder, args, "Kmers Cosine similarity Mean","UMAP_kmers_cosine_similarity")
+        VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, labels, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}".format(use_column))
+        VegvisirPlots.plot_umap1(percent_identity_mean,labels,storage_folder,args,"Percent Identity Mean","UMAP_percent_identity_mean_{}".format(use_column))
+        VegvisirPlots.plot_umap1(cosine_similarity_mean, labels, storage_folder, args, "Cosine similarity Mean","UMAP_cosine_similarity_mean_{}".format(use_column))
+        VegvisirPlots.plot_umap1(kmers_pid_similarity, labels, storage_folder, args, "Kmers Percent Identity Mean","UMAP_kmers_percent_identity_{}".format(use_column))
+        VegvisirPlots.plot_umap1(kmers_cosine_similarity, labels, storage_folder, args, "Kmers Cosine similarity Mean","UMAP_kmers_cosine_similarity_{}".format(use_column))
 
 
     identifiers_labels_array = np.zeros((n_data,1,max_len))
@@ -516,6 +524,7 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
 
     data_array_raw = np.concatenate([identifiers_labels_array, epitopes_array[:,None]], axis=1)
     data_array_int = np.concatenate([identifiers_labels_array, epitopes_array_int[:,None]], axis=1)
+    data_array_blosum_norm = np.concatenate([identifiers_labels_array, epitopes_array_blosum_norm[:,None]], axis=1)
 
     identifiers_labels_array_blosum = np.zeros((n_data,1, max_len, epitopes_array_blosum.shape[2]))
     identifiers_labels_array_blosum[:,0,0,0] = np.array(labels).squeeze(-1)
@@ -537,6 +546,7 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
                             data_array_blosum_encoding=torch.from_numpy(data_array_blosum_encoding),
                             data_array_blosum_encoding_mask=torch.from_numpy(data_array_blosum_encoding_mask),
                             data_array_onehot_encoding=torch.from_numpy(data_array_onehot_encoding),
+                            data_array_blosum_norm=data_array_blosum_norm,
                             blosum=blosum_array,
                             n_data=n_data,
                             max_len=max_len,

@@ -15,7 +15,6 @@ import time,datetime
 import pandas as pd
 import torch
 
-
 def str2bool(v):
     """Converts a string into a boolean, useful for boolean arguments
     :param str v"""
@@ -27,6 +26,7 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+
 def str2None(v):
     """Converts a string into None
     :param str v"""
@@ -36,6 +36,7 @@ def str2None(v):
     else:
         v = ast.literal_eval(v)
         return v
+
 def folders(folder_name,basepath):
     """ Creates a folder at the indicated location. It rewrites folders with the same name
     :param str folder_name: name of the folder
@@ -56,6 +57,7 @@ def folders(folder_name,basepath):
         print("removing subdirectories") #if this is reached if because you are running the folders function twice with the same folder name
         shutil.rmtree(newpath)  # removes all the subdirectories!
         os.makedirs(newpath,0o777)
+
 def aminoacid_names_dict(aa_types,zero_characters = []):
     """ Returns an aminoacid associated to a integer value
     All of these values are mapped to 0:
@@ -65,8 +67,10 @@ def aminoacid_names_dict(aa_types,zero_characters = []):
     :param int aa_types: amino acid probabilities, this number correlates to the number of different aa types in the input alignment
     :param list zero_characters: character(s) to be set to 0
     """
-    if aa_types == 20 or aa_types == 21:
+    if aa_types == 20 :
         aminoacid_names = {"R":0,"H":1,"K":2,"D":3,"E":4,"S":5,"T":6,"N":7,"Q":8,"C":9,"G":10,"P":11,"A":12,"V":13,"I":14,"L":15,"M":16,"F":17,"Y":18,"W":19}
+    elif aa_types == 21:
+        aminoacid_names = {"R":1,"H":2,"K":3,"D":4,"E":5,"S":6,"T":7,"N":8,"Q":9,"C":10,"G":11,"P":12,"A":13,"V":14,"I":15,"L":16,"M":17,"F":18,"Y":19,"W":20}
     else :
         aminoacid_names = {"R":1,"H":2,"K":3,"D":4,"E":5,"S":6,"T":7,"N":8,"Q":9,"C":10,"G":11,"P":12,"A":13,"V":14,"I":15,"L":16,"M":17,"F":18,"Y":19,"W":20,"B":21,"Z":22,"X":23}
     if zero_characters:
@@ -238,7 +242,6 @@ class AUK:
             curve.insert(0, 0)
         return curve  # Add zero to appropriate position in list
 
-
 def cosine_similarity(a,b,correlation_matrix=False):
     """Calculates the cosine similarity between matrices of k-mers.
     :param numpy array a: (max_len,aa_types) or (num_seq,max_len, aa_types)
@@ -320,6 +323,7 @@ def view1D(a): # a is array #TODO: Remove or investigate, is supposed to speed t
     a = np.ascontiguousarray(a)
     void_dt = np.dtype((np.void, a.dtype.itemsize * a.shape[1]))
     return a.view(void_dt).ravel()
+
 def calculate_similarity_matrix_slow(array, max_len, array_mask, batch_size=200, ksize=3):
     """Batched method to calculate the cosine similarity and percent identity/pairwise distance between the blosum encoded sequences.
     :param numpy array: Integer representation [n,max_len] or Blosum encoded [n,max_len,aa_types]
@@ -641,7 +645,6 @@ def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksiz
     return np.ma.getdata(percent_identity_mean), np.ma.getdata(cosine_similarity_mean), np.ma.getdata(
         kmers_pid_similarity), np.ma.getdata(kmers_cosine_similarity)
 
-
 def minmax_scale(array,suffix=None,column_name=None,low=0.,high=1.):
     """Following https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.minmax_scale.html#sklearn.preprocessing.minmax_scale
     WARNING USE SEPARATELY FOR TRAIN AND TEST DATASETS, OTHERWISE INFORMATION FROM THE TEST GETS TRANSFERRED TO THE TRAIN
@@ -704,3 +707,7 @@ def euclidean_2d_norm(A,B,squared=True):
         return distance.clip(min=0) #to avoid nan/negative values, set them to 0
     else:
         return distance.clip(min=0)
+
+
+
+

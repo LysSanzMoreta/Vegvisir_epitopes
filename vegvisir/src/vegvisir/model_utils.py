@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+import math
 def glorot_init(input_dim, output_dim):
     init_range = torch.sqrt(torch.tensor(6/(input_dim + output_dim)))
     initial = torch.rand(input_dim, output_dim)*2*init_range - init_range
@@ -123,8 +124,6 @@ class CNN_layers(nn.Module):
         if mask is not None:
             output = output.masked_fill(mask == 0, 1e10)
         return output
-
-
 class LetNET5(nn.Module):
     """Adaptation of LetNET5.Following:
          - https://towardsdatascience.com/implementing-yann-lecuns-lenet-5-in-pytorch-5e05a0911320
@@ -175,9 +174,6 @@ class LetNET5(nn.Module):
         logits = self.classifier(x)
         probs = self.softmax(logits) #replaces Euclidean RBF
         return logits, probs
-
-
-
 class RNN_layers(nn.Module):
     def __init__(self,input_dim,max_len,gru_hidden_dim,num_classes,device,loss_type):
         super(RNN_layers, self).__init__()
@@ -238,8 +234,6 @@ class RNN_layers(nn.Module):
             output = self.sigmoid(output)
 
         return output
-
-
 class RBF(nn.Module):
     """
     Funtion from : https://github.com/JeremyLinux/PyTorch-Radial-Basis-Function-Layer
@@ -344,3 +338,72 @@ class RBF(nn.Module):
         c = self.centres.unsqueeze(0).expand(size) #optimizable parameter
         distances = (x - c).pow(2).sum(-1).pow(0.5) / torch.exp(self.log_sigmas).unsqueeze(0)
         return self.basis_func(distances)
+class AutoEncoder(nn.Module):
+    def __init__(self,input_dim,max_len,embedding_dim,num_classes,device,loss_type):
+        super(AutoEncoder,self).__init__()
+        self.input_dim = input_dim
+        self.max_len = max_len
+        self.embedding_dim = embedding_dim
+        self.num_classes = num_classes
+        self.device = device
+        self.loss_type = loss_type
+        self.k_size = 3
+        self.padding_0 = int((self.k_size - 1) / 2)
+        self.padding_1 = 0
+        self.dilation = 1
+        self.stride = 1
+        self.encoder = nn.Sequential(nn.Conv1d(in_channels=self.input_dim, #highlight: the input has shape [N,feats-size,max-len]
+                               out_channels=self.embedding_dim,
+                               kernel_size=self.k_size,
+                               stride=self.stride,
+                               dilation=self.dilation,
+                               padding=self.padding_0),
+                            nn.LeakyReLU(), #PReLU
+                            nn.BatchNorm1d(self.embedding_dim),
+                            nn.AvgPool1d(kernel_size=self.k_size, stride=1, padding=int((self.k_size) / 2)),
+                            nn.Conv1d(in_channels=self.embedding_dim,# highlight: the input has shape [N,feats-size,max-len]
+                                      out_channels=int(self.embedding_dim / 2),
+                                      kernel_size=self.k_size,
+                                      stride=self.stride,
+                                      dilation=self.dilation,
+                                      padding=self.padding_0),
+                                      #padding=int((self.k_size - 1) / 2)),
+                            nn.LeakyReLU(),
+                            nn.BatchNorm1d(int(self.embedding_dim / 2)),
+                            nn.AvgPool1d(kernel_size=self.k_size, stride=1,padding=int((self.k_size) / 2))
+                            )
+
+        """https://towardsdatascience.com/what-are-transposed-convolutions-2d43ac1a0771
+        https://medium.com/@santi.pdp/how-pytorch-transposed-convs1d-work-a7adac63c4a5"""
+        #self.padding = math.ceil(((self.max_len - 1) * self.stride + self.dilation * (self.k_size - 1) + 1 - self.k_size * 2)/2)
+        #self.padding = math.ceil((self.stride * (self.max_len/2) - self.max_len + self.dilation * (self.k_size - 1)-1)/2)
+        self.decoder = nn.Sequential(nn.ConvTranspose1d(in_channels = int(self.embedding_dim/2),
+                                               out_channels=self.embedding_dim,
+                                               kernel_size = self.k_size,
+                                               stride =1,
+                                               padding=1,#only works because stride = 1, i have not calculated a general formula
+                                               output_padding=0),
+                            nn.LeakyReLU(),
+                            nn.BatchNorm1d(self.embedding_dim), #compensates the issues with ReLU handling negative values
+                            nn.ConvTranspose1d(in_channels = self.embedding_dim,
+                                               out_channels=self.input_dim,
+                                               kernel_size = self.k_size,
+                                               stride =1,padding=1,output_padding=0),
+                            nn.LeakyReLU(),
+                            nn.BatchNorm1d(self.input_dim),
+                            nn.LogSoftmax(dim=-1)
+                            )
+
+
+        classifier_input_dim = int(self.embedding_dim / 2)*self.max_len
+        self.classifier = nn.Sequential(nn.Linear(classifier_input_dim,int(classifier_input_dim/4)),
+                                   nn.LeakyReLU(),
+                                   nn.Linear(int(classifier_input_dim/4),self.num_classes),
+                                   )
+
+    def forward(self,input):
+        enc_out = self.encoder(input)
+        reconstructed_sequences = self.decoder(enc_out)
+        class_output = self.classifier(enc_out.flatten(1))
+
+        return reconstructed_sequences.permute(0,2,1),class_output
