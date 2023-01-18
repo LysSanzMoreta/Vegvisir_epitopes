@@ -455,8 +455,8 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
     aa_list = [val for key, val in aa_dict.items() if val in list(blosum_array[:, 0])]
     blosum_norm_dict = dict(zip(aa_list,blosum_norm.tolist()))
     epitopes_array_blosum_norm = np.vectorize(blosum_norm_dict.get)(epitopes_array_int)
-    plot_blosum=True
     if plot_blosum:
+        plt.subplots(figsize=(10,10))
         blosum_cosine = VegvisirUtils.cosine_similarity(blosum_array[1:, 1:], blosum_array[1:, 1:])
         aa_dict = VegvisirUtils.aminoacid_names_dict(21,zero_characters=["#"])
         aa_list =[key for key,val in aa_dict.items() if val in list(blosum_array[:,0])]
@@ -464,8 +464,9 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
         sns.heatmap(blosum_cosine_df.to_numpy(),
                     xticklabels=blosum_cosine_df.columns.values,
                     yticklabels=blosum_cosine_df.columns.values,annot=True,annot_kws={"size": 8},fmt=".2f")
+        plt.title("Amino acids blosum vector cosine similarity",fontsize=10)
         plt.savefig('{}/{}/blosum_cosine.png'.format(storage_folder,args.dataset_name),dpi=600)
-
+        plt.clf()
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
 
@@ -500,8 +501,10 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
     training = data[["training"]].values.tolist()
     confidence_scores = data[["confidence_score"]].values.tolist()
 
-
+    VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, confidence_scores, storage_folder, args, "Blosum Norm",
+                             "UMAP_blosum_norm_{}_confidence_score".format(use_column))
     if plot_umap:
+        VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, confidence_scores, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}_confidence_score".format(use_column))
         VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, labels, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}".format(use_column))
         VegvisirPlots.plot_umap1(percent_identity_mean,labels,storage_folder,args,"Percent Identity Mean","UMAP_percent_identity_mean_{}".format(use_column))
         VegvisirPlots.plot_umap1(cosine_similarity_mean, labels, storage_folder, args, "Cosine similarity Mean","UMAP_cosine_similarity_mean_{}".format(use_column))

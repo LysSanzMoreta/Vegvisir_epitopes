@@ -6,6 +6,7 @@ Vegvisir :
 """
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import  matplotlib
 import seaborn as sns
 import numpy as np
 import pandas as pd
@@ -19,16 +20,27 @@ def plot_heatmap(array, title,file_name):
     plt.clf()
 
 def plot_umap1(array,labels,storage_folder,args,title_name,file_name):
+    from matplotlib.colors import ListedColormap
     print("Plotting UMAP ---")
-    labels = np.array(labels).squeeze(-1)
-    colors_dict = {0:"red",1:"green"}
-    color_labels = np.vectorize(colors_dict.get)(labels)
+    unique = np.unique(labels)
+    if len(unique) == 2:
+        labels = np.array(labels).squeeze(-1)
+        colors_dict = {0:"red",1:"green"}
+        color_labels = np.vectorize(colors_dict.get)(labels)
+    else:
+        colormap = matplotlib.cm.get_cmap('plasma', len(unique))
+        colors_dict = dict(zip(unique,colormap.colors))
+        color_labels = np.vectorize(colors_dict.get, signature='()->(n)')(labels)
+
     reducer = umap.UMAP()
     v_pr = reducer.fit_transform(array)
-    fig = plt.figure(figsize=(18, 18))
-    plt.scatter(v_pr[:, 0], v_pr[:, 1],c = color_labels ,alpha=0.7, s=30)
-    patches = [mpatches.Patch(color=color, label='Class {}'.format(label)) for label,color in colors_dict.items() ]
-    fig.legend(handles=patches, prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5))
+    fig,ax = plt.subplots(figsize=(18, 18))
+    plt.scatter(v_pr[:, 0], v_pr[:, 1],c = color_labels ,alpha=0.7, s=50)
+    if len(unique) == 2:
+        patches = [mpatches.Patch(color=color, label='Class {}'.format(label)) for label,color in colors_dict.items() ]
+        fig.legend(handles=patches, prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5))
+    else:
+        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap),ax=ax) #cax= fig.add_axes([0.9, 0.5, 0.01, 0.09])
     plt.title("UMAP dimensionality reduction of {}".format(title_name),fontsize=20)
     plt.savefig("{}/{}/similarities/{}.png".format(storage_folder,args.dataset_name,file_name))
     plt.clf()
