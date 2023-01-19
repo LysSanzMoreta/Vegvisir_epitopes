@@ -26,14 +26,17 @@ def train_xgboost(dataset_info,additional_info,args):
 
     data_blosum_norm = dataset_info.data_array_blosum_norm
     results_dir = additional_info.results_dir
-    traineval_data_blosum,test_data_blosum,kfolds = trainevaltest_split(data_blosum_norm,args,results_dir,method="predefined_partitions")
+    traineval_data_blosum,test_data_blosum,kfolds = trainevaltest_split(data_blosum_norm,args,results_dir,method="random_stratified")
 
     # create model instance
-    bst = XGBClassifier(n_estimators=200, max_depth=10, learning_rate=0.01, objective='binary:logistic')
+    bst = XGBClassifier(n_estimators=1500, max_depth=8, learning_rate=0.01, objective='binary:logistic',tree_method="auto")
     # fit model
     bst.fit(traineval_data_blosum[:,1:].squeeze(1), traineval_data_blosum[:,0,0])
     # make predictions
-    preds = bst.predict(test_data_blosum[:,1:].squeeze(1))
+    preds_train = bst.predict(traineval_data_blosum[:,1:].squeeze(1))
+    preds_test = bst.predict(test_data_blosum[:,1:].squeeze(1))
 
+    #Cross validation: https://xgboost.readthedocs.io/en/stable/python/examples/cross_validation.html
 
-    fold_auc(preds,test_data_blosum[:,0,0],0,results_dir,mode="Test")
+    fold_auc(preds_train,traineval_data_blosum[:,0,0],0,results_dir,mode="Train")
+    fold_auc(preds_test,test_data_blosum[:,0,0],0,results_dir,mode="Test")

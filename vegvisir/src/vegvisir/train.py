@@ -197,6 +197,8 @@ def fold_auc(predictions_fold,labels,fold,results_dir,mode="Train"):
     fpr, tpr, threshold = roc_curve(y_true=labels, y_score=predictions_fold)
     VegvisirPlots.plot_ROC_curve(fpr,tpr,auc_score,auk_score,"{}/{}".format(results_dir,mode),fold)
     print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score))
+    print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score),file=open("{}/AUC_out.txt".format(results_dir),"a"))
+
 def dataset_proportions(data,results_dir,type="TrainEval"):
     """Calculates distribution of data points based on their labeling"""
     if isinstance(data,np.ndarray):

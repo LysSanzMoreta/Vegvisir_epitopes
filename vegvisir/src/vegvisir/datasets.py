@@ -15,7 +15,8 @@ from collections import defaultdict,namedtuple
 import seaborn as sns
 import dataframe_image as dfi
 import torch
-import umap
+from sklearn.cluster import DBSCAN
+import matplotlib.patches as mpatches
 import vegvisir.nnalign as VegvisirNNalign
 import vegvisir.utils as VegvisirUtils
 import vegvisir.plots as VegvisirPlots
@@ -314,98 +315,203 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,update):
     partition
 
     return
-          :param pandas dataframe: Results pandas dataframe with the following structure
-          Icore:Interaction peptide core
-          confidence_score: Number of + / Number of tested
-          onfidence_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range
-          training: True assign data point to train , else assign to Test
-          partition: Indicates partition assignment within 5-fold cross validation
-          Rnk_EL: Average rank score per peptide by NetMHC ---> Normalized to 0-1
-    """
-    dataset_info_file = open("{}/{}/dataset_info.tsv".format(storage_folder,args.dataset_name), 'w')
+          :param pandas dataframe: Results pandas dataframe with the following structure:
+                  Icore:Interaction peptide core
+                  confidence_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  confidence_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  training: True assign data point to train , else assign to Test (given)
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  target: Pre-assigned target(given)
+                  target_corrected: Corrected target based on the confidence score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+            """
+    dataset_info_file = open("{}/{}/dataset_info.txt".format(storage_folder,args.dataset_name), 'w')
     data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    filters_dict = {"filter_kmers":[True,9,"Icore"],
+                    "filter_ntested":[True,10],
+                    "filter_lowconfidence":[False],
+                    "corrected_confidence_score":[False,10]}
     data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
-    # Highlight: Filter the points with low subject count and only keep if all "negative"
-    nprefilter = data.shape[0]
-    data = data[(data["Assay_number_of_subjects_tested"] > 10)]  # & (data_a["Assay_number_of_subjects_responded"].apply(lambda x: x >= 1))
-    nfiltered = data.shape[0]
-    dataset_info_file.write("Filter 1: Icores with number of subjects lower than 10. Drops {} data points, remaining {} \n".format(nprefilter - nfiltered, nfiltered))
-    # max_number_subjects = data["Assay_number_of_subjects_tested"].max()
+    if filters_dict["filter_ntested"][0]:
+        # Highlight: Filter the points with low subject count and only keep if all "negative"
+        threshold = filters_dict["filter_ntested"][1]
+        nprefilter = data.shape[0]
+        data = data[(data["Assay_number_of_subjects_tested"] > threshold)]
+        nfiltered = data.shape[0]
+        dataset_info_file.write("Filter 1: Icores with number of subjects lower than {}. Drops {} data points, remaining {} \n".format(threshold,nprefilter - nfiltered, nfiltered))
+
+
     data["confidence_score"] = data["Assay_number_of_subjects_responded"] / data["Assay_number_of_subjects_tested"]
+    data = data.fillna({"confidence_score":0})
+
+    if filters_dict["corrected_confidence_score"][0]:
+        treshold = filters_dict["corrected_confidence_score"][1]
+        data.loc[(data["Assay_number_of_subjects_tested"] < treshold) | (data["Assay_number_of_subjects_responded"] == 0), "confidence_score"] = 0.01
+
     # Highlight: Scale-standarize values . This is done here for visualization purposes, it is done afterwards separately for train, eval and test
     data = VegvisirUtils.minmax_scale(data, column_name="confidence_score", suffix="_scaled")
-    #Highlight: Grab only 9-mers
-    data = data[data["Icore"].apply(lambda x: len(x) == 9)]
-    #data = data[data["Icore_non_anchor"].apply(lambda x: len(x) == 7)]
-    nfiltered = data.shape[0]
-    #dataset_info_file.write("Filter 2: Icore_non_anchor whose length is different than 7. Drops {} data points, remaining {} \n".format(nprefilter-nfiltered,nfiltered))
-    dataset_info_file.write("Filter 2: Icore whose length is different than 9. Drops {} data points, remaining {} \n".format(nprefilter-nfiltered,nfiltered))
-    #Highlight: Filter the points with low subject count and only keep if all "negative"
-    nprefilter = data.shape[0]
-    data = data[(data["Assay_number_of_subjects_tested"] > 10)] #& (data_a["Assay_number_of_subjects_responded"].apply(lambda x: x >= 1))
-    nfiltered = data.shape[0]
-    dataset_info_file.write("Filter 3: Icores with number of subjects lower than 10. Drops {} data points, remaining {} \n".format(nprefilter-nfiltered,nfiltered))
-    #max_number_subjects = data["Assay_number_of_subjects_tested"].max()
+
+    if filters_dict["filter_kmers"][0]:
+        #Highlight: Grab only k-mers
+        use_column = filters_dict["filter_kmers"][2]
+        kmer_size = filters_dict["filter_kmers"][1]
+        nprefilter = data.shape[0]
+        data = data[data[use_column].apply(lambda x: len(x) == kmer_size)]
+        nfiltered = data.shape[0]
+        dataset_info_file.write("Filter 2: {} whose length is different than 9. Drops {} data points, remaining {} \n".format(use_column,kmer_size,nprefilter-nfiltered,nfiltered))
 
     #Highlight: Strict target reassignment
     data.loc[data["confidence_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
     #print(data_a.sort_values(by="confidence_score", ascending=True)[["confidence_score","target"]])
     data.loc[data["confidence_score_scaled"] > 0.,"target_corrected"] = 1.
-    # print("------TARGET CORRECTED--------")
-    # print(data["target"].value_counts())
-    # print("------TARGET-----------")
-    # print(data["target"].value_counts())
-    # print("-------PARTITION--------")
-    # print(data["partition"].value_counts())
-    # print("-------TRAINING----------")
-    # print(data["training"].value_counts())
-    #Highlight: Filter data points with low confidence
-    # nprefilter = data.shape[0]
-    # data = data[data["confidence_score"].isin([0.,1.])]
-    # nfiltered = data.shape[0]
-    # dataset_info_file.write("Filter 4: Remove data points with low confidence score. Drops {} data points, remaining {} \n".format(nprefilter - nfiltered, nfiltered))
+
+    #Highlight: Filter data points with low confidence (!= 0, 1)
+    if filters_dict["filter_lowconfidence"][0]:
+        nprefilter = data.shape[0]
+        data = data[data["confidence_score"].isin([0.,1.])]
+        nfiltered = data.shape[0]
+        dataset_info_file.write("Filter 3: Remove data points with low confidence score. Drops {} data points, remaining {} \n".format(nprefilter - nfiltered, nfiltered))
+
+
+    name_suffix = "__".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
+
+    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
 
     ndata = data.shape[0]
-    fig, ax = plt.subplots(2,2, figsize=(9, 10))
+    fig, ax = plt.subplots(2,3, figsize=(11, 10))
     num_bins = 50
+    colors_dict = {0:"orange",1:"blue"}
+    labels_dict = {0:"Negative",1:"Positive"}
+
     ############LABELS #############
-    freq, bins, patches = ax[0][0].hist(data["target"].to_numpy() , bins=2, density=True)
+    freq, bins, patches = ax[0][0].hist(data["target"].to_numpy() , bins=2, density=True,edgecolor='white')
     ax[0][0].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
     ax[0][0].set_title(r'Histogram of targets/labels')
     ax[0][0].xaxis.set_ticks([0.25,0.75])
     ax[0][0].set_xticklabels([0,1])
     # Annotate the bars.
-    for bar in patches: #iterate over the bars
+    for color,bar in zip(colors_dict.values(),patches): #iterate over the bars
         n_data_bin = (bar.get_height()*ndata)/2
         ax[0][0].annotate(format(n_data_bin, '.2f'),
                        (bar.get_x() + bar.get_width() / 2,
                         bar.get_height()), ha='center', va='center',
                        size=15, xytext=(0, 8),
                        textcoords='offset points')
+        bar.set_facecolor(color)
+
     ############LABELS CORRECTED #############
-    freq, bins, patches = ax[0][1].hist(data["target_corrected"].to_numpy() , bins=2, density=True)
+    freq, bins, patches = ax[0][1].hist(data["target_corrected"].to_numpy() , bins=2, density=True,edgecolor='white')
     ax[0][1].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
-    ax[0][1].set_title(r'Histogram of re-assigned targets/labels')
+    ax[0][1].set_title('Histogram of re-assigned \n targets/labels')
     ax[0][1].xaxis.set_ticks([0.25,0.75])
     ax[0][1].set_xticklabels([0,1])
     # Annotate the bars.
-    for bar in patches: #iterate over the bars
+    for color,bar in zip(colors_dict.values(),patches): #iterate over the bars
         n_data_bin = (bar.get_height()*ndata)/2
         ax[0][1].annotate(format(n_data_bin, '.2f'),
                        (bar.get_x() + bar.get_width() / 2,
                         bar.get_height()), ha='center', va='center',
                        size=15, xytext=(0, 8),
                        textcoords='offset points')
-    #######CONFIDENCE SCORES
+        bar.set_facecolor(color)
+    #######CONFIDENCE SCORES###################
     ax[1][0].hist(data["confidence_score_scaled"].to_numpy() , num_bins, density=True)
-    ax[1][0].set_xlabel('Minmax scaled confidence score (N_+ / Subjects)')
-    ax[1][0].set_title(r'Histogram of confidence scores')
+    ax[1][0].set_xlabel('Minmax scaled confidence score \n (N_+ / Total Nsubjects)')
+    ax[1][0].set_title('Histogram of confidence scores')
+    ############TEST PROPORTIONS #############
+    data_partitions = data[["partition","training","target_corrected"]]
+    test_counts=data_partitions[data_partitions["training"] == False].value_counts("target_corrected") #returns a dict
+    if len(test_counts.keys()) > 1:
+        if test_counts[0] > test_counts[1]:
+            bar1 = ax[1][1].bar(0, test_counts[0], label="Negative", color=colors_dict[0], width=0.1,edgecolor='white')
+            bar1 = bar1.patches[0]
+            bar2 = ax[0][2].bar(0, test_counts[1], label="Positive", color=colors_dict[1], width=0.1,edgecolor='white')
+            bar2 = bar2.patches[0]
+        else:
+            bar1 = ax[1][1].bar(0, test_counts[1], label="Positive", color="orange", width=0.1,edgecolor='white')
+            bar1 = bar1.patches[0]
+            bar2 = ax[1][1].bar(0, test_counts[0], label="Negative", color="blue", width=0.1,edgecolor='white')
+            bar2 = bar2.patches[0]
+        ax[1][1].xaxis.set_ticks([0])
+        n_data_test = sum([val for key,val in test_counts.items()])
+        ax[1][1].annotate("{}({}%)".format(bar1.get_height(),np.round((bar1.get_height()*100)/n_data_test),2),
+                          (bar1.get_x() + bar1.get_width() / 2,
+                           bar1.get_height()), ha='center', va='center',
+                          size=15, xytext=(0, 8),
+                          textcoords='offset points')
+        ax[1][1].annotate("{}({}%)".format(bar2.get_height(),np.round((bar2.get_height()*100)/n_data_test),2),
+                          (bar2.get_x() + bar2.get_width() / 2,
+                           bar2.get_height()), ha='center', va='center',
+                          size=15, xytext=(0, 8),
+                          textcoords='offset points')
+    else:
+        key = test_counts.keys()[0]
+        bar1 = ax[1][1].bar(key, test_counts[key], label=labels_dict[key], color=colors_dict[key], width=0.1, edgecolor='white')
+        bar1 = bar1.patches[0]
+        ax[1][1].xaxis.set_ticks([0])
+        n_data_test = sum([val for key,val in test_counts.items()])
+        ax[1][1].annotate("{}({}%)".format(bar1.get_height(),np.round((bar1.get_height()*100)/n_data_test),2),
+                          (bar1.get_x() + bar1.get_width() / 2,
+                           bar1.get_height()), ha='center', va='center',
+                          size=15, xytext=(0, 8),
+                          textcoords='offset points')
 
+    ax[1][1].set_xticklabels(["Test proportions"],fontsize=15)
+    ax[1][1].set_title('Test dataset \n +/- proportions')
 
+    ################ TRAIN PARTITION PROPORTIONS###################################
+    train_set=data_partitions[data_partitions["training"] == True]
+    partitions_groups = [train_set.groupby('partition').get_group(x) for x in train_set.groupby('partition').groups]
+    i = 0
+    partitions_names = []
+    for group in partitions_groups:
+        name = group["partition"].iloc[0]
+        group_counts =  group.value_counts("target_corrected") #returns a dict
+        if len(group_counts.keys()) > 1:
+            if group_counts[0] > group_counts[1]:
+                bar1 = ax[0][2].bar(i, group_counts[0], label="Negative", color="orange",width=0.1,edgecolor='white')
+                bar1 = bar1.patches[0]
+                bar2 = ax[0][2].bar(i, group_counts[1], label="Positive", color="blue",width=0.1)
+                bar2 = bar2.patches[0]
+
+            else:
+                bar1 = ax[0][2].bar(i, group_counts[1], label="Positive", color="orange",width=0.1,edgecolor='white')
+                bar1 = bar1.patches[0]
+                bar2 = ax[0][2].bar(i, group_counts[0], label="Negative", color="blue",width=0.1,edgecolor='white')
+                bar2 = bar2.patches[0]
+
+            i+=0.4
+            n_data_partition = sum([val for key, val in group_counts.items()])
+            ax[0][2].annotate("{}\n({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_partition), 2),
+                              (bar1.get_x() + bar1.get_width() / 2,
+                               bar1.get_height()), ha='center', va='center',
+                              size=10, xytext=(0, 8),
+                              textcoords='offset points')
+            ax[0][2].annotate("{}\n({}%)".format(bar2.get_height(), np.round((bar2.get_height() * 100) / n_data_partition), 2),
+                              (bar2.get_x() + bar2.get_width() / 2,
+                               bar2.get_height()), ha='center', va='center',
+                              size=10, xytext=(0, 8),
+                              textcoords='offset points')
+        else:
+            key = group_counts.keys()[0]
+            bar1 = ax[0][2].bar(i, group_counts[key], label=labels_dict[key], color=colors_dict[key], width=0.1, edgecolor='white')
+            bar1 = bar1.patches[0]
+            n_data_partition = sum([val for key, val in group_counts.items()])
+            ax[0][2].annotate(
+                "{}\n({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_partition), 2),
+                (bar1.get_x() + bar1.get_width() / 2,
+                 bar1.get_height()), ha='center', va='center',
+                size=10, xytext=(0, 8),
+                textcoords='offset points')
+        partitions_names.append(name)
+    ax[0][2].xaxis.set_ticks([0,0.4,0.8,1.2,1.6])
+    ax[0][2].set_xticklabels(["Part. {}".format(int(i)) for i in partitions_names])
+    ax[0][2].set_title('TrainEval dataset \n +/- proportions per partition')
+    ax[1][2].axis("off")
+    legends = [mpatches.Patch(color=color, label='Class {}'.format(label)) for label,color in colors_dict.items()]
+    fig.legend(handles=legends, prop={'size': 12},loc= 'center right',bbox_to_anchor=(0.9,0.3))
     fig.tight_layout()
-    plt.savefig("{}/{}/Viruses_histograms".format(storage_folder,args.dataset_name), dpi=300)
+    plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder,args.dataset_name,name_suffix), dpi=300)
     plt.clf()
-
     data_info = process_data(data,args,storage_folder,script_dir,"Icore")
 
     return data_info
@@ -492,6 +598,13 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
         VegvisirPlots.plot_heatmap(cosine_similarity_mean, "Cosine similarity","{}/{}/similarities/HEATMAP_cosine_similarity_mean.png".format(storage_folder,args.dataset_name))
         VegvisirPlots.plot_heatmap(kmers_pid_similarity, "Kmers ({}) percent identity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_pid_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
         VegvisirPlots.plot_heatmap(kmers_cosine_similarity, "Kmers ({}) cosine similarity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_cosine_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
+    calculate_partitions = False
+    if calculate_partitions:
+        import umap,hdbscan
+        cosine_umap = umap.UMAP(n_components=6).fit_transform(cosine_similarity_mean)
+        #clustering = DBSCAN(eps=0.1, min_samples=2,metric="euclidean",algorithm="auto",p=3).fit(cosine_umap) #eps 4
+        clustering = hdbscan.HDBSCAN(min_cluster_size=6, gen_min_span_tree=True).fit(cosine_umap)
+        labels = np.unique(clustering.labels_,return_counts=True)
 
 
     #Highlight: Reattatch partition, identifier, label, confidence score
@@ -501,8 +614,6 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
     training = data[["training"]].values.tolist()
     confidence_scores = data[["confidence_score"]].values.tolist()
 
-    VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, confidence_scores, storage_folder, args, "Blosum Norm",
-                             "UMAP_blosum_norm_{}_confidence_score".format(use_column))
     if plot_umap:
         VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, confidence_scores, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}_confidence_score".format(use_column))
         VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, labels, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}".format(use_column))
