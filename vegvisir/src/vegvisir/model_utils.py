@@ -405,5 +405,4 @@ class AutoEncoder(nn.Module):
         enc_out = self.encoder(input)
         reconstructed_sequences = self.decoder(enc_out)
         class_output = self.classifier(enc_out.flatten(1))
-
         return reconstructed_sequences.permute(0,2,1),class_output

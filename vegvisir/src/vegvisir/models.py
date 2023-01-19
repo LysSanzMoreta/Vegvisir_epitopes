@@ -192,8 +192,15 @@ class VegvisirModel1(VEGVISIRModelClass):
             - Multitask Learning Based on Improved Uncertainty Weighted Loss for Multi-Parameter Meteorological Data Prediction #TODO!!!
             - Multi-Task Learning Using Uncertainty to Weigh Losses for Scene Geometry and Semantics
             """
-        predictions = torch.max(model_outputs.class_out, dim=1).values
-        #predictions = predictions[torch.arange(predictions.shape[0]),true_labels.long()] #take the value of the probability?
+
+        predictions = nn.Softmax(dim=-1)(model_outputs.class_out)
+        predictions=predictions[torch.arange(0,true_labels.shape[0]),true_labels.long()]
+        positives_proportions = true_labels.sum()/true_labels.shape[0]*10 # we have more negatives in the raw data. Multiply by 10 to get 0.9 to 9 for example
+        weights_dict = {0:positives_proportions,1:1-positives_proportions} #invert the weights
+        class_weights = true_labels.clone()
+        class_weights[class_weights==0] = weights_dict[0]
+        class_weights[class_weights==1] = weights_dict[1]
+
         if self.loss_type == "weighted_bce":
 
             #bce_loss = nn.BCEWithLogitsLoss(pos_weight=confidence_scores) #pos weights affects only the positive (1) labels
@@ -204,22 +211,18 @@ class VegvisirModel1(VEGVISIRModelClass):
             loss = self.focal_loss(true_labels,predictions,confidence_scores)
             return loss
         elif self.loss_type == "ae_loss":
-            reconstruction_loss = nn.CosineEmbeddingLoss(reduction='none')(onehot_sequences[:,1],model_outputs.reconstructed_sequences)
-            #reconstruction_loss = self.argmax_reconstruction_loss(model_outputs.reconstructed_sequences,onehot_sequences[:,1])
-            print(reconstruction_loss)
-            exit()
-            classification_loss = nn.BCEWithLogitsLoss()(predictions,true_labels)
-            total_loss = reconstruction_loss.mean() + classification_loss.mean()
+            #reconstruction_loss = nn.CosineEmbeddingLoss(reduction='none')(onehot_sequences[:,1],model_outputs.reconstructed_sequences)
+            reconstruction_loss = self.argmax_reconstruction_loss(model_outputs.reconstructed_sequences,onehot_sequences[:,1])
+            classification_loss = nn.BCELoss(weight=confidence_scores)(predictions,true_labels)
+            total_loss = reconstruction_loss + classification_loss.mean()
+
             return total_loss
         elif self.loss_type == "bceprobs":
             bce_loss = nn.BCELoss()
             loss = bce_loss(predictions, true_labels)
             return loss
 
-        elif self.loss_type == "bcelogits":
-            bce_loss = nn.BCEWithLogitsLoss()
-            loss = bce_loss(predictions, true_labels)
-            return loss
+
     def weighted_loss(self,y_true, y_pred, confidence_scores):
         """E(y_true,y_pred) = -y_true*log(y_pred) -(1 - y_true)*ln(1-y_pred)
         E(y_true,y_pred) = -weights[pos_weight*y_true*log(sigmoid(y_pred)) + (1-y_true)*log(1 -sigmoid(y_pred))]
@@ -280,7 +283,7 @@ class VegvisirModel1(VEGVISIRModelClass):
         assert reconstructed_sequences.shape == (onehot_sequences.shape[0],self.max_len,self.input_dim)
         idx_true = torch.argmax(onehot_sequences,dim=-1)
         idx_pred = torch.argmax(reconstructed_sequences,dim=-1)
-        loss = nn.NLLLoss()(idx_true,idx_pred)
+        loss = 1 - (idx_true == idx_pred).float().mean()
         return loss
 
 

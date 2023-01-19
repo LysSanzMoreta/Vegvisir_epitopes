@@ -326,8 +326,9 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,update):
             """
     dataset_info_file = open("{}/{}/dataset_info.txt".format(storage_folder,args.dataset_name), 'w')
     data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
-    filters_dict = {"filter_kmers":[True,9,"Icore"],
-                    "filter_ntested":[True,10],
+    #TODO: Move filters to args
+    filters_dict = {"filter_kmers":[False,9,"Icore"],
+                    "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_confidence_score":[False,10]}
     data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]

@@ -215,6 +215,25 @@ def dataset_proportions(data,results_dir,type="TrainEval"):
 def trainevaltest_split(data,args,results_dir,method="predefined_partitions"):
     """Perform train-test split"""
     if method == "predefined_partitions":
+        # Train - Test split
+        traineval_data, test_data = data[data[:, 0,0, 3] == 1.], data[data[:, 0,0, 3] == 0.]
+        dataset_proportions(traineval_data, results_dir)
+        dataset_proportions(test_data, results_dir, type="Test")
+        partitions = traineval_data[:, 0,0, 2]
+        unique_partitions = np.unique(partitions)
+        i = 1
+        kfolds = []
+        for part_num in unique_partitions:
+            # train_idx = traineval_data[traineval_data[:,0,2] != part_num]
+            train_idx = (traineval_data[:, 0,0, 2][..., None] != part_num).any(-1)
+            valid_idx = (traineval_data[:, 0,0, 2][..., None] == part_num).any(-1)
+            kfolds.append((train_idx, valid_idx))
+            if args.k_folds <= i :
+                break
+            else:
+                i+=1
+        return traineval_data, test_data, kfolds
+    elif method == "stratified_group_partitions":
         #Train - Test split
         traineval_data,test_data = data[data[:,0,0,3] == 1.], data[data[:,0,0,3] == 0.]
         dataset_proportions(traineval_data,results_dir)
@@ -268,10 +287,6 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
     valid_predictions_fold = None
     train_predictions_fold = None
     for fold, (train_idx, valid_idx) in enumerate(kfolds): #returns k-splits for train and validation
-        print("---------------------------------------------------------------------")
-        print('Fold number : {}'.format(fold))
-        print('\t Number train data points: {}; Proportion: {}'.format(len(train_idx),(len(train_idx)*100)/traineval_data_blosum.shape[0]))
-        print('\t Number valid data points: {}; Proportion: {}'.format(len(valid_idx),(len(valid_idx)*100)/traineval_data_blosum.shape[0]))
 
         #Highlight: Minmax scale the confidence scores #TODO: function or for loop?
         fold_train_data_blosum = traineval_data_blosum[train_idx]
@@ -294,6 +309,10 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         fold_valid_data_blosum[~idx_valid, 0, 0, 5] = 1+ (1 - fold_valid_data_blosum[:, 0, 0, 4])
         fold_valid_data_int[:,0,5] = fold_valid_data_blosum[:,0,0,5]
         fold_valid_data_onehot[:,0,0,5] = fold_valid_data_blosum[:,0,0,5]
+        print("---------------------------------------------------------------------")
+        print('Fold number : {}'.format(fold))
+        print('\t Number train data points: {}; Proportion: {}'.format(fold_train_data_blosum.shape[0],(fold_train_data_blosum.shape[0]*100)/traineval_data_blosum.shape[0]))
+        print('\t Number valid data points: {}; Proportion: {}'.format(fold_valid_data_blosum.shape[0],(fold_valid_data_blosum.shape[0]*100)/traineval_data_blosum.shape[0]))
 
 
 
