@@ -1,8 +1,13 @@
 from xgboost import XGBClassifier
 import xgboost as xgb
 from vegvisir.train import dataset_proportions,fold_auc
+import vegvisir.plots as VegvisirPlots
 from sklearn.model_selection import KFold,train_test_split,StratifiedShuffleSplit,StratifiedGroupKFold
 import numpy as np
+import pandas as pd
+from collections import defaultdict
+import dataframe_image as dfi
+import seaborn as sns
 def trainevaltest_split(data,args,results_dir,method="predefined_partitions"):
     """Perform train-test split"""
     if method == "predefined_partitions":
@@ -12,12 +17,17 @@ def trainevaltest_split(data,args,results_dir,method="predefined_partitions"):
         dataset_proportions(test_data,results_dir,type="Test")
         partitions = traineval_data[:,0,2]
         unique_partitions = np.unique(partitions)
+        i=1
         kfolds = []
         for part_num in unique_partitions:
             #train_idx = traineval_data[traineval_data[:,0,2] != part_num]
             train_idx = (traineval_data[:,0,2][..., None] != part_num).any(-1)
             valid_idx = (traineval_data[:,0,2][..., None] == part_num).any(-1)
             kfolds.append((train_idx,valid_idx))
+            if args.k_folds <= i :
+                break
+            else:
+                i+=1
         return traineval_data,test_data,kfolds
 
     elif method == "stratified_group_partitions":
@@ -45,7 +55,9 @@ def train_xgboost(dataset_info,additional_info,args):
     results_dir = additional_info.results_dir
     traineval_data_blosum,test_data_blosum,kfolds = trainevaltest_split(data_blosum_norm,args,results_dir,method="predefined_partitions")
 
-
+    auc_dict = defaultdict(lambda : defaultdict(list))
+    auk_dict = defaultdict(lambda : defaultdict(list))
+    feature_dict = defaultdict(list)
     for fold, (train_idx, valid_idx) in enumerate(kfolds): #returns k-splits for train and validation
         print("Running fold {} ......".format(fold))
         train_data_blosum = traineval_data_blosum[train_idx]
@@ -65,10 +77,16 @@ def train_xgboost(dataset_info,additional_info,args):
         # make predictions
         preds_train = xgbc.predict(train_data_blosum[:,1:].squeeze(1))
         preds_eval = xgbc.predict(eval_data_blosum[:,1:].squeeze(1))
-        #Cross validation: https://xgboost.readthedocs.io/en/stable/python/examples/cross_validation.html
-        fold_auc(preds_train,train_data_blosum[:,0,0],fold,results_dir,mode="Train")
-        fold_auc(preds_eval,eval_data_blosum[:,0,0],fold,results_dir,mode="Valid")
+        auc_score_train,auk_score_train=fold_auc(preds_train,train_data_blosum[:,0,0],fold,results_dir,mode="Train")
+        auc_dict["Fold_{}".format(fold)]["Train"] = auc_score_train
+        auk_dict["Fold_{}".format(fold)]["Train"] = auk_score_train
+
+        auc_score_valid,auk_score_valid=fold_auc(preds_eval,eval_data_blosum[:,0,0],fold,results_dir,mode="Valid")
+        auc_dict["Fold_{}".format(fold)]["Valid"] = auc_score_valid
+        auk_dict["Fold_{}".format(fold)]["Valid"] = auk_score_valid
+
         print("--------------------------------------------")
+        feature_dict["Fold_{}".format(fold)] = xgbc.feature_importances_
 
 
     print("Running with entire dataset and final testing ")
@@ -81,14 +99,18 @@ def train_xgboost(dataset_info,additional_info,args):
     preds_train = xgbc.predict(traineval_data_blosum[:, 1:].squeeze(1))
     preds_test = xgbc.predict(test_data_blosum[:, 1:].squeeze(1))
     # Cross validation: https://xgboost.readthedocs.io/en/stable/python/examples/cross_validation.html
-    fold_auc(preds_train, traineval_data_blosum[:, 0, 0], "all", results_dir, mode="Train")
-    fold_auc(preds_test, test_data_blosum[:, 0, 0], "all", results_dir, mode="Test")
+    auc_score_train, auk_score_train=fold_auc(preds_train, traineval_data_blosum[:, 0, 0], "all", results_dir, mode="Train")
+    auc_dict["Full_dataset"]["Train"] = auc_score_train
+    auk_dict["Full_dataset"]["Train"] = auk_score_train
+    auc_score_test, auk_score_test=fold_auc(preds_test, test_data_blosum[:, 0, 0], "all", results_dir, mode="Test")
+    auc_dict["Full_dataset"]["Test"] = auc_score_test
+    auk_dict["Full_dataset"]["Test"] = auk_score_test
+    feature_dict["Full_dataset"] = xgbc.feature_importances_
 
-    # def fpreproc(dtrain, dtest, param):
-    #     label = dtrain[:,0,0]
-    #     ratio = float(np.sum(label == 0)) / np.sum(label == 1)
-    #     param['scale_pos_weight'] = ratio
-    #     return (dtrain, dtest, param)
-    #
-    # xgb.cv({"n_estimators":1500,'max_depth':8, 'eta':1, 'objective':'binary:logistic'}, traineval_data_blosum, 2, nfold=5,metrics='auc', seed=0, fpreproc=fpreproc)
+    auc_df = pd.DataFrame.from_dict(auc_dict)
+    #auc_df_styled = auc_df.style.background_gradient(axis=None).format(na_rep = "0") #cmap="BuPu"
+    auc_df_styled = auc_df.style.format(na_rep = "-") #cmap="BuPu"
+    dfi.export(auc_df_styled, "{}/AUC_df.png".format(results_dir), dpi=600)
+    VegvisirPlots.plot_feature_importance(feature_dict, results_dir)
+
 

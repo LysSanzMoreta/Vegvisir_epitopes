@@ -135,6 +135,30 @@ def plot_ROC_curve(fpr,tpr,roc_auc,auk_score,results_dir,fold):
     plt.savefig("{}/ROC_curve_fold{}".format(results_dir,fold))
     plt.clf()
 
+
+
+def plot_feature_importance(feature_dict,results_dir):
+    # plot
+    ncols = int(len(feature_dict.keys())/2)
+    nrows = [int(len(feature_dict.keys())/ncols) + 1 if len(feature_dict.keys())/ncols % 2 != 0 else int(len(feature_dict.keys())/ncols)][0]
+    row = 0
+    col = 0
+    fig,ax = plt.subplots(nrows,ncols)
+    for fold,features in feature_dict.items():
+        ax[int(row)][int(col)].bar(range(len(features)),features)
+        ax[int(row)][int(col)].set_title("{}".format(fold))
+        col += 1
+        if col >= ncols:
+            row += 1
+            col = 0
+            if row >= nrows:
+                break
+
+    fig.tight_layout(pad=3.0)
+    fig.suptitle("Feature importance")
+    plt.savefig("{}/feature_importance_xgboost".format(results_dir))
+
+
 def plot_layers(model,layer_name,results_dir): #TODO: Check
     # Gets the layer object from the model
     for name in layer_name.split('.'):
