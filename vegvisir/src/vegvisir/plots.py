@@ -11,6 +11,9 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 import umap
+import vegvisir.utils as VegvisirUtils
+from sklearn.feature_selection import mutual_info_classif
+
 plt.style.use('ggplot')
 def plot_heatmap(array, title,file_name):
     plt.figure(figsize=(20, 20))
@@ -135,29 +138,142 @@ def plot_ROC_curve(fpr,tpr,roc_auc,auk_score,results_dir,fold):
     plt.savefig("{}/ROC_curve_fold{}".format(results_dir,fold))
     plt.clf()
 
+def plot_blosum_cosine(blosum_array,storage_folder,args):
+    """
 
+    :param blosum_array:
+    :param storage_folder:
+    :param args:
+    """
+    plt.subplots(figsize=(10, 10))
+    blosum_cosine = VegvisirUtils.cosine_similarity(blosum_array[1:, 1:], blosum_array[1:, 1:])
+    aa_dict = VegvisirUtils.aminoacid_names_dict(21, zero_characters=["#"])
+    aa_list = [key for key, val in aa_dict.items() if val in list(blosum_array[:, 0])]
+    blosum_cosine_df = pd.DataFrame(blosum_cosine, columns=aa_list, index=aa_list)
+    sns.heatmap(blosum_cosine_df.to_numpy(),
+                xticklabels=blosum_cosine_df.columns.values,
+                yticklabels=blosum_cosine_df.columns.values, annot=True, annot_kws={"size": 8}, fmt=".2f")
+    plt.title("Amino acids blosum vector cosine similarity", fontsize=10)
+    plt.savefig('{}/{}/blosum_cosine.png'.format(storage_folder, args.dataset_name), dpi=600)
+    plt.clf()
 
-def plot_feature_importance(feature_dict,results_dir):
+def plot_feature_importance_old(feature_dict:dict,max_len:int,feature_columns:list,results_dir:str) -> None:
+    """
+    :rtype: object
+    :param feature_dict:
+    :param max_len:
+    :param feature_columns:
+    :param results_dir:
+
+    """
+    colors_list = ["plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange", "yellow",
+                   "green",
+                   "dodgerblue", "blue", "purple", "magenta", "grey", "maroon", "lightcoral", "olive", "teal",
+                   "goldenrod",
+                   "black", "chocolate", "cornflowerblue", "pink", "darkgrey", "indianred", "mediumspringgreen",
+                   "cadetblue", "sienna",
+                   "crimson", "deepbluesky", "wheat", "silver"]
     # plot
     ncols = int(len(feature_dict.keys())/2)
     nrows = [int(len(feature_dict.keys())/ncols) + 1 if len(feature_dict.keys())/ncols % 2 != 0 else int(len(feature_dict.keys())/ncols)][0]
     row = 0
     col = 0
-    fig,ax = plt.subplots(nrows,ncols)
-    for fold,features in feature_dict.items():
-        ax[int(row)][int(col)].bar(range(len(features)),features)
+
+
+    if len(feature_dict["Fold_0"]) == max_len:
+        labels = ["Pos.{}".format(pos) for pos in list(range(max_len))]
+    else:
+        labels = ["Pos.{}".format(pos) for pos in list(range(max_len))] + feature_columns
+    colors_dict = dict(zip(labels,colors_list))
+
+    fig,ax = plt.subplots(nrows=nrows,ncols=ncols,squeeze=False) #check this: https://stackoverflow.com/questions/9834452/how-do-i-make-a-single-legend-for-many-subplots
+    for fold,features in feature_dict.items(): #ax = fig.add_subplot(2,2,a+1)
+        ax[int(row)][int(col)].bar(range(len(features)),features,color=colors_dict.values())
+        #ax[int(row)][int(col)].set_xticks(np.arange(len(labels)),labels,rotation=45,fontsize=8)
         ax[int(row)][int(col)].set_title("{}".format(fold))
         col += 1
         if col >= ncols:
             row += 1
             col = 0
             if row >= nrows:
+                # if col <= ncols and not len(feature_dict) % 2 == 0:
+                #     ax[int(row) -1 ][int(col)].axis("off")
                 break
+
+    fig.add_subplot(111) #added to fit the legend
+    patches = [mpatches.Patch(color='{}'.format(val), label='{}'.format(key)) for key,val in colors_dict.items()]
+    fig.legend(handles=patches, prop={'size': 10},loc= 'center right',bbox_to_anchor=(1.37,0.5))
 
     fig.tight_layout(pad=3.0)
     fig.suptitle("Feature importance")
     plt.savefig("{}/feature_importance_xgboost".format(results_dir))
 
+
+def plot_feature_importance(feature_dict:dict,max_len:int,feature_columns:list,results_dir:str) -> None:
+    """
+    :rtype: object
+    :param feature_dict:
+    :param max_len:
+    :param feature_columns:
+    :param results_dir:
+
+    """
+    colors_list = ["plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange", "yellow",
+                   "green",
+                   "dodgerblue", "blue", "purple", "magenta", "grey", "maroon", "lightcoral", "olive", "teal",
+                   "goldenrod",
+                   "black", "chocolate", "cornflowerblue", "pink", "darkgrey", "indianred", "mediumspringgreen",
+                   "cadetblue", "sienna",
+                   "crimson", "deepbluesky", "wheat", "silver"]
+    # plot
+    ncols = int(len(feature_dict.keys())/2)
+    nrows = [int(len(feature_dict.keys())/ncols) + 1 if len(feature_dict.keys())/ncols % 2 != 0 else int(len(feature_dict.keys())/ncols)][0]
+    if len(feature_dict["Fold_0"]) == max_len:
+        labels = ["Pos.{}".format(pos) for pos in list(range(max_len))]
+    else:
+        labels = ["Pos.{}".format(pos) for pos in list(range(max_len))] + feature_columns
+    colors_dict = dict(zip(labels,colors_list))
+    fig,axs = plt.subplots(len(feature_dict.keys()) ,squeeze=False) #check this: https://stackoverflow.com/questions/9834452/how-do-i-make-a-single-legend-for-many-subplots
+    #fig,axs = plt.subplots(nrows=nrows,ncols=ncols+1 ,squeeze=False) #check this: https://stackoverflow.com/questions/9834452/how-do-i-make-a-single-legend-for-many-subplots
+    axs = axs.ravel()
+    for i,(fold,features) in enumerate(feature_dict.items()): #ax = fig.add_subplot(2,2,a+1)
+        axs[i].bar(range(len(features)),features,color=colors_dict.values())
+        #ax[i].set_xticks(np.arange(len(labels)),labels,rotation=45,fontsize=8)
+        axs[i].set_title("{}".format(fold))
+    axs[-1].set_axis_off()
+    patches = [mpatches.Patch(color='{}'.format(val), label='{}'.format(key)) for key,val in colors_dict.items()]
+    fig.legend(handles=patches, prop={'size': 8},loc= 'center right',bbox_to_anchor=(1.0,0.3),ncols=2)
+    fig.tight_layout(pad=3.0,w_pad=1.5, h_pad=2.0)
+    fig.suptitle("Feature importance")
+    plt.savefig("{}/feature_importance_xgboost".format(results_dir))
+
+
+def plot_mutual_information(full_data,full_labels,feature_names,results_dir):
+    """
+    :param full_data: (N,n_feats)
+    :param full_labels:
+    :param features_names:
+    :param results_dir:
+    """
+    colors_list = ["plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange", "yellow",
+                   "green",
+                   "dodgerblue", "blue", "purple", "magenta", "grey", "maroon", "lightcoral", "olive", "teal",
+                   "goldenrod",
+                   "black", "chocolate", "cornflowerblue", "pink", "darkgrey", "indianred", "mediumspringgreen",
+                   "cadetblue", "sienna",
+                   "crimson", "deepbluesky", "wheat", "silver"]
+    colors_dict = dict(zip(feature_names,colors_list))
+
+    mutual_information = mutual_info_classif(full_data[:,1], full_labels, discrete_features=False, n_neighbors=3, copy=True,random_state=None)
+    plt.bar(range(len(feature_names)), feature_names,color=colors_dict.values())
+    plt.xticks(np.arange(len(feature_names)), feature_names, rotation=45, fontsize=8)
+    plt.title("Mutual Information feature importance")
+    patches = [mpatches.Patch(color='{}'.format(val), label='{}'.format(key)) for key,val in colors_dict.items()]
+    # pos = fig.get_position()
+    # fig.set_position([pos.x0, pos.y0, pos.width * 0.9, pos.height])
+    plt.legend(handles=patches, prop={'size': 10},loc= 'center right',bbox_to_anchor=(1.37,0.5))
+    plt.savefig("{}/mi_feature_importance".format(results_dir),dpi=600)
+    plt.clf()
 
 def plot_layers(model,layer_name,results_dir): #TODO: Check
     # Gets the layer object from the model
@@ -224,8 +340,7 @@ def plot_layers(model,layer_name,results_dir): #TODO: Check
     return fig
 
 
-def plot_model_parameters(train_loader, n_layers=5, hidden_units=100, activation_fn=None, use_bn=False, before=True,
-                  model=None):
+def plot_model_parameters(train_loader, n_layers=5, hidden_units=100, activation_fn=None, use_bn=False, before=True,model=None):
     #(train_loader, n_layers=5, hidden_units=100, activation_fn=None, use_bn=False, before=True,model=None)
     import sys
     sys.path.append('..')

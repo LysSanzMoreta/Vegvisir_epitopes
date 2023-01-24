@@ -24,7 +24,7 @@ import vegvisir.plots as VegvisirPlots
 plt.style.use('ggplot')
 DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_array_raw","data_array_int","data_array_int_mask",
                                         "data_array_blosum_encoding","data_array_blosum_encoding_mask","data_array_onehot_encoding","data_array_blosum_norm","blosum",
-                                        "n_data","max_len","corrected_aa_types","input_dim","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity"])
+                                        "n_data","max_len","corrected_aa_types","input_dim","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity","feature_columns"])
 def available_datasets():
     """Prints the available datasets"""
     datasets = {0:"viral_dataset",
@@ -181,7 +181,7 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
     return
       :param pandas dataframe: Results pandas dataframe with the following structure
           Icore:Interaction peptide core
-          confidence_score: Number of + / Number of tested
+          immunodominance_score: Number of + / Number of tested
           onfidence_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range
           training: True assign data point to train , else assign to Test
           partition: Indicates partition assignment within 5-fold cross validation
@@ -239,19 +239,19 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
     nfiltered = data_a.shape[0]
     dataset_info_file.write("Filter 3: Icores with number of subjects lower than 10. Drops {} data points, remaining {} \n".format(nprefilter-nfiltered,nfiltered))
     #max_number_subjects = data["Assay_number_of_subjects_tested"].max()
-    data_a["confidence_score"] = data_a["Assay_number_of_subjects_responded"]/data_a["Assay_number_of_subjects_tested"]
+    data_a["immunodominance_score"] = data_a["Assay_number_of_subjects_responded"]/data_a["Assay_number_of_subjects_tested"]
     data_a["Rnk_EL"] =data_b["Rnk_EL"]
     data_a.fillna(0,inplace=True)
     #Highlight: Scale-standarize values . This is done here for visualization purposes, it is done afterwards separately for train, eval and test
-    data_a = VegvisirUtils.minmax_scale(data_a,column_name ="confidence_score",suffix="_scaled")
+    data_a = VegvisirUtils.minmax_scale(data_a,column_name ="immunodominance_score",suffix="_scaled")
     data_a = VegvisirUtils.minmax_scale(data_a,column_name="Rnk_EL",suffix="_scaled") #Likelihood rank
     data_b.fillna(0, inplace=True)
     # print(data_a["target"].value_counts())
-    # print(data_a.sort_values(by="confidence_score",ascending=True)[["confidence_score","target"]])
+    # print(data_a.sort_values(by="immunodominance_score",ascending=True)[["immunodominance_score","target"]])
     #Highlight: Strict target reassignment
-    data_a.loc[data_a["confidence_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
-    #print(data_a.sort_values(by="confidence_score", ascending=True)[["confidence_score","target"]])
-    data_a.loc[data_a["confidence_score_scaled"] > 0.,"target_corrected"] = 1.
+    data_a.loc[data_a["immunodominance_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
+    #print(data_a.sort_values(by="immunodominance_score", ascending=True)[["immunodominance_score","target"]])
+    data_a.loc[data_a["immunodominance_score_scaled"] > 0.,"target_corrected"] = 1.
     # print(data_a["target"].value_counts())
     # print("--------------------")
     # print(data_a["partition"].value_counts())
@@ -288,10 +288,10 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
                         bar.get_height()), ha='center', va='center',
                        size=15, xytext=(0, 8),
                        textcoords='offset points')
-    #######CONFIDENCE SCORES
-    ax[1][0].hist(data_a["confidence_score_scaled"].to_numpy() , num_bins, density=True)
-    ax[1][0].set_xlabel('Minmax scaled confidence score (N_+ / Subjects)')
-    ax[1][0].set_title(r'Histogram of confidence scores')
+    #######immunodominance scoreS
+    ax[1][0].hist(data_a["immunodominance_score_scaled"].to_numpy() , num_bins, density=True)
+    ax[1][0].set_xlabel('Minmax scaled immunodominance score \n  (N_+ / Subjects)')
+    ax[1][0].set_title(r'Histogram of immunodominance scores')
     ##########RANK###################
     ax[1][1].hist(data_a["Rnk_EL"].to_numpy(), num_bins, density=True)
     ax[1][1].set_xlabel("Binding rank estimated by NetMHCpan-4.1")
@@ -320,23 +320,29 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
                   Icore:Interaction peptide core
-                  confidence_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
-                  confidence_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
                   training: True assign data point to train , else assign to Test (given)
                   partition: Indicates partition assignment within 5-fold cross validation (given)
                   target: Pre-assigned target(given)
-                  target_corrected: Corrected target based on the confidence score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
             """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
     data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
+
+    # Group data by Icore
+    data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
+    data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+    # Reattach info on training
+    data = pd.merge(data_a, data_b, on='Icore', how='outer')
     #TODO: Move filters to args
-    filters_dict = {"filter_kmers":[True,8,"Icore_non_anchor"],
-                    "filter_ntested":[True,10],
+    filters_dict = {"filter_kmers":[True,9,"Icore"],
+                    "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
-                    "corrected_confidence_score":[False,10]}
+                    "corrected_immunodominance_score":[False,10]}
     json.dump(filters_dict, dataset_info_file, indent=2)
 
-    data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
     if filters_dict["filter_ntested"][0]:
         # Highlight: Filter the points with low subject count and only keep if all "negative"
         threshold = filters_dict["filter_ntested"][1]
@@ -346,15 +352,15 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
         dataset_info_file.write("Filter 1: Icores with number of subjects lower than {}. Drops {} data points, remaining {} \n".format(threshold,nprefilter - nfiltered, nfiltered))
 
 
-    data["confidence_score"] = data["Assay_number_of_subjects_responded"] / data["Assay_number_of_subjects_tested"]
-    data = data.fillna({"confidence_score":0})
+    data["immunodominance_score"] = data["Assay_number_of_subjects_responded"] / data["Assay_number_of_subjects_tested"]
+    data = data.fillna({"immunodominance_score":0})
 
-    if filters_dict["corrected_confidence_score"][0]:
-        treshold = filters_dict["corrected_confidence_score"][1]
-        data.loc[(data["Assay_number_of_subjects_tested"] < treshold) | (data["Assay_number_of_subjects_responded"] == 0), "confidence_score"] = 0.01
+    if filters_dict["corrected_immunodominance_score"][0]:
+        treshold = filters_dict["corrected_immunodominance_score"][1]
+        data.loc[(data["Assay_number_of_subjects_tested"] < treshold) | (data["Assay_number_of_subjects_responded"] == 0), "immunodominance_score"] = 0.01
 
     # Highlight: Scale-standarize values . This is done here for visualization purposes, it is done afterwards separately for train, eval and test
-    data = VegvisirUtils.minmax_scale(data, column_name="confidence_score", suffix="_scaled")
+    data = VegvisirUtils.minmax_scale(data, column_name="immunodominance_score", suffix="_scaled")
 
     if filters_dict["filter_kmers"][0]:
         #Highlight: Grab only k-mers
@@ -366,16 +372,16 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
         dataset_info_file.write("Filter 2: {} whose length is different than 9. Drops {} data points, remaining {} \n".format(use_column,kmer_size,nprefilter-nfiltered,nfiltered))
 
     #Highlight: Strict target reassignment
-    data.loc[data["confidence_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
-    #print(data_a.sort_values(by="confidence_score", ascending=True)[["confidence_score","target"]])
-    data.loc[data["confidence_score_scaled"] > 0.,"target_corrected"] = 1.
+    data.loc[data["immunodominance_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
+    #print(data_a.sort_values(by="immunodominance_score", ascending=True)[["immunodominance_score","target"]])
+    data.loc[data["immunodominance_score_scaled"] > 0.,"target_corrected"] = 1.
 
     #Highlight: Filter data points with low confidence (!= 0, 1)
     if filters_dict["filter_lowconfidence"][0]:
         nprefilter = data.shape[0]
-        data = data[data["confidence_score"].isin([0.,1.])]
+        data = data[data["immunodominance_score"].isin([0.,1.])]
         nfiltered = data.shape[0]
-        dataset_info_file.write("Filter 3: Remove data points with low confidence score. Drops {} data points, remaining {} \n".format(nprefilter - nfiltered, nfiltered))
+        dataset_info_file.write("Filter 3: Remove data points with low immunodominance score. Drops {} data points, remaining {} \n".format(nprefilter - nfiltered, nfiltered))
 
 
     name_suffix = "__".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
@@ -419,10 +425,10 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
                        size=15, xytext=(0, 8),
                        textcoords='offset points')
         bar.set_facecolor(color)
-    #######CONFIDENCE SCORES###################
-    ax[1][0].hist(data["confidence_score_scaled"].to_numpy() , num_bins, density=True)
-    ax[1][0].set_xlabel('Minmax scaled confidence score \n (N_+ / Total Nsubjects)')
-    ax[1][0].set_title('Histogram of confidence scores')
+    #######immunodominance scoreS###################
+    ax[1][0].hist(data["immunodominance_score_scaled"].to_numpy() , num_bins, density=True)
+    ax[1][0].set_xlabel('Minmax scaled immunodominance score \n (N_+ / Total Nsubjects)')
+    ax[1][0].set_title('Histogram of immunodominance scores')
     ############TEST PROPORTIONS #############
     data_partitions = data[["partition","training","target_corrected"]]
     test_counts=data_partitions[data_partitions["training"] == False].value_counts("target_corrected") #returns a dict
@@ -539,12 +545,12 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
                   Icore:Interaction peptide core
-                  confidence_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
-                  confidence_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
                   training: True assign data point to train , else assign to Test (given)
                   partition: Indicates partition assignment within 5-fold cross validation (given)
                   target: Pre-assigned target(given)
-                  target_corrected: Corrected target based on the confidence score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
             """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
     data_features = pd.read_csv("{}/{}/dataset_all_features.tsv".format(storage_folder,args.dataset_name),sep="\s+",index_col=0)
@@ -552,13 +558,24 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data_partitions.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
     data_partitions = data_partitions[["Icore","Icore_non_anchor","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","partition","target","training"]]
     data_features = data_features[["Icore","Pred_netstab","prot_inst_index","prot_median_iupred_score_long","prot_molar_excoef_cys_cys_bond","prot_p[q3_E]_netsurfp","prot_p[q3_C]_netsurfp","prot_rsa_netsurfp"]]
+    features_names = data_features.columns.tolist()
+    features_names.pop(0)
+    features_dict = dict(zip(range(len(features_names)),features_names))
     data = pd.merge(data_features,data_partitions, on='Icore', how='outer')
     data = data.dropna(subset=["Icore_non_anchor","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
+    # Group data by Icore
+    data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
+    data_b = data.groupby('Icore', as_index=False)[features_names].agg(lambda x: sum(list(x)) / len(list(x)))
+    data_c = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+    # Reattach info on training
+    data = pd.merge(data_a, data_b, on='Icore', how='outer')
+    data = pd.merge(data, data_c, on='Icore', how='outer')
+
     #TODO: Move filters to args
     filters_dict = {"filter_kmers":[False,9,"Icore"],
-                    "filter_ntested":[True,5],
+                    "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
-                    "corrected_confidence_score":[False,10]}
+                    "corrected_immunodominance_score":[False,10]}
     json.dump(filters_dict, dataset_info_file, indent=2)
 
     if filters_dict["filter_ntested"][0]:
@@ -570,15 +587,15 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
         dataset_info_file.write("Filter 1: Icores with number of subjects lower than {}. Drops {} data points, remaining {} \n".format(threshold,nprefilter - nfiltered, nfiltered))
 
 
-    data["confidence_score"] = data["Assay_number_of_subjects_responded"] / data["Assay_number_of_subjects_tested"]
-    data = data.fillna({"confidence_score":0})
+    data["immunodominance_score"] = data["Assay_number_of_subjects_responded"] / data["Assay_number_of_subjects_tested"]
+    data = data.fillna({"immunodominance_score":0})
 
-    if filters_dict["corrected_confidence_score"][0]:
-        treshold = filters_dict["corrected_confidence_score"][1]
-        data.loc[(data["Assay_number_of_subjects_tested"] < treshold) | (data["Assay_number_of_subjects_responded"] == 0), "confidence_score"] = 0.01
+    if filters_dict["corrected_immunodominance_score"][0]:
+        treshold = filters_dict["corrected_immunodominance_score"][1]
+        data.loc[(data["Assay_number_of_subjects_tested"] < treshold) | (data["Assay_number_of_subjects_responded"] == 0), "immunodominance_score"] = 0.01
 
     # Highlight: Scale-standarize values . This is done here for visualization purposes, it is done afterwards separately for train, eval and test
-    data = VegvisirUtils.minmax_scale(data, column_name="confidence_score", suffix="_scaled")
+    data = VegvisirUtils.minmax_scale(data, column_name="immunodominance_score", suffix="_scaled")
 
     if filters_dict["filter_kmers"][0]:
         #Highlight: Grab only k-mers
@@ -590,16 +607,16 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
         dataset_info_file.write("Filter 2: {} whose length is different than 9. Drops {} data points, remaining {} \n".format(use_column,kmer_size,nprefilter-nfiltered,nfiltered))
 
     #Highlight: Strict target reassignment
-    data.loc[data["confidence_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
-    #print(data_a.sort_values(by="confidence_score", ascending=True)[["confidence_score","target"]])
-    data.loc[data["confidence_score_scaled"] > 0.,"target_corrected"] = 1.
+    data.loc[data["immunodominance_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
+    #print(data_a.sort_values(by="immunodominance_score", ascending=True)[["immunodominance_score","target"]])
+    data.loc[data["immunodominance_score_scaled"] > 0.,"target_corrected"] = 1.
 
     #Highlight: Filter data points with low confidence (!= 0, 1)
     if filters_dict["filter_lowconfidence"][0]:
         nprefilter = data.shape[0]
-        data = data[data["confidence_score"].isin([0.,1.])]
+        data = data[data["immunodominance_score"].isin([0.,1.])]
         nfiltered = data.shape[0]
-        dataset_info_file.write("Filter 3: Remove data points with low confidence score. Drops {} data points, remaining {} \n".format(nprefilter - nfiltered, nfiltered))
+        dataset_info_file.write("Filter 3: Remove data points with low immunodominance score. Drops {} data points, remaining {} \n".format(nprefilter - nfiltered, nfiltered))
 
 
     name_suffix = "__".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
@@ -643,10 +660,10 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
                        size=15, xytext=(0, 8),
                        textcoords='offset points')
         bar.set_facecolor(color)
-    #######CONFIDENCE SCORES###################
-    ax[1][0].hist(data["confidence_score_scaled"].to_numpy() , num_bins, density=True)
-    ax[1][0].set_xlabel('Minmax scaled confidence score \n (N_+ / Total Nsubjects)')
-    ax[1][0].set_title('Histogram of confidence scores')
+    #######immunodominance scoreS###################
+    ax[1][0].hist(data["immunodominance_score_scaled"].to_numpy() , num_bins, density=True)
+    ax[1][0].set_xlabel('Minmax scaled immunodominance score \n (N_+ / Total Nsubjects)')
+    ax[1][0].set_title('Histogram of immunodominance scores')
     ############TEST PROPORTIONS #############
     data_partitions = data[["partition","training","target_corrected"]]
     test_counts=data_partitions[data_partitions["training"] == False].value_counts("target_corrected") #returns a dict
@@ -742,22 +759,21 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     fig.tight_layout()
     plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder,args.dataset_name,name_suffix), dpi=300)
     plt.clf()
-    exit()
-    data_info = process_data(data,args,storage_folder,script_dir,filters_dict["filter_kmers"][2])
+
+    data_info = process_data(data,args,storage_folder,script_dir,sequence_column=filters_dict["filter_kmers"][2],feature_columns=list(features_dict.values()))
 
     return data_info
 
 
-
-def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blosum=False,plot_umap=False):
+def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",feature_columns=None,plot_blosum=False,plot_umap=False):
     """
-    :param pandas dataframe data: Contains Icore, confidence_score, confidence_score_scaled, training , partition and Rnk_EL
+    :param pandas dataframe data: Contains Icore, immunodominance_score, immunodominance_score_scaled, training , partition and Rnk_EL
     :param args: Commmand line arguments
     :param storage_folder: Data location path
     """
 
 
-    epitopes = data[[use_column]].values.tolist()
+    epitopes = data[[sequence_column]].values.tolist()
     epitopes = functools.reduce(operator.iconcat, epitopes, [])  # flatten list of lists
     max_len = len(max(epitopes, key=len))
     epitopes_lens = np.array(list(map(len, epitopes)))
@@ -794,17 +810,7 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
     blosum_norm_dict = dict(zip(aa_list,blosum_norm.tolist()))
     epitopes_array_blosum_norm = np.vectorize(blosum_norm_dict.get)(epitopes_array_int)
     if plot_blosum:
-        plt.subplots(figsize=(10,10))
-        blosum_cosine = VegvisirUtils.cosine_similarity(blosum_array[1:, 1:], blosum_array[1:, 1:])
-        aa_dict = VegvisirUtils.aminoacid_names_dict(21,zero_characters=["#"])
-        aa_list =[key for key,val in aa_dict.items() if val in list(blosum_array[:,0])]
-        blosum_cosine_df = pd.DataFrame(blosum_cosine,columns=aa_list,index=aa_list)
-        sns.heatmap(blosum_cosine_df.to_numpy(),
-                    xticklabels=blosum_cosine_df.columns.values,
-                    yticklabels=blosum_cosine_df.columns.values,annot=True,annot_kws={"size": 8},fmt=".2f")
-        plt.title("Amino acids blosum vector cosine similarity",fontsize=10)
-        plt.savefig('{}/{}/blosum_cosine.png'.format(storage_folder,args.dataset_name),dpi=600)
-        plt.clf()
+        VegvisirPlots.plot_blosum_cosine(blosum_array, storage_folder, args)
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
 
@@ -839,44 +845,79 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
         labels = np.unique(clustering.labels_,return_counts=True)
 
 
-    #Highlight: Reattatch partition, identifier, label, confidence score
+    #Highlight: Reattatch partition, identifier, label, immunodominance score
     labels = data[["target_corrected"]].values.tolist()
     identifiers = data.index.values.tolist() #TODO: reset index in process data?
     partitions = data[["partition"]].values.tolist()
     training = data[["training"]].values.tolist()
-    confidence_scores = data[["confidence_score"]].values.tolist()
+    immunodominance_scores = data[["immunodominance_score"]].values.tolist()
 
     if plot_umap:
-        VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, confidence_scores, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}_confidence_score".format(use_column))
-        VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, labels, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}".format(use_column))
-        VegvisirPlots.plot_umap1(percent_identity_mean,labels,storage_folder,args,"Percent Identity Mean","UMAP_percent_identity_mean_{}".format(use_column))
-        VegvisirPlots.plot_umap1(cosine_similarity_mean, labels, storage_folder, args, "Cosine similarity Mean","UMAP_cosine_similarity_mean_{}".format(use_column))
-        VegvisirPlots.plot_umap1(kmers_pid_similarity, labels, storage_folder, args, "Kmers Percent Identity Mean","UMAP_kmers_percent_identity_{}".format(use_column))
-        VegvisirPlots.plot_umap1(kmers_cosine_similarity, labels, storage_folder, args, "Kmers Cosine similarity Mean","UMAP_kmers_cosine_similarity_{}".format(use_column))
+        VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, immunodominance_scores, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}_immunodominance_score".format(sequence_column))
+        VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, labels, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}".format(sequence_column))
+        VegvisirPlots.plot_umap1(percent_identity_mean,labels,storage_folder,args,"Percent Identity Mean","UMAP_percent_identity_mean_{}".format(sequence_column))
+        VegvisirPlots.plot_umap1(cosine_similarity_mean, labels, storage_folder, args, "Cosine similarity Mean","UMAP_cosine_similarity_mean_{}".format(sequence_column))
+        VegvisirPlots.plot_umap1(kmers_pid_similarity, labels, storage_folder, args, "Kmers Percent Identity Mean","UMAP_kmers_percent_identity_{}".format(sequence_column))
+        VegvisirPlots.plot_umap1(kmers_cosine_similarity, labels, storage_folder, args, "Kmers Cosine similarity Mean","UMAP_kmers_cosine_similarity_{}".format(sequence_column))
 
 
-    identifiers_labels_array = np.zeros((n_data,1,max_len))
-    identifiers_labels_array[:,0,0] = np.array(labels).squeeze(-1)
-    identifiers_labels_array[:,0,1] = np.array(identifiers)
-    identifiers_labels_array[:,0,2] = np.array(partitions).squeeze(-1)
-    identifiers_labels_array[:,0,3] = np.array(training).squeeze(-1).astype(int)
-    identifiers_labels_array[:,0,4] = np.array(confidence_scores).squeeze(-1)
+    if feature_columns is not None:
+        features_scores = data[feature_columns].to_numpy()
+        identifiers_labels_array = np.zeros((n_data, 1, max_len + len(feature_columns)))
+        identifiers_labels_array[:, 0, 0] = np.array(labels).squeeze(-1)
+        identifiers_labels_array[:, 0, 1] = np.array(identifiers)
+        identifiers_labels_array[:, 0, 2] = np.array(partitions).squeeze(-1)
+        identifiers_labels_array[:, 0, 3] = np.array(training).squeeze(-1).astype(int)
+        identifiers_labels_array[:, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
+
+        #TODO: unite in a function
+        epitopes_array = np.concatenate([epitopes_array,features_scores],axis=1)
+        epitopes_array_int = np.concatenate([epitopes_array_int,features_scores],axis=1)
+        epitopes_array_blosum_norm = np.concatenate([epitopes_array_blosum_norm,features_scores],axis=1)
+
+        data_array_raw = np.concatenate([identifiers_labels_array, epitopes_array[:, None]], axis=1)
+        data_array_int = np.concatenate([identifiers_labels_array,epitopes_array_int[:, None]], axis=1)
+        data_array_blosum_norm = np.concatenate([identifiers_labels_array,epitopes_array_blosum_norm[:, None]], axis=1)
+
+    else:
+        identifiers_labels_array = np.zeros((n_data, 1, max_len))
+        identifiers_labels_array[:, 0, 0] = np.array(labels).squeeze(-1)
+        identifiers_labels_array[:, 0, 1] = np.array(identifiers)
+        identifiers_labels_array[:, 0, 2] = np.array(partitions).squeeze(-1)
+        identifiers_labels_array[:, 0, 3] = np.array(training).squeeze(-1).astype(int)
+        identifiers_labels_array[:, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
+        data_array_raw = np.concatenate([identifiers_labels_array, epitopes_array[:,None]], axis=1)
+        data_array_int = np.concatenate([identifiers_labels_array, epitopes_array_int[:,None]], axis=1)
+        data_array_blosum_norm = np.concatenate([identifiers_labels_array, epitopes_array_blosum_norm[:,None]], axis=1)
+
+    if feature_columns is not None:
+
+        identifiers_labels_array_blosum = np.zeros((n_data, 1, max_len + len(feature_columns), epitopes_array_blosum.shape[2]))
+        identifiers_labels_array_blosum[:, 0, 0, 0] = np.array(labels).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 1] = np.array(identifiers)
+        identifiers_labels_array_blosum[:, 0, 0, 2] = np.array(partitions).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 3] = np.array(training).squeeze(-1).astype(int)
+        identifiers_labels_array_blosum[:, 0, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
+
+        features_array_blosum = np.zeros((n_data,len(feature_columns), epitopes_array_blosum.shape[2]))
+        features_array_blosum[:,:,0] = features_scores
+
+        epitopes_array_blosum = np.concatenate([epitopes_array_blosum,features_array_blosum],axis=1)
+        epitopes_array_onehot_encoding = np.concatenate([epitopes_array_onehot_encoding,features_array_blosum],axis=1)
+        data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:, None]],axis=1)
+        data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:, None]], axis=1)
+
+    else:
+        identifiers_labels_array_blosum = np.zeros((n_data, 1, max_len, epitopes_array_blosum.shape[2]))
+        identifiers_labels_array_blosum[:, 0, 0, 0] = np.array(labels).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 1] = np.array(identifiers)
+        identifiers_labels_array_blosum[:, 0, 0, 2] = np.array(partitions).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 3] = np.array(training).squeeze(-1).astype(int)
+        identifiers_labels_array_blosum[:, 0, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
+        data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:,None]], axis=1)
+        data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:,None]], axis=1)
 
 
-    data_array_raw = np.concatenate([identifiers_labels_array, epitopes_array[:,None]], axis=1)
-    data_array_int = np.concatenate([identifiers_labels_array, epitopes_array_int[:,None]], axis=1)
-    data_array_blosum_norm = np.concatenate([identifiers_labels_array, epitopes_array_blosum_norm[:,None]], axis=1)
-
-    identifiers_labels_array_blosum = np.zeros((n_data,1, max_len, epitopes_array_blosum.shape[2]))
-    identifiers_labels_array_blosum[:,0,0,0] = np.array(labels).squeeze(-1)
-    identifiers_labels_array_blosum[:,0,0,1] = np.array(identifiers)
-    identifiers_labels_array_blosum[:,0,0,2] = np.array(partitions).squeeze(-1)
-    identifiers_labels_array_blosum[:,0,0,3] = np.array(training).squeeze(-1).astype(int)
-    identifiers_labels_array_blosum[:,0,0,4] = np.array(confidence_scores).squeeze(-1)
-
-
-    data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:,None]], axis=1)
-    data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:,None]], axis=1)
     data_array_blosum_encoding_mask = epitopes_mask.repeat(data_array_blosum_encoding.shape[1], axis=1).repeat(corrected_aa_types, axis=-1).reshape((n_data, data_array_int.shape[1], max_len,corrected_aa_types))
     #distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
     data_info = DatasetInfo(script_dir=script_dir,
@@ -896,7 +937,8 @@ def process_data(data,args,storage_folder,script_dir,use_column="Icore",plot_blo
                             percent_identity_mean=percent_identity_mean,
                             cosine_similarity_mean=cosine_similarity_mean,
                             kmers_pid_similarity=kmers_pid_similarity,
-                            kmers_cosine_similarity=kmers_cosine_similarity
+                            kmers_cosine_similarity=kmers_cosine_similarity,
+                            feature_columns = feature_columns,
                             )
     return data_info
 
