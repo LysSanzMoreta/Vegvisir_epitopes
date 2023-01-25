@@ -21,7 +21,7 @@ ModelLoad = namedtuple("ModelLoad",["args","max_len","n_data","input_dim","aa_ty
 
 def train_loop(model,loss_func,optimizer, data_loader, args):
     """Regular batch training
-    :param nn.Module model:
+    :param nn.Module model: Neural net architecture
     :param loss_func: loss function
     :param optimizer: gradient descent method
     :param DataLoader data_loader: Pytorch dataloader
@@ -199,7 +199,6 @@ def fold_auc(predictions_fold,labels,fold,results_dir,mode="Train"):
     print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score))
     print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score),file=open("{}/AUC_out.txt".format(results_dir),"a"))
     return auc_score,auk_score
-
 def dataset_proportions(data,results_dir,type="TrainEval"):
     """Calculates distribution of data points based on their labeling"""
     if isinstance(data,np.ndarray):

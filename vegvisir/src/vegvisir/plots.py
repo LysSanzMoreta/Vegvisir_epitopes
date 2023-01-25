@@ -233,8 +233,7 @@ def plot_feature_importance(feature_dict:dict,max_len:int,feature_columns:list,r
     else:
         labels = ["Pos.{}".format(pos) for pos in list(range(max_len))] + feature_columns
     colors_dict = dict(zip(labels,colors_list))
-    fig,axs = plt.subplots(len(feature_dict.keys()) ,squeeze=False) #check this: https://stackoverflow.com/questions/9834452/how-do-i-make-a-single-legend-for-many-subplots
-    #fig,axs = plt.subplots(nrows=nrows,ncols=ncols+1 ,squeeze=False) #check this: https://stackoverflow.com/questions/9834452/how-do-i-make-a-single-legend-for-many-subplots
+    fig,axs = plt.subplots(nrows=nrows,ncols=ncols+1 ,squeeze=False) #check this: https://stackoverflow.com/questions/9834452/how-do-i-make-a-single-legend-for-many-subplots
     axs = axs.ravel()
     for i,(fold,features) in enumerate(feature_dict.items()): #ax = fig.add_subplot(2,2,a+1)
         axs[i].bar(range(len(features)),features,color=colors_dict.values())

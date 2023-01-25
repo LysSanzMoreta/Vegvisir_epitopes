@@ -337,7 +337,7 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
     # Reattach info on training
     data = pd.merge(data_a, data_b, on='Icore', how='outer')
     #TODO: Move filters to args
-    filters_dict = {"filter_kmers":[True,9,"Icore"],
+    filters_dict = {"filter_kmers":[False,9,"Icore_non_anchor"],
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}
@@ -573,7 +573,7 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     #TODO: Move filters to args
     filters_dict = {"filter_kmers":[False,9,"Icore"],
-                    "filter_ntested":[False,10],
+                    "filter_ntested":[True,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}
     json.dump(filters_dict, dataset_info_file, indent=2)
@@ -931,9 +931,9 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
                             data_array_blosum_norm=data_array_blosum_norm,
                             blosum=blosum_array,
                             n_data=n_data,
-                            max_len=max_len,
+                            max_len=[max_len + len(feature_columns) if feature_columns is not None else max_len][0],
                             corrected_aa_types = corrected_aa_types,
-                            input_dim=corrected_aa_types, # + 1 if gaps are present
+                            input_dim=corrected_aa_types,
                             percent_identity_mean=percent_identity_mean,
                             cosine_similarity_mean=cosine_similarity_mean,
                             kmers_pid_similarity=kmers_pid_similarity,

@@ -60,15 +60,15 @@ if __name__ == "__main__":
     parser.add_argument('-subs_matrix', default="BLOSUM62", type=str,
                         help='blosum matrix to create blosum embeddings, choose one from /home/lys/anaconda3/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data')
 
-    parser.add_argument('-k-folds', type=int, nargs='?', default=5, help='Number of k-fold for k-fold cross validation')
+    parser.add_argument('-k-folds', type=int, nargs='?', default=2, help='Number of k-fold for k-fold cross validation')
     parser.add_argument('-batch-size', type=int, nargs='?', default=64, help='Batch size')
     parser.add_argument('-optimizer_name', type=str, nargs='?', default="Adam", help='Gradient optimizer name')
-    parser.add_argument('-loss-func', type=str, nargs='?', default="ae_loss", help="Error loss function to be optimized, options are: \n"
-                                                                                         "<bcelogits>: Binary Cross Entropy with logits \n "
-                                                                                         "<bceprobs>: Binary Cross Entropy with probabilities (softmax activation)\n"
+    parser.add_argument('-loss-func', type=str, nargs='?', default="bcelogits", help="Error loss function to be optimized, options are: \n"
+                                                                                         "<bcelogits>: Binary Cross Entropy with logits (no activation in last layer) \n "
+                                                                                         "<bceprobs>: Binary Cross Entropy with probabilities (sigmoid activation)\n"
                                                                                          "<weighted_bce>: Weighted Binary Cross Entropy \n"
                                                                                          "<ae_loss>: Uses a reconstruction and a classification error loss ")
-    parser.add_argument('-clip-gradients', type=bool, nargs='?', default=False, help='Compute the 2D Eucledan norm of the gradient to normalize the gradient by that value and prevent vanishing gradients \n '
+    parser.add_argument('-clip-gradients', type=bool, nargs='?', default=False, help='Compute the 2D Euclidean norm of the gradient to normalize the gradient by that value and prevent vanishing gradients \n '
                                                                                      '(small gradients that lead to abscence of training)')
 
 
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     if args.use_cuda:
         if torch.cuda.is_available():
             torch.set_default_tensor_type(torch.cuda.DoubleTensor)
-            parser.add_argument('--device',type=str,default="cuda" ,nargs='?', help='Device choice (cpu, cuda:0, cuda:1), linked to use_cuda')
+            parser.add_argument('--device',type=str,default="cuda:1" ,nargs='?', help='Device choice (cpu, cuda:0, cuda:1), linked to use_cuda')
         else:
             print("Cuda (gpu) not found falling back to cpu")
             torch.set_default_tensor_type(torch.DoubleTensor)

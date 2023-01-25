@@ -27,28 +27,23 @@ class Embedder(nn.Module):
             output = output.masked_fill(mask == 0, 1e10) #Highlight: This one does not seem crucial
         return output
 class MLP(nn.Module):
-    def __init__(self,input_dim,embedding_dim,num_classes,device):
+    def __init__(self,input_dim,hidden_dim,num_classes,device):
         super(MLP, self).__init__()
         self.input_dim = input_dim
         self.num_classes = num_classes
-        self.embedding_dim = embedding_dim
-        #self.logsoftmax = nn.LogSoftmax(dim=-1)
-        self.sigmoid = nn.Sigmoid()
-        self.fc1 = nn.Linear(self.input_dim,self.embedding_dim,bias=False)
-        #self.weight1 = nn.Parameter(glorot_init(self.input_dim, self.embedding_dim), requires_grad=True).to(device)
-        self.fc2 = nn.Linear(self.embedding_dim,self.num_classes,bias=False)
-        #self.weight2 = nn.Parameter(glorot_init(self.embedding_dim,self.num_classes), requires_grad=True).to(device)
-
+        self.hidden_dim = hidden_dim
+        self.device = device
+        self.fc1 = nn.Linear(self.input_dim,self.hidden_dim,bias=True)
+        self.fc2 = nn.Linear(self.hidden_dim,self.num_classes,bias=True)
+        self.relu = nn.ReLU()
     def forward(self,input,mask):
-        # output = torch.matmul(input,self.weight1) #.type(torch.cuda.IntTensor)
-        # output = torch.matmul(output,self.weight2)
-        output = self.fc1(input)
-        output = self.fc2(output)
-        output = self.sigmoid(output)
-        #output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
-        if mask is not None:
-            output = output.masked_fill(mask == 0, 1e10) #Highlight: This one does not seem crucial
+
+        output = self.relu(self.fc1(input))
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.relu(self.fc2(output))
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         return output
+
 class CNN_layers(nn.Module):
     def __init__(self,input_dim,max_len,embedding_dim,num_classes,device,loss_type):
         super(CNN_layers, self).__init__()
