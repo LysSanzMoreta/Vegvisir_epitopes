@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import umap
 import vegvisir.utils as VegvisirUtils
-from sklearn.feature_selection import mutual_info_classif
+from sklearn.feature_selection import mutual_info_classif,mutual_info_regression
 
 plt.style.use('ggplot')
 def plot_heatmap(array, title,file_name):
@@ -63,7 +63,8 @@ def plot_ELBO(train_loss,valid_loss,epochs_list,fold,results_dir):
         pass
     else:
         plt.plot(epochs_idx,train_loss, color="dodgerblue",label="train")
-        plt.plot(epochs_idx,valid_loss, color="darkorange", label="validation")
+        if valid_loss is not None:
+            plt.plot(epochs_idx,valid_loss, color="darkorange", label="validation")
         plt.xlabel("Epochs")
         plt.ylabel("-ELBO")
         #plt.yscale('log')
@@ -72,6 +73,7 @@ def plot_ELBO(train_loss,valid_loss,epochs_list,fold,results_dir):
         plt.savefig("{}/error_loss_{}fold.png".format(results_dir,fold))
         plt.close()
     plt.clf()
+
 def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir):
     """Plots the model's error loss
     :param list train_elbo: list of accumulated error losses during training
@@ -84,7 +86,8 @@ def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir
     train_accuracies = train_accuracies[epochs_idx.astype(int)] #select the same epochs as the vaidation
 
     plt.plot(epochs_idx,train_accuracies, color="deepskyblue",label="train")
-    plt.plot(epochs_idx,valid_accuracies, color="salmon", label="validation")
+    if valid_accuracies is not None:
+        plt.plot(epochs_idx,valid_accuracies, color="salmon", label="validation")
     plt.xlabel("Epochs")
     plt.ylabel("Accuracy (number of correct predictions)")
     plt.title("Accuracy (Train/valid)")
@@ -92,6 +95,7 @@ def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir
     plt.savefig("{}/accuracies_{}fold.png".format(results_dir,fold))
     plt.close()
     plt.clf()
+
 def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,method):
     """Plots the AUC/AUK scores while training
     :param list train_auc: list of accumulated AUC during training
@@ -101,7 +105,8 @@ def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,m
     """
     epochs_idx = np.array(epochs_list)
     plt.plot(epochs_idx,train_auc, color="deepskyblue",label="train")
-    plt.plot(epochs_idx,valid_auc, color="salmon", label="validation")
+    if valid_auc is not None:
+        plt.plot(epochs_idx,valid_auc, color="salmon", label="validation")
     plt.xlabel("Epochs")
     plt.ylabel("{}".format(method))
     plt.title("{} (Train/valid)".format(method))
@@ -109,6 +114,7 @@ def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,m
     plt.savefig("{}/{}_{}fold.png".format(results_dir,method,fold))
     plt.close()
     plt.clf()
+
 def plot_gradients(gradient_norms,results_dir,fold):
     print("Plotting gradients")
     #fig = plt.figure(figsize=(13, 6), dpi=100).set_facecolor('white')
@@ -125,6 +131,7 @@ def plot_gradients(gradient_norms,results_dir,fold):
 
     plt.savefig("{}/gradients_fold{}".format(results_dir,fold))
     plt.clf()
+
 def plot_ROC_curve(fpr,tpr,roc_auc,auk_score,results_dir,fold):
     plt.title('Receiver Operating Characteristic',fontdict={"size":20})
     plt.plot(fpr, tpr, 'b', label='AUC = %0.2f \n '
@@ -208,7 +215,6 @@ def plot_feature_importance_old(feature_dict:dict,max_len:int,feature_columns:li
     fig.suptitle("Feature importance")
     plt.savefig("{}/feature_importance_xgboost".format(results_dir))
 
-
 def plot_feature_importance(feature_dict:dict,max_len:int,feature_columns:list,results_dir:str) -> None:
     """
     :rtype: object
@@ -246,7 +252,6 @@ def plot_feature_importance(feature_dict:dict,max_len:int,feature_columns:list,r
     fig.suptitle("Feature importance")
     plt.savefig("{}/feature_importance_xgboost".format(results_dir))
 
-
 def plot_mutual_information(full_data,full_labels,feature_names,results_dir):
     """
     :param full_data: (N,n_feats)
@@ -263,7 +268,7 @@ def plot_mutual_information(full_data,full_labels,feature_names,results_dir):
                    "crimson", "deepbluesky", "wheat", "silver"]
     colors_dict = dict(zip(feature_names,colors_list))
 
-    mutual_information = mutual_info_classif(full_data[:,1], full_labels, discrete_features=False, n_neighbors=3, copy=True,random_state=None)
+    mutual_information = mutual_info_regression(full_data[:,1], full_labels, discrete_features=False, n_neighbors=3, copy=True,random_state=None)
     plt.bar(range(len(feature_names)), feature_names,color=colors_dict.values())
     plt.xticks(np.arange(len(feature_names)), feature_names, rotation=45, fontsize=8)
     plt.title("Mutual Information feature importance")
@@ -338,7 +343,6 @@ def plot_layers(model,layer_name,results_dir): #TODO: Check
 
     return fig
 
-
 def plot_model_parameters(train_loader, n_layers=5, hidden_units=100, activation_fn=None, use_bn=False, before=True,model=None):
     #(train_loader, n_layers=5, hidden_units=100, activation_fn=None, use_bn=False, before=True,model=None)
     import sys
@@ -375,3 +379,19 @@ def plot_model_parameters(train_loader, n_layers=5, hidden_units=100, activation
     activations_data = LayerViolinsData(names=names, values=activations)
 
     return parms_data, gradients_data, activations_data
+
+def plot_confusion_matrix(confusion_matrix,accuracy,results_dir):
+    """Plot confusion matrix
+    :param pandas dataframe confusion_matrix"""
+    confusion_matrix_array = confusion_matrix.to_numpy()
+    fig,ax = plt.subplots(figsize=(7,7))
+    plt.imshow(confusion_matrix_array,cmap='Pastel1_r')
+    for i in range(confusion_matrix_array.shape[0]):
+        for j in range(confusion_matrix_array.shape[1]):
+              ax.text(j, i, "{:.2f}".format(confusion_matrix_array[i, j]), ha="center", va="center")
+    #[[true_negatives,false_positives],[false_negatives,true_positives]]
+    plt.xticks([0,1],["Positive","Negative"])
+    plt.yticks([0,1],["Positive","Negative"])
+    plt.title("Confusion matrix. Accuracy: {}".format(accuracy))
+    plt.savefig("{}/confusion_matrix.png".format(results_dir),dpi=100)
+    plt.clf()

@@ -1,6 +1,8 @@
 import torch.nn as nn
 import torch
-import math
+from pyro.nn import PyroModule
+import  vegvisir
+from vegvisir.utils import extract_windows_vectorized
 def glorot_init(input_dim, output_dim):
     init_range = torch.sqrt(torch.tensor(6/(input_dim + output_dim)))
     initial = torch.rand(input_dim, output_dim)*2*init_range - init_range
@@ -26,6 +28,7 @@ class Embedder(nn.Module):
         if mask is not None:
             output = output.masked_fill(mask == 0, 1e10) #Highlight: This one does not seem crucial
         return output
+
 class MLP(nn.Module):
     def __init__(self,input_dim,hidden_dim,num_classes,device):
         super(MLP, self).__init__()
@@ -35,55 +38,166 @@ class MLP(nn.Module):
         self.device = device
         self.fc1 = nn.Linear(self.input_dim,self.hidden_dim,bias=True)
         self.fc2 = nn.Linear(self.hidden_dim,self.num_classes,bias=True)
-        self.relu = nn.ReLU()
+        self.leakyrelu = nn.LeakyReLU()
     def forward(self,input,mask):
 
-        output = self.relu(self.fc1(input))
+        output = self.fc1(input)
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
-        output = self.relu(self.fc2(output))
+        output = self.leakyrelu(output)
+        output = self.fc2(output)
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        return output
+
+class FCL1(nn.Module):
+
+    def __init__(self,z_dim,hidden_dim,num_classes,device,max_len):
+        super(FCL1, self).__init__()
+        self.z_dim = z_dim
+        self.num_classes = num_classes
+        self.hidden_dim = hidden_dim
+        self.device = device
+        self.max_len = max_len
+        self.fc1 = nn.Linear(self.z_dim,self.hidden_dim,bias=True)
+        self.fc2 = nn.Linear(self.hidden_dim,self.num_classes,bias=True)
+        self.leakyrelu = nn.LeakyReLU()
+        self.logsoftmax = nn.LogSoftmax(dim=-1)
+    def forward(self,input,mask):
+
+        output = self.fc1(input)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        output = self.fc2(output)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        output = self.logsoftmax(output)
+        return output
+
+class FCL2(nn.Module):
+
+    def __init__(self,z_dim,hidden_dim,num_params,device,max_len):
+        super(FCL2, self).__init__()
+        self.z_dim = z_dim
+        self.num_params = num_params
+        self.hidden_dim = hidden_dim
+        self.device = device
+        self.max_len = max_len
+        self.fc1 = nn.Linear(self.z_dim,self.hidden_dim,bias=True)
+        self.fc2 = nn.Linear(self.hidden_dim,self.num_params,bias=True)
+        self.leakyrelu = nn.LeakyReLU()
+        self.sigmoid = nn.Sigmoid()
+    def forward(self,input,mask):
+
+        output = self.fc1(input)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        output = self.fc2(output)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        output = self.sigmoid(output)
+        return output
+
+class FCL3(nn.Module):
+
+    def __init__(self,feats_dim,hidden_dim,num_classes,device):
+        super(FCL3, self).__init__()
+        self.feats_dim = feats_dim
+        self.num_classes = num_classes
+        self.hidden_dim = hidden_dim
+        self.device = device
+        self.fc1 = nn.Linear(self.feats_dim,self.hidden_dim,bias=True)
+        self.fc2 = nn.Linear(self.hidden_dim,self.num_classes,bias=True)
+        self.leakyrelu = nn.LeakyReLU()
+        self.logsoftmax = nn.LogSoftmax(dim=-1)
+    def forward(self,input):
+
+        output = self.fc1(input)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        output = self.fc2(output)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        return output
+
+class CNN_FCL(nn.Module):
+
+    def __init__(self,input_dim,hidden_dim,num_parameters,device,max_len):
+        super(CNN_FCL, self).__init__()
+        self.input_dim = input_dim
+        self.num_parameters = num_parameters
+        self.hidden_dim = hidden_dim
+        self.device = device
+        self.max_len = max_len
+        self.cnn_out = int(self.max_len/2)
+        self.k_size = int(self.max_len + 1 - self.cnn_out)
+        self.conv1 = nn.Conv1d(in_channels=self.input_dim, #highlight: the input has shape [N,feats-size,max-len]
+                               out_channels=self.hidden_dim,
+                               kernel_size=self.k_size,
+                               stride=1,
+                               bias=True,
+                               padding=0) # Without padding the output has shape [N, out_channels, (max_len - kernel_size + 1)], with padding [N, out_channels, max_len]
+        self.avgpool1 = nn.AvgPool1d(kernel_size=self.cnn_out, stride=1,padding=0)
+
+        self.fc1 = nn.Linear(self.hidden_dim,int(self.hidden_dim/2),bias=True)
+        self.fc2 = nn.Linear(int(self.hidden_dim/2),self.num_parameters,bias=True)
+
+        self.leakyrelu = nn.LeakyReLU()
+        self.sigmoid = nn.Sigmoid()
+    def forward(self,input,mask):
+
+        output = self.conv1(input)
+        output = self.avgpool1(output).squeeze(-1)
+        output = self.fc1(output)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        output = self.fc2(output)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        output = self.sigmoid(output)
         return output
 
 class CNN_layers(nn.Module):
-    def __init__(self,input_dim,max_len,embedding_dim,num_classes,device,loss_type):
+    def __init__(self,input_dim,max_len,hidden_dim,num_classes,device,loss_type):
         super(CNN_layers, self).__init__()
         self.loss_type = loss_type
         self.input_dim = input_dim
         self.num_classes = num_classes
-        self.embedding_dim = embedding_dim
+        self.hidden_dim = hidden_dim
         self.loss_type = loss_type
         self.max_len = max_len
         self.device = device
         self.sigmoid = nn.Sigmoid()
-        self.relu = nn.ReLU()
+        self.leakyrelu = nn.LeakyReLU()
         self.softmax = nn.Softmax(dim=1)
         self.softmax2 = nn.Softmax(dim=0)
-
-        self.k_size = 3
+        self.k_size = 4
+        self.padding_0 = int((self.k_size-1)/2)
+        self.padding_1 = 1
         self.conv1 = nn.Conv1d(in_channels=self.input_dim, #highlight: the input has shape [N,feats-size,max-len]
-                               out_channels=self.embedding_dim,
+                               out_channels=self.hidden_dim,
                                kernel_size=self.k_size,
                                stride=1,
                                bias=True,
-                               padding=int((self.k_size-1)/2)) # Without padding the output has shape [N, out_channels, (max_len - kernel_size + 1)], with padding [N, out_channels, max_len]
+                               padding=self.padding_1) # Without padding the output has shape [N, out_channels, (max_len - kernel_size + 1)], with padding [N, out_channels, max_len]
 
+        self.conv1_out= int(((self.max_len + 2*self.conv1.padding[0] - self.conv1.dilation[0]*(self.k_size - 1) -1)/self.conv1.stride[0]) + 1)
         # # self.cnn_out_1 = (self.max_len + 2*int(self.conv1.padding[0])- self.conv1.dilation[0]*(self.k_size - 1) -1) / self.conv1.stride[0] + 1
-        self.avgpool1 = nn.AvgPool1d(kernel_size=self.k_size, stride=1,padding=int((self.k_size-1)/2))
-        self.conv2 = nn.Conv1d(in_channels=self.embedding_dim, #highlight: the input has shape [N,feats-size,max-len]
-                               out_channels=int(self.embedding_dim*2),
+        self.avgpool1 = nn.AvgPool1d(kernel_size=self.k_size, stride=1,padding=self.padding_1)
+        self.conv2 = nn.Conv1d(in_channels=self.hidden_dim, #highlight: the input has shape [N,feats-size,max-len]
+                               out_channels=int(self.hidden_dim*2),
                                kernel_size=self.k_size,
                                stride=1,
                                bias=True,
-                               padding=int((self.k_size-1)/2)) # Without padding the output has shape [N, out_channels, (max_len - kernel_size + 1)], with padding [N, out_channels, max_len]
-        self.avgpool2 = nn.AvgPool1d(kernel_size=self.k_size, stride=1,padding=int((self.k_size-1)/2))
+                               padding=self.padding_1) # Without padding the output has shape [N, out_channels, (max_len - kernel_size + 1)], with padding [N, out_channels, max_len]
+        self.avgpool2 = nn.AvgPool1d(kernel_size=self.k_size, stride=1,padding=self.padding_1)
 
         #self.h = int(self.max_len*self.input_dim)
-        self.h = int(self.embedding_dim*2)
+        self.h = int(self.hidden_dim*2)
 
         self.fc1 = nn.Linear(self.h,int(self.h/2))
         self.fc2 = nn.Linear(int(self.h/2),self.num_classes)
         #self.rbf = RBF(int(self.h/2),self.num_classes,"linear")
-        self.dropout= nn.Dropout(p=0)
+        self.dropout= nn.Dropout(p=0) #TODO when using dropout make sure is only used during training (apparently model.eval() does not always work)
 
 
     def forward(self, input, mask):
@@ -103,22 +217,23 @@ class CNN_layers(nn.Module):
         https://www.mdpi.com/1422-0067/23/14/7775#
         """
 
-        #output = self.softmax(self.conv1(self.dropout(input)))
-        output = self.relu(self.conv1(self.dropout(input)))
+        output = self.conv1(self.dropout(input))
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
         output = self.avgpool1(output)
-        output = self.relu(self.conv2(self.dropout(output)))
+        output = self.conv2(self.dropout(output))
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
         output = self.avgpool2(output)
         output = output.permute(0,2,1)[:,-1] #Highlight: Does not seem to matter whether to flatten or take the last output
         #output = self.rbf(self.softmax2(self.dropout(self.fc1(output))))
-        output = self.fc2(self.fc1(output))
+        output = self.fc2(self.leakyrelu(self.fc1(output)))
+        output = self.leakyrelu(output)
         #output = torch.nn.functional.glu(output, dim=1) #divides by 2 the hidden dimensions
-        if self.loss_type != "weighted_bce":
-            output = self.sigmoid(output) #TODO: Softmax?
         if mask is not None:
             output = output.masked_fill(mask == 0, 1e10)
         return output
+
 class LetNET5(nn.Module):
     """Adaptation of LetNET5.Following:
          - https://towardsdatascience.com/implementing-yann-lecuns-lenet-5-in-pytorch-5e05a0911320
@@ -169,29 +284,35 @@ class LetNET5(nn.Module):
         logits = self.classifier(x)
         probs = self.softmax(logits) #replaces Euclidean RBF
         return logits, probs
+
 class RNN_layers(nn.Module):
     def __init__(self,input_dim,max_len,gru_hidden_dim,num_classes,device,loss_type):
         super(RNN_layers, self).__init__()
+        self.device = device
         self.loss_type = loss_type
         self.input_dim = input_dim
         self.num_classes = num_classes
         self.gru_hidden_dim = gru_hidden_dim
         self.loss_type = loss_type
         self.max_len = max_len
-        self.sigmoid = nn.Sigmoid()
-        self.softmax = nn.Softmax(dim=1) #I choose this dimension to get the max from all aa
-        # def softmax(x):
-        #     """Compute softmax values for each sets of scores in x."""
-        #     e_x = np.exp(x - np.max(x))
-        #     return e_x / e_x.sum(axis=0)
         self.num_layers = 1
-        self.rnn = nn.GRU(input_size=int(input_dim),
+        # self.rnn1 = nn.GRU(input_size=int(input_dim),
+        #                   hidden_size=gru_hidden_dim,
+        #                   batch_first=True,
+        #                   num_layers=self.num_layers,
+        #                   dropout=0.,
+        #                   bidirectional=True
+        #                   )
+        # self.bnn1 = nn.BatchNorm1d(self.max_len).to(self.device)
+        self.rnn2 = nn.GRU(input_size=int(input_dim),
                           hidden_size=gru_hidden_dim,
                           batch_first=True,
                           num_layers=self.num_layers,
                           dropout=0.,
                           bidirectional=True
                           )
+        self.bnn2 = nn.BatchNorm1d(self.max_len).to(self.device)
+        self.leakyrelu = nn.LeakyReLU()
         self.h = self.gru_hidden_dim
         self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
         self.fc2 = nn.Linear(int(self.h/2),int(self.h/4),bias=False)
@@ -200,35 +321,149 @@ class RNN_layers(nn.Module):
     def forward1(self,input,init_h_0,init_c_0,mask):
         """For LSTM"""
         output, out_hidden = self.rnn(input,(init_h_0,init_c_0))
-
+        output = self.leakyrelu(output)
         forward_out,backward_out = output[:,:,:self.gru_hidden_dim],output[:,:,:self.gru_hidden_dim]
-        output = self.softmax(forward_out + backward_out)
+        output = forward_out + backward_out
         output = output[:,-1]
 
-        output = self.softmax(self.fc1(output))
-        output = self.softmax(self.fc2(output))
-        output = self.softmax(self.fc3(output))
-
-        if self.loss_type != "weighted_bce":
-            output = self.sigmoid(output)
-
+        output = self.leakyrelu(self.fc1(output))
+        output = self.leakyrelu(self.fc2(output))
+        output = self.leakyrelu(self.fc3(output))
         return output
-    def forward(self,input,init_h_0,mask):
-        "For GRU"
-        output, out_hidden = self.rnn(input,init_h_0)
+    def forward2(self,input,init_h_0_f,init_h_0_r):
+        "For double GRU"
+        #seq_lens = input.bool().sum(1)
+        input_reverse = torch.flip(input,(1,))
+        output_f, out_hidden = self.rnn1(input,init_h_0_f)
+        output_f = self.leakyrelu(output_f)
+        output_f = self.bnn1(output_f)
+        forward_out,backward_out = output_f[:,:,:self.gru_hidden_dim],output_f[:,:,:self.gru_hidden_dim]
+        output_f = forward_out + backward_out
+        output_f = output_f[:,-1]
+        #Highlight: Results on reversing the sequences
+        output_r, out_hidden = self.rnn2(input_reverse,init_h_0_r)
+        output_r = self.leakyrelu(output_r)
+        output_r = self.bnn2(output_r)
+        forward_out_r,backward_out_r = output_r[:,:,:self.gru_hidden_dim],output_r[:,:,:self.gru_hidden_dim]
+        output_r = forward_out_r + backward_out_r
+        output_r = output_r[:,-1]
 
-        forward_out,backward_out = output[:,:,:self.gru_hidden_dim],output[:,:,:self.gru_hidden_dim]
-        output = self.softmax(forward_out + backward_out)
-        output = output[:,-1]
-
-        output = self.softmax(self.fc1(output))
-        output = self.softmax(self.fc2(output))
-        output = self.softmax(self.fc3(output))
-
-        if self.loss_type != "weighted_bce":
-            output = self.sigmoid(output)
-
+        output = output_f + output_r
+        #output = output_r
+        output = self.leakyrelu(self.fc1(output))
+        output = self.leakyrelu(self.fc2(output))
+        output = self.leakyrelu(self.fc3(output))
         return output
+    def forward(self,input,init_h_0_f,init_h_0_r):
+        "For GRU with reversed sequences"
+        #seq_lens = input.bool().sum(1)
+        input_reverse = torch.flip(input,(1,))
+        #Highlight: Results on reversing the sequences
+        output_r, out_hidden = self.rnn2(input_reverse,init_h_0_r)
+        output_r = self.leakyrelu(output_r)
+        output_r = self.bnn2(output_r)
+        forward_out_r,backward_out_r = output_r[:,:,:self.gru_hidden_dim],output_r[:,:,:self.gru_hidden_dim]
+        output_r = forward_out_r + backward_out_r
+        output_r = output_r[:,-1]
+        output = output_r
+        output = self.leakyrelu(self.fc1(output))
+        output = self.leakyrelu(self.fc2(output))
+        output = self.leakyrelu(self.fc3(output))
+        return output
+
+class RNN_model(nn.Module):
+    def __init__(self,input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device,loss_type):
+        super(RNN_model, self).__init__()
+        self.device = device
+        self.loss_type = loss_type
+        self.input_dim = input_dim
+        self.z_dim = z_dim
+        self.gru_hidden_dim = gru_hidden_dim
+        self.loss_type = loss_type
+        self.max_len = max_len
+        self.aa_types = aa_types
+        self.num_layers = 1
+        self.rnn = nn.GRU(input_size=self.z_dim,
+                          hidden_size=gru_hidden_dim,
+                          batch_first=True,
+                          num_layers=self.num_layers,
+                          dropout=0.,
+                          bidirectional=True
+                          )
+        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
+        self.leakyrelu = nn.LeakyReLU()
+        self.h = self.gru_hidden_dim
+        self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
+        self.fc2 = nn.Linear(int(self.h/2),int(self.h/4),bias=False)
+        self.fc3 = nn.Linear(int(self.h/4),self.aa_types,bias=False)
+
+    def forward(self,input,init_h_0):
+        "For GRU with reversed sequences"
+        #seq_lens = input.bool().sum(1)
+        input_reverse = torch.flip(input,(1,))
+        #Highlight: Results on reversing the sequences
+        output, out_hidden = self.rnn(input_reverse,init_h_0)
+        output = self.leakyrelu(output)
+        output = self.bnn(output)
+        forward_out_r,backward_out_r = output[:,:,:self.gru_hidden_dim],output[:,:,:self.gru_hidden_dim]
+        output = forward_out_r + backward_out_r
+        # output_r = output_r[:,-1]
+        # output = output_r
+        output = self.leakyrelu(self.fc1(output))
+        output = self.leakyrelu(self.fc2(output))
+        output = self.leakyrelu(self.fc3(output))
+        return output
+
+class RNN_guide(nn.Module):
+    def __init__(self,input_dim,max_len,gru_hidden_dim,z_dim,device):
+        super(RNN_guide, self).__init__()
+        self.device = device
+        self.input_dim = input_dim
+        self.z_dim = z_dim
+        self.gru_hidden_dim = gru_hidden_dim
+        self.max_len = max_len
+        self.num_layers = 1
+        # self.rnn1 = nn.GRU(input_size=int(input_dim),
+        #                   hidden_size=gru_hidden_dim,
+        #                   batch_first=True,
+        #                   num_layers=self.num_layers,
+        #                   dropout=0.,
+        #                   bidirectional=True
+        #                   )
+        # self.bnn1 = nn.BatchNorm1d(self.max_len).to(self.device)
+        self.rnn1 = nn.GRU(input_size=int(input_dim),
+                          hidden_size=gru_hidden_dim,
+                          batch_first=True,
+                          num_layers=self.num_layers,
+                          dropout=0.,
+                          bidirectional=True
+                          )
+        self.bnn2 = nn.BatchNorm1d(self.max_len).to(self.device)
+        self.leakyrelu = nn.LeakyReLU()
+        self.relu = nn.ReLU()
+        self.h = self.gru_hidden_dim
+        self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
+        self.fc2a = nn.Linear(int(self.h/2),self.z_dim,bias=False)
+        self.fc2b = nn.Linear(int(self.h/2),self.z_dim,bias=False)
+
+
+    def forward(self,input,init_h_0):
+        "For GRU with reversed sequences"
+        #seq_lens = input.bool().sum(1)
+        input_reverse = torch.flip(input,(1,))
+        #Highlight: Results on reversing the sequences
+        output_r, out_hidden = self.rnn1(input_reverse,init_h_0)
+        output_r = self.leakyrelu(output_r)
+        output_r = self.bnn2(output_r)
+        forward_out_r,backward_out_r = output_r[:,:,:self.gru_hidden_dim],output_r[:,:,:self.gru_hidden_dim]
+        output_r = forward_out_r + backward_out_r
+        output_r = output_r[:,-1]
+        output = output_r
+        output = self.leakyrelu(self.fc1(output))
+        z_mean = self.leakyrelu(self.fc2a(output))
+        z_scale = self.relu(self.fc2b(output))
+        return z_mean,z_scale
+
 class RBF(nn.Module):
     """
     Funtion from : https://github.com/JeremyLinux/PyTorch-Radial-Basis-Function-Layer
@@ -333,6 +568,7 @@ class RBF(nn.Module):
         c = self.centres.unsqueeze(0).expand(size) #optimizable parameter
         distances = (x - c).pow(2).sum(-1).pow(0.5) / torch.exp(self.log_sigmas).unsqueeze(0)
         return self.basis_func(distances)
+
 class AutoEncoder(nn.Module):
     def __init__(self,input_dim,max_len,embedding_dim,num_classes,device,loss_type):
         super(AutoEncoder,self).__init__()
@@ -353,8 +589,8 @@ class AutoEncoder(nn.Module):
                                stride=self.stride,
                                dilation=self.dilation,
                                padding=self.padding_0),
-                            nn.LeakyReLU(), #PReLU
                             nn.BatchNorm1d(self.embedding_dim),
+                            nn.LeakyReLU(), #PReLU
                             nn.AvgPool1d(kernel_size=self.k_size, stride=1, padding=int((self.k_size) / 2)),
                             nn.Conv1d(in_channels=self.embedding_dim,# highlight: the input has shape [N,feats-size,max-len]
                                       out_channels=int(self.embedding_dim / 2),
@@ -363,8 +599,8 @@ class AutoEncoder(nn.Module):
                                       dilation=self.dilation,
                                       padding=self.padding_0),
                                       #padding=int((self.k_size - 1) / 2)),
-                            nn.LeakyReLU(),
                             nn.BatchNorm1d(int(self.embedding_dim / 2)),
+                            nn.LeakyReLU(),
                             nn.AvgPool1d(kernel_size=self.k_size, stride=1,padding=int((self.k_size) / 2))
                             )
 
@@ -378,16 +614,17 @@ class AutoEncoder(nn.Module):
                                                stride =1,
                                                padding=1,#only works because stride = 1, i have not calculated a general formula
                                                output_padding=0),
-                            nn.LeakyReLU(),
-                            nn.BatchNorm1d(self.embedding_dim), #compensates the issues with ReLU handling negative values
-                            nn.ConvTranspose1d(in_channels = self.embedding_dim,
+                                     nn.BatchNorm1d(self.embedding_dim),
+                                     # compensates the issues with ReLU handling negative values
+                                     nn.LeakyReLU(),
+                                     nn.ConvTranspose1d(in_channels = self.embedding_dim,
                                                out_channels=self.input_dim,
                                                kernel_size = self.k_size,
                                                stride =1,padding=1,output_padding=0),
-                            nn.LeakyReLU(),
-                            nn.BatchNorm1d(self.input_dim),
-                            nn.LogSoftmax(dim=-1)
-                            )
+                                     nn.BatchNorm1d(self.input_dim),
+                                     nn.LeakyReLU(),
+                                     nn.LogSoftmax(dim=-1)
+                                     )
 
 
         classifier_input_dim = int(self.embedding_dim / 2)*self.max_len
@@ -401,3 +638,65 @@ class AutoEncoder(nn.Module):
         reconstructed_sequences = self.decoder(enc_out)
         class_output = self.classifier(enc_out.flatten(1))
         return reconstructed_sequences.permute(0,2,1),class_output
+
+class NNAlign(nn.Module):
+
+    def __init__(self,input_dim,max_len,hidden_dim,num_classes,device):
+        super(NNAlign, self).__init__()
+        self.input_dim = input_dim
+        self.num_classes = num_classes
+        self.hidden_dim = hidden_dim
+        self.device = device
+        self.max_len = max_len
+        self.ksize = 4
+
+        weight = nn.Parameter(torch.DoubleTensor(self.input_dim,self.hidden_dim),requires_grad=True).to(device)
+        self.weight = torch.nn.init.kaiming_normal_(weight.data,nonlinearity='leaky_relu')
+        self.bias = nn.Parameter(torch.FloatTensor(self.hidden_dim,), requires_grad=True).to(device)
+        #self.bias = torch.nn.init.kaiming_normal_(bias.data, nonlinearity='leaky_relu')
+
+        self.leakyrelu = nn.LeakyReLU()
+    def kmers_windows(self,array, clearing_time_index, max_time, sub_window_size, only_windows=True):
+        """
+        Creates indexes to extract kmers from a sequence, such as:
+             seq =  [A,T,R,P,V,L]
+             kmers_idx = [0,1,2,1,2,3,2,3,4,3,4,5]
+             seq[kmers_idx] = [A,T,R,T,R,P,R,V,L,P,V,L]
+        From https://towardsdatascience.com/fast-and-robust-sliding-window-vectorization-with-numpy-3ad950ed62f5
+        :param int clearing_time_index: Indicates the starting index (0-python idx == 1 clearing_time_index;-1-python idx == 0 clearing_time_index)
+        :param max_time: max sequence len
+        :param sub_window_size:kmer size
+        """
+        start = clearing_time_index + 1 - sub_window_size + 1
+        sub_windows = (
+                start +
+                # expand_dims are used to convert a 1D array to 2D array.
+                torch.arange(sub_window_size)[None, :] +  # [0,1,2] ---> [[0,1,2]]
+                torch.arange(max_time + 1)[None, :].T
+        # [0,...,max_len+1] ---expand dim ---> [[[0,...,max_len+1] ]], indicates the
+        )  # The first row is the sum of the first row of a + the first element of b, and so on (in the diagonal the result of a[None,:] + b[None,:] is placed (without transposing b). )
+
+        if only_windows:
+            return sub_windows
+        else:
+            return array[:, sub_windows]
+    def forward(self,input_blosum,seq_lens):
+
+        overlapping_kmers = self.kmers_windows(input, 2, self.max_len - self.ksize, self.ksize, only_windows=True)
+        input_blosum_kmers = input_blosum[:,overlapping_kmers]
+        output = torch.matmul(input_blosum_kmers,self.weight) + self.bias
+        mask = output != 0
+        output = (output * mask).sum(dim=1) / mask.sum(dim=1)
+        mask = output != 0
+        print(mask)
+        print((output*mask).shape)
+        #TODO: https://discuss.pytorch.org/t/use-tensor-mean-method-but-ignore-0-values/60170/3
+        output = (output * mask).sum(dim=1) / mask.sum(dim=1)
+        exit()
+        exit()
+        output = self.fc1(input)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+
+        return output
+

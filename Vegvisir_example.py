@@ -53,26 +53,29 @@ if __name__ == "__main__":
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=100, help='Number of epochs (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=200, help='Number of epochs (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=False, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. ')
     #TODO: include more blosum matrix types?
     parser.add_argument('-subs_matrix', default="BLOSUM62", type=str,
                         help='blosum matrix to create blosum embeddings, choose one from /home/lys/anaconda3/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data')
 
-    parser.add_argument('-k-folds', type=int, nargs='?', default=2, help='Number of k-fold for k-fold cross validation')
+    parser.add_argument('-k-folds', type=int, nargs='?', default=1, help='Number of k-fold for k-fold cross validation')
     parser.add_argument('-batch-size', type=int, nargs='?', default=64, help='Batch size')
     parser.add_argument('-optimizer_name', type=str, nargs='?', default="Adam", help='Gradient optimizer name')
-    parser.add_argument('-loss-func', type=str, nargs='?', default="bcelogits", help="Error loss function to be optimized, options are: \n"
+    parser.add_argument('-loss-func', type=str, nargs='?', default="softloss", help="Error loss function to be optimized, options are: \n"
                                                                                          "<bcelogits>: Binary Cross Entropy with logits (no activation in last layer) \n "
                                                                                          "<bceprobs>: Binary Cross Entropy with probabilities (sigmoid activation)\n"
                                                                                          "<weighted_bce>: Weighted Binary Cross Entropy \n"
-                                                                                         "<ae_loss>: Uses a reconstruction and a classification error loss ")
-    parser.add_argument('-clip-gradients', type=bool, nargs='?', default=False, help='Compute the 2D Euclidean norm of the gradient to normalize the gradient by that value and prevent vanishing gradients \n '
-                                                                                     '(small gradients that lead to abscence of training)')
+                                                                                         "<ae_loss>: Uses a reconstruction and a classification error loss"
+                                                                                         "<softloss> Label smoothing + Taylorsoftmax "
+                                                                                         "<elbo>")
+    parser.add_argument('-clip-gradients', type=bool, nargs='?', default=True, help='Compute the 2D Euclidean norm of the gradient to normalize the gradient by that value and \n '
+                                                                                    ' prevent exploding gradients (small gradients that lead to abscence of training) ')
 
-
+    parser.add_argument('-guide', type=str, nargs='?', default="custom", help='Automatic guide for amortized inference in Pyro see pyro.autoguides')
     parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
+    parser.add_argument('-z-dim', type=int, nargs='?', default=30, help='Latent space dimension')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=50, help='')
     parser.add_argument('-num_classes', type=int, nargs='?', default=2, help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')

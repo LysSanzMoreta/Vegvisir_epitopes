@@ -24,7 +24,7 @@ import vegvisir.plots as VegvisirPlots
 plt.style.use('ggplot')
 DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_array_raw","data_array_int","data_array_int_mask",
                                         "data_array_blosum_encoding","data_array_blosum_encoding_mask","data_array_onehot_encoding","data_array_blosum_norm","blosum",
-                                        "n_data","max_len","corrected_aa_types","input_dim","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity","feature_columns"])
+                                        "n_data","seq_max_len","max_len","corrected_aa_types","input_dim","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity","feature_columns"])
 def available_datasets():
     """Prints the available datasets"""
     datasets = {0:"viral_dataset",
@@ -32,6 +32,7 @@ def available_datasets():
                 2:"viral_dataset3",
                 3:"viral_dataset4"}
     return datasets
+
 def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     """Selects from available datasets
     :param dataset_name: dataset of choice
@@ -118,8 +119,8 @@ def viral_dataset(dataset_name,current_path,storage_folder,args,results_dir,upda
     nnalign_input_train.drop('training',inplace=True,axis=1)
     nnalign_input_eval.drop('training', inplace=True,axis=1)
     nnalign_input_eval.drop('partition', inplace=True, axis=1)
-    nnalign_input_train.to_csv("{}/viral_dataset/viral_nnalign_input_train.tsv".format(storage_folder),sep="\t",index=False)
-    nnalign_input_eval.to_csv("{}/viral_dataset/viral_nnalign_input_eval.tsv".format(storage_folder), sep="\t",index=False) #TODO: Header None?
+    nnalign_input_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(args.dataset_name,storage_folder),sep="\t",index=False)
+    nnalign_input_eval.to_csv("{}/{}/viral_nnalign_input_eval.tsv".format(args.dataset_name,storage_folder), sep="\t",index=False) #TODO: Header None?
 
     if args.run_nnalign:
         VegvisirNNalign.run_nnalign(args,storage_folder)
@@ -337,7 +338,7 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
     # Reattach info on training
     data = pd.merge(data_a, data_b, on='Icore', how='outer')
     #TODO: Move filters to args
-    filters_dict = {"filter_kmers":[False,9,"Icore_non_anchor"],
+    filters_dict = {"filter_kmers":[False,9,"Icore"],
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}
@@ -383,6 +384,12 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
         nfiltered = data.shape[0]
         dataset_info_file.write("Filter 3: Remove data points with low immunodominance score. Drops {} data points, remaining {} \n".format(nprefilter - nfiltered, nfiltered))
 
+    #Highlight: Annotate which data points have low confidence
+    data = set_confidence_score(data)
+
+    #Highlight: Prep data to run in NNalign
+    if args.run_nnalign:
+        set_nnalign(args,storage_folder,data,[filters_dict["filter_kmers"][2],"partitions"])
 
     name_suffix = "__".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
 
@@ -573,7 +580,7 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     #TODO: Move filters to args
     filters_dict = {"filter_kmers":[False,9,"Icore"],
-                    "filter_ntested":[True,10],
+                    "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}
     json.dump(filters_dict, dataset_info_file, indent=2)
@@ -619,6 +626,9 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
         dataset_info_file.write("Filter 3: Remove data points with low immunodominance score. Drops {} data points, remaining {} \n".format(nprefilter - nfiltered, nfiltered))
 
 
+    #Highlight: Annotate which data points have low confidence
+    data = set_confidence_score(data)
+
     name_suffix = "__".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
 
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
@@ -660,7 +670,7 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
                        size=15, xytext=(0, 8),
                        textcoords='offset points')
         bar.set_facecolor(color)
-    #######immunodominance scoreS###################
+    ####### Immunodominance scores ###################
     ax[1][0].hist(data["immunodominance_score_scaled"].to_numpy() , num_bins, density=True)
     ax[1][0].set_xlabel('Minmax scaled immunodominance score \n (N_+ / Total Nsubjects)')
     ax[1][0].set_title('Histogram of immunodominance scores')
@@ -764,7 +774,6 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     return data_info
 
-
 def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",feature_columns=None,plot_blosum=False,plot_umap=False):
     """
     :param pandas dataframe data: Contains Icore, immunodominance_score, immunodominance_score_scaled, training , partition and Rnk_EL
@@ -775,7 +784,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
     epitopes = data[[sequence_column]].values.tolist()
     epitopes = functools.reduce(operator.iconcat, epitopes, [])  # flatten list of lists
-    max_len = len(max(epitopes, key=len))
+    seq_max_len = len(max(epitopes, key=len))
     epitopes_lens = np.array(list(map(len, epitopes)))
     unique_lens = list(set(epitopes_lens))
     corrected_aa_types = len(set().union(*epitopes))
@@ -783,7 +792,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     if len(unique_lens) > 1:
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types , zero_characters=["#"])
         #Pad the sequences (relevant when not all of them are 9-mers)
-        epitopes = [list(seq.ljust(max_len, "#")) for seq in epitopes]
+        epitopes = [list(seq.ljust(seq_max_len, "#")) for seq in epitopes]
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types , args.subs_matrix,
                                                                                    zero_characters= ["#"],
                                                                                    include_zero_characters=True)
@@ -818,7 +827,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     ksize = 3 #TODO: manage in args
     if not os.path.exists("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
         print("Epitopes similarity matrices not existing, calculating (approx 2-3 min) ....")
-        percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirUtils.calculate_similarity_matrix(epitopes_array_blosum,max_len,epitopes_mask,ksize=ksize)
+        percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirUtils.calculate_similarity_matrix(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
         np.save("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name), percent_identity_mean)
         np.save("{}/{}/similarities/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name), cosine_similarity_mean)
         np.save("{}/{}/similarities/kmers_pid_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_pid_similarity)
@@ -850,6 +859,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     identifiers = data.index.values.tolist() #TODO: reset index in process data?
     partitions = data[["partition"]].values.tolist()
     training = data[["training"]].values.tolist()
+    confidence_scores = data["confidence_score"].values.tolist()
     immunodominance_scores = data[["immunodominance_score"]].values.tolist()
 
     if plot_umap:
@@ -863,12 +873,14 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
     if feature_columns is not None:
         features_scores = data[feature_columns].to_numpy()
-        identifiers_labels_array = np.zeros((n_data, 1, max_len + len(feature_columns)))
+        identifiers_labels_array = np.zeros((n_data, 1, seq_max_len + len(feature_columns)))
         identifiers_labels_array[:, 0, 0] = np.array(labels).squeeze(-1)
         identifiers_labels_array[:, 0, 1] = np.array(identifiers)
         identifiers_labels_array[:, 0, 2] = np.array(partitions).squeeze(-1)
         identifiers_labels_array[:, 0, 3] = np.array(training).squeeze(-1).astype(int)
         identifiers_labels_array[:, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
+        identifiers_labels_array[:, 0, 5] = np.array(confidence_scores)
+
 
         #TODO: unite in a function
         epitopes_array = np.concatenate([epitopes_array,features_scores],axis=1)
@@ -880,24 +892,28 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
         data_array_blosum_norm = np.concatenate([identifiers_labels_array,epitopes_array_blosum_norm[:, None]], axis=1)
 
     else:
-        identifiers_labels_array = np.zeros((n_data, 1, max_len))
+        identifiers_labels_array = np.zeros((n_data, 1, seq_max_len))
         identifiers_labels_array[:, 0, 0] = np.array(labels).squeeze(-1)
         identifiers_labels_array[:, 0, 1] = np.array(identifiers)
         identifiers_labels_array[:, 0, 2] = np.array(partitions).squeeze(-1)
         identifiers_labels_array[:, 0, 3] = np.array(training).squeeze(-1).astype(int)
         identifiers_labels_array[:, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
+        identifiers_labels_array[:, 0, 5] = np.array(confidence_scores)
+
         data_array_raw = np.concatenate([identifiers_labels_array, epitopes_array[:,None]], axis=1)
         data_array_int = np.concatenate([identifiers_labels_array, epitopes_array_int[:,None]], axis=1)
         data_array_blosum_norm = np.concatenate([identifiers_labels_array, epitopes_array_blosum_norm[:,None]], axis=1)
 
     if feature_columns is not None:
 
-        identifiers_labels_array_blosum = np.zeros((n_data, 1, max_len + len(feature_columns), epitopes_array_blosum.shape[2]))
+        identifiers_labels_array_blosum = np.zeros((n_data, 1, seq_max_len + len(feature_columns), epitopes_array_blosum.shape[2]))
         identifiers_labels_array_blosum[:, 0, 0, 0] = np.array(labels).squeeze(-1)
         identifiers_labels_array_blosum[:, 0, 0, 1] = np.array(identifiers)
         identifiers_labels_array_blosum[:, 0, 0, 2] = np.array(partitions).squeeze(-1)
         identifiers_labels_array_blosum[:, 0, 0, 3] = np.array(training).squeeze(-1).astype(int)
         identifiers_labels_array_blosum[:, 0, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 5] = np.array(confidence_scores)
+
 
         features_array_blosum = np.zeros((n_data,len(feature_columns), epitopes_array_blosum.shape[2]))
         features_array_blosum[:,:,0] = features_scores
@@ -908,17 +924,18 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
         data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:, None]], axis=1)
 
     else:
-        identifiers_labels_array_blosum = np.zeros((n_data, 1, max_len, epitopes_array_blosum.shape[2]))
+        identifiers_labels_array_blosum = np.zeros((n_data, 1, seq_max_len, epitopes_array_blosum.shape[2]))
         identifiers_labels_array_blosum[:, 0, 0, 0] = np.array(labels).squeeze(-1)
         identifiers_labels_array_blosum[:, 0, 0, 1] = np.array(identifiers)
         identifiers_labels_array_blosum[:, 0, 0, 2] = np.array(partitions).squeeze(-1)
         identifiers_labels_array_blosum[:, 0, 0, 3] = np.array(training).squeeze(-1).astype(int)
         identifiers_labels_array_blosum[:, 0, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 5] = np.array(confidence_scores)
+
         data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:,None]], axis=1)
         data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:,None]], axis=1)
 
-
-    data_array_blosum_encoding_mask = epitopes_mask.repeat(data_array_blosum_encoding.shape[1], axis=1).repeat(corrected_aa_types, axis=-1).reshape((n_data, data_array_int.shape[1], max_len,corrected_aa_types))
+    data_array_blosum_encoding_mask = epitopes_mask.repeat(data_array_blosum_encoding.shape[1], axis=1).repeat(corrected_aa_types, axis=-1).reshape((n_data, data_array_int.shape[1], seq_max_len,corrected_aa_types))
     #distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
     data_info = DatasetInfo(script_dir=script_dir,
                             storage_folder=storage_folder,
@@ -931,7 +948,8 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
                             data_array_blosum_norm=data_array_blosum_norm,
                             blosum=blosum_array,
                             n_data=n_data,
-                            max_len=[max_len + len(feature_columns) if feature_columns is not None else max_len][0],
+                            seq_max_len = seq_max_len,
+                            max_len=[seq_max_len + len(feature_columns) if feature_columns is not None else seq_max_len][0],
                             corrected_aa_types = corrected_aa_types,
                             input_dim=corrected_aa_types,
                             percent_identity_mean=percent_identity_mean,
@@ -944,4 +962,30 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
 
 
+def set_nnalign(args,storage_folder,data,column_names):
+    data_train = data[(data["training"] == 1) & (data["partition"] != 4)]
+    data_train = data_train[column_names]
+    data_valid = data[(data["training"] == 1) & (data["partition"] == 4)]
+    data_valid = data_valid[column_names]
+    data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(args.dataset_name,storage_folder),sep="\t",index=False)
+    data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(args.dataset_name,storage_folder), sep="\t",index=False) #TODO: Header None?
+
+    VegvisirNNalign.run_nnalign(args,storage_folder)
+
+def set_confidence_score(data):
+
+    nmax_tested = data["Assay_number_of_subjects_tested"].max()
+    # data.loc[(data["Assay_number_of_subjects_tested"] < 50) & (data["Assay_number_of_subjects_responded"] == 0), "confidence_score"] = data.loc[(data["Assay_number_of_subjects_tested"] < 50) & (data["Assay_number_of_subjects_responded"] == 0),"Assay_number_of_subjects_tested"]/nmax_tested
+    # data.loc[(data["Assay_number_of_subjects_tested"] <= 50) & (data["Assay_number_of_subjects_responded"] > 0), "confidence_score"] = 1
+    # data.loc[data["Assay_number_of_subjects_tested"] > 50, "confidence_score"] = 1
+    data.loc[(data["Assay_number_of_subjects_tested"] <= 50) & (data["Assay_number_of_subjects_responded"] == 0), "confidence_score"] = 0.5
+    data.loc[(data["Assay_number_of_subjects_tested"] <= 50) & (data["Assay_number_of_subjects_responded"] > 0), "confidence_score"] = 1
+    data.loc[data["Assay_number_of_subjects_tested"] > 50, "confidence_score"] = 1
+    data.loc[(data["Assay_number_of_subjects_tested"] <= 10) & (data["Assay_number_of_subjects_responded"] == 0), "confidence_score"] = 0.1
+    data.loc[(data["Assay_number_of_subjects_tested"] <= 10) & (data["Assay_number_of_subjects_responded"] > 0), "confidence_score"] = 1
+    data.loc[(data["Assay_number_of_subjects_tested"] <= 20) & (data["Assay_number_of_subjects_responded"] == 0), "confidence_score"] = 0.35
+    data.loc[(data["Assay_number_of_subjects_tested"] <= 20) & (data["Assay_number_of_subjects_responded"] > 0), "confidence_score"] = 1
+    nan_rows = data[data["confidence_score"].isna()]
+    #print(nan_rows[["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"]])
+    return data
 
