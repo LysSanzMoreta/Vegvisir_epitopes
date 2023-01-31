@@ -4,6 +4,7 @@
 Vegvisir :
 =======================
 """
+import json
 import os
 import time,datetime
 import dill
@@ -15,35 +16,43 @@ from collections import defaultdict,namedtuple
 import seaborn as sns
 import dataframe_image as dfi
 import torch
+from sklearn.cluster import DBSCAN
+import matplotlib.patches as mpatches
 import vegvisir.nnalign as VegvisirNNalign
 import vegvisir.utils as VegvisirUtils
 import vegvisir.plots as VegvisirPlots
+plt.style.use('ggplot')
 DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_array_raw","data_array_int","data_array_int_mask",
-                                        "data_array_blosum_encoding","data_array_blosum_encoding_mask","data_array_onehot_encoding","blosum",
-                                        "n_data","max_len","corrected_aa_types","input_dim","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity"])
+                                        "data_array_blosum_encoding","data_array_blosum_encoding_mask","data_array_onehot_encoding","data_array_blosum_norm","blosum",
+                                        "n_data","seq_max_len","max_len","corrected_aa_types","input_dim","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity","feature_columns"])
 def available_datasets():
     """Prints the available datasets"""
     datasets = {0:"viral_dataset",
-                1:"viral_dataset2"}
+                1:"viral_dataset2",
+                2:"viral_dataset3",
+                3:"viral_dataset4"}
     return datasets
-def select_dataset(dataset_name,script_dir,args,update=True):
+
+def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     """Selects from available datasets
     :param dataset_name: dataset of choice
     :param script_dir: Path from where the scriptis being executed
     :param update: If true it will download and update the most recent version of the dataset
     """
     func_dict = {"viral_dataset": viral_dataset,
-                 "viral_dataset2":viral_dataset2}
+                 "viral_dataset2":viral_dataset2,
+                 "viral_dataset3":viral_dataset3,
+                 "viral_dataset4":viral_dataset4}
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
 
-    dataset_load_fx = lambda f,dataset_name,current_path,storage_folder,args,update: lambda dataset_name,current_path,storage_folder,args,update: f(dataset_name,current_path,storage_folder,args,update)
-    data_load_function = dataset_load_fx(func_dict[dataset_name],dataset_name,script_dir,storage_folder,args,update)
-    dataset = data_load_function(dataset_name,script_dir,storage_folder,args,update)
+    dataset_load_fx = lambda f,dataset_name,current_path,storage_folder,args,results_dir,update: lambda dataset_name,current_path,storage_folder,args,results_dir,update: f(dataset_name,current_path,storage_folder,args,results_dir,update)
+    data_load_function = dataset_load_fx(func_dict[dataset_name],dataset_name,script_dir,storage_folder,args,results_dir,update)
+    dataset = data_load_function(dataset_name,script_dir,storage_folder,args,results_dir,update)
     print("Data retrieved")
 
     return dataset
 
-def viral_dataset(dataset_name,current_path,storage_folder,args,update):
+def viral_dataset(dataset_name,current_path,storage_folder,args,results_dir,update):
     """Loads the viral dataset generated from **IEDB** using parameters:
            -Epitope: Linear peptide
            -Assay: T-cell
@@ -110,14 +119,13 @@ def viral_dataset(dataset_name,current_path,storage_folder,args,update):
     nnalign_input_train.drop('training',inplace=True,axis=1)
     nnalign_input_eval.drop('training', inplace=True,axis=1)
     nnalign_input_eval.drop('partition', inplace=True, axis=1)
-    nnalign_input_train.to_csv("{}/viral_dataset/viral_nnalign_input_train.tsv".format(storage_folder),sep="\t",index=False)
-    nnalign_input_eval.to_csv("{}/viral_dataset/viral_nnalign_input_eval.tsv".format(storage_folder), sep="\t",index=False) #TODO: Header None?
+    nnalign_input_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(args.dataset_name,storage_folder),sep="\t",index=False)
+    nnalign_input_eval.to_csv("{}/{}/viral_nnalign_input_eval.tsv".format(args.dataset_name,storage_folder), sep="\t",index=False) #TODO: Header None?
 
     if args.run_nnalign:
         VegvisirNNalign.run_nnalign(args,storage_folder)
 
-
-def viral_dataset2(dataset_name,script_dir,storage_folder,args,update):
+def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,update):
     """Loads the viral dataset generated from **IEDB** database using parameters:
            -Epitope: Linear peptide
            -Assay: T-cell
@@ -144,8 +152,8 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,update):
     #org_id: id of the organism the peptide derives from, reported by the IEDB.
     #prot_name: protein name (reported by the IEDB).
     #uniprot_id: UniProt ID (reported by the IEDB).
-    #number_of_papers_positive: number of papers where the peptide-MHC was reported positive.
-    #number_of_papers_negative: number of papers where the peptide-MHC was reported negative.
+    #number_of_papers_positive: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
+    #number_of_papers_negative: number of papers where the peptide-MHC was reported to have a negative interaction with the TCR.
     #target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
     #target_bin_2: corrected target value, where positives are considered as "1" only if they are reported as positives in 2 or more papers.
     #start_prot: aa position (index) where the peptide starts within its source protein.
@@ -174,7 +182,7 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,update):
     return
       :param pandas dataframe: Results pandas dataframe with the following structure
           Icore:Interaction peptide core
-          confidence_score: Number of + / Number of tested
+          immunodominance_score: Number of + / Number of tested
           onfidence_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range
           training: True assign data point to train , else assign to Test
           partition: Indicates partition assignment within 5-fold cross validation
@@ -232,85 +240,569 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,update):
     nfiltered = data_a.shape[0]
     dataset_info_file.write("Filter 3: Icores with number of subjects lower than 10. Drops {} data points, remaining {} \n".format(nprefilter-nfiltered,nfiltered))
     #max_number_subjects = data["Assay_number_of_subjects_tested"].max()
-    data_a["confidence_score"] = data_a["Assay_number_of_subjects_responded"]/data_a["Assay_number_of_subjects_tested"]
+    data_a["immunodominance_score"] = data_a["Assay_number_of_subjects_responded"]/data_a["Assay_number_of_subjects_tested"]
     data_a["Rnk_EL"] =data_b["Rnk_EL"]
     data_a.fillna(0,inplace=True)
-    #Highlight: Scale-standarize values #TODO: Do separately for train, eval and test
-    data_a = VegvisirUtils.minmax_scale(data_a,column_name ="confidence_score",suffix="_scaled")
+    #Highlight: Scale-standarize values . This is done here for visualization purposes, it is done afterwards separately for train, eval and test
+    data_a = VegvisirUtils.minmax_scale(data_a,column_name ="immunodominance_score",suffix="_scaled")
     data_a = VegvisirUtils.minmax_scale(data_a,column_name="Rnk_EL",suffix="_scaled") #Likelihood rank
     data_b.fillna(0, inplace=True)
     # print(data_a["target"].value_counts())
-    # print(data_a.sort_values(by="confidence_score",ascending=True)[["confidence_score","target"]])
-    data_a.loc[data_a["confidence_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
-    #print(data_a.sort_values(by="confidence_score", ascending=True)[["confidence_score","target"]])
-    data_a.loc[data_a["confidence_score_scaled"] > 0.,"target_corrected"] = 1.
+    # print(data_a.sort_values(by="immunodominance_score",ascending=True)[["immunodominance_score","target"]])
+    #Highlight: Strict target reassignment
+    data_a.loc[data_a["immunodominance_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
+    #print(data_a.sort_values(by="immunodominance_score", ascending=True)[["immunodominance_score","target"]])
+    data_a.loc[data_a["immunodominance_score_scaled"] > 0.,"target_corrected"] = 1.
     # print(data_a["target"].value_counts())
     # print("--------------------")
     # print(data_a["partition"].value_counts())
     # print("--------------------")
     # print(data_a["training"].value_counts())
     ndata = data_a.shape[0]
-    fig, ax = plt.subplots(3, figsize=(7, 10))
+    fig, ax = plt.subplots(2,2, figsize=(7, 10))
     num_bins = 50
     ############LABELS #############
-    freq, bins, patches = ax[0].hist(data_a["target"].to_numpy() , bins=2, density=True)
-    ax[0].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
-    ax[0].set_title(r'Histogram of targets/labels')
-    ax[0].xaxis.set_ticks([0.25,0.75])
-    ax[0].set_xticklabels([0,1])
+    freq, bins, patches = ax[0][0].hist(data_a["target"].to_numpy() , bins=2, density=True)
+    ax[0][0].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][0].set_title(r'Histogram of targets/labels')
+    ax[0][0].xaxis.set_ticks([0.25,0.75])
+    ax[0][0].set_xticklabels([0,1])
     # Annotate the bars.
     for bar in patches: #iterate over the bars
         n_data_bin = (bar.get_height()*ndata)/2
-        ax[0].annotate(format(n_data_bin, '.2f'),
+        ax[0][0].annotate(format(n_data_bin, '.2f'),
                        (bar.get_x() + bar.get_width() / 2,
                         bar.get_height()), ha='center', va='center',
                        size=15, xytext=(0, 8),
                        textcoords='offset points')
-    #######CONFIDENCE SCORES
-    ax[1].hist(data_a["confidence_score_scaled"].to_numpy() , num_bins, density=True)
-    ax[1].set_xlabel('Minmax scaled confidence score (N_+ / Subjects)')
-    ax[1].set_title(r'Histogram of confidence scores')
+    ############LABELS CORRECTED #############
+    freq, bins, patches = ax[0][1].hist(data_a["target_corrected"].to_numpy() , bins=2, density=True)
+    ax[0][1].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][1].set_title(r'Histogram of re-assigned targets/labels')
+    ax[0][1].xaxis.set_ticks([0.25,0.75])
+    ax[0][1].set_xticklabels([0,1])
+    # Annotate the bars.
+    for bar in patches: #iterate over the bars
+        n_data_bin = (bar.get_height()*ndata)/2
+        ax[0][1].annotate(format(n_data_bin, '.2f'),
+                       (bar.get_x() + bar.get_width() / 2,
+                        bar.get_height()), ha='center', va='center',
+                       size=15, xytext=(0, 8),
+                       textcoords='offset points')
+    #######immunodominance scoreS
+    ax[1][0].hist(data_a["immunodominance_score_scaled"].to_numpy() , num_bins, density=True)
+    ax[1][0].set_xlabel('Minmax scaled immunodominance score \n  (N_+ / Subjects)')
+    ax[1][0].set_title(r'Histogram of immunodominance scores')
     ##########RANK###################
-    ax[2].hist(data_a["Rnk_EL"].to_numpy(), num_bins, density=True)
-    ax[2].set_xlabel("Binding rank estimated by NetMHCpan-4.1")
-    ax[2].set_title(r'Histogram of Rnk_EL scores')
+    ax[1][1].hist(data_a["Rnk_EL"].to_numpy(), num_bins, density=True)
+    ax[1][1].set_xlabel("Binding rank estimated by NetMHCpan-4.1")
+    ax[1][1].set_title(r'Histogram of Rnk_EL scores')
     plt.ylabel("Counts")
     fig.tight_layout()
     plt.savefig("{}/{}/Viruses_histograms".format(storage_folder,args.dataset_name), dpi=300)
     plt.clf()
-    data_info = process_data(data_a,args,storage_folder,script_dir)
+    data_info = process_data(data_a,args,storage_folder,script_dir,"Icore")
+    return data_info
+
+def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,update):
+    """
+    ####################
+    #HEADER DESCRIPTIONS#
+    ####################
+    allele
+    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
+    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
+    Number of Subjects Responded
+    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
+    training
+    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
+    partition
+
+    return
+          :param pandas dataframe: Results pandas dataframe with the following structure:
+                  Icore:Interaction peptide core
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  training: True assign data point to train , else assign to Test (given)
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  target: Pre-assigned target(given)
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+            """
+    dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
+    data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
+
+    # Group data by Icore
+    data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
+    data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+    # Reattach info on training
+    data = pd.merge(data_a, data_b, on='Icore', how='outer')
+    #TODO: Move filters to args
+    filters_dict = {"filter_kmers":[False,9,"Icore"],
+                    "filter_ntested":[False,10],
+                    "filter_lowconfidence":[False],
+                    "corrected_immunodominance_score":[False,10]}
+    json.dump(filters_dict, dataset_info_file, indent=2)
+
+    if filters_dict["filter_ntested"][0]:
+        # Highlight: Filter the points with low subject count and only keep if all "negative"
+        threshold = filters_dict["filter_ntested"][1]
+        nprefilter = data.shape[0]
+        data = data[(data["Assay_number_of_subjects_tested"] > threshold)]
+        nfiltered = data.shape[0]
+        dataset_info_file.write("Filter 1: Icores with number of subjects lower than {}. Drops {} data points, remaining {} \n".format(threshold,nprefilter - nfiltered, nfiltered))
+
+
+    data["immunodominance_score"] = data["Assay_number_of_subjects_responded"] / data["Assay_number_of_subjects_tested"]
+    data = data.fillna({"immunodominance_score":0})
+
+    if filters_dict["corrected_immunodominance_score"][0]:
+        treshold = filters_dict["corrected_immunodominance_score"][1]
+        data.loc[(data["Assay_number_of_subjects_tested"] < treshold) | (data["Assay_number_of_subjects_responded"] == 0), "immunodominance_score"] = 0.01
+
+    # Highlight: Scale-standarize values . This is done here for visualization purposes, it is done afterwards separately for train, eval and test
+    data = VegvisirUtils.minmax_scale(data, column_name="immunodominance_score", suffix="_scaled")
+
+    if filters_dict["filter_kmers"][0]:
+        #Highlight: Grab only k-mers
+        use_column = filters_dict["filter_kmers"][2]
+        kmer_size = filters_dict["filter_kmers"][1]
+        nprefilter = data.shape[0]
+        data = data[data[use_column].apply(lambda x: len(x) == kmer_size)]
+        nfiltered = data.shape[0]
+        dataset_info_file.write("Filter 2: {} whose length is different than 9. Drops {} data points, remaining {} \n".format(use_column,kmer_size,nprefilter-nfiltered,nfiltered))
+
+    #Highlight: Strict target reassignment
+    data.loc[data["immunodominance_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
+    #print(data_a.sort_values(by="immunodominance_score", ascending=True)[["immunodominance_score","target"]])
+    data.loc[data["immunodominance_score_scaled"] > 0.,"target_corrected"] = 1.
+
+    #Highlight: Filter data points with low confidence (!= 0, 1)
+    if filters_dict["filter_lowconfidence"][0]:
+        nprefilter = data.shape[0]
+        data = data[data["immunodominance_score"].isin([0.,1.])]
+        nfiltered = data.shape[0]
+        dataset_info_file.write("Filter 3: Remove data points with low immunodominance score. Drops {} data points, remaining {} \n".format(nprefilter - nfiltered, nfiltered))
+
+    #Highlight: Annotate which data points have low confidence
+    data = set_confidence_score(data)
+
+    #Highlight: Prep data to run in NNalign
+    if args.run_nnalign:
+        set_nnalign(args,storage_folder,data,[filters_dict["filter_kmers"][2],"partitions"])
+
+    name_suffix = "__".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
+
+    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
+
+    ndata = data.shape[0]
+    fig, ax = plt.subplots(2,3, figsize=(11, 10))
+    num_bins = 50
+    colors_dict = {0:"orange",1:"blue"}
+    labels_dict = {0:"Negative",1:"Positive"}
+
+    ############LABELS #############
+    freq, bins, patches = ax[0][0].hist(data["target"].to_numpy() , bins=2, density=True,edgecolor='white')
+    ax[0][0].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][0].set_title(r'Histogram of targets/labels')
+    ax[0][0].xaxis.set_ticks([0.25,0.75])
+    ax[0][0].set_xticklabels([0,1])
+    # Annotate the bars.
+    for color,bar in zip(colors_dict.values(),patches): #iterate over the bars
+        n_data_bin = (bar.get_height()*ndata)/2
+        ax[0][0].annotate(format(n_data_bin, '.2f'),
+                       (bar.get_x() + bar.get_width() / 2,
+                        bar.get_height()), ha='center', va='center',
+                       size=15, xytext=(0, 8),
+                       textcoords='offset points')
+        bar.set_facecolor(color)
+
+    ############LABELS CORRECTED #############
+    freq, bins, patches = ax[0][1].hist(data["target_corrected"].to_numpy() , bins=2, density=True,edgecolor='white')
+    ax[0][1].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][1].set_title('Histogram of re-assigned \n targets/labels')
+    ax[0][1].xaxis.set_ticks([0.25,0.75])
+    ax[0][1].set_xticklabels([0,1])
+    # Annotate the bars.
+    for color,bar in zip(colors_dict.values(),patches): #iterate over the bars
+        n_data_bin = (bar.get_height()*ndata)/2
+        ax[0][1].annotate(format(n_data_bin, '.2f'),
+                       (bar.get_x() + bar.get_width() / 2,
+                        bar.get_height()), ha='center', va='center',
+                       size=15, xytext=(0, 8),
+                       textcoords='offset points')
+        bar.set_facecolor(color)
+    #######immunodominance scoreS###################
+    ax[1][0].hist(data["immunodominance_score_scaled"].to_numpy() , num_bins, density=True)
+    ax[1][0].set_xlabel('Minmax scaled immunodominance score \n (N_+ / Total Nsubjects)')
+    ax[1][0].set_title('Histogram of immunodominance scores')
+    ############TEST PROPORTIONS #############
+    data_partitions = data[["partition","training","target_corrected"]]
+    test_counts=data_partitions[data_partitions["training"] == False].value_counts("target_corrected") #returns a dict
+    if len(test_counts.keys()) > 1:
+        if test_counts[0] > test_counts[1]:
+            bar1 = ax[1][1].bar(0, test_counts[0], label="Negative", color=colors_dict[0], width=0.1,edgecolor='white')
+            bar1 = bar1.patches[0]
+            bar2 = ax[0][2].bar(0, test_counts[1], label="Positive", color=colors_dict[1], width=0.1,edgecolor='white')
+            bar2 = bar2.patches[0]
+        else:
+            bar1 = ax[1][1].bar(0, test_counts[1], label="Positive", color="orange", width=0.1,edgecolor='white')
+            bar1 = bar1.patches[0]
+            bar2 = ax[1][1].bar(0, test_counts[0], label="Negative", color="blue", width=0.1,edgecolor='white')
+            bar2 = bar2.patches[0]
+        ax[1][1].xaxis.set_ticks([0])
+        n_data_test = sum([val for key,val in test_counts.items()])
+        ax[1][1].annotate("{}({}%)".format(bar1.get_height(),np.round((bar1.get_height()*100)/n_data_test),2),
+                          (bar1.get_x() + bar1.get_width() / 2,
+                           bar1.get_height()), ha='center', va='center',
+                          size=15, xytext=(0, 8),
+                          textcoords='offset points')
+        ax[1][1].annotate("{}({}%)".format(bar2.get_height(),np.round((bar2.get_height()*100)/n_data_test),2),
+                          (bar2.get_x() + bar2.get_width() / 2,
+                           bar2.get_height()), ha='center', va='center',
+                          size=15, xytext=(0, 8),
+                          textcoords='offset points')
+    else:
+        key = test_counts.keys()[0]
+        bar1 = ax[1][1].bar(key, test_counts[key], label=labels_dict[key], color=colors_dict[key], width=0.1, edgecolor='white')
+        bar1 = bar1.patches[0]
+        ax[1][1].xaxis.set_ticks([0])
+        n_data_test = sum([val for key,val in test_counts.items()])
+        ax[1][1].annotate("{}({}%)".format(bar1.get_height(),np.round((bar1.get_height()*100)/n_data_test),2),
+                          (bar1.get_x() + bar1.get_width() / 2,
+                           bar1.get_height()), ha='center', va='center',
+                          size=15, xytext=(0, 8),
+                          textcoords='offset points')
+
+    ax[1][1].set_xticklabels(["Test proportions"],fontsize=15)
+    ax[1][1].set_title('Test dataset \n +/- proportions')
+
+    ################ TRAIN PARTITION PROPORTIONS###################################
+    train_set=data_partitions[data_partitions["training"] == True]
+    partitions_groups = [train_set.groupby('partition').get_group(x) for x in train_set.groupby('partition').groups]
+    i = 0
+    partitions_names = []
+    for group in partitions_groups:
+        name = group["partition"].iloc[0]
+        group_counts =  group.value_counts("target_corrected") #returns a dict
+        if len(group_counts.keys()) > 1:
+            if group_counts[0] > group_counts[1]:
+                bar1 = ax[0][2].bar(i, group_counts[0], label="Negative", color="orange",width=0.1,edgecolor='white')
+                bar1 = bar1.patches[0]
+                bar2 = ax[0][2].bar(i, group_counts[1], label="Positive", color="blue",width=0.1)
+                bar2 = bar2.patches[0]
+
+            else:
+                bar1 = ax[0][2].bar(i, group_counts[1], label="Positive", color="orange",width=0.1,edgecolor='white')
+                bar1 = bar1.patches[0]
+                bar2 = ax[0][2].bar(i, group_counts[0], label="Negative", color="blue",width=0.1,edgecolor='white')
+                bar2 = bar2.patches[0]
+
+            i+=0.4
+            n_data_partition = sum([val for key, val in group_counts.items()])
+            ax[0][2].annotate("{}\n({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_partition), 2),
+                              (bar1.get_x() + bar1.get_width() / 2,
+                               bar1.get_height()), ha='center', va='center',
+                              size=10, xytext=(0, 8),
+                              textcoords='offset points')
+            ax[0][2].annotate("{}\n({}%)".format(bar2.get_height(), np.round((bar2.get_height() * 100) / n_data_partition), 2),
+                              (bar2.get_x() + bar2.get_width() / 2,
+                               bar2.get_height()), ha='center', va='center',
+                              size=10, xytext=(0, 8),
+                              textcoords='offset points')
+        else:
+            key = group_counts.keys()[0]
+            bar1 = ax[0][2].bar(i, group_counts[key], label=labels_dict[key], color=colors_dict[key], width=0.1, edgecolor='white')
+            bar1 = bar1.patches[0]
+            n_data_partition = sum([val for key, val in group_counts.items()])
+            ax[0][2].annotate(
+                "{}\n({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_partition), 2),
+                (bar1.get_x() + bar1.get_width() / 2,
+                 bar1.get_height()), ha='center', va='center',
+                size=10, xytext=(0, 8),
+                textcoords='offset points')
+        partitions_names.append(name)
+    ax[0][2].xaxis.set_ticks([0,0.4,0.8,1.2,1.6])
+    ax[0][2].set_xticklabels(["Part. {}".format(int(i)) for i in partitions_names])
+    ax[0][2].set_title('TrainEval dataset \n +/- proportions per partition')
+    ax[1][2].axis("off")
+    legends = [mpatches.Patch(color=color, label='Class {}'.format(label)) for label,color in colors_dict.items()]
+    fig.legend(handles=legends, prop={'size': 12},loc= 'center right',bbox_to_anchor=(0.9,0.3))
+    fig.tight_layout()
+    plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder,args.dataset_name,name_suffix), dpi=300)
+    plt.clf()
+    data_info = process_data(data,args,storage_folder,script_dir,filters_dict["filter_kmers"][2])
 
     return data_info
 
-def process_data(data,args,storage_folder,script_dir,plot_blosum=False):
+def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,update):
     """
-    :param pandas dataframe data: Contains Icore, confidence_score, confidence_score_scaled, training , partition and Rnk_EL
+    ####################
+    #HEADER DESCRIPTIONS#
+    ####################
+    allele
+    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
+    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
+    Number of Subjects Responded
+    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
+    training
+    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
+    partition
+
+    return
+          :param pandas dataframe: Results pandas dataframe with the following structure:
+                  Icore:Interaction peptide core
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  training: True assign data point to train , else assign to Test (given)
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  target: Pre-assigned target(given)
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+            """
+    dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
+    data_features = pd.read_csv("{}/{}/dataset_all_features.tsv".format(storage_folder,args.dataset_name),sep="\s+",index_col=0)
+    data_partitions = pd.read_csv("{}/viral_dataset3/dataset_target.tsv".format(storage_folder),sep = "\t",index_col=0)
+    data_partitions.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
+    data_partitions = data_partitions[["Icore","Icore_non_anchor","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","partition","target","training"]]
+    data_features = data_features[["Icore","Pred_netstab","prot_inst_index","prot_median_iupred_score_long","prot_molar_excoef_cys_cys_bond","prot_p[q3_E]_netsurfp","prot_p[q3_C]_netsurfp","prot_rsa_netsurfp"]]
+    features_names = data_features.columns.tolist()
+    features_names.pop(0)
+    features_dict = dict(zip(range(len(features_names)),features_names))
+    data = pd.merge(data_features,data_partitions, on='Icore', how='outer')
+    data = data.dropna(subset=["Icore_non_anchor","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
+    # Group data by Icore
+    data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
+    data_b = data.groupby('Icore', as_index=False)[features_names].agg(lambda x: sum(list(x)) / len(list(x)))
+    data_c = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+    # Reattach info on training
+    data = pd.merge(data_a, data_b, on='Icore', how='outer')
+    data = pd.merge(data, data_c, on='Icore', how='outer')
+
+    #TODO: Move filters to args
+    filters_dict = {"filter_kmers":[False,9,"Icore"],
+                    "filter_ntested":[False,10],
+                    "filter_lowconfidence":[False],
+                    "corrected_immunodominance_score":[False,10]}
+    json.dump(filters_dict, dataset_info_file, indent=2)
+
+    if filters_dict["filter_ntested"][0]:
+        # Highlight: Filter the points with low subject count and only keep if all "negative"
+        threshold = filters_dict["filter_ntested"][1]
+        nprefilter = data.shape[0]
+        data = data[(data["Assay_number_of_subjects_tested"] > threshold)]
+        nfiltered = data.shape[0]
+        dataset_info_file.write("Filter 1: Icores with number of subjects lower than {}. Drops {} data points, remaining {} \n".format(threshold,nprefilter - nfiltered, nfiltered))
+
+
+    data["immunodominance_score"] = data["Assay_number_of_subjects_responded"] / data["Assay_number_of_subjects_tested"]
+    data = data.fillna({"immunodominance_score":0})
+
+    if filters_dict["corrected_immunodominance_score"][0]:
+        treshold = filters_dict["corrected_immunodominance_score"][1]
+        data.loc[(data["Assay_number_of_subjects_tested"] < treshold) | (data["Assay_number_of_subjects_responded"] == 0), "immunodominance_score"] = 0.01
+
+    # Highlight: Scale-standarize values . This is done here for visualization purposes, it is done afterwards separately for train, eval and test
+    data = VegvisirUtils.minmax_scale(data, column_name="immunodominance_score", suffix="_scaled")
+
+    if filters_dict["filter_kmers"][0]:
+        #Highlight: Grab only k-mers
+        use_column = filters_dict["filter_kmers"][2]
+        kmer_size = filters_dict["filter_kmers"][1]
+        nprefilter = data.shape[0]
+        data = data[data[use_column].apply(lambda x: len(x) == kmer_size)]
+        nfiltered = data.shape[0]
+        dataset_info_file.write("Filter 2: {} whose length is different than 9. Drops {} data points, remaining {} \n".format(use_column,kmer_size,nprefilter-nfiltered,nfiltered))
+
+    #Highlight: Strict target reassignment
+    data.loc[data["immunodominance_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
+    #print(data_a.sort_values(by="immunodominance_score", ascending=True)[["immunodominance_score","target"]])
+    data.loc[data["immunodominance_score_scaled"] > 0.,"target_corrected"] = 1.
+
+    #Highlight: Filter data points with low confidence (!= 0, 1)
+    if filters_dict["filter_lowconfidence"][0]:
+        nprefilter = data.shape[0]
+        data = data[data["immunodominance_score"].isin([0.,1.])]
+        nfiltered = data.shape[0]
+        dataset_info_file.write("Filter 3: Remove data points with low immunodominance score. Drops {} data points, remaining {} \n".format(nprefilter - nfiltered, nfiltered))
+
+
+    #Highlight: Annotate which data points have low confidence
+    data = set_confidence_score(data)
+
+    name_suffix = "__".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
+
+    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
+
+    ndata = data.shape[0]
+    fig, ax = plt.subplots(2,3, figsize=(11, 10))
+    num_bins = 50
+    colors_dict = {0:"orange",1:"blue"}
+    labels_dict = {0:"Negative",1:"Positive"}
+
+    ############LABELS #############
+    freq, bins, patches = ax[0][0].hist(data["target"].to_numpy() , bins=2, density=True,edgecolor='white')
+    ax[0][0].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][0].set_title(r'Histogram of targets/labels')
+    ax[0][0].xaxis.set_ticks([0.25,0.75])
+    ax[0][0].set_xticklabels([0,1])
+    # Annotate the bars.
+    for color,bar in zip(colors_dict.values(),patches): #iterate over the bars
+        n_data_bin = (bar.get_height()*ndata)/2
+        ax[0][0].annotate(format(n_data_bin, '.2f'),
+                       (bar.get_x() + bar.get_width() / 2,
+                        bar.get_height()), ha='center', va='center',
+                       size=15, xytext=(0, 8),
+                       textcoords='offset points')
+        bar.set_facecolor(color)
+
+    ############LABELS CORRECTED #############
+    freq, bins, patches = ax[0][1].hist(data["target_corrected"].to_numpy() , bins=2, density=True,edgecolor='white')
+    ax[0][1].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][1].set_title('Histogram of re-assigned \n targets/labels')
+    ax[0][1].xaxis.set_ticks([0.25,0.75])
+    ax[0][1].set_xticklabels([0,1])
+    # Annotate the bars.
+    for color,bar in zip(colors_dict.values(),patches): #iterate over the bars
+        n_data_bin = (bar.get_height()*ndata)/2
+        ax[0][1].annotate(format(n_data_bin, '.2f'),
+                       (bar.get_x() + bar.get_width() / 2,
+                        bar.get_height()), ha='center', va='center',
+                       size=15, xytext=(0, 8),
+                       textcoords='offset points')
+        bar.set_facecolor(color)
+    ####### Immunodominance scores ###################
+    ax[1][0].hist(data["immunodominance_score_scaled"].to_numpy() , num_bins, density=True)
+    ax[1][0].set_xlabel('Minmax scaled immunodominance score \n (N_+ / Total Nsubjects)')
+    ax[1][0].set_title('Histogram of immunodominance scores')
+    ############TEST PROPORTIONS #############
+    data_partitions = data[["partition","training","target_corrected"]]
+    test_counts=data_partitions[data_partitions["training"] == False].value_counts("target_corrected") #returns a dict
+    if len(test_counts.keys()) > 1:
+        if test_counts[0] > test_counts[1]:
+            bar1 = ax[1][1].bar(0, test_counts[0], label="Negative", color=colors_dict[0], width=0.1,edgecolor='white')
+            bar1 = bar1.patches[0]
+            bar2 = ax[0][2].bar(0, test_counts[1], label="Positive", color=colors_dict[1], width=0.1,edgecolor='white')
+            bar2 = bar2.patches[0]
+        else:
+            bar1 = ax[1][1].bar(0, test_counts[1], label="Positive", color="orange", width=0.1,edgecolor='white')
+            bar1 = bar1.patches[0]
+            bar2 = ax[1][1].bar(0, test_counts[0], label="Negative", color="blue", width=0.1,edgecolor='white')
+            bar2 = bar2.patches[0]
+        ax[1][1].xaxis.set_ticks([0])
+        n_data_test = sum([val for key,val in test_counts.items()])
+        ax[1][1].annotate("{}({}%)".format(bar1.get_height(),np.round((bar1.get_height()*100)/n_data_test),2),
+                          (bar1.get_x() + bar1.get_width() / 2,
+                           bar1.get_height()), ha='center', va='center',
+                          size=15, xytext=(0, 8),
+                          textcoords='offset points')
+        ax[1][1].annotate("{}({}%)".format(bar2.get_height(),np.round((bar2.get_height()*100)/n_data_test),2),
+                          (bar2.get_x() + bar2.get_width() / 2,
+                           bar2.get_height()), ha='center', va='center',
+                          size=15, xytext=(0, 8),
+                          textcoords='offset points')
+    else:
+        key = test_counts.keys()[0]
+        bar1 = ax[1][1].bar(key, test_counts[key], label=labels_dict[key], color=colors_dict[key], width=0.1, edgecolor='white')
+        bar1 = bar1.patches[0]
+        ax[1][1].xaxis.set_ticks([0])
+        n_data_test = sum([val for key,val in test_counts.items()])
+        ax[1][1].annotate("{}({}%)".format(bar1.get_height(),np.round((bar1.get_height()*100)/n_data_test),2),
+                          (bar1.get_x() + bar1.get_width() / 2,
+                           bar1.get_height()), ha='center', va='center',
+                          size=15, xytext=(0, 8),
+                          textcoords='offset points')
+
+    ax[1][1].set_xticklabels(["Test proportions"],fontsize=15)
+    ax[1][1].set_title('Test dataset \n +/- proportions')
+
+    ################ TRAIN PARTITION PROPORTIONS###################################
+    train_set=data_partitions[data_partitions["training"] == True]
+    partitions_groups = [train_set.groupby('partition').get_group(x) for x in train_set.groupby('partition').groups]
+    i = 0
+    partitions_names = []
+    for group in partitions_groups:
+        name = group["partition"].iloc[0]
+        group_counts =  group.value_counts("target_corrected") #returns a dict
+        if len(group_counts.keys()) > 1:
+            if group_counts[0] > group_counts[1]:
+                bar1 = ax[0][2].bar(i, group_counts[0], label="Negative", color="orange",width=0.1,edgecolor='white')
+                bar1 = bar1.patches[0]
+                bar2 = ax[0][2].bar(i, group_counts[1], label="Positive", color="blue",width=0.1)
+                bar2 = bar2.patches[0]
+
+            else:
+                bar1 = ax[0][2].bar(i, group_counts[1], label="Positive", color="orange",width=0.1,edgecolor='white')
+                bar1 = bar1.patches[0]
+                bar2 = ax[0][2].bar(i, group_counts[0], label="Negative", color="blue",width=0.1,edgecolor='white')
+                bar2 = bar2.patches[0]
+
+            i+=0.4
+            n_data_partition = sum([val for key, val in group_counts.items()])
+            ax[0][2].annotate("{}\n({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_partition), 2),
+                              (bar1.get_x() + bar1.get_width() / 2,
+                               bar1.get_height()), ha='center', va='center',
+                              size=10, xytext=(0, 8),
+                              textcoords='offset points')
+            ax[0][2].annotate("{}\n({}%)".format(bar2.get_height(), np.round((bar2.get_height() * 100) / n_data_partition), 2),
+                              (bar2.get_x() + bar2.get_width() / 2,
+                               bar2.get_height()), ha='center', va='center',
+                              size=10, xytext=(0, 8),
+                              textcoords='offset points')
+        else:
+            key = group_counts.keys()[0]
+            bar1 = ax[0][2].bar(i, group_counts[key], label=labels_dict[key], color=colors_dict[key], width=0.1, edgecolor='white')
+            bar1 = bar1.patches[0]
+            n_data_partition = sum([val for key, val in group_counts.items()])
+            ax[0][2].annotate(
+                "{}\n({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_partition), 2),
+                (bar1.get_x() + bar1.get_width() / 2,
+                 bar1.get_height()), ha='center', va='center',
+                size=10, xytext=(0, 8),
+                textcoords='offset points')
+        partitions_names.append(name)
+    ax[0][2].xaxis.set_ticks([0,0.4,0.8,1.2,1.6])
+    ax[0][2].set_xticklabels(["Part. {}".format(int(i)) for i in partitions_names])
+    ax[0][2].set_title('TrainEval dataset \n +/- proportions per partition')
+    ax[1][2].axis("off")
+    legends = [mpatches.Patch(color=color, label='Class {}'.format(label)) for label,color in colors_dict.items()]
+    fig.legend(handles=legends, prop={'size': 12},loc= 'center right',bbox_to_anchor=(0.9,0.3))
+    fig.tight_layout()
+    plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder,args.dataset_name,name_suffix), dpi=300)
+    plt.clf()
+
+    data_info = process_data(data,args,storage_folder,script_dir,sequence_column=filters_dict["filter_kmers"][2],feature_columns=list(features_dict.values()))
+
+    return data_info
+
+def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",feature_columns=None,plot_blosum=False,plot_umap=False):
+    """
+    :param pandas dataframe data: Contains Icore, immunodominance_score, immunodominance_score_scaled, training , partition and Rnk_EL
     :param args: Commmand line arguments
     :param storage_folder: Data location path
     """
 
 
-    epitopes = data[["Icore"]].values.tolist()
+    epitopes = data[[sequence_column]].values.tolist()
     epitopes = functools.reduce(operator.iconcat, epitopes, [])  # flatten list of lists
-    max_len = len(max(epitopes, key=len))
+    seq_max_len = len(max(epitopes, key=len))
     epitopes_lens = np.array(list(map(len, epitopes)))
     unique_lens = list(set(epitopes_lens))
-    corrected_aa_types = [args.aa_types + 1 if len(unique_lens) > 1 and (args.aa_types == 20 or args.aa_types == 24) else args.aa_types][0]
+    corrected_aa_types = len(set().union(*epitopes))
+    corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
     if len(unique_lens) > 1:
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types , zero_characters=["#"])
         #Pad the sequences (relevant when not all of them are 9-mers)
-        epitopes = [list(seq.ljust(max_len, "#")) for seq in epitopes]
+        epitopes = [list(seq.ljust(seq_max_len, "#")) for seq in epitopes]
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types , args.subs_matrix,
                                                                                    zero_characters= ["#"],
                                                                                    include_zero_characters=True)
 
     else:
-        aa_dict = VegvisirUtils.aminoacid_names_dict(args.aa_types)
+        aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types)
         epitopes = [list(seq) for seq in epitopes]
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, args.subs_matrix,
                                                                                    zero_characters=["#"],
                                                                                    include_zero_characters=False)
-
 
     # print(epitopes[0])
     # print(epitopes[1])
@@ -322,25 +814,20 @@ def process_data(data,args,storage_folder,script_dir,plot_blosum=False):
         epitopes_array = epitopes_array[:args.subset_data]
     epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
     epitopes_mask = epitopes_array_int.astype(bool)
-
+    blosum_norm = np.linalg.norm(blosum_array[1:, 1:], axis=0)
+    aa_list = [val for key, val in aa_dict.items() if val in list(blosum_array[:, 0])]
+    blosum_norm_dict = dict(zip(aa_list,blosum_norm.tolist()))
+    epitopes_array_blosum_norm = np.vectorize(blosum_norm_dict.get)(epitopes_array_int)
     if plot_blosum:
-        blosum_cosine = VegvisirUtils.cosine_similarity(blosum_array[1:, 1:], blosum_array[1:, 1:])
-        aa_dict = VegvisirUtils.aminoacid_names_dict(args.aa_types,zero_characters=["#"])
-        aa_list =[key for key,val in aa_dict.items() if val in list(blosum_array[:,0])]
-        blosum_cosine_df = pd.DataFrame(blosum_cosine,columns=aa_list,index=aa_list)
-        sns.heatmap(blosum_cosine_df.to_numpy(),
-                    xticklabels=blosum_cosine_df.columns.values,
-                    yticklabels=blosum_cosine_df.columns.values,annot=True,annot_kws={"size": 4},fmt=".2f")
-        plt.savefig('{}/{}/blosum_cosine.png'.format(storage_folder,args.dataset_name),dpi=600)
-
+        VegvisirPlots.plot_blosum_cosine(blosum_array, storage_folder, args)
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
 
     n_data = epitopes_array.shape[0]
     ksize = 3 #TODO: manage in args
     if not os.path.exists("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
-        print("Epitopes similarity matrices not existing, calculating ....")
-        percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirUtils.calculate_similarity_matrix(epitopes_array_blosum,max_len,epitopes_mask,ksize=ksize)
+        print("Epitopes similarity matrices not existing, calculating (approx 2-3 min) ....")
+        percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirUtils.calculate_similarity_matrix(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
         np.save("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name), percent_identity_mean)
         np.save("{}/{}/similarities/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name), cosine_similarity_mean)
         np.save("{}/{}/similarities/kmers_pid_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_pid_similarity)
@@ -358,37 +845,97 @@ def process_data(data,args,storage_folder,script_dir,plot_blosum=False):
         VegvisirPlots.plot_heatmap(cosine_similarity_mean, "Cosine similarity","{}/{}/similarities/HEATMAP_cosine_similarity_mean.png".format(storage_folder,args.dataset_name))
         VegvisirPlots.plot_heatmap(kmers_pid_similarity, "Kmers ({}) percent identity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_pid_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
         VegvisirPlots.plot_heatmap(kmers_cosine_similarity, "Kmers ({}) cosine similarity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_cosine_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
+    calculate_partitions = False
+    if calculate_partitions:
+        import umap,hdbscan
+        cosine_umap = umap.UMAP(n_components=6).fit_transform(cosine_similarity_mean)
+        #clustering = DBSCAN(eps=0.1, min_samples=2,metric="euclidean",algorithm="auto",p=3).fit(cosine_umap) #eps 4
+        clustering = hdbscan.HDBSCAN(min_cluster_size=6, gen_min_span_tree=True).fit(cosine_umap)
+        labels = np.unique(clustering.labels_,return_counts=True)
 
-    #TODO: Reattatch partition, identifier, label, confidence score
+
+    #Highlight: Reattatch partition, identifier, label, immunodominance score
     labels = data[["target_corrected"]].values.tolist()
-    identifiers = data.index.values.tolist() #TODO: reset index?
+    identifiers = data.index.values.tolist() #TODO: reset index in process data?
     partitions = data[["partition"]].values.tolist()
     training = data[["training"]].values.tolist()
-    confidence_scores = data[["confidence_score"]].values.tolist()
+    confidence_scores = data["confidence_score"].values.tolist()
+    immunodominance_scores = data[["immunodominance_score"]].values.tolist()
 
-    identifiers_labels_array = np.zeros((n_data,1,max_len))
-    identifiers_labels_array[:,0,0] = np.array(labels).squeeze(-1)
-    identifiers_labels_array[:,0,1] = np.array(identifiers)
-    identifiers_labels_array[:,0,2] = np.array(partitions).squeeze(-1)
-    identifiers_labels_array[:,0,3] = np.array(training).squeeze(-1).astype(int)
-    identifiers_labels_array[:,0,4] = np.array(confidence_scores).squeeze(-1)
-
-
-    data_array_raw = np.concatenate([identifiers_labels_array, epitopes_array[:,None]], axis=1)
-    data_array_int = np.concatenate([identifiers_labels_array, epitopes_array_int[:,None]], axis=1)
-
-    identifiers_labels_array_blosum = np.zeros((n_data,1, max_len, epitopes_array_blosum.shape[2]))
-    identifiers_labels_array_blosum[:,0,0,0] = np.array(labels).squeeze(-1)
-    identifiers_labels_array_blosum[:,0,0,1] = np.array(identifiers)
-    identifiers_labels_array_blosum[:,0,0,2] = np.array(partitions).squeeze(-1)
-    identifiers_labels_array_blosum[:,0,0,3] = np.array(training).squeeze(-1).astype(int)
-    identifiers_labels_array_blosum[:,0,0,4] = np.array(confidence_scores).squeeze(-1)
+    if plot_umap:
+        VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, immunodominance_scores, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}_immunodominance_score".format(sequence_column))
+        VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, labels, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}".format(sequence_column))
+        VegvisirPlots.plot_umap1(percent_identity_mean,labels,storage_folder,args,"Percent Identity Mean","UMAP_percent_identity_mean_{}".format(sequence_column))
+        VegvisirPlots.plot_umap1(cosine_similarity_mean, labels, storage_folder, args, "Cosine similarity Mean","UMAP_cosine_similarity_mean_{}".format(sequence_column))
+        VegvisirPlots.plot_umap1(kmers_pid_similarity, labels, storage_folder, args, "Kmers Percent Identity Mean","UMAP_kmers_percent_identity_{}".format(sequence_column))
+        VegvisirPlots.plot_umap1(kmers_cosine_similarity, labels, storage_folder, args, "Kmers Cosine similarity Mean","UMAP_kmers_cosine_similarity_{}".format(sequence_column))
 
 
-    data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:,None]], axis=1)
-    data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:,None]], axis=1)
-    data_array_blosum_encoding_mask = epitopes_mask.repeat(data_array_blosum_encoding.shape[1], axis=1).repeat(corrected_aa_types, axis=-1).reshape((n_data, data_array_int.shape[1], max_len,corrected_aa_types))
+    if feature_columns is not None:
+        features_scores = data[feature_columns].to_numpy()
+        identifiers_labels_array = np.zeros((n_data, 1, seq_max_len + len(feature_columns)))
+        identifiers_labels_array[:, 0, 0] = np.array(labels).squeeze(-1)
+        identifiers_labels_array[:, 0, 1] = np.array(identifiers)
+        identifiers_labels_array[:, 0, 2] = np.array(partitions).squeeze(-1)
+        identifiers_labels_array[:, 0, 3] = np.array(training).squeeze(-1).astype(int)
+        identifiers_labels_array[:, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
+        identifiers_labels_array[:, 0, 5] = np.array(confidence_scores)
 
+
+        #TODO: unite in a function
+        epitopes_array = np.concatenate([epitopes_array,features_scores],axis=1)
+        epitopes_array_int = np.concatenate([epitopes_array_int,features_scores],axis=1)
+        epitopes_array_blosum_norm = np.concatenate([epitopes_array_blosum_norm,features_scores],axis=1)
+
+        data_array_raw = np.concatenate([identifiers_labels_array, epitopes_array[:, None]], axis=1)
+        data_array_int = np.concatenate([identifiers_labels_array,epitopes_array_int[:, None]], axis=1)
+        data_array_blosum_norm = np.concatenate([identifiers_labels_array,epitopes_array_blosum_norm[:, None]], axis=1)
+
+    else:
+        identifiers_labels_array = np.zeros((n_data, 1, seq_max_len))
+        identifiers_labels_array[:, 0, 0] = np.array(labels).squeeze(-1)
+        identifiers_labels_array[:, 0, 1] = np.array(identifiers)
+        identifiers_labels_array[:, 0, 2] = np.array(partitions).squeeze(-1)
+        identifiers_labels_array[:, 0, 3] = np.array(training).squeeze(-1).astype(int)
+        identifiers_labels_array[:, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
+        identifiers_labels_array[:, 0, 5] = np.array(confidence_scores)
+
+        data_array_raw = np.concatenate([identifiers_labels_array, epitopes_array[:,None]], axis=1)
+        data_array_int = np.concatenate([identifiers_labels_array, epitopes_array_int[:,None]], axis=1)
+        data_array_blosum_norm = np.concatenate([identifiers_labels_array, epitopes_array_blosum_norm[:,None]], axis=1)
+
+    if feature_columns is not None:
+
+        identifiers_labels_array_blosum = np.zeros((n_data, 1, seq_max_len + len(feature_columns), epitopes_array_blosum.shape[2]))
+        identifiers_labels_array_blosum[:, 0, 0, 0] = np.array(labels).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 1] = np.array(identifiers)
+        identifiers_labels_array_blosum[:, 0, 0, 2] = np.array(partitions).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 3] = np.array(training).squeeze(-1).astype(int)
+        identifiers_labels_array_blosum[:, 0, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 5] = np.array(confidence_scores)
+
+
+        features_array_blosum = np.zeros((n_data,len(feature_columns), epitopes_array_blosum.shape[2]))
+        features_array_blosum[:,:,0] = features_scores
+
+        epitopes_array_blosum = np.concatenate([epitopes_array_blosum,features_array_blosum],axis=1)
+        epitopes_array_onehot_encoding = np.concatenate([epitopes_array_onehot_encoding,features_array_blosum],axis=1)
+        data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:, None]],axis=1)
+        data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:, None]], axis=1)
+
+    else:
+        identifiers_labels_array_blosum = np.zeros((n_data, 1, seq_max_len, epitopes_array_blosum.shape[2]))
+        identifiers_labels_array_blosum[:, 0, 0, 0] = np.array(labels).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 1] = np.array(identifiers)
+        identifiers_labels_array_blosum[:, 0, 0, 2] = np.array(partitions).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 3] = np.array(training).squeeze(-1).astype(int)
+        identifiers_labels_array_blosum[:, 0, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 5] = np.array(confidence_scores)
+
+        data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:,None]], axis=1)
+        data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:,None]], axis=1)
+
+    data_array_blosum_encoding_mask = epitopes_mask.repeat(data_array_blosum_encoding.shape[1], axis=1).repeat(corrected_aa_types, axis=-1).reshape((n_data, data_array_int.shape[1], seq_max_len,corrected_aa_types))
     #distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
     data_info = DatasetInfo(script_dir=script_dir,
                             storage_folder=storage_folder,
@@ -398,18 +945,47 @@ def process_data(data,args,storage_folder,script_dir,plot_blosum=False):
                             data_array_blosum_encoding=torch.from_numpy(data_array_blosum_encoding),
                             data_array_blosum_encoding_mask=torch.from_numpy(data_array_blosum_encoding_mask),
                             data_array_onehot_encoding=torch.from_numpy(data_array_onehot_encoding),
+                            data_array_blosum_norm=data_array_blosum_norm,
                             blosum=blosum_array,
                             n_data=n_data,
-                            max_len=max_len,
+                            seq_max_len = seq_max_len,
+                            max_len=[seq_max_len + len(feature_columns) if feature_columns is not None else seq_max_len][0],
                             corrected_aa_types = corrected_aa_types,
-                            input_dim=corrected_aa_types, # + 1 if gaps are present
+                            input_dim=corrected_aa_types,
                             percent_identity_mean=percent_identity_mean,
                             cosine_similarity_mean=cosine_similarity_mean,
                             kmers_pid_similarity=kmers_pid_similarity,
-                            kmers_cosine_similarity=kmers_cosine_similarity
+                            kmers_cosine_similarity=kmers_cosine_similarity,
+                            feature_columns = feature_columns,
                             )
     return data_info
 
 
 
+def set_nnalign(args,storage_folder,data,column_names):
+    data_train = data[(data["training"] == 1) & (data["partition"] != 4)]
+    data_train = data_train[column_names]
+    data_valid = data[(data["training"] == 1) & (data["partition"] == 4)]
+    data_valid = data_valid[column_names]
+    data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(args.dataset_name,storage_folder),sep="\t",index=False)
+    data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(args.dataset_name,storage_folder), sep="\t",index=False) #TODO: Header None?
+
+    VegvisirNNalign.run_nnalign(args,storage_folder)
+
+def set_confidence_score(data):
+
+    nmax_tested = data["Assay_number_of_subjects_tested"].max()
+    # data.loc[(data["Assay_number_of_subjects_tested"] < 50) & (data["Assay_number_of_subjects_responded"] == 0), "confidence_score"] = data.loc[(data["Assay_number_of_subjects_tested"] < 50) & (data["Assay_number_of_subjects_responded"] == 0),"Assay_number_of_subjects_tested"]/nmax_tested
+    # data.loc[(data["Assay_number_of_subjects_tested"] <= 50) & (data["Assay_number_of_subjects_responded"] > 0), "confidence_score"] = 1
+    # data.loc[data["Assay_number_of_subjects_tested"] > 50, "confidence_score"] = 1
+    data.loc[(data["Assay_number_of_subjects_tested"] <= 50) & (data["Assay_number_of_subjects_responded"] == 0), "confidence_score"] = 0.5
+    data.loc[(data["Assay_number_of_subjects_tested"] <= 50) & (data["Assay_number_of_subjects_responded"] > 0), "confidence_score"] = 1
+    data.loc[data["Assay_number_of_subjects_tested"] > 50, "confidence_score"] = 1
+    data.loc[(data["Assay_number_of_subjects_tested"] <= 10) & (data["Assay_number_of_subjects_responded"] == 0), "confidence_score"] = 0.1
+    data.loc[(data["Assay_number_of_subjects_tested"] <= 10) & (data["Assay_number_of_subjects_responded"] > 0), "confidence_score"] = 1
+    data.loc[(data["Assay_number_of_subjects_tested"] <= 20) & (data["Assay_number_of_subjects_responded"] == 0), "confidence_score"] = 0.35
+    data.loc[(data["Assay_number_of_subjects_tested"] <= 20) & (data["Assay_number_of_subjects_responded"] > 0), "confidence_score"] = 1
+    nan_rows = data[data["confidence_score"].isna()]
+    #print(nan_rows[["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"]])
+    return data
 
