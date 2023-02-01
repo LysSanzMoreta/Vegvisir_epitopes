@@ -46,14 +46,14 @@ def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
-                        default="viral_dataset3",
+                        default="viral_dataset4",
                         help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data')
     parser.add_argument('-subset_data', type=str, default="no",
                         help="Pick only the first <n> datapoints (epitopes) for testing the pipeline\n"
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=200, help='Number of epochs (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=25, help='Number of epochs (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=False, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. ')
     #TODO: include more blosum matrix types?
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     parser.add_argument('-k-folds', type=int, nargs='?', default=1, help='Number of k-fold for k-fold cross validation')
     parser.add_argument('-batch-size', type=int, nargs='?', default=64, help='Batch size')
     parser.add_argument('-optimizer_name', type=str, nargs='?', default="Adam", help='Gradient optimizer name')
-    parser.add_argument('-loss-func', type=str, nargs='?', default="softloss", help="Error loss function to be optimized, options are: \n"
+    parser.add_argument('-loss-func', type=str, nargs='?', default="bcelogits", help="Error loss function to be optimized, options are: \n"
                                                                                          "<bcelogits>: Binary Cross Entropy with logits (no activation in last layer) \n "
                                                                                          "<bceprobs>: Binary Cross Entropy with probabilities (sigmoid activation)\n"
                                                                                          "<weighted_bce>: Weighted Binary Cross Entropy \n"
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     if args.use_cuda:
         if torch.cuda.is_available():
             torch.set_default_tensor_type(torch.cuda.DoubleTensor)
-            parser.add_argument('--device',type=str,default="cuda:1" ,nargs='?', help='Device choice (cpu, cuda:0, cuda:1), linked to use_cuda')
+            parser.add_argument('--device',type=str,default="cuda:0" ,nargs='?', help='Device choice (cpu, cuda:0, cuda:1), linked to use_cuda')
         else:
             print("Cuda (gpu) not found falling back to cpu")
             torch.set_default_tensor_type(torch.DoubleTensor)

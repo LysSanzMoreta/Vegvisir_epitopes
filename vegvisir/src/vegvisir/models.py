@@ -540,9 +540,8 @@ class VegvisirModel3b(VEGVISIRModelClass):
     def forward(self,batch_data,batch_mask):
         """
         """
-        batch_sequences = batch_data["blosum"][:,1].squeeze(1)
-        #batch_sequences = self.embedder(batch_sequences,None)
-        batch_features = batch_data[:,1,self.seq_max_len:,0]
+        batch_sequences = batch_data["blosum"][:,1,:self.seq_max_len].squeeze(1)
+        batch_features = batch_data["blosum"][:,1,self.seq_max_len:,0]
 
         #Highlight: RNN
         init_h_0 = self.h_0_MODEL.expand(self.rnn.num_layers * 2, batch_sequences.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
@@ -800,9 +799,9 @@ class VegvisirModel5(VEGVISIRModelClass,PyroModule):
         #return Trace_ELBO_classification(self.max_len,self.input_dim,self.num_classes)
 
 
-class VegvisirModel6(VEGVISIRModelClass):
+class VegvisirModel6a(VEGVISIRModelClass):
     """
-    Recurrent Neural Networks models with information bottleneck
+    NNalign gimick
     """
     def __init__(self, ModelLoad):
         VEGVISIRModelClass.__init__(self, ModelLoad)
@@ -815,11 +814,12 @@ class VegvisirModel6(VEGVISIRModelClass):
         """
         """
         batch_sequences_blosum = batch_data["blosum"][:,1].squeeze(1)
+        batch_mask = batch_mask[:,1:].squeeze(1)
         #batch_sequences = self.embedder(batch_sequences,None)
-        seq_lens = batch_data["int"][:,1].bool().sum(1)
+        #seq_lens = batch_data["int"][:,1].bool().sum(1)
         #batch_sequences_int = batch_data["int"][:,1]
         #Highlight: NNAlign
-        class_out = self.nna(batch_sequences_blosum,seq_lens)
+        class_out = self.nna(batch_sequences_blosum,batch_mask)
 
         return ModelOutput(reconstructed_sequences=None,
                            class_out=class_out)
@@ -884,7 +884,107 @@ class VegvisirModel6(VEGVISIRModelClass):
                 predictions = torch.max(predictions, dim=1).values.squeeze(-1)
             else:
                 predictions = predictions.squeeze(-1)
-            bce_loss = nn.BCEWithLogitsLoss(pos_weight=class_weights)
+            bce_loss = nn.BCEWithLogitsLoss()
+            #bce_loss = nn.BCEWithLogitsLoss(pos_weight=class_weights)
+            loss = bce_loss(predictions, true_labels)
+            return loss
+
+        else:
+            raise ValueError("Error loss: {} not implemented for this model type: {}".format(self.loss_type,self.get_class()))
+
+class VegvisirModel6b(VEGVISIRModelClass):
+    """
+    NNalign gimick to work with sequences and features
+    """
+    def __init__(self, ModelLoad):
+        VEGVISIRModelClass.__init__(self, ModelLoad)
+        #self.embedder = Embedder(self.aa_types,self.hidden_dim,self.device)
+        #Highlight: RNN
+        self.nna = NNAlign(self.aa_types,self.seq_max_len,self.hidden_dim*2,self.num_classes,self.device)
+        self.losses = VegvisirLosses(self.max_len,self.input_dim)
+        self.feats_dim = self.max_len - self.seq_max_len
+        self.fcl3 = FCL3(self.feats_dim,self.hidden_dim*2,self.num_classes,self.device)
+
+
+    def forward(self,batch_data,batch_mask):
+        """
+        """
+        batch_sequences_blosum = batch_data["blosum"][:,1,:self.seq_max_len].squeeze(1)
+        batch_mask = batch_mask[:,1:].squeeze(1)
+        batch_features = batch_data["blosum"][:,1,self.seq_max_len:,0]
+        #batch_sequences = self.embedder(batch_sequences,None)
+        #seq_lens = batch_data["int"][:,1].bool().sum(1)
+        #batch_sequences_int = batch_data["int"][:,1]
+        #Highlight: NNAlign
+        logits_seqs = self.nna(batch_sequences_blosum,batch_mask)
+        logits_feats = self.fcl3(batch_features)
+        class_out = logits_seqs + logits_feats
+
+        return ModelOutput(reconstructed_sequences=None,
+                           class_out=class_out)
+
+
+    def loss(self,confidence_scores,true_labels,model_outputs,onehot_sequences=None):
+        """
+        :param confidence_scores:
+        :param true_labels:
+        :param model_outputs:
+        :param onehot_sequences:
+        :return: tensor loss
+        """
+        npositives = true_labels.sum() # we have more negatives in the raw data. Multiply by 10 to get 0.9 to 9 for example
+        nnegatives = true_labels.shape[0] - npositives
+        if npositives > nnegatives:
+            pos_weights = torch.tensor([1,int(npositives/nnegatives)])
+        elif npositives == 0:
+            pos_weights = torch.tensor([0.5,1])
+        elif nnegatives == 0:
+            pos_weights = torch.tensor([1,0.5])
+        else:
+            pos_weights = torch.tensor([int(nnegatives/npositives),1])
+        class_weights = true_labels.clone()
+        class_weights[class_weights == 0] = pos_weights[0]
+        class_weights[class_weights == 1] = pos_weights[1]
+        if self.loss_type == "weighted_bce":
+            #predictions = nn.Softmax(dim=-1)(model_outputs.class_out) #TODO: Softmax?
+            predictions = nn.Sigmoid()(model_outputs.class_out)
+            predictions = predictions[torch.arange(0, true_labels.shape[0]), true_labels.long()]
+
+
+            #bce_loss = nn.BCEWithLogitsLoss(pos_weight=confidence_scores) #pos weights affects only the positive (1) labels
+            #output = bce_loss(predictions, true_labels)
+
+            #output = self.losses.weighted_loss(true_labels,predictions,confidence_scores)
+            #output = self.losses.weighted_loss(confidence_scores,predictions,None)
+            loss = self.losses.focal_loss(true_labels,predictions,confidence_scores)
+            return loss
+        elif self.loss_type == "softloss":
+            predictions = model_outputs.class_out
+            # if self.num_classes == 2:
+            #     #predictions = predictions[torch.arange(0, true_labels.shape[0]), true_labels.long()]
+            #     predictions = torch.max(predictions, dim=1).values.squeeze(-1)
+            # else:
+            #     predictions = predictions.squeeze(-1)
+            loss = self.losses.taylor_crossentropy_loss(true_labels, predictions, confidence_scores, self.num_classes)
+            return loss
+        elif self.loss_type == "bceprobs":
+            #predictions = nn.Softmax(dim=-1)(model_outputs.class_out)
+            predictions = nn.Sigmoid()(model_outputs.class_out)
+            if self.num_classes == 2:
+                #predictions = predictions[torch.arange(0, true_labels.shape[0]), true_labels.long()]
+                predictions = torch.max(predictions, dim=1).values
+            bce_loss = nn.BCELoss()
+            loss = bce_loss(predictions, true_labels)
+            return loss
+        elif self.loss_type == "bcelogits": #combines a Sigmoid layer and the BCELoss in one single class, numerically more stable
+            predictions = model_outputs.class_out
+            if self.num_classes == 2:
+                #predictions = predictions[torch.arange(0, true_labels.shape[0]), true_labels.long()]
+                predictions = torch.max(predictions, dim=1).values.squeeze(-1)
+            else:
+                predictions = predictions.squeeze(-1)
+            bce_loss = nn.BCEWithLogitsLoss()
+            #bce_loss = nn.BCEWithLogitsLoss(pos_weight=class_weights)
             loss = bce_loss(predictions, true_labels)
             return loss
 

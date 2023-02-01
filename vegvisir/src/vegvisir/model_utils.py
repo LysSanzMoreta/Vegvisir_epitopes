@@ -649,12 +649,11 @@ class NNAlign(nn.Module):
         self.device = device
         self.max_len = max_len
         self.ksize = 4
-
-        weight = nn.Parameter(torch.DoubleTensor(self.input_dim,self.hidden_dim),requires_grad=True).to(device)
-        self.weight = torch.nn.init.kaiming_normal_(weight.data,nonlinearity='leaky_relu')
+        self.weight = nn.Parameter(torch.DoubleTensor(self.input_dim,self.hidden_dim),requires_grad=True).to(device)
         self.bias = nn.Parameter(torch.FloatTensor(self.hidden_dim,), requires_grad=True).to(device)
-        #self.bias = torch.nn.init.kaiming_normal_(bias.data, nonlinearity='leaky_relu')
-
+        #self.bias = torch.nn.init.kaiming_normal_(bias.data, nonlinearity='leaky_relu') #if you we do this we cannot
+        self.fc1 = nn.Linear(self.hidden_dim*self.ksize,int(self.hidden_dim/2))
+        self.fc2 = nn.Linear(int(self.hidden_dim/2),self.num_classes)
         self.leakyrelu = nn.LeakyReLU()
     def kmers_windows(self,array, clearing_time_index, max_time, sub_window_size, only_windows=True):
         """
@@ -680,23 +679,24 @@ class NNAlign(nn.Module):
             return sub_windows
         else:
             return array[:, sub_windows]
-    def forward(self,input_blosum,seq_lens):
+    def forward(self,input_blosum,mask):
 
-        overlapping_kmers = self.kmers_windows(input, 2, self.max_len - self.ksize, self.ksize, only_windows=True)
+        overlapping_kmers = self.kmers_windows(input_blosum, 2, self.max_len - self.ksize, self.ksize, only_windows=True)
+
         input_blosum_kmers = input_blosum[:,overlapping_kmers]
         output = torch.matmul(input_blosum_kmers,self.weight) + self.bias
-        mask = output != 0
-        output = (output * mask).sum(dim=1) / mask.sum(dim=1)
-        mask = output != 0
-        print(mask)
-        print((output*mask).shape)
-        #TODO: https://discuss.pytorch.org/t/use-tensor-mean-method-but-ignore-0-values/60170/3
-        output = (output * mask).sum(dim=1) / mask.sum(dim=1)
-        exit()
-        exit()
-        output = self.fc1(input)
+        #mask_kmers = mask[:,overlapping_kmers,0].unsqueeze(-1).expand((output.shape))  #mask2 = output != 0
+        #output = (output * mask_kmers).sum(dim=1) / mask_kmers.sum(dim=1)
+        output = torch.max(output,dim=1).values #TODO: kmer with highest values (on average??)
+        #diff = [list(mask_kmers.size()).index(element) for element in list(mask_kmers.size()) if element not in list(output.size())][0]
+        #mask_kmers = [mask_kmers[:,:,0,:].squeeze(2) if diff == 2 else mask_kmers[:,0,:,:].squeeze(1)][0]
+        #output = output.mean(1) #Highlight: Mask does not seem to be necessary in the second round, since the "padded kmers" have been excluded on the first average
+        output = output.flatten(start_dim=1)
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
-
+        output = self.fc1(output)
+        output = self.leakyrelu(output)
+        output = self.fc2(output)
+        output = self.leakyrelu(output)
         return output
 

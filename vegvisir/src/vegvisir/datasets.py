@@ -4,6 +4,7 @@
 Vegvisir :
 =======================
 """
+import itertools
 import json
 import os
 import time,datetime
@@ -634,7 +635,7 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
 
     ndata = data.shape[0]
-    fig, ax = plt.subplots(2,3, figsize=(11, 10))
+    fig, ax = plt.subplots(3,3, figsize=(11, 10))
     num_bins = 50
     colors_dict = {0:"orange",1:"blue"}
     labels_dict = {0:"Negative",1:"Positive"}
@@ -674,6 +675,40 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     ax[1][0].hist(data["immunodominance_score_scaled"].to_numpy() , num_bins, density=True)
     ax[1][0].set_xlabel('Minmax scaled immunodominance score \n (N_+ / Total Nsubjects)')
     ax[1][0].set_title('Histogram of immunodominance scores')
+    ######## Sequence length distribution ####################
+    ######Train#############################3
+    data_lens_train_negative = data.loc[(data["training"] == True)&(data["target_corrected"] == 0.),filters_dict["filter_kmers"][2]].str.len()
+    data_lens_train_positive = data.loc[(data["training"] == True)&(data["target_corrected"] == 1.),filters_dict["filter_kmers"][2]].str.len()
+    #keys = [data_lens_train_positive.keys() if len(data_lens_train_positive.keys()) > len(data_lens_train_negative.keys()) else data_lens_train_negative.keys()][0]
+    position = 0
+    positions = [0]
+    keys = []
+    for (val_neg,count_neg),(val_pos,count_pos) in itertools.zip_longest(data_lens_train_negative.value_counts().items(),data_lens_train_positive.value_counts().items()):
+        ax[2][0].bar(position,count_neg,label=val_neg, color=colors_dict[0], width=0.1,edgecolor='white')
+        ax[2][0].bar(position,count_pos,label=val_pos, color=colors_dict[1], width=0.1,edgecolor='white')
+        position += 0.25
+        positions.append(position)
+    ax[2][0].xaxis.set_ticks(positions)
+    ax[2][0].set_xticklabels(keys)
+    ax[2][0].set_title("Sequence length distribution of \n  the Train-valid dataset")
+    ###### Test #####################
+    data_lens_test_negative = data.loc[(data["training"] == False)&(data["target_corrected"] == 0.),filters_dict["filter_kmers"][2]].str.len()
+    data_lens_test_positive = data.loc[(data["training"] == False)&(data["target_corrected"] == 1.),filters_dict["filter_kmers"][2]].str.len()
+    keys = [data_lens_test_positive.keys() if len(data_lens_test_positive.keys()) > len(data_lens_test_negative.keys()) else data_lens_test_negative.keys()][0]
+    position = 0
+    positions = [0]
+    #TODO: Not correct
+    for (val_neg,count_neg),(val_pos,count_pos) in itertools.zip_longest(data_lens_test_negative.value_counts().items(),data_lens_test_positive.value_counts().items()):
+        ax[2][1].bar(position,count_neg,label=val_neg, color=colors_dict[0], width=0.1,edgecolor='white')
+        ax[2][1].bar(position,count_pos,label=val_pos, color=colors_dict[1], width=0.1,edgecolor='white')
+        position += 0.25
+        positions.append(position)
+    ax[2][1].xaxis.set_ticks(positions)
+    ax[2][1].set_xticklabels(keys)
+    ax[2][1].set_title("Sequence length distribution of \n  the Test dataset")
+    ax[2][2].axis("off")
+    print("FINISHHHHHHHHHHHHHHHHH")
+    exit()
     ############TEST PROPORTIONS #############
     data_partitions = data[["partition","training","target_corrected"]]
     test_counts=data_partitions[data_partitions["training"] == False].value_counts("target_corrected") #returns a dict
@@ -769,7 +804,7 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     fig.tight_layout()
     plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder,args.dataset_name,name_suffix), dpi=300)
     plt.clf()
-
+    exit()
     data_info = process_data(data,args,storage_folder,script_dir,sequence_column=filters_dict["filter_kmers"][2],feature_columns=list(features_dict.values()))
 
     return data_info
@@ -849,10 +884,10 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     if calculate_partitions:
         import umap,hdbscan
         cosine_umap = umap.UMAP(n_components=6).fit_transform(cosine_similarity_mean)
-        #clustering = DBSCAN(eps=0.1, min_samples=2,metric="euclidean",algorithm="auto",p=3).fit(cosine_umap) #eps 4
-        clustering = hdbscan.HDBSCAN(min_cluster_size=6, gen_min_span_tree=True).fit(cosine_umap)
+        clustering = DBSCAN(eps=0.3, min_samples=1,metric="euclidean",algorithm="auto",p=3).fit(cosine_umap) #eps 4
+        #clustering = hdbscan.HDBSCAN(min_cluster_size=1, gen_min_span_tree=True).fit(cosine_similarity_mean)
         labels = np.unique(clustering.labels_,return_counts=True)
-
+        #TODO: Separate the most disimilar sequences onto the test dataset. Select labels with counts lower than 20
 
     #Highlight: Reattatch partition, identifier, label, immunodominance score
     labels = data[["target_corrected"]].values.tolist()
@@ -870,6 +905,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
         VegvisirPlots.plot_umap1(kmers_pid_similarity, labels, storage_folder, args, "Kmers Percent Identity Mean","UMAP_kmers_percent_identity_{}".format(sequence_column))
         VegvisirPlots.plot_umap1(kmers_cosine_similarity, labels, storage_folder, args, "Kmers Cosine similarity Mean","UMAP_kmers_cosine_similarity_{}".format(sequence_column))
 
+    # TODO: unite in a function
 
     if feature_columns is not None:
         features_scores = data[feature_columns].to_numpy()
@@ -880,9 +916,6 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
         identifiers_labels_array[:, 0, 3] = np.array(training).squeeze(-1).astype(int)
         identifiers_labels_array[:, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
         identifiers_labels_array[:, 0, 5] = np.array(confidence_scores)
-
-
-        #TODO: unite in a function
         epitopes_array = np.concatenate([epitopes_array,features_scores],axis=1)
         epitopes_array_int = np.concatenate([epitopes_array_int,features_scores],axis=1)
         epitopes_array_blosum_norm = np.concatenate([epitopes_array_blosum_norm,features_scores],axis=1)
@@ -934,8 +967,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
         data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:,None]], axis=1)
         data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:,None]], axis=1)
-
-    data_array_blosum_encoding_mask = epitopes_mask.repeat(data_array_blosum_encoding.shape[1], axis=1).repeat(corrected_aa_types, axis=-1).reshape((n_data, data_array_int.shape[1], seq_max_len,corrected_aa_types))
+    data_array_blosum_encoding_mask = np.broadcast_to(epitopes_mask[:, None, :, None], (n_data, 2, seq_max_len,corrected_aa_types))  # I do it like this in case the padding is not represented as 0, otherwise just use bool. Note: The first row of the second dimension is a dummy
     #distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
     data_info = DatasetInfo(script_dir=script_dir,
                             storage_folder=storage_folder,

@@ -149,10 +149,9 @@ def save_script(results_dir,output_name,script_name):
 def select_model(model_load,results_dir,fold):
     """Select among the available models at models.py"""
     if model_load.seq_max_len == model_load.max_len:
-        vegvisir_model = VegvisirModels.VegvisirModel6(model_load)
+        vegvisir_model = VegvisirModels.VegvisirModel6a(model_load)
     else:
-        raise ValueError("Not implemented yet")
-        vegvisir_model = VegvisirModels.VegvisirModel3b(model_load)
+        vegvisir_model = VegvisirModels.VegvisirModel6b(model_load)
     if fold == 0:
         text_file = open("{}/Hyperparameters.txt".format(results_dir), "a")
         text_file.write("Model Class:  {} \n".format(vegvisir_model.get_class()))
