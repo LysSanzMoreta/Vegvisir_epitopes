@@ -391,7 +391,7 @@ class RNN_model(nn.Module):
                           bidirectional=True
                           )
         self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
-        self.leakyrelu = nn.LeakyReLU()
+        self.softplus = nn.Softplus()
         self.h = self.gru_hidden_dim
         self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
         self.fc2 = nn.Linear(int(self.h/2),int(self.h/4),bias=False)
@@ -403,15 +403,15 @@ class RNN_model(nn.Module):
         input_reverse = torch.flip(input,(1,))
         #Highlight: Results on reversing the sequences
         output, out_hidden = self.rnn(input_reverse,init_h_0)
-        output = self.leakyrelu(output)
+        output = self.softplus(output)
         output = self.bnn(output)
         forward_out_r,backward_out_r = output[:,:,:self.gru_hidden_dim],output[:,:,:self.gru_hidden_dim]
         output = forward_out_r + backward_out_r
         # output_r = output_r[:,-1]
         # output = output_r
-        output = self.leakyrelu(self.fc1(output))
-        output = self.leakyrelu(self.fc2(output))
-        output = self.leakyrelu(self.fc3(output))
+        output = self.softplus(self.fc1(output))
+        output = self.softplus(self.fc2(output))
+        output = self.softplus(self.fc3(output))
         return output
 
 class RNN_guide(nn.Module):
@@ -439,8 +439,7 @@ class RNN_guide(nn.Module):
                           bidirectional=True
                           )
         self.bnn2 = nn.BatchNorm1d(self.max_len).to(self.device)
-        self.leakyrelu = nn.LeakyReLU()
-        self.relu = nn.ReLU()
+        self.softplus = nn.Softplus()
         self.h = self.gru_hidden_dim
         self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
         self.fc2a = nn.Linear(int(self.h/2),self.z_dim,bias=False)
@@ -453,15 +452,15 @@ class RNN_guide(nn.Module):
         input_reverse = torch.flip(input,(1,))
         #Highlight: Results on reversing the sequences
         output_r, out_hidden = self.rnn1(input_reverse,init_h_0)
-        output_r = self.leakyrelu(output_r)
+        output_r = self.softplus(output_r)
         output_r = self.bnn2(output_r)
         forward_out_r,backward_out_r = output_r[:,:,:self.gru_hidden_dim],output_r[:,:,:self.gru_hidden_dim]
         output_r = forward_out_r + backward_out_r
         output_r = output_r[:,-1]
         output = output_r
-        output = self.leakyrelu(self.fc1(output))
-        z_mean = self.leakyrelu(self.fc2a(output))
-        z_scale = self.relu(self.fc2b(output))
+        output = self.softplus(self.fc1(output))
+        z_mean = self.softplus(self.fc2a(output))
+        z_scale = self.softplus(self.fc2b(output))
         return z_mean,z_scale
 
 class RBF(nn.Module):

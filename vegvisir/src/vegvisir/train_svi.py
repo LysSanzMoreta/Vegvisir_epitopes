@@ -3,7 +3,8 @@ import time,os
 from collections import defaultdict
 import numpy as np
 from sklearn.model_selection import KFold,train_test_split,StratifiedShuffleSplit,StratifiedGroupKFold
-from sklearn.metrics import auc,roc_auc_score,cohen_kappa_score,roc_curve
+from sklearn.metrics import auc,roc_auc_score,cohen_kappa_score,roc_curve,confusion_matrix
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
@@ -18,7 +19,7 @@ import vegvisir.load_utils as VegvisirLoadUtils
 import vegvisir.plots as VegvisirPlots
 import vegvisir.models as VegvisirModels
 import vegvisir.guides as VegvisirGuides
-ModelLoad = namedtuple("ModelLoad",["args","max_len","n_data","input_dim","aa_types","blosum"])
+ModelLoad = namedtuple("ModelLoad",["args","max_len","seq_max_len","n_data","input_dim","aa_types","blosum"])
 
 
 def train_loop(svi,Vegvisir,guide,data_loader, args):
@@ -34,23 +35,28 @@ def train_loop(svi,Vegvisir,guide,data_loader, args):
     correct = 0
     total = 0
     predictions = []
+    latent_spaces = []
     for batch_number, batch_dataset in enumerate(data_loader):
         batch_data_blosum = batch_dataset["batch_data_blosum"]
         batch_data_int = batch_dataset["batch_data_int"]
         batch_data_onehot = batch_dataset["batch_data_onehot"]
+        batch_data_blosum_norm = batch_dataset["batch_data_blosum_norm"]
         batch_mask = batch_dataset["batch_mask"]
         if args.use_cuda:
             batch_data_blosum = batch_data_blosum.cuda()
             batch_data_int = batch_data_int.cuda()
             batch_data_onehot = batch_data_onehot.cuda()
+            batch_data_blosum_norm = batch_data_blosum_norm.cuda()
             batch_mask = batch_mask.cuda()
         true_labels = batch_data_blosum[:,0,0,0]
-        batch_data = {"blosum":batch_data_blosum,"int":batch_data_int,"onehot":batch_data_onehot}
+        batch_data = {"blosum":batch_data_blosum,"int":batch_data_int,"onehot":batch_data_onehot,"norm":batch_data_blosum_norm}
         #Forward & Backward pass
         loss = svi.step(batch_data,batch_mask)
         guide_estimates = guide(batch_data,batch_mask)
         sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates)
         predicted_labels = sampling_output.predicted_labels
+        latent_space = sampling_output.latent_space
+        latent_spaces.append(latent_space)
         total += true_labels.size(0)
         correct += (predicted_labels == true_labels).sum().item()
         predictions.append(predicted_labels.detach().cpu().numpy())
@@ -58,8 +64,9 @@ def train_loop(svi,Vegvisir,guide,data_loader, args):
     #Normalize train loss
     train_loss /= len(data_loader)
     predictions_arr = np.concatenate(predictions,axis=0)
+    latent_arr = np.concatenate(latent_spaces,axis=0)
     accuracy= 100 * correct // total
-    return train_loss,accuracy,predictions_arr
+    return train_loss,accuracy,predictions_arr,latent_arr
 def valid_loop(svi,Vegvisir,guide, data_loader, args):
     """Regular batch training
     :param svi: pyro infer engine
@@ -71,35 +78,42 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args):
     total = 0.
     correct = 0.
     predictions = []
+    latent_spaces = []
     with torch.no_grad(): #do not update parameters with the evaluation data
         for batch_number, batch_dataset in enumerate(data_loader):
             batch_data_blosum = batch_dataset["batch_data_blosum"]
             batch_data_int = batch_dataset["batch_data_int"]
             batch_data_onehot = batch_dataset["batch_data_onehot"]
+            batch_data_blosum_norm = batch_dataset["batch_data_blosum_norm"]
             batch_mask = batch_dataset["batch_mask"]
             if args.use_cuda:
                 batch_data_blosum = batch_data_blosum.cuda() #TODO: Automatize for any kind of input (blosum encoding, integers, one-hot)
                 batch_data_int = batch_data_int.cuda()
                 batch_data_onehot = batch_data_onehot.cuda()
+                batch_data_blosum_norm = batch_data_blosum_norm.cuda()
                 batch_mask = batch_mask.cuda()
             true_labels = batch_data_blosum[:,0,0,0]
-            batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot}
+            batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
             loss = svi.step(batch_data,batch_mask)
             guide_estimates = guide(batch_data,batch_mask)
             sampling_out = Vegvisir.sample(batch_data,batch_mask,guide_estimates)
-            predicted_labels = sampling_out.predictions
+            predicted_labels = sampling_out.predicted_labels
+            latent_space = sampling_out.latent_space
+            latent_spaces.append(latent_space)
             total += true_labels.size(0)
             correct += (predicted_labels == true_labels).sum().item()
             predictions.append(predicted_labels.cpu().numpy())
             valid_loss += loss #TODO: Multiply by the data size?
     valid_loss /= len(data_loader)
     predictions_arr = np.concatenate(predictions,axis=0)
+    latent_arr = np.concatenate(latent_spaces,axis=0)
     accuracy= 100 * correct // total
-    return valid_loss,accuracy,predictions_arr
+    return valid_loss,accuracy,predictions_arr,latent_arr
 def test_loop(Vegvisir,guide,data_loader,args):
     Vegvisir.train(False)
     correct = 0
     total = 0
+    latent_spaces = []
     predictions = []
     # since we're not training, we don't need to calculate the gradients for our outputs
     with torch.no_grad():
@@ -107,25 +121,31 @@ def test_loop(Vegvisir,guide,data_loader,args):
             batch_data_blosum = batch_dataset["batch_data_blosum"]
             batch_data_int = batch_dataset["batch_data_int"]
             batch_data_onehot = batch_dataset["batch_data_onehot"]
+            batch_data_blosum_norm = batch_dataset["batch_data_blosum_norm"]
             batch_mask = batch_dataset["batch_mask"]
             if args.use_cuda:
                 batch_data_blosum = batch_data_blosum.cuda()
                 batch_data_int = batch_data_int.cuda()
                 batch_data_onehot = batch_data_onehot.cuda()
+                batch_data_blosum_norm = batch_data_blosum_norm.cuda()
                 batch_mask = batch_mask.cuda()
             true_labels = batch_data_blosum[:,0,0,0]
-            batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot}
+            batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
             guide_estimates = guide(batch_data,batch_mask)
             sampling_out = Vegvisir.sample(batch_data,batch_mask,guide_estimates)
-            predicted_labels = sampling_out.predictions
+            predicted_labels = sampling_out.predicted_labels
+            latent_space = sampling_out.latent_space
+            latent_spaces.append(latent_space)
             total += true_labels.size(0)
             correct += (predicted_labels == true_labels).sum().item()
             predictions.append(predicted_labels.cpu().numpy())
 
     predictions_arr = np.concatenate(predictions,axis=0)
+    latent_arr = np.concatenate(latent_spaces,axis=0)
+    accuracy = 100 * correct // total
     print(f'Accuracy of the TCR-pMHC: {100 * correct // total} %')
 
-    return predictions_arr
+    return predictions_arr,accuracy,latent_arr
 def save_script(results_dir,output_name,script_name):
     """Saves the python script and its contents"""
     out_file = open("{}/{}.py".format(results_dir,output_name), "a+")
@@ -144,8 +164,8 @@ def select_quide(Vegvisir,model_load,n_data,choice="autodelta"):
     guide = {"autodelta":AutoDelta(Vegvisir.model),
              "autonormal":AutoNormal(Vegvisir.model,init_scale=0.1),
              "custom":VegvisirGuides.VEGVISIRGUIDES(Vegvisir.model,model_load,Vegvisir)}
-    #return guide[choice]
-    return poutine.scale(guide[choice],scale=1.0/n_data) #Scale the ELBo to the data size
+    return guide[choice]
+    #return poutine.scale(guide[choice],scale=1.0/n_data) #Scale the ELBo to the data size
 def select_model(model_load,results_dir,fold):
     """Select among the available models at models.py"""
     vegvisir_model = VegvisirModels.VegvisirModel5(model_load)
@@ -173,7 +193,7 @@ def config_build(args,results_dir):
         "eps": 1e-8,#term added to the denominator to improve numerical stability (default: 1e-8)
         "weight_decay": 0,#weight_decay: weight decay (L2 penalty) (default: 0)
         "clip_norm": 10,#clip_norm: magnitude of norm to which gradients are clipped (default: 10.0)
-        "lrd": 1, #rate at which learning rate decays (default: 1.0)
+        "lrd": 1,#0.1 ** (1 / args.num_epochs), #rate at which learning rate decays (default: 1.0) #https://pyro.ai/examples/svi_part_iv.html
         "z_dim": 30,
         "gru_hidden_dim": 60, #60
         "momentum":0.9
@@ -204,7 +224,7 @@ def clip_backprop(model, clip_value):
             handle = p.register_hook(func)
             handles.append(handle)
     return handles
-def fold_auc(predictions_fold,labels,fold,results_dir,mode="Train"):
+def fold_auc(predictions_fold,labels,accuracy,fold,results_dir,mode="Train"):
     if isinstance(labels,torch.Tensor):
         labels = labels.numpy()
     # total_predictions = np.column_stack(predictions_fold)
@@ -215,6 +235,11 @@ def fold_auc(predictions_fold,labels,fold,results_dir,mode="Train"):
     VegvisirPlots.plot_ROC_curve(fpr,tpr,auc_score,auk_score,"{}/{}".format(results_dir,mode),fold)
     print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score))
     print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score),file=open("{}/AUC_out.txt".format(results_dir),"a"))
+    tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=predictions_fold).ravel()
+    confusion_matrix_df = pd.DataFrame([[tn, fp], [fn, tp]],
+                                    columns=["Negative", "Positive"],
+                                    index=["Negative", "Positive"])
+    VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,accuracy,"{}/{}".format(results_dir,mode))
     return auc_score,auk_score
 def dataset_proportions(data,results_dir,type="TrainEval"):
     """Calculates distribution of data points based on their labeling"""
@@ -328,13 +353,16 @@ def trainevaltest_split(data,args,results_dir,method="predefined_partitions"):
 
     else:
         raise ValueError("train test split method not available")
-
 def kfold_crossvalidation(dataset_info,additional_info,args):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
     data_blosum = dataset_info.data_array_blosum_encoding
     data_int = dataset_info.data_array_int
     data_onehot = dataset_info.data_array_onehot_encoding
+    data_blosum_norm = dataset_info.data_array_blosum_norm
+
+    seq_max_len = dataset_info.seq_max_len
+
     n_data = data_blosum.shape[0]
     data_array_blosum_encoding_mask = dataset_info.data_array_blosum_encoding_mask
     results_dir = additional_info.results_dir
@@ -353,11 +381,14 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
     test_data_int = data_int[~traineval_idx]
     traineval_data_onehot = data_onehot[traineval_idx]
     test_data_onehot = data_onehot[~traineval_idx]
+    traineval_data_norm = data_blosum_norm[traineval_idx]
+    test_data_norm = data_blosum_norm[~traineval_idx]
     #Split the rest of the data (train_data) for train and validation
     batch_size = args.batch_size
     check_point_epoch = [5 if args.num_epochs < 100 else int(args.num_epochs / 50)][0]
     model_load = ModelLoad(args=args,
                            max_len =dataset_info.max_len,
+                           seq_max_len=seq_max_len,
                            n_data = dataset_info.n_data,
                            input_dim = dataset_info.input_dim,
                            aa_types = dataset_info.corrected_aa_types,
@@ -365,6 +396,8 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
 
     valid_predictions_fold = None
     train_predictions_fold = None
+    valid_accuracy = None
+    train_accuracy=None
     for fold, (train_idx, valid_idx) in enumerate(kfolds): #returns k-splits for train and validation
 
         # #Highlight: Minmax scale the confidence scores #TODO: function or for loop?
@@ -383,10 +416,12 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         custom_dataset_train = VegvisirLoadUtils.CustomDataset(fold_train_data_blosum,
                                                                fold_train_data_int,
                                                                fold_train_data_onehot,
+                                                               traineval_data_norm[train_idx],
                                                                 traineval_mask[train_idx])
         custom_dataset_valid = VegvisirLoadUtils.CustomDataset(fold_valid_data_blosum,
                                                                fold_valid_data_int,
                                                                fold_valid_data_onehot,
+                                                               traineval_data_norm[valid_idx],
                                                                traineval_mask[valid_idx])
         train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
         valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device),**kwargs)
@@ -413,7 +448,8 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
             raise ValueError("selected optimizer {} not implemented".format(args.optimizer_name))
         loss_func = Vegvisir.loss()
         guide = select_quide(Vegvisir,model_load,n_data,args.guide)
-        svi = SVI(poutine.scale(Vegvisir.model,scale=1.0/n_data), guide, optimizer, loss_func)
+        #svi = SVI(poutine.scale(Vegvisir.model,scale=1.0/n_data), guide, optimizer, loss_func)
+        svi = SVI(Vegvisir.model, guide, optimizer, loss_func)
 
         #TODO: Dictionary that gathers the results from each fold
         train_loss = []
@@ -460,15 +496,16 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                     train_predictions_fold = train_predictions
                     valid_predictions_fold = valid_predictions
                     VegvisirPlots.plot_gradients(gradient_norms, results_dir, fold)
-                    Vegvisir.save_checkpoint("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer)
+                    Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer)
                     # params = vegvisir_model.capture_parameters([name for name,val in vegvisir_model.named_parameters()])
                     # gradients = vegvisir_model.capture_gradients([name for name,val in vegvisir_model.named_parameters()])
                     # activations = vegvisir_model.attach_hooks([name for name,val in vegvisir_model.named_parameters() if name.starstwith("a")])
 
             torch.cuda.empty_cache()
             epoch += 1 #TODO: early stop?
-        fold_auc(valid_predictions_fold,fold_valid_data_blosum[:,0,0,0],fold,results_dir,mode="Valid")
-        fold_auc(train_predictions_fold,fold_train_data_blosum[:,0,0,0],fold,results_dir,mode="Train")
+        #predictions_fold,labels,accuracy,fold,results_dir
+        fold_auc(valid_predictions_fold,fold_valid_data_blosum[:,0,0,0],valid_accuracy,fold,results_dir,mode="Valid")
+        fold_auc(train_predictions_fold,fold_train_data_blosum[:,0,0,0],train_accuracy,fold,results_dir,mode="Train")
 
 
     if args.test: #TODO: Function for training
@@ -476,6 +513,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         custom_dataset_train = VegvisirLoadUtils.CustomDataset(traineval_data_blosum,
                                                                traineval_data_int,
                                                                traineval_data_onehot,
+                                                               traineval_data_norm,
                                                                traineval_mask)
         train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
 
@@ -536,7 +574,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                     Vegvisir.save_checkpoint("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir), optimizer)
             epoch += 1
             torch.cuda.empty_cache()
-        fold_auc(train_predictions_fold,traineval_data_blosum[:,0,0,0],"final",results_dir,mode="Train")
+        fold_auc(train_predictions_fold,traineval_data_blosum[:,0,0,0],train_accuracy,"final",results_dir,mode="Train")
         #Highlight: Testing
         test_data_blosum[:,0,0,4] = VegvisirUtils.minmax_scale(test_data_blosum[:,0,0,4])
         test_data_int[:,0,4] = test_data_blosum[:,0,0,4]
@@ -544,6 +582,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         custom_dataset_test = VegvisirLoadUtils.CustomDataset(test_data_blosum,
                                                               test_data_int,
                                                               test_data_onehot,
+                                                              test_data_norm,
                                                               test_mask)
         test_loader = DataLoader(custom_dataset_test, batch_size=batch_size, shuffle=True,
                                  generator=torch.Generator(device=args.device), **kwargs)
@@ -556,6 +595,8 @@ def train_model(dataset_info,additional_info,args):
     data_blosum = dataset_info.data_array_blosum_encoding
     data_int = dataset_info.data_array_int
     data_onehot = dataset_info.data_array_onehot_encoding
+    data_blosum_norm = dataset_info.data_array_blosum_norm
+    seq_max_len = dataset_info.seq_max_len
     n_data = data_blosum.shape[0]
     data_array_blosum_encoding_mask = dataset_info.data_array_blosum_encoding_mask
     results_dir = additional_info.results_dir
@@ -571,22 +612,12 @@ def train_model(dataset_info,additional_info,args):
     valid_idx = (data_blosum[:,0,0,1][..., None] == valid_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
     test_idx = (data_blosum[:,0,0,1][..., None] == test_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
 
-    train_mask = data_array_blosum_encoding_mask[train_idx]
-    valid_mask = data_array_blosum_encoding_mask[valid_idx]
-    test_mask = data_array_blosum_encoding_mask[test_idx]
-    
-    train_data_int = data_int[train_idx]
-    valid_data_int = data_int[valid_idx]
-    test_data_int = data_int[test_idx]
-
-    train_data_onehot = data_onehot[train_idx]
-    valid_data_onehot = data_onehot[valid_idx]
-    test_data_onehot = data_onehot[test_idx]
     #Split the rest of the data (train_data) for train and validation
     batch_size = args.batch_size
     check_point_epoch = [5 if args.num_epochs < 100 else int(args.num_epochs / 50)][0]
     model_load = ModelLoad(args=args,
                            max_len =dataset_info.max_len,
+                           seq_max_len= seq_max_len,
                            n_data = dataset_info.n_data,
                            input_dim = dataset_info.input_dim,
                            aa_types = dataset_info.corrected_aa_types,
@@ -596,13 +627,15 @@ def train_model(dataset_info,additional_info,args):
     print('\t Number eval data points: {}; Proportion: {}'.format(valid_data_blosum.shape[0],(valid_data_blosum.shape[0]*100)/valid_data_blosum.shape[0]))
 
     custom_dataset_train = VegvisirLoadUtils.CustomDataset(train_data_blosum,
-                                                           train_data_int,
-                                                           train_data_onehot,
-                                                           train_mask)
-    custom_dataset_valid = VegvisirLoadUtils.CustomDataset(valid_data_blosum,
-                                                           valid_data_int,
-                                                           valid_data_onehot,
-                                                           valid_mask)
+                                                           data_int[train_idx],
+                                                           data_onehot[train_idx],
+                                                           data_blosum_norm[train_idx],
+                                                           data_array_blosum_encoding_mask[train_idx])
+    custom_dataset_valid = VegvisirLoadUtils.CustomDataset(data_blosum[valid_idx],
+                                                           data_int[valid_idx],
+                                                           data_onehot[valid_idx],
+                                                           data_blosum_norm[valid_idx],
+                                                           data_array_blosum_encoding_mask[valid_idx])
 
     train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
     valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
@@ -643,11 +676,13 @@ def train_model(dataset_info,additional_info,args):
     epoch = 0.
     train_predictions = None
     valid_predictions = None
+    train_accuracy = None
+    valid_accuracy = None
     gradient_norms = defaultdict(list)
     while epoch <= args.num_epochs:
         start = time.time()
         #svi,Vegvisir,guide,data_loader, args
-        train_epoch_loss,train_accuracy,train_predictions = train_loop(svi,Vegvisir,guide, train_loader, args)
+        train_epoch_loss,train_accuracy,train_predictions, train_latent_space = train_loop(svi,Vegvisir,guide, train_loader, args)
         stop = time.time()
         memory_usage_mib = torch.cuda.max_memory_allocated() * 9.5367 * 1e-7  # convert byte to MiB
         print("[epoch %03d]  average training loss: %.4f %.5g time/epoch %.2f MiB/epoch" % (epoch, train_epoch_loss, stop - start, memory_usage_mib))
@@ -657,8 +692,9 @@ def train_model(dataset_info,additional_info,args):
             for name_i, value in pyro.get_param_store().named_parameters(): #TODO: https://stackoverflow.com/questions/68634707/best-way-to-detect-vanishing-exploding-gradient-in-pytorch-via-tensorboard
                 value.register_hook(lambda g, name_i=name_i: gradient_norms[name_i].append(g.norm().detach().item()))
             epochs_list.append(epoch)
-            valid_epoch_loss, valid_accuracy, valid_predictions = valid_loop(svi, Vegvisir, guide, valid_loader, args)
+            valid_epoch_loss, valid_accuracy, valid_predictions, valid_latent_space = valid_loop(svi, Vegvisir, guide, valid_loader, args)
             valid_loss.append(valid_epoch_loss)
+            valid_accuracies.append(valid_accuracy)
             train_auc_score = roc_auc_score(y_true=train_data_blosum[:,0,0,0], y_score=train_predictions)
             train_auk_score = VegvisirUtils.AUK(probabilities= train_predictions,labels=train_data_blosum[:,0,0,0].numpy()).calculate_auk()
             train_auk.append(train_auk_score)
@@ -679,29 +715,30 @@ def train_model(dataset_info,additional_info,args):
                 train_predictions = train_predictions
                 valid_predictions = valid_predictions
                 VegvisirPlots.plot_gradients(gradient_norms, results_dir, "all")
-                Vegvisir.save_checkpoint("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer)
+                VegvisirPlots.plot_latent_space(train_latent_space, train_predictions, "all",results_dir, method="Train")
+                VegvisirPlots.plot_latent_space(valid_latent_space,valid_predictions, "all",results_dir, method="Valid")
+                Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer)
                 # params = vegvisir_model.capture_parameters([name for name,val in vegvisir_model.named_parameters()])
                 # gradients = vegvisir_model.capture_gradients([name for name,val in vegvisir_model.named_parameters()])
                 # activations = vegvisir_model.attach_hooks([name for name,val in vegvisir_model.named_parameters() if name.starstwith("a")])
 
         torch.cuda.empty_cache()
         epoch += 1 #TODO: early stop?
-    fold_auc(train_predictions,train_data_blosum[:,0,0,0],"all",results_dir,mode="Train")
-    fold_auc(valid_predictions,valid_data_blosum[:,0,0,0],"all",results_dir,mode="Valid")
+    fold_auc(train_predictions,train_data_blosum[:,0,0,0],train_accuracy,"all",results_dir,mode="Train")
+    fold_auc(valid_predictions,valid_data_blosum[:,0,0,0],valid_accuracy,"all",results_dir,mode="Valid")
 
 
     if args.test: #TODO: Function for training
         print("Final testing")
-        test_data_blosum[:,0,0,4] = VegvisirUtils.minmax_scale(test_data_blosum[:,0,0,4])
-        test_data_int[:,0,4] = test_data_blosum[:,0,0,4]
-        test_data_onehot[:,0,0,4] = test_data_blosum[:,0,0,4]
-        custom_dataset_test = VegvisirLoadUtils.CustomDataset(test_data_blosum,
-                                                              test_data_int,
-                                                              test_data_onehot,
-                                                              test_mask)
+
+        custom_dataset_test = VegvisirLoadUtils.CustomDataset(data_blosum[test_idx],
+                                                              data_int[test_idx],
+                                                              data_onehot[test_idx],
+                                                              data_blosum_norm[test_idx],
+                                                              data_array_blosum_encoding_mask[test_idx])
         test_loader = DataLoader(custom_dataset_test, batch_size=batch_size, shuffle=True,
                                  generator=torch.Generator(device=args.device), **kwargs)
-        test_predictions = test_loop(Vegvisir,guide,test_loader,args)
-        fold_auc(test_predictions, test_data_blosum[:, 0, 0, 0], "all", results_dir, mode="Test")
+        test_predictions,test_accuracy,test_latent_space = test_loop(Vegvisir,guide,test_loader,args)
+        fold_auc(test_predictions, test_data_blosum[:, 0, 0, 0], test_accuracy,"all", results_dir, mode="Test")
 
 

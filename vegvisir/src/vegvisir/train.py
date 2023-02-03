@@ -220,8 +220,8 @@ def fold_auc(predictions_fold,labels,accuracy,fold,results_dir,mode="Train"):
     print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score),file=open("{}/AUC_out.txt".format(results_dir),"a"))
     tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=predictions_fold).ravel()
     confusion_matrix_df = pd.DataFrame([[tn, fp], [fn, tp]],
-                                    columns=["True negatives", "False positives"],
-                                    index=["False \n negatives", "True \n positives"])
+                                    columns=["Negative", "Positive"],
+                                    index=["Negative", "Positive"])
     VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,accuracy,"{}/{}".format(results_dir,mode))
     return auc_score,auk_score
 def dataset_proportions(data,results_dir,type="TrainEval"):
@@ -346,6 +346,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
     data_int = dataset_info.data_array_int
     data_onehot = dataset_info.data_array_onehot_encoding
     data_array_blosum_encoding_mask = dataset_info.data_array_blosum_encoding_mask
+    data_blosum_norm = dataset_info.data_array_blosum_norm
     results_dir = additional_info.results_dir
     kwargs = {'num_workers': 0, 'pin_memory': args.use_cuda}  # pin-memory has to do with transferring CPU tensors to GPU
     #TODO: Detect and correct batch_size automatically?
@@ -362,6 +363,8 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
     test_data_int = data_int[~traineval_idx]
     traineval_data_onehot = data_onehot[traineval_idx]
     test_data_onehot = data_onehot[~traineval_idx]
+    traineval_data_norm = data_blosum_norm[traineval_idx]
+    test_data_norm = data_blosum_norm[~traineval_idx]
     #Split the rest of the data (train_data) for train and validation
     batch_size = args.batch_size
     check_point_epoch = [5 if args.num_epochs < 100 else int(args.num_epochs / 50)][0]
@@ -393,10 +396,12 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         custom_dataset_train = VegvisirLoadUtils.CustomDataset(fold_train_data_blosum,
                                                                fold_train_data_int,
                                                                fold_train_data_onehot,
+                                                               traineval_data_norm[train_idx],
                                                                 traineval_mask[train_idx])
         custom_dataset_valid = VegvisirLoadUtils.CustomDataset(fold_valid_data_blosum,
                                                                fold_valid_data_int,
                                                                fold_valid_data_onehot,
+                                                               traineval_data_norm[valid_idx],
                                                                traineval_mask[valid_idx])
         train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
         valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device),**kwargs)
@@ -485,6 +490,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         custom_dataset_test = VegvisirLoadUtils.CustomDataset(test_data_blosum,
                                                               test_data_int,
                                                               test_data_onehot,
+                                                              test_data_norm,
                                                               test_mask)
         test_loader = DataLoader(custom_dataset_test, batch_size=batch_size, shuffle=True,
                                  generator=torch.Generator(device=args.device), **kwargs)
@@ -499,6 +505,8 @@ def train_model(dataset_info,additional_info,args):
     data_int = dataset_info.data_array_int
     data_onehot = dataset_info.data_array_onehot_encoding
     data_array_blosum_encoding_mask = dataset_info.data_array_blosum_encoding_mask
+    data_blosum_norm = dataset_info.data_array_blosum_norm
+
     results_dir = additional_info.results_dir
     kwargs = {'num_workers': 0, 'pin_memory': args.use_cuda}  # pin-memory has to do with transferring CPU tensors to GPU
     #TODO: Detect and correct batch_size automatically?
@@ -536,10 +544,12 @@ def train_model(dataset_info,additional_info,args):
     custom_dataset_train = VegvisirLoadUtils.CustomDataset(train_data_blosum,
                                                            data_int[train_idx],
                                                            data_onehot[train_idx],
+                                                           data_blosum_norm[train_idx],
                                                             data_array_blosum_encoding_mask[train_idx])
     custom_dataset_valid = VegvisirLoadUtils.CustomDataset(valid_data_blosum,
                                                            data_int[valid_idx],
                                                            data_onehot[valid_idx],
+                                                           data_blosum_norm[valid_idx],
                                                            data_array_blosum_encoding_mask[valid_idx])
 
     train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
@@ -623,6 +633,7 @@ def train_model(dataset_info,additional_info,args):
         custom_dataset_test = VegvisirLoadUtils.CustomDataset(test_data_blosum,
                                                               data_int[test_idx],
                                                               data_onehot[test_idx],
+                                                              data_blosum_norm[test_idx],
                                                               data_array_blosum_encoding_mask[test_idx])
         test_loader = DataLoader(custom_dataset_test, batch_size=batch_size, shuffle=True,
                                  generator=torch.Generator(device=args.device), **kwargs)

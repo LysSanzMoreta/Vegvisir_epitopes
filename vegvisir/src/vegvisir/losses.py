@@ -37,6 +37,23 @@ class VegvisirLosses(object):
         self.max_len = max_len
         self.input_dim = input_dim
 
+    def calculate_weights(self,true_labels):
+        """Deals with unbalanced datsets"""
+        npositives = true_labels.sum() # we have more negatives in the raw data. Multiply by 10 to get 0.9 to 9 for example
+        nnegatives = true_labels.shape[0] - npositives
+        if npositives > nnegatives:
+            weights = [torch.tensor([1,float(npositives/nnegatives)]) if nnegatives != 0 else torch.tensor([1,1])][0]
+        elif npositives == 0:
+            weights = torch.tensor([0.5,1.])
+        elif nnegatives == 0:
+            weights = torch.tensor([1.,0.5])
+        else:
+            weights = [torch.tensor([float(nnegatives/npositives),1]) if npositives != 0 else torch.tensor([1,1])][0]
+        array_weights = true_labels.clone()
+        array_weights[array_weights == 0] = weights[0]
+        array_weights[array_weights == 1] = weights[1]
+        return weights, array_weights
+
     def weighted_loss(self, y_true, y_pred, confidence_scores):
         """E(y_true,y_pred) = -y_true*log(y_pred) -(1 - y_true)*ln(1-y_pred)
         E(y_true,y_pred) = -weights[pos_weight*y_true*log(sigmoid(y_pred)) + (1-y_true)*log(1 -sigmoid(y_pred))]
@@ -112,7 +129,7 @@ class VegvisirLosses(object):
         return smooth_factor
         #return torch.mean(torch.sum(-true_dist * y_pred, dim=-1))
 
-    def taylor_crossentropy_loss(self,y_true,y_pred,confidence_scores,num_classes):
+    def taylor_crossentropy_loss(self,y_true,y_pred,confidence_scores,num_classes,class_weights):
         """
         https://www.kaggle.com/code/yerramvarun/cassava-taylorce-loss-label-smoothing-combo
         https://github.com/CoinCheung/pytorch-loss/blob/master/taylor_softmax.py
@@ -130,7 +147,8 @@ class VegvisirLosses(object):
         # print(log_probs)
         # print(confidence_scores)
         # print(smoothed_probs)
-        loss = nn.NLLLoss(reduction="mean")(smoothed_probs, y_true.long())
+
+        loss = nn.NLLLoss(reduction="mean",weight=class_weights)(smoothed_probs, y_true.long())
         assert not torch.isnan(loss),"Nan loss detected. Check the confidence scores for nan"
         return loss
 

@@ -14,6 +14,8 @@ def run_nnalign(args,storage_folder,script_dir= "/home/projects/vaccine/people/l
 
     train_data = "{}/{}/viral_nnalign_input_train.tsv".format(storage_folder,args.dataset_name)
     test_data = "{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name)
+    print("Here")
+    exit()
     #motif_len = str(6)
     working_dir = script_dir
     for motif_len in range(6):

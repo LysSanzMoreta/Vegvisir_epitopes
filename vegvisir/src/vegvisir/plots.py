@@ -115,6 +115,42 @@ def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,m
     plt.close()
     plt.clf()
 
+def plot_latent_space(latent_space,predictions,fold,results_dir,method):
+
+    print("Plotting UMAP...")
+    reducer = umap.UMAP()
+    umap_proj = reducer.fit_transform(latent_space[:, 3:]) #First column are TCR-pMHC identifiers,second column are "true" labels
+    colors_dict = {0:"mediumaquamarine",1:"orangered"}
+    colors_true = np.vectorize(colors_dict.get)(latent_space[:,1])
+    colors_predicted = np.vectorize(colors_dict.get)(predictions)
+    #colors_peptides_identifiers = np.vectorize(colors_dict_peptides.get)(latent_space[:,0])
+
+    fig, [[ax1, ax2, ax3],[ax4,ax5,ax6],[ax7,ax8,ax9]] = plt.subplots(3, 3,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [4,4,2]})
+    fig.suptitle('UMAP projections',fontsize=20)
+    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:,2], alpha=1,s=30)
+    ax1.set_title("True labels",fontsize=20)
+    ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted, label=predictions, alpha=1,s=30)
+    ax2.set_title("Predicted labels",fontsize=20)
+    # ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_peptides_identifiers, label=latent_space[:,0], alpha=1, s=30)
+    # ax4.set_title("Peptides identifiers", fontsize=20)
+    ax3.axis("off")
+    ax5.axis("off")
+    ax6.axis("off")
+    ax7.axis("off")
+    ax8.axis("off")
+    ax9.axis("off")
+    negative_patch = mpatches.Patch(color=colors_dict[0], label='Class 0')
+    positive_patch = mpatches.Patch(color=colors_dict[1], label='Class 1')
+    #peptides_color_patches = [mpatches.Patch(color='{}'.format(val), label='{}'.format(peptides_labels_dict[key])) if key in peptides_labels_dict.keys() else None for key,val in colors_dict_peptides.items()]
+    #peptides_color_patches = [x for x in peptides_color_patches if x is not None]
+    #ncol = [1 if len(peptides_color_patches) < 10 else math.ceil((len(peptides_color_patches)/10))][0]
+    # xloc = [0.55 if ncol == 1 else 1][0]
+    # yloc = [0.5 if ncol == 1 else 0.35][0]
+    plt.legend(handles=[negative_patch,positive_patch], prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5),ncol=1)
+    plt.savefig("{}/{}/umap_fold{}".format(results_dir,method,fold))
+    plt.clf()
+
+
 def plot_gradients(gradient_norms,results_dir,fold):
     print("Plotting gradients")
     #fig = plt.figure(figsize=(13, 6), dpi=100).set_facecolor('white')
@@ -127,7 +163,7 @@ def plot_gradients(gradient_norms,results_dir,fold):
     plt.yscale('log')
     ax2.axis('off')
     ax1.legend(loc= 'center right',bbox_to_anchor=(1.5,0.5),fontsize=11, borderaxespad=0.)
-    ax1.set_title('Gradient norms during SVI')
+    ax1.set_title('Gradient norms of model parameters')
 
     plt.savefig("{}/gradients_fold{}".format(results_dir,fold))
     plt.clf()
@@ -390,8 +426,8 @@ def plot_confusion_matrix(confusion_matrix,accuracy,results_dir):
         for j in range(confusion_matrix_array.shape[1]):
               ax.text(j, i, "{:.2f}".format(confusion_matrix_array[i, j]), ha="center", va="center")
     #[[true_negatives,false_positives],[false_negatives,true_positives]]
-    plt.xticks([0,1],["Positive","Negative"])
-    plt.yticks([0,1],["Positive","Negative"])
+    plt.xticks([0,1],confusion_matrix.columns)
+    plt.yticks([0,1],confusion_matrix.index)
     plt.title("Confusion matrix. Accuracy: {}".format(accuracy))
     plt.savefig("{}/confusion_matrix.png".format(results_dir),dpi=100)
     plt.clf()
