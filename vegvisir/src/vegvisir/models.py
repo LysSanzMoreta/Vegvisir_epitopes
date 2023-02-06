@@ -35,6 +35,7 @@ class VEGVISIRModelClass(nn.Module):
         self.embedding_dim = model_load.args.embedding_dim
         self.blosum = model_load.blosum
         self.loss_type = model_load.args.loss_func
+        self.supervised = model_load.args.supervised
         if self.use_cuda:
             # calling cuda() here will put all the parameters of
             # the networks into gpu memory
@@ -578,8 +579,7 @@ class VegvisirModel4(VEGVISIRModelClass):
             raise ValueError(
                 "Error loss: {} not implemented for this model type: {}".format(self.loss_type, self.get_class()))
 
-
-class VegvisirModel5(VEGVISIRModelClass,PyroModule):
+class VegvisirModel5a(VEGVISIRModelClass,PyroModule):
     """
     Variational Autoencoder
     -Notes: http://pyro.ai/examples/bayesian_regression.html
@@ -620,11 +620,18 @@ class VegvisirModel5(VEGVISIRModelClass,PyroModule):
         immunodominance_scores = batch_data["blosum"][:,0,0,4]
         confidence_scores = batch_data["blosum"][:,0,0,5]
         confidence_mask = (confidence_scores[..., None] == 1.).any(-1)
+        mean = batch_sequences_norm.mean(dim=1)
+        mean = mean[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
+
+        scale = batch_sequences_norm.std(dim = 1)
+        scale = scale[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
+
         with pyro.plate("plate_latent", batch_sequences_blosum.shape[0], dim=-2):
-            mean = torch.zeros((batch_sequences_blosum.shape[0], self.z_dim))
-            scale = torch.ones((batch_sequences_blosum.shape[0], self.z_dim))
+            #mean = torch.zeros((batch_sequences_blosum.shape[0], self.z_dim))
+            #scale = torch.ones((batch_sequences_blosum.shape[0], self.z_dim))
             latent_z = pyro.sample("latent_z", dist.Normal(mean, scale))  # [n,z_dim]
             class_logits = self.fcl1(latent_z,None)
+            class_logits = self.logsoftmax(class_logits)
             pyro.sample("predictions", dist.Categorical(logits=class_logits), obs=true_labels)
             #beta_params = self.fcl2(latent_z, None)
             #beta = pyro.sample("beta",dist.Uniform(0.4,0.6))
@@ -636,9 +643,11 @@ class VegvisirModel5(VEGVISIRModelClass,PyroModule):
 
         latent_z = latent_z.repeat(1, self.max_len).reshape(latent_z.shape[0], self.max_len, self.z_dim)
         latent_z[~batch_mask] = 0
-        latent_z = torch.concatenate([latent_z[:,:,:-1],batch_sequences_norm[:,:,None]],dim=2)
+        #batch_sequences_norm = batch_sequences_norm[:,:,None].expand(batch_sequences_norm.shape[0],batch_sequences_norm.shape[1],self.z_dim)
+        #latent_z = torch.concatenate([latent_z[:,:,:-1],batch_sequences_norm[:,:,None]],dim=2)
+        #latent_z += batch_sequences_norm
         init_h_0 = self.h_0_MODEL.expand(self.model_rnn.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
-        with pyro.plate("data_len",batch_sequences_blosum.shape[1],dim=-1):
+        with pyro.plate("data_len",self.seq_max_len,dim=-1):
             with pyro.plate("data", batch_sequences_blosum.shape[0],dim=-2):
                 #Highlight: Forward network
                 sequences_logits = self.model_rnn(latent_z,init_h_0)
@@ -659,13 +668,19 @@ class VegvisirModel5(VEGVISIRModelClass,PyroModule):
         #immunodominance_scores = batch_data[:,0,0,4]
         #confidence_scores = batch_data[:,0,0,5]
         #confidence_mask = (confidence_scores[..., None] == 1.).any(-1)
+        mean = batch_sequences_norm.mean(dim=1)
+        mean = mean[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
+
+        scale = batch_sequences_norm.std(dim = 1)
+        scale = scale[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
+
         #Highlight: Forward network
         with pyro.plate("plate_latent", batch_sequences_blosum.shape[0], dim=-2):
-            mean = torch.zeros((batch_sequences_blosum.shape[0], self.z_dim))
-            scale = torch.ones((batch_sequences_blosum.shape[0], self.z_dim))
+            # mean = torch.zeros((batch_sequences_blosum.shape[0], self.z_dim))
+            # scale = torch.ones((batch_sequences_blosum.shape[0], self.z_dim))
             latent_space = pyro.sample("latent_z", dist.Normal(mean, scale))  # [n,z_dim]
             class_logits = self.fcl1(latent_space, None)
-            predicted_labels=dist.Categorical(class_logits).sample()
+            predicted_labels=dist.Categorical(logits=class_logits).sample()
             # beta_params = self.fcl2(latent_z, None)
             # # beta = pyro.sample("beta",dist.Uniform(0.4,0.6))
             # # alpha = pyro.sample("alpha",dist.Uniform(0.5,0.7))
@@ -674,17 +689,18 @@ class VegvisirModel5(VEGVISIRModelClass,PyroModule):
             # predicted_immunodominance_scores= dist.Beta(beta, alpha)  # obs_mask  If provided, events with mask=True will be conditioned on obs and remaining events will be imputed by sampling.
 
         latent_z = latent_space.repeat(1, self.max_len).reshape(latent_space.shape[0], self.max_len, self.z_dim)
-        latent_z[~batch_mask] = 0
-        latent_z = torch.concatenate([latent_z[:,:,:-1],batch_sequences_norm[:,:,None]],dim=2)
-
+        #latent_z[~batch_mask] = 0
+        #batch_sequences_norm = batch_sequences_norm[:,:,None].expand(batch_sequences_norm.shape[0],batch_sequences_norm.shape[1],self.z_dim)
+        #latent_z = torch.concatenate([latent_z[:,:,:-1],batch_sequences_norm[:,:,None]],dim=2)
+        #latent_z += batch_sequences_norm
         init_h_0 = self.h_0_MODEL.expand(self.model_rnn.num_layers * 2, batch_sequences_blosum.shape[0],
                                          self.gru_hidden_dim).contiguous()  # bidirectional
-        with pyro.plate("data_len", batch_sequences_blosum.shape[1], dim=-1):
+        with pyro.plate("data_len", self.seq_max_len, dim=-1):
             with pyro.plate("data", batch_sequences_blosum.shape[0], dim=-2):
                 # Highlight: Forward network
                 sequences_logits = self.model_rnn(latent_z, init_h_0)
                 sequences_logits = self.logsoftmax(sequences_logits)
-                reconstructed_sequences = dist.Categorical(sequences_logits).sample()
+                reconstructed_sequences = dist.Categorical(logits= sequences_logits).sample()
         identifiers = batch_data["blosum"][:,0,0,1]
         true_labels = batch_data["blosum"][:,0,0,0]
         confidence_score = batch_data["blosum"][:,0,0,5]
@@ -700,6 +716,160 @@ class VegvisirModel5(VEGVISIRModelClass,PyroModule):
         return TraceMeanField_ELBO()
         #return Trace_ELBO()
         #return Trace_ELBO_classification(self.max_len,self.input_dim,self.num_classes)
+
+class VegvisirModel5b(VEGVISIRModelClass,PyroModule):
+    """
+    Variational Autoencoder with sequences and feature
+    -Notes: http://pyro.ai/examples/bayesian_regression.html
+    -Notes: on nan values
+            http://pyro.ai/examples/svi_part_iv.html
+            https://forum.pyro.ai/t/my-guide-keeps-producing-nan-values-what-am-i-doing-wrong/2024/8
+    """
+    def __init__(self, ModelLoad):
+        VEGVISIRModelClass.__init__(self, ModelLoad)
+        #self.embedder = Embedder(self.aa_types,self.hidden_dim,self.device)
+        self.gru_hidden_dim = self.hidden_dim*2
+        self.num_params = 2 #number of parameters of the beta distribution
+        self.model_rnn = RNN_model(self.aa_types,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device,self.loss_type)
+        self.feats_dim = self.max_len - self.seq_max_len
+
+        self.fcl1 = FCL1(self.z_dim,self.hidden_dim,self.num_classes,self.device,self.seq_max_len)
+        #self.fcl2 = FCL2(self.z_dim,self.hidden_dim,self.num_params,self.device,self.seq_max_len)
+        self.fcl3 = FCL3(self.feats_dim,self.hidden_dim*2,self.num_classes,self.device)
+
+        self.h_0_MODEL = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
+        self.logsoftmax = nn.LogSoftmax(dim=-1)
+    def model(self,batch_data,batch_mask):
+        """
+        :param batch_data:
+        :param batch_mask:
+        :return:
+        - Notes:
+            - https://medium.com/@amitnitdvaranasi/bayesian-classification-basics-svi-7cdceaf31230
+            - https://maxhalford.github.io/blog/bayesian-linear-regression/
+        """
+        pyro.module("model_rnn", self.model_rnn)
+        pyro.module("model_fcl1", self.fcl1)
+        #pyro.module("model_fcl2", self.fcl2)
+        pyro.module("model_fcl3", self.fcl3)
+
+
+        batch_sequences_blosum = batch_data["blosum"][:, 1, :self.seq_max_len].squeeze(1)
+        batch_features = batch_data["blosum"][:, 1, self.seq_max_len:, 0]
+        batch_sequences_int = batch_data["int"][:,1,:self.seq_max_len].squeeze(1)
+
+        batch_sequences_norm = batch_data["norm"][:,1]
+        batch_mask = batch_mask[:,1]
+        batch_mask = batch_mask[:,:,0]
+        true_labels = batch_data["blosum"][:,0,0,0]
+        #immunodominance_scores = batch_data["blosum"][:,0,0,4]
+        #confidence_scores = batch_data["blosum"][:,0,0,5]
+        #confidence_mask = (confidence_scores[..., None] == 1.).any(-1)
+        mean = batch_sequences_norm.mean(dim=1)
+        mean = mean[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
+
+        scale = batch_sequences_norm.std(dim = 1)
+        scale = scale[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
+
+        with pyro.plate("plate_latent", batch_sequences_blosum.shape[0], dim=-2):
+            # mean = torch.zeros((batch_sequences_blosum.shape[0], self.z_dim))
+            # scale = torch.ones((batch_sequences_blosum.shape[0], self.z_dim))
+            latent_z = pyro.sample("latent_z", dist.Normal(mean, scale))  # [n,z_dim]
+            logits_class = self.fcl1(latent_z,None)
+            logits_feats = self.fcl3(batch_features)
+            class_logits = self.logsoftmax(logits_class + logits_feats)
+            pyro.sample("predictions", dist.Categorical(logits=class_logits), obs=true_labels)
+            #beta_params = self.fcl2(latent_z, None)
+            #beta = pyro.sample("beta",dist.Uniform(0.4,0.6))
+            #alpha = pyro.sample("alpha",dist.Uniform(0.5,0.7))
+            # beta = beta_params[:, 0]
+            # alpha = beta_params[:, 1]
+            # #pyro.sample("immunodominance_prediction", dist.Beta(beta, alpha), obs_mask=confidence_mask,obs=immunodominance_scores)  # obs_mask  If provided, events with mask=True will be conditioned on obs and remaining events will be imputed by sampling.
+            #pyro.sample("immunodominance_prediction", dist.Beta(beta, alpha),obs=immunodominance_scores)  # obs_mask  If provided, events with mask=True will be conditioned on obs and remaining events will be imputed by sampling.
+
+        latent_z = latent_z.repeat(1, self.seq_max_len).reshape(latent_z.shape[0], self.seq_max_len, self.z_dim)
+        #latent_z[~batch_mask] = 0
+        #batch_sequences_norm = batch_sequences_norm[:,:,None].expand(batch_sequences_norm.shape[0],batch_sequences_norm.shape[1],self.z_dim)
+        #latent_z = torch.concatenate([latent_z[:,:,:-1],batch_sequences_norm[:,:,None]],dim=2)
+        #latent_z += batch_sequences_norm
+        init_h_0 = self.h_0_MODEL.expand(self.model_rnn.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
+        with pyro.plate("data_len",self.seq_max_len,dim=-1):
+            with pyro.plate("data", batch_sequences_blosum.shape[0],dim=-2):
+                #Highlight: Forward network
+                logits_seqs = self.model_rnn(latent_z,init_h_0)
+                logits_seqs = self.logsoftmax(logits_seqs)
+                pyro.sample("sequences",dist.Categorical(logits=logits_seqs),obs=batch_sequences_int)
+
+        return {"sequences_logits":logits_seqs}
+                # "beta":beta,
+                # "alpha":alpha}
+
+    def sample(self,batch_data,batch_mask,guide_estimates):
+        """"""
+        batch_sequences_blosum = batch_data["blosum"][:, 1, :self.seq_max_len].squeeze(1)
+        batch_features = batch_data["blosum"][:, 1, self.seq_max_len:, 0]
+        batch_sequences_norm = batch_data["norm"][:,1]
+        #batch_sequences_int = batch_data["int"][:,1,:self.seq_max_len].squeeze(1)
+
+        batch_mask = batch_mask[:, 1]
+        batch_mask = batch_mask[:, :, 0]
+        #true_labels = batch_data[:,0,0,0]
+        #immunodominance_scores = batch_data[:,0,0,4]
+        #confidence_scores = batch_data[:,0,0,5]
+        #confidence_mask = (confidence_scores[..., None] == 1.).any(-1)
+        mean = batch_sequences_norm.mean(dim=1)
+        mean = mean[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
+
+        scale = batch_sequences_norm.std(dim = 1)
+        scale = scale[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
+
+        #Highlight: Forward network
+        with pyro.plate("plate_latent", batch_sequences_blosum.shape[0], dim=-2):
+            # mean = torch.zeros((batch_sequences_blosum.shape[0], self.z_dim))
+            # scale = torch.ones((batch_sequences_blosum.shape[0], self.z_dim))
+            latent_space = pyro.sample("latent_z", dist.Normal(mean, scale))  # [n,z_dim]
+            logits_class = self.fcl1(latent_space, None)
+            logits_feats = self.fcl3(batch_features)
+            class_logits = self.logsoftmax(logits_class + logits_feats)
+            predicted_labels = dist.Categorical(logits= class_logits).sample()
+            # beta_params = self.fcl2(latent_z, None)
+            # # beta = pyro.sample("beta",dist.Uniform(0.4,0.6))
+            # # alpha = pyro.sample("alpha",dist.Uniform(0.5,0.7))
+            # beta = beta_params[:, 0]
+            # alpha = beta_params[:, 1]
+            # predicted_immunodominance_scores= dist.Beta(beta, alpha)  # obs_mask  If provided, events with mask=True will be conditioned on obs and remaining events will be imputed by sampling.
+
+        latent_z = latent_space.repeat(1, self.seq_max_len).reshape(latent_space.shape[0], self.seq_max_len, self.z_dim)
+        latent_z[~batch_mask] = 0
+        #batch_sequences_norm = batch_sequences_norm[:,:,None].expand(batch_sequences_norm.shape[0],batch_sequences_norm.shape[1],self.z_dim)
+        #latent_z = torch.concatenate([latent_z[:,:,:-1],batch_sequences_norm[:,:,None]],dim=2)
+        #latent_z += batch_sequences_norm
+        init_h_0 = self.h_0_MODEL.expand(self.model_rnn.num_layers * 2, batch_sequences_blosum.shape[0],
+                                         self.gru_hidden_dim).contiguous()  # bidirectional
+        with pyro.plate("data_len", self.seq_max_len, dim=-1):
+            with pyro.plate("data", batch_sequences_blosum.shape[0], dim=-2):
+                # Highlight: Forward network
+                logits_seqs = self.model_rnn(latent_z, init_h_0)
+                logits_seqs = self.logsoftmax(logits_seqs)
+                reconstructed_sequences = dist.Categorical(logits=logits_seqs).sample()
+
+        identifiers = batch_data["blosum"][:,0,0,1]
+        true_labels = batch_data["blosum"][:,0,0,0]
+        confidence_score = batch_data["blosum"][:,0,0,5]
+        latent_space = torch.column_stack([identifiers,true_labels,confidence_score,latent_space])
+
+        return SamplingOutput(latent_space = latent_space,
+                              predicted_labels=predicted_labels,
+                              immunodominance_scores= None, #predicted_immunodominance_scores,
+                              reconstructed_sequences = reconstructed_sequences)
+
+    def loss(self):
+        """
+        """
+        return TraceMeanField_ELBO()
+        #return Trace_ELBO()
+        #return Trace_ELBO_classification(self.max_len,self.input_dim,self.num_classes)
+
 
 
 class VegvisirModel6a(VEGVISIRModelClass):

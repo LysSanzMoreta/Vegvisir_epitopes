@@ -52,9 +52,9 @@ if __name__ == "__main__":
                         help="Pick only the first <n> datapoints (epitopes) for testing the pipeline\n"
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
-    parser.add_argument('--run-nnalign', type=bool, nargs='?', default=True, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=11, help='Number of epochs (number of times that the model is run through the entire dataset (all batches) ')
-    parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=False, help='True: Use GPU; False: Use CPU')
+    parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=10, help='Number of epochs (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. ')
     #TODO: include more blosum matrix types?
     parser.add_argument('-subs_matrix', default="BLOSUM62", type=str,
@@ -70,7 +70,7 @@ if __name__ == "__main__":
                                                                                          "<ae_loss>: Uses a reconstruction and a classification error loss \n"
                                                                                          "<softloss>: Label smoothing + Taylorsoftmax \n "
                                                                                          "<elbo>: Evidence Lower Bound objective used for SVI")
-    parser.add_argument('-clip-gradients', type=bool, nargs='?', default=True, help='Compute the 2D Euclidean norm of the gradient to normalize the gradient by that value and \n '
+    parser.add_argument('-clip-gradients', type=bool, nargs='?', default=True, help='Computes the 2D Euclidean norm of the gradient to normalize the gradient by that value and \n '
                                                                                     ' prevent exploding gradients (small gradients that lead to abscence of training) ')
 
     parser.add_argument('-guide', type=str, nargs='?', default="custom", help='Automatic guide for amortized inference in Pyro see pyro.autoguides')
@@ -78,6 +78,8 @@ if __name__ == "__main__":
     parser.add_argument('-z-dim', type=int, nargs='?', default=30, help='Latent space dimension')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=50, help='')
+    parser.add_argument('-supervised', type=str2bool, nargs='?', default=True, help='True: supervised model \n'
+                                                                                 'False: unsupervised model (not implemented)')
     parser.add_argument('-num_classes', type=int, nargs='?', default=2, help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')
 
     args = parser.parse_args()

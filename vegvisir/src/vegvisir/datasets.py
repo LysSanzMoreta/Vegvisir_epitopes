@@ -404,14 +404,14 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     ####################
     #HEADER DESCRIPTIONS#
     ####################
-    allele
+    allele: MHC allele
     Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
     Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
     Number of Subjects Responded
     target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
+    training: True, include in training, False include in test
     Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
+    partition: partition number
 
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
@@ -501,6 +501,7 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     #Highlight: Prep data to run in NNalign
     if args.run_nnalign:
+        #raise ValueError("Run NNalign only with sequences (viral_dataset3), not features")
         prepare_nnalign(args,storage_folder,data,[filters_dict["filter_kmers"][2],"target_corrected","partition"])
 
 
@@ -676,7 +677,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
                             data_array_blosum_encoding=torch.from_numpy(data_array_blosum_encoding),
                             data_array_blosum_encoding_mask=torch.from_numpy(data_array_blosum_encoding_mask),
                             data_array_onehot_encoding=torch.from_numpy(data_array_onehot_encoding),
-                            data_array_blosum_norm=data_array_blosum_norm,
+                            data_array_blosum_norm=torch.from_numpy(data_array_blosum_norm),
                             blosum=blosum_array,
                             n_data=n_data,
                             seq_max_len = seq_max_len,
@@ -687,15 +688,16 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
                             cosine_similarity_mean=cosine_similarity_mean,
                             kmers_pid_similarity=kmers_pid_similarity,
                             kmers_cosine_similarity=kmers_cosine_similarity,
-                            feature_columns = feature_columns,
-                            )
+                            feature_columns = feature_columns)
     return data_info
 
 def prepare_nnalign(args,storage_folder,data,column_names):
     data_train = data[(data["training"] == 1) & (data["partition"] != 4)][column_names]
     data_valid = data[(data["training"] == 1) & (data["partition"] == 4)][column_names]
-    data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(args.dataset_name,storage_folder),sep="\t",index=False)
-    data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(args.dataset_name,storage_folder), sep="\t",index=False) #TODO: Header None?
+    data_train = data_train.astype({'partition': 'int'})
+    data_valid = data_valid.astype({'partition': 'int'})
+    data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
+    data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name), sep="\t",index=False,header=None) #TODO: Header None?
 
     VegvisirNNalign.run_nnalign(args,storage_folder)
 

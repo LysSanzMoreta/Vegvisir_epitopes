@@ -1,5 +1,5 @@
 import json
-import time,os
+import time,os,datetime
 from collections import defaultdict
 import numpy as np
 from sklearn.model_selection import KFold,train_test_split,StratifiedShuffleSplit,StratifiedGroupKFold
@@ -56,7 +56,7 @@ def train_loop(svi,Vegvisir,guide,data_loader, args):
         sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates)
         predicted_labels = sampling_output.predicted_labels
         latent_space = sampling_output.latent_space
-        latent_spaces.append(latent_space)
+        latent_spaces.append(latent_space.detach().cpu().numpy())
         total += true_labels.size(0)
         correct += (predicted_labels == true_labels).sum().item()
         predictions.append(predicted_labels.detach().cpu().numpy())
@@ -99,7 +99,7 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args):
             sampling_out = Vegvisir.sample(batch_data,batch_mask,guide_estimates)
             predicted_labels = sampling_out.predicted_labels
             latent_space = sampling_out.latent_space
-            latent_spaces.append(latent_space)
+            latent_spaces.append(latent_space.detach().cpu().numpy())
             total += true_labels.size(0)
             correct += (predicted_labels == true_labels).sum().item()
             predictions.append(predicted_labels.cpu().numpy())
@@ -135,7 +135,7 @@ def test_loop(Vegvisir,guide,data_loader,args):
             sampling_out = Vegvisir.sample(batch_data,batch_mask,guide_estimates)
             predicted_labels = sampling_out.predicted_labels
             latent_space = sampling_out.latent_space
-            latent_spaces.append(latent_space)
+            latent_spaces.append(latent_space.detach().cpu().numpy())
             total += true_labels.size(0)
             correct += (predicted_labels == true_labels).sum().item()
             predictions.append(predicted_labels.cpu().numpy())
@@ -168,7 +168,10 @@ def select_quide(Vegvisir,model_load,n_data,choice="autodelta"):
     #return poutine.scale(guide[choice],scale=1.0/n_data) #Scale the ELBo to the data size
 def select_model(model_load,results_dir,fold):
     """Select among the available models at models.py"""
-    vegvisir_model = VegvisirModels.VegvisirModel5(model_load)
+    if model_load.seq_max_len == model_load.max_len:
+        vegvisir_model = VegvisirModels.VegvisirModel5a(model_load)
+    else:
+        vegvisir_model = VegvisirModels.VegvisirModel5b(model_load)
     if fold == 0:
         text_file = open("{}/Hyperparameters.txt".format(results_dir), "a")
         text_file.write("Model Class:  {} \n".format(vegvisir_model.get_class()))
@@ -315,7 +318,7 @@ def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitio
         raise ValueError("train test split method not available")
 def trainevaltest_split(data,args,results_dir,method="predefined_partitions"):
     """Perform train-valid-test split"""
-
+    info_file = open("{}/dataset_info.txt".format(results_dir),"a+")
     if method == "random_stratified":
         data_labels = data[:,0,0,0]
         traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
@@ -348,6 +351,8 @@ def trainevaltest_split(data,args,results_dir,method="predefined_partitions"):
         dataset_proportions(train_data, results_dir, type="Train")
         dataset_proportions(valid_data, results_dir, type="Valid")
         dataset_proportions(test_data, results_dir, type="Test")
+        info_file.write("-------------------------------------------------")
+        info_file.write("Using partition {} as test:".format(partition_idx))
 
         return train_data, valid_data, test_data
 
@@ -491,6 +496,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                 VegvisirPlots.plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,additional_info.results_dir)
                 VegvisirPlots.plot_classification_score(train_auc,valid_auc,epochs_list,fold,additional_info.results_dir,method="AUC")
                 VegvisirPlots.plot_classification_score(train_auk,valid_auk,epochs_list,fold,additional_info.results_dir,method="AUK")
+                Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer)
                 if epoch == args.num_epochs:
                     print("Saving final results")
                     train_predictions_fold = train_predictions
@@ -664,6 +670,7 @@ def train_model(dataset_info,additional_info,args):
     svi = SVI(poutine.scale(Vegvisir.model,scale=1.0/n_data), guide, optimizer, loss_func)
 
     #TODO: Dictionary that gathers the results from each fold
+    start = time.time()
     epochs_list = []
     train_loss = []
     train_accuracies = []
@@ -710,6 +717,7 @@ def train_model(dataset_info,additional_info,args):
             VegvisirPlots.plot_accuracy(train_accuracies,valid_accuracies,epochs_list,"all",additional_info.results_dir)
             VegvisirPlots.plot_classification_score(train_auc,valid_auc,epochs_list,"all",additional_info.results_dir,method="AUC")
             VegvisirPlots.plot_classification_score(train_auk,valid_auk,epochs_list,"all",additional_info.results_dir,method="AUK")
+            Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir), optimizer)
             if epoch == args.num_epochs:
                 print("Saving final results")
                 train_predictions = train_predictions
@@ -726,6 +734,8 @@ def train_model(dataset_info,additional_info,args):
         epoch += 1 #TODO: early stop?
     fold_auc(train_predictions,train_data_blosum[:,0,0,0],train_accuracy,"all",results_dir,mode="Train")
     fold_auc(valid_predictions,valid_data_blosum[:,0,0,0],valid_accuracy,"all",results_dir,mode="Valid")
+    stop = time.time()
+    print('Final timing: {}'.format(str(datetime.timedelta(seconds=stop-start))))
 
 
     if args.test: #TODO: Function for training
