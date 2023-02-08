@@ -25,7 +25,7 @@ import vegvisir.plots as VegvisirPlots
 plt.style.use('ggplot')
 DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_array_raw","data_array_int","data_array_int_mask",
                                         "data_array_blosum_encoding","data_array_blosum_encoding_mask","data_array_onehot_encoding","data_array_blosum_norm","blosum",
-                                        "n_data","seq_max_len","max_len","corrected_aa_types","input_dim","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity","feature_columns"])
+                                        "n_data","seq_max_len","max_len","corrected_aa_types","input_dim","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity","features_names"])
 def available_datasets():
     """Prints the available datasets"""
     datasets = {0:"viral_dataset",
@@ -389,7 +389,7 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data = set_confidence_score(data)
     name_suffix = "__".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
-    plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
+    VegvisirPlots.plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     #Highlight: Prep data to run in NNalign
     if args.run_nnalign:
         prepare_nnalign(args,storage_folder,data,[filters_dict["filter_kmers"][2],"target_corrected","partition"])
@@ -431,7 +431,7 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data_features = data_features[["Icore","Pred_netstab","prot_inst_index","prot_median_iupred_score_long","prot_molar_excoef_cys_cys_bond","prot_p[q3_E]_netsurfp","prot_p[q3_C]_netsurfp","prot_rsa_netsurfp"]]
     features_names = data_features.columns.tolist()
     features_names.pop(0)
-    features_dict = dict(zip(range(len(features_names)),features_names))
+    #features_dict = dict(zip(range(len(features_names)),features_names))
     data = pd.merge(data_features,data_partitions, on='Icore', how='outer')
     data = data.dropna(subset=["Icore_non_anchor","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
     # Group data by Icore
@@ -497,7 +497,9 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
 
-    plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
+    VegvisirPlots.plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
+
+    VegvisirPlots.plot_features_histogram(data,features_names,"{}/{}".format(storage_folder,args.dataset_name),name_suffix)
 
     #Highlight: Prep data to run in NNalign
     if args.run_nnalign:
@@ -505,17 +507,16 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
         prepare_nnalign(args,storage_folder,data,[filters_dict["filter_kmers"][2],"target_corrected","partition"])
 
 
-    data_info = process_data(data,args,storage_folder,script_dir,sequence_column=filters_dict["filter_kmers"][2],feature_columns=list(features_dict.values()))
+    data_info = process_data(data,args,storage_folder,script_dir,sequence_column=filters_dict["filter_kmers"][2],features_names=features_names)
 
     return data_info
 
-def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",feature_columns=None,plot_blosum=False,plot_umap=False):
+def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",features_names=None,plot_blosum=False,plot_umap=False):
     """
     :param pandas dataframe data: Contains Icore, immunodominance_score, immunodominance_score_scaled, training , partition and Rnk_EL
     :param args: Commmand line arguments
     :param storage_folder: Data location path
     """
-
 
     epitopes = data[[sequence_column]].values.tolist()
     epitopes = functools.reduce(operator.iconcat, epitopes, [])  # flatten list of lists
@@ -538,11 +539,6 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, args.subs_matrix,
                                                                                    zero_characters=["#"],
                                                                                    include_zero_characters=False)
-
-    # print(epitopes[0])
-    # print(epitopes[1])
-    # print(epitopes[2])
-    # print(epitopes[3])
     epitopes_array = np.array(epitopes)
     if args.subset_data != "no":
         print("WARNING : Using a subset of the data of {}".format(args.subset_data))
@@ -581,7 +577,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
         VegvisirPlots.plot_heatmap(kmers_pid_similarity, "Kmers ({}) percent identity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_pid_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
         VegvisirPlots.plot_heatmap(kmers_cosine_similarity, "Kmers ({}) cosine similarity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_cosine_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
     calculate_partitions = False
-    if calculate_partitions:
+    if calculate_partitions: #TODO: move elsewhere
         import umap,hdbscan
         cosine_umap = umap.UMAP(n_components=6).fit_transform(cosine_similarity_mean)
         clustering = DBSCAN(eps=0.3, min_samples=1,metric="euclidean",algorithm="auto",p=3).fit(cosine_umap) #eps 4
@@ -605,11 +601,11 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
         VegvisirPlots.plot_umap1(kmers_pid_similarity, labels, storage_folder, args, "Kmers Percent Identity Mean","UMAP_kmers_percent_identity_{}".format(sequence_column))
         VegvisirPlots.plot_umap1(kmers_cosine_similarity, labels, storage_folder, args, "Kmers Cosine similarity Mean","UMAP_kmers_cosine_similarity_{}".format(sequence_column))
 
-    # TODO: unite in a function
-
-    if feature_columns is not None:
-        features_scores = data[feature_columns].to_numpy()
-        identifiers_labels_array = np.zeros((n_data, 1, seq_max_len + len(feature_columns)))
+     #TODO : make a function?
+    if features_names is not None:
+        features_scores = data[features_names].to_numpy()
+        #for feat in features_scores
+        identifiers_labels_array = np.zeros((n_data, 1, seq_max_len + len(features_names)))
         identifiers_labels_array[:, 0, 0] = np.array(labels).squeeze(-1)
         identifiers_labels_array[:, 0, 1] = np.array(identifiers)
         identifiers_labels_array[:, 0, 2] = np.array(partitions).squeeze(-1)
@@ -624,6 +620,23 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
         data_array_int = np.concatenate([identifiers_labels_array,epitopes_array_int[:, None]], axis=1)
         data_array_blosum_norm = np.concatenate([identifiers_labels_array,epitopes_array_blosum_norm[:, None]], axis=1)
 
+        identifiers_labels_array_blosum = np.zeros((n_data, 1, seq_max_len + len(features_names), epitopes_array_blosum.shape[2]))
+        identifiers_labels_array_blosum[:, 0, 0, 0] = np.array(labels).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 1] = np.array(identifiers)
+        identifiers_labels_array_blosum[:, 0, 0, 2] = np.array(partitions).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 3] = np.array(training).squeeze(-1).astype(int)
+        identifiers_labels_array_blosum[:, 0, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
+        identifiers_labels_array_blosum[:, 0, 0, 5] = np.array(confidence_scores)
+
+
+        features_array_blosum = np.zeros((n_data,len(features_names), epitopes_array_blosum.shape[2]))
+        features_array_blosum[:,:,0] = features_scores
+
+        epitopes_array_blosum = np.concatenate([epitopes_array_blosum,features_array_blosum],axis=1)
+        epitopes_array_onehot_encoding = np.concatenate([epitopes_array_onehot_encoding,features_array_blosum],axis=1)
+        data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:, None]],axis=1)
+        data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:, None]], axis=1)
+
     else:
         identifiers_labels_array = np.zeros((n_data, 1, seq_max_len))
         identifiers_labels_array[:, 0, 0] = np.array(labels).squeeze(-1)
@@ -637,26 +650,6 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
         data_array_int = np.concatenate([identifiers_labels_array, epitopes_array_int[:,None]], axis=1)
         data_array_blosum_norm = np.concatenate([identifiers_labels_array, epitopes_array_blosum_norm[:,None]], axis=1)
 
-    if feature_columns is not None:
-
-        identifiers_labels_array_blosum = np.zeros((n_data, 1, seq_max_len + len(feature_columns), epitopes_array_blosum.shape[2]))
-        identifiers_labels_array_blosum[:, 0, 0, 0] = np.array(labels).squeeze(-1)
-        identifiers_labels_array_blosum[:, 0, 0, 1] = np.array(identifiers)
-        identifiers_labels_array_blosum[:, 0, 0, 2] = np.array(partitions).squeeze(-1)
-        identifiers_labels_array_blosum[:, 0, 0, 3] = np.array(training).squeeze(-1).astype(int)
-        identifiers_labels_array_blosum[:, 0, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
-        identifiers_labels_array_blosum[:, 0, 0, 5] = np.array(confidence_scores)
-
-
-        features_array_blosum = np.zeros((n_data,len(feature_columns), epitopes_array_blosum.shape[2]))
-        features_array_blosum[:,:,0] = features_scores
-
-        epitopes_array_blosum = np.concatenate([epitopes_array_blosum,features_array_blosum],axis=1)
-        epitopes_array_onehot_encoding = np.concatenate([epitopes_array_onehot_encoding,features_array_blosum],axis=1)
-        data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:, None]],axis=1)
-        data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:, None]], axis=1)
-
-    else:
         identifiers_labels_array_blosum = np.zeros((n_data, 1, seq_max_len, epitopes_array_blosum.shape[2]))
         identifiers_labels_array_blosum[:, 0, 0, 0] = np.array(labels).squeeze(-1)
         identifiers_labels_array_blosum[:, 0, 0, 1] = np.array(identifiers)
@@ -667,6 +660,8 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
         data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:,None]], axis=1)
         data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:,None]], axis=1)
+
+
     data_array_blosum_encoding_mask = np.broadcast_to(epitopes_mask[:, None, :, None], (n_data, 2, seq_max_len,corrected_aa_types))  # I do it like this in case the padding is not represented as 0, otherwise just use bool. Note: The first row of the second dimension is a dummy
     #distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
     data_info = DatasetInfo(script_dir=script_dir,
@@ -681,14 +676,17 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
                             blosum=blosum_array,
                             n_data=n_data,
                             seq_max_len = seq_max_len,
-                            max_len=[seq_max_len + len(feature_columns) if feature_columns is not None else seq_max_len][0],
+                            max_len=[seq_max_len + len(features_names) if features_names is not None else seq_max_len][0],
                             corrected_aa_types = corrected_aa_types,
                             input_dim=corrected_aa_types,
                             percent_identity_mean=percent_identity_mean,
                             cosine_similarity_mean=cosine_similarity_mean,
                             kmers_pid_similarity=kmers_pid_similarity,
                             kmers_cosine_similarity=kmers_cosine_similarity,
-                            feature_columns = feature_columns)
+                            features_names = features_names)
+
+    if not os.path.exists("{}/{}/umap_data_norm.png".format(storage_folder,args.dataset_name)):
+        VegvisirPlots.plot_data_umap(data_array_blosum_norm,data_info.seq_max_len,data_info.max_len,storage_folder,args.dataset_name)
     return data_info
 
 def prepare_nnalign(args,storage_folder,data,column_names):
@@ -718,177 +716,3 @@ def set_confidence_score(data):
     #print(nan_rows[["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"]])
     return data
 
-def plot_data_information(data,filters_dict,storage_folder,args,name_suffix):
-    """"""
-    ndata = data.shape[0]
-    fig, ax = plt.subplots(3,3, figsize=(11, 10))
-    num_bins = 50
-    colors_dict = {0:"orange",1:"blue"}
-    labels_dict = {0:"Negative",1:"Positive"}
-
-    ############LABELS #############
-    freq, bins, patches = ax[0][0].hist(data["target"].to_numpy() , bins=2, density=True,edgecolor='white')
-    ax[0][0].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
-    ax[0][0].set_title('Histogram of targets/labels \n')
-    ax[0][0].xaxis.set_ticks([0.25,0.75])
-    ax[0][0].set_xticklabels([0,1])
-    # Annotate the bars.
-    for color,bar in zip(colors_dict.values(),patches): #iterate over the bars
-        n_data_bin = (bar.get_height()*ndata)/2
-        ax[0][0].annotate(format(n_data_bin, '.2f'),
-                       (bar.get_x() + bar.get_width() / 2,
-                        bar.get_height()), ha='center', va='center',
-                       size=15, xytext=(0, 8),
-                       textcoords='offset points')
-        bar.set_facecolor(color)
-
-    ############LABELS CORRECTED #############
-    freq, bins, patches = ax[0][1].hist(data["target_corrected"].to_numpy() , bins=2, density=True,edgecolor='white')
-    ax[0][1].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
-    ax[0][1].set_title('Histogram of re-assigned \n targets/labels')
-    ax[0][1].xaxis.set_ticks([0.25,0.75])
-    ax[0][1].set_xticklabels([0,1])
-    # Annotate the bars.
-    for color,bar in zip(colors_dict.values(),patches): #iterate over the bars
-        n_data_bin = (bar.get_height()*ndata)/2
-        ax[0][1].annotate(format(n_data_bin, '.2f'),
-                       (bar.get_x() + bar.get_width() / 2,
-                        bar.get_height()), ha='center', va='center',
-                       size=15, xytext=(0, 8),
-                       textcoords='offset points')
-        bar.set_facecolor(color)
-    ####### Immunodominance scores ###################
-    ax[1][0].hist(data["immunodominance_score_scaled"].to_numpy() , num_bins, density=True)
-    ax[1][0].set_xlabel('Minmax scaled immunodominance score \n (N_+ / Total Nsubjects)')
-    ax[1][0].set_title('Histogram of \n immunodominance scores')
-    ######## Sequence length distribution ####################
-    ######Train#############################3
-    data_lens_train_negative = data.loc[(data["training"] == True)&(data["target_corrected"] == 0.),filters_dict["filter_kmers"][2]].str.len()
-    data_lens_train_positive = data.loc[(data["training"] == True)&(data["target_corrected"] == 1.),filters_dict["filter_kmers"][2]].str.len()
-    dict_counts = {0: data_lens_train_negative.value_counts(), 1: data_lens_train_positive.value_counts()}
-    longest, shortest = [(1, 0) if len(dict_counts[1].keys()) > len(dict_counts[0].keys()) else (0, 1)][0]
-    position = 0
-    positions = []
-    for val_i, count_i in dict_counts[longest].items():
-        ax[2][0].bar(position, count_i, label=longest, color=colors_dict[longest], width=0.1, edgecolor='white')
-        if val_i in dict_counts[shortest].keys():
-            count_j = dict_counts[shortest][val_i]
-            ax[2][0].bar(position+0.1, count_j, label=shortest, color=colors_dict[shortest], width=0.1, edgecolor='white')
-        positions.append(position + 0.05)
-        position += 0.25
-    ax[2][0].xaxis.set_ticks(positions)
-    ax[2][0].set_xticklabels(dict_counts[longest].keys())
-    ax[2][0].set_title("Sequence length distribution of \n  the Train-valid dataset")
-    ###### Test #####################
-    data_lens_test_negative = data.loc[(data["training"] == False)&(data["target_corrected"] == 0.),filters_dict["filter_kmers"][2]].str.len()
-    data_lens_test_positive = data.loc[(data["training"] == False)&(data["target_corrected"] == 1.),filters_dict["filter_kmers"][2]].str.len()
-    dict_counts = {0:data_lens_test_negative.value_counts(),1: data_lens_test_positive.value_counts()}
-    longest,shortest = [(1,0) if len(dict_counts[1].keys()) > len(dict_counts[0].keys()) else (0,1)][0]
-    position = 0
-    positions = []
-    for val_i,count_i in dict_counts[longest].items() :
-        ax[2][1].bar(position, count_i, label=longest, color=colors_dict[longest], width=0.1, edgecolor='white')
-        if val_i in dict_counts[shortest].keys():
-            count_j = dict_counts[shortest][val_i]
-            ax[2][1].bar(position+0.1,count_j,label=shortest, color=colors_dict[shortest], width=0.1,edgecolor='white')
-        positions.append(position +0.05)
-        position += 0.25
-    ax[2][1].xaxis.set_ticks(positions)
-    ax[2][1].set_xticklabels(dict_counts[longest].keys())
-    ax[2][1].set_title("Sequence length distribution of \n  the Test dataset")
-    ax[2][2].axis("off")
-    ############TEST PROPORTIONS #############
-    data_partitions = data[["partition","training","target_corrected"]]
-    test_counts=data_partitions[data_partitions["training"] == False].value_counts("target_corrected") #returns a dict
-    if len(test_counts.keys()) > 1:
-        if test_counts[0] > test_counts[1]:
-            bar1 = ax[1][1].bar(0, test_counts[0], label="Negative", color=colors_dict[0], width=0.1,edgecolor='white')
-            bar1 = bar1.patches[0]
-            bar2 = ax[0][2].bar(0, test_counts[1], label="Positive", color=colors_dict[1], width=0.1,edgecolor='white')
-            bar2 = bar2.patches[0]
-        else:
-            bar1 = ax[1][1].bar(0, test_counts[1], label="Positive", color="orange", width=0.1,edgecolor='white')
-            bar1 = bar1.patches[0]
-            bar2 = ax[1][1].bar(0, test_counts[0], label="Negative", color="blue", width=0.1,edgecolor='white')
-            bar2 = bar2.patches[0]
-        ax[1][1].xaxis.set_ticks([0])
-        n_data_test = sum([val for key,val in test_counts.items()])
-        ax[1][1].annotate("{}({}%)".format(bar1.get_height(),np.round((bar1.get_height()*100)/n_data_test),2),
-                          (bar1.get_x() + bar1.get_width() / 2,
-                           bar1.get_height()), ha='center', va='center',
-                          size=15, xytext=(0, 8),
-                          textcoords='offset points')
-        ax[1][1].annotate("{}({}%)".format(bar2.get_height(),np.round((bar2.get_height()*100)/n_data_test),2),
-                          (bar2.get_x() + bar2.get_width() / 2,
-                           bar2.get_height()), ha='center', va='center',
-                          size=15, xytext=(0, 8),
-                          textcoords='offset points')
-    else:
-        key = test_counts.keys()[0]
-        bar1 = ax[1][1].bar(key, test_counts[key], label=labels_dict[key], color=colors_dict[key], width=0.1, edgecolor='white')
-        bar1 = bar1.patches[0]
-        ax[1][1].xaxis.set_ticks([0])
-        n_data_test = sum([val for key,val in test_counts.items()])
-        ax[1][1].annotate("{}({}%)".format(bar1.get_height(),np.round((bar1.get_height()*100)/n_data_test),2),
-                          (bar1.get_x() + bar1.get_width() / 2,
-                           bar1.get_height()), ha='center', va='center',
-                          size=15, xytext=(0, 8),
-                          textcoords='offset points')
-
-    ax[1][1].set_xticklabels(["Test proportions"],fontsize=15)
-    ax[1][1].set_title('Test dataset \n +/- proportions')
-
-    ################ TRAIN PARTITION PROPORTIONS###################################
-    train_set=data_partitions[data_partitions["training"] == True]
-    partitions_groups = [train_set.groupby('partition').get_group(x) for x in train_set.groupby('partition').groups]
-    i = 0
-    partitions_names = []
-    for group in partitions_groups:
-        name = group["partition"].iloc[0]
-        group_counts =  group.value_counts("target_corrected") #returns a dict
-        if len(group_counts.keys()) > 1:
-            if group_counts[0] > group_counts[1]:
-                bar1 = ax[0][2].bar(i, group_counts[0], label="Negative", color="orange",width=0.1,edgecolor='white')
-                bar1 = bar1.patches[0]
-                bar2 = ax[0][2].bar(i, group_counts[1], label="Positive", color="blue",width=0.1)
-                bar2 = bar2.patches[0]
-
-            else:
-                bar1 = ax[0][2].bar(i, group_counts[1], label="Positive", color="orange",width=0.1,edgecolor='white')
-                bar1 = bar1.patches[0]
-                bar2 = ax[0][2].bar(i, group_counts[0], label="Negative", color="blue",width=0.1,edgecolor='white')
-                bar2 = bar2.patches[0]
-
-            i+=0.4
-            n_data_partition = sum([val for key, val in group_counts.items()])
-            ax[0][2].annotate("{}\n({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_partition), 2),
-                              (bar1.get_x() + bar1.get_width() / 2,
-                               bar1.get_height()), ha='center', va='center',
-                              size=10, xytext=(0, 8),
-                              textcoords='offset points')
-            ax[0][2].annotate("{}\n({}%)".format(bar2.get_height(), np.round((bar2.get_height() * 100) / n_data_partition), 2),
-                              (bar2.get_x() + bar2.get_width() / 2,
-                               bar2.get_height()), ha='center', va='center',
-                              size=10, xytext=(0, 8),
-                              textcoords='offset points')
-        else:
-            key = group_counts.keys()[0]
-            bar1 = ax[0][2].bar(i, group_counts[key], label=labels_dict[key], color=colors_dict[key], width=0.1, edgecolor='white')
-            bar1 = bar1.patches[0]
-            n_data_partition = sum([val for key, val in group_counts.items()])
-            ax[0][2].annotate(
-                "{}\n({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_partition), 2),
-                (bar1.get_x() + bar1.get_width() / 2,
-                 bar1.get_height()), ha='center', va='center',
-                size=10, xytext=(0, 8),
-                textcoords='offset points')
-        partitions_names.append(name)
-    ax[0][2].xaxis.set_ticks([0,0.4,0.8,1.2,1.6])
-    ax[0][2].set_xticklabels(["Part. {}".format(int(i)) for i in partitions_names])
-    ax[0][2].set_title('TrainEval dataset \n +/- proportions per partition')
-    ax[1][2].axis("off")
-    legends = [mpatches.Patch(color=color, label='Class {}'.format(label)) for label,color in colors_dict.items()]
-    fig.legend(handles=legends, prop={'size': 12},loc= 'center right',bbox_to_anchor=(0.9,0.3))
-    fig.tight_layout(pad=0.1)
-    plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder,args.dataset_name,name_suffix), dpi=300)
-    plt.clf()

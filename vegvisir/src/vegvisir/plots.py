@@ -13,8 +13,312 @@ import pandas as pd
 import umap
 import vegvisir.utils as VegvisirUtils
 from sklearn.feature_selection import mutual_info_classif,mutual_info_regression
-
 plt.style.use('ggplot')
+
+
+def plot_data_information(data, filters_dict, storage_folder, args, name_suffix):
+    """"""
+    ndata = data.shape[0]
+    fig, ax = plt.subplots(3, 3, figsize=(11, 10))
+    num_bins = 50
+    colors_dict = {0: "orange", 1: "blue"}
+    labels_dict = {0: "Negative", 1: "Positive"}
+
+    ############LABELS #############
+    freq, bins, patches = ax[0][0].hist(data["target"].to_numpy(), bins=2, density=True, edgecolor='white')
+    ax[0][0].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][0].set_title('Histogram of targets/labels \n')
+    ax[0][0].xaxis.set_ticks([0.25, 0.75])
+    ax[0][0].set_xticklabels([0, 1])
+    # Annotate the bars.
+    for color, bar in zip(colors_dict.values(), patches):  # iterate over the bars
+        n_data_bin = (bar.get_height() * ndata) / 2
+        ax[0][0].annotate(format(n_data_bin, '.2f'),
+                          (bar.get_x() + bar.get_width() / 2,
+                           bar.get_height()), ha='center', va='center',
+                          size=15, xytext=(0, 8),
+                          textcoords='offset points')
+        bar.set_facecolor(color)
+
+    ############LABELS CORRECTED #############
+    freq, bins, patches = ax[0][1].hist(data["target_corrected"].to_numpy(), bins=2, density=True, edgecolor='white')
+    ax[0][1].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][1].set_title('Histogram of re-assigned \n targets/labels')
+    ax[0][1].xaxis.set_ticks([0.25, 0.75])
+    ax[0][1].set_xticklabels([0, 1])
+    # Annotate the bars.
+    for color, bar in zip(colors_dict.values(), patches):  # iterate over the bars
+        n_data_bin = (bar.get_height() * ndata) / 2
+        ax[0][1].annotate(format(n_data_bin, '.2f'),
+                          (bar.get_x() + bar.get_width() / 2,
+                           bar.get_height()), ha='center', va='center',
+                          size=15, xytext=(0, 8),
+                          textcoords='offset points')
+        bar.set_facecolor(color)
+    ####### Immunodominance scores ###################
+    ax[1][0].hist(data["immunodominance_score_scaled"].to_numpy(), num_bins, density=True)
+    ax[1][0].set_xlabel('Minmax scaled immunodominance score \n (N_+ / Total Nsubjects)')
+    ax[1][0].set_title('Histogram of \n immunodominance scores')
+    ######## Sequence length distribution ####################
+    ######Train#############################3
+    data_lens_train_negative = data.loc[
+        (data["training"] == True) & (data["target_corrected"] == 0.), filters_dict["filter_kmers"][2]].str.len()
+    data_lens_train_positive = data.loc[
+        (data["training"] == True) & (data["target_corrected"] == 1.), filters_dict["filter_kmers"][2]].str.len()
+    dict_counts = {0: data_lens_train_negative.value_counts(), 1: data_lens_train_positive.value_counts()}
+    longest, shortest = [(1, 0) if len(dict_counts[1].keys()) > len(dict_counts[0].keys()) else (0, 1)][0]
+    position = 0
+    positions = []
+    for val_i, count_i in dict_counts[longest].items():
+        ax[2][0].bar(position, count_i, label=longest, color=colors_dict[longest], width=0.1, edgecolor='white')
+        if val_i in dict_counts[shortest].keys():
+            count_j = dict_counts[shortest][val_i]
+            ax[2][0].bar(position + 0.1, count_j, label=shortest, color=colors_dict[shortest], width=0.1,
+                         edgecolor='white')
+        positions.append(position + 0.05)
+        position += 0.25
+    ax[2][0].xaxis.set_ticks(positions)
+    ax[2][0].set_xticklabels(dict_counts[longest].keys())
+    ax[2][0].set_title("Sequence length distribution of \n  the Train-valid dataset")
+    ###### Test #####################
+    data_lens_test_negative = data.loc[
+        (data["training"] == False) & (data["target_corrected"] == 0.), filters_dict["filter_kmers"][2]].str.len()
+    data_lens_test_positive = data.loc[
+        (data["training"] == False) & (data["target_corrected"] == 1.), filters_dict["filter_kmers"][2]].str.len()
+    dict_counts = {0: data_lens_test_negative.value_counts(), 1: data_lens_test_positive.value_counts()}
+    longest, shortest = [(1, 0) if len(dict_counts[1].keys()) > len(dict_counts[0].keys()) else (0, 1)][0]
+    position = 0
+    positions = []
+    for val_i, count_i in dict_counts[longest].items():
+        ax[2][1].bar(position, count_i, label=longest, color=colors_dict[longest], width=0.1, edgecolor='white')
+        if val_i in dict_counts[shortest].keys():
+            count_j = dict_counts[shortest][val_i]
+            ax[2][1].bar(position + 0.1, count_j, label=shortest, color=colors_dict[shortest], width=0.1,
+                         edgecolor='white')
+        positions.append(position + 0.05)
+        position += 0.25
+    ax[2][1].xaxis.set_ticks(positions)
+    ax[2][1].set_xticklabels(dict_counts[longest].keys())
+    ax[2][1].set_title("Sequence length distribution of \n  the Test dataset")
+    ax[2][2].axis("off")
+    ############TEST PROPORTIONS #############
+    data_partitions = data[["partition", "training", "target_corrected"]]
+    test_counts = data_partitions[data_partitions["training"] == False].value_counts(
+        "target_corrected")  # returns a dict
+    if len(test_counts.keys()) > 1:
+        if test_counts[0] > test_counts[1]:
+            bar1 = ax[1][1].bar(0, test_counts[0], label="Negative", color=colors_dict[0], width=0.1, edgecolor='white')
+            bar1 = bar1.patches[0]
+            bar2 = ax[0][2].bar(0, test_counts[1], label="Positive", color=colors_dict[1], width=0.1, edgecolor='white')
+            bar2 = bar2.patches[0]
+        else:
+            bar1 = ax[1][1].bar(0, test_counts[1], label="Positive", color="orange", width=0.1, edgecolor='white')
+            bar1 = bar1.patches[0]
+            bar2 = ax[1][1].bar(0, test_counts[0], label="Negative", color="blue", width=0.1, edgecolor='white')
+            bar2 = bar2.patches[0]
+        ax[1][1].xaxis.set_ticks([0])
+        n_data_test = sum([val for key, val in test_counts.items()])
+        ax[1][1].annotate("{}({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_test), 2),
+                          (bar1.get_x() + bar1.get_width() / 2,
+                           bar1.get_height()), ha='center', va='center',
+                          size=15, xytext=(0, 8),
+                          textcoords='offset points')
+        ax[1][1].annotate("{}({}%)".format(bar2.get_height(), np.round((bar2.get_height() * 100) / n_data_test), 2),
+                          (bar2.get_x() + bar2.get_width() / 2,
+                           bar2.get_height()), ha='center', va='center',
+                          size=15, xytext=(0, 8),
+                          textcoords='offset points')
+    else:
+        key = test_counts.keys()[0]
+        bar1 = ax[1][1].bar(key, test_counts[key], label=labels_dict[key], color=colors_dict[key], width=0.1,
+                            edgecolor='white')
+        bar1 = bar1.patches[0]
+        ax[1][1].xaxis.set_ticks([0])
+        n_data_test = sum([val for key, val in test_counts.items()])
+        ax[1][1].annotate("{}({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_test), 2),
+                          (bar1.get_x() + bar1.get_width() / 2,
+                           bar1.get_height()), ha='center', va='center',
+                          size=15, xytext=(0, 8),
+                          textcoords='offset points')
+
+    ax[1][1].set_xticklabels(["Test proportions"], fontsize=15)
+    ax[1][1].set_title('Test dataset \n +/- proportions')
+
+    ################ TRAIN PARTITION PROPORTIONS###################################
+    train_set = data_partitions[data_partitions["training"] == True]
+    partitions_groups = [train_set.groupby('partition').get_group(x) for x in train_set.groupby('partition').groups]
+    i = 0
+    partitions_names = []
+    for group in partitions_groups:
+        name = group["partition"].iloc[0]
+        group_counts = group.value_counts("target_corrected")  # returns a dict
+        if len(group_counts.keys()) > 1:
+            if group_counts[0] > group_counts[1]:
+                bar1 = ax[0][2].bar(i, group_counts[0], label="Negative", color="orange", width=0.1, edgecolor='white')
+                bar1 = bar1.patches[0]
+                bar2 = ax[0][2].bar(i, group_counts[1], label="Positive", color="blue", width=0.1)
+                bar2 = bar2.patches[0]
+
+            else:
+                bar1 = ax[0][2].bar(i, group_counts[1], label="Positive", color="orange", width=0.1, edgecolor='white')
+                bar1 = bar1.patches[0]
+                bar2 = ax[0][2].bar(i, group_counts[0], label="Negative", color="blue", width=0.1, edgecolor='white')
+                bar2 = bar2.patches[0]
+
+            i += 0.4
+            n_data_partition = sum([val for key, val in group_counts.items()])
+            ax[0][2].annotate(
+                "{}\n({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_partition), 2),
+                (bar1.get_x() + bar1.get_width() / 2,
+                 bar1.get_height()), ha='center', va='center',
+                size=10, xytext=(0, 8),
+                textcoords='offset points')
+            ax[0][2].annotate(
+                "{}\n({}%)".format(bar2.get_height(), np.round((bar2.get_height() * 100) / n_data_partition), 2),
+                (bar2.get_x() + bar2.get_width() / 2,
+                 bar2.get_height()), ha='center', va='center',
+                size=10, xytext=(0, 8),
+                textcoords='offset points')
+        else:
+            key = group_counts.keys()[0]
+            bar1 = ax[0][2].bar(i, group_counts[key], label=labels_dict[key], color=colors_dict[key], width=0.1,
+                                edgecolor='white')
+            bar1 = bar1.patches[0]
+            n_data_partition = sum([val for key, val in group_counts.items()])
+            ax[0][2].annotate(
+                "{}\n({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_partition), 2),
+                (bar1.get_x() + bar1.get_width() / 2,
+                 bar1.get_height()), ha='center', va='center',
+                size=10, xytext=(0, 8),
+                textcoords='offset points')
+        partitions_names.append(name)
+    ax[0][2].xaxis.set_ticks([0, 0.4, 0.8, 1.2, 1.6])
+    ax[0][2].set_xticklabels(["Part. {}".format(int(i)) for i in partitions_names])
+    ax[0][2].set_title('TrainEval dataset \n +/- proportions per partition')
+    ax[1][2].axis("off")
+    legends = [mpatches.Patch(color=color, label='Class {}'.format(label)) for label, color in colors_dict.items()]
+    fig.legend(handles=legends, prop={'size': 12}, loc='center right', bbox_to_anchor=(0.9, 0.3))
+    fig.tight_layout(pad=0.1)
+    plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder, args.dataset_name, name_suffix), dpi=300)
+    plt.clf()
+
+def plot_features_histogram(data, features_names, results_dir, name_suffix):
+    """"""
+    max_cols = 4
+    num_bins = 50
+    nplots = [int(len(features_names)) if int(len(features_names)) % 2 == 0 else int(len(features_names)) + 1][0]
+    ncols = [int(nplots / 2) if int(nplots / 2) <= max_cols else max_cols][0]
+    nrows = [int(nplots / ncols) if nplots / ncols % 2 == 0 else int(nplots / ncols) + 1][0]
+    fig, axs = plt.subplots(nrows=nrows, ncols=ncols,squeeze=False)  # check this: https://stackoverflow.com/questions/9834452/how-do-i-make-a-single-legend-for-many-subplots
+    axs = axs.ravel()
+    total_ax = len(axs)
+    if isinstance(data,pd.DataFrame):
+        i = 0
+        for idx,feature_name in enumerate(features_names):
+            freq, bins, patches = axs[idx].hist(data[feature_name].to_numpy(), bins=num_bins, density=True, edgecolor='white')
+            axs[idx].set_xlabel('')
+            axs[idx].set_title('{} \n'.format(feature_name),fontsize=6)
+            axs[idx].tick_params(axis='both', which='both', labelsize=5)
+            axs[idx].yaxis.offsetText.set_fontsize(5) #referred as scientific notation
+            i = idx
+        for j in range(i +1 ,total_ax):
+            axs[j].axis("off")
+
+        fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
+        fig.suptitle("Histogram Features")
+        plt.savefig("{}/Viruses_features_histograms_{}".format(results_dir, name_suffix), dpi=300)
+        plt.clf()
+    if isinstance(data,np.ndarray):
+        i = 0
+        for idx, feature_name in enumerate(features_names):
+            freq, bins, patches = axs[idx].hist(data[:,idx], bins=num_bins, density=True,
+                                                edgecolor='white',color="green")
+            axs[idx].set_xlabel('')
+            axs[idx].set_title('{} \n'.format(feature_name), fontsize=6)
+            axs[idx].tick_params(axis='both', which='both', labelsize=5)
+            axs[idx].yaxis.offsetText.set_fontsize(5)  # referred as scientific notation
+            i = idx
+        for j in range(i + 1, total_ax):
+            axs[j].axis("off")
+
+        fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
+        fig.suptitle("Histogram Features (preprocessed)")
+        plt.savefig("{}/Viruses_features_histograms_{}".format(results_dir, name_suffix),
+                    dpi=300)
+        plt.clf()
+
+
+def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset_name):
+    """Plotting the projections of the data"""
+    if seq_max_len == max_len:
+        data_sequences_norm = data_array_blosum_norm[:,1]
+    else:
+        data_sequences_norm = data_array_blosum_norm[:,1,:seq_max_len]
+        data_features = data_array_blosum_norm[:,1,seq_max_len:]
+
+    reducer = umap.UMAP()
+    true_labels = data_array_blosum_norm[:,0,0]
+    colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
+    colors_true = np.vectorize(colors_dict_labels.get)(true_labels)
+
+    confidence_scores = data_array_blosum_norm[:,0,5]
+    confidence_scores_unique = np.unique(confidence_scores).tolist()
+    colormap_confidence = matplotlib.cm.get_cmap('plasma', len(confidence_scores_unique))
+    colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
+    colors_confidence = np.vectorize(colors_dict.get, signature='()->(n)')(confidence_scores)
+
+    immunodominance_scores = data_array_blosum_norm[:,0,4]
+    immunodominance_scores_unique = np.unique(immunodominance_scores).tolist()
+    colormap_immunodominance = matplotlib.cm.get_cmap('plasma', len(immunodominance_scores_unique))
+    colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
+    colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
+
+    umap_proj = reducer.fit_transform(data_sequences_norm)
+    fig, [[ax1, ax2, ax3], [ax4, ax5, ax6]] = plt.subplots(nrows=2,ncols=3, figsize=(17, 12), gridspec_kw={'width_ratios': [4.5, 4.5,1], 'height_ratios': [4, 4]})
+
+    fig.suptitle('UMAP projections of blosum norms', fontsize=20)
+    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, alpha=1, s=30)
+    ax1.set_title("True labels", fontsize=20)
+    ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=1, s=30)
+    ax2.set_title("Confidence scores", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence),ax=ax2) #cax= fig.add_axes([0.9, 0.5, 0.01, 0.09])
+    ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=1, s=30)
+    ax4.set_title("Immunodominance scores", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance),ax=ax4) #cax= fig.add_axes([0.9, 0.5, 0.01, 0.09])
+    ax3.axis("off")
+    ax5.axis("off")
+    ax6.axis("off")
+    negative_patch = mpatches.Patch(color=colors_dict_labels[0], label='Class 0')
+    positive_patch = mpatches.Patch(color=colors_dict_labels[1], label='Class 1')
+    plt.legend(handles=[negative_patch, positive_patch], prop={'size': 20}, loc='center right',
+               bbox_to_anchor=(0.6, 0.5), ncol=1)
+    plt.savefig("{}/{}/umap_data_norm".format(script_dir,dataset_name))
+    plt.clf()
+
+    if seq_max_len != max_len:
+        umap_proj = reducer.fit_transform(data_features)
+        fig, [[ax1, ax2, ax3], [ax4, ax5, ax6]] = plt.subplots(nrows=2, ncols=3, figsize=(17, 12),
+                                                               gridspec_kw={'width_ratios': [4.5, 4.5,1],
+                                                                            'height_ratios': [4, 4]})
+        fig.suptitle('UMAP projections of data features', fontsize=20)
+        ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, alpha=1, s=30)
+        ax1.set_title("True labels", fontsize=20)
+        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=1, s=30)
+        ax2.set_title("Confidence scores", fontsize=20)
+        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence), ax=ax2)  # cax= fig.add_axes([0.9, 0.5, 0.01, 0.09])
+        ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=1, s=30)
+        ax4.set_title("Immunodominance scores", fontsize=20)
+        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance), ax=ax4)  # cax= fig.add_axes([0.9, 0.5, 0.01, 0.09])
+        ax3.axis("off")
+        ax5.axis("off")
+        ax6.axis("off")
+        negative_patch = mpatches.Patch(color=colors_dict_labels[0], label='Class 0')
+        positive_patch = mpatches.Patch(color=colors_dict_labels[1], label='Class 1')
+        plt.legend(handles=[negative_patch, positive_patch], prop={'size': 20}, loc='center right',
+                   bbox_to_anchor=(0.7, 0.5), ncol=1)
+        plt.savefig("{}/{}/umap_data_features".format(script_dir, dataset_name))
+        plt.clf()
+
 def plot_heatmap(array, title,file_name):
     plt.figure(figsize=(20, 20))
     sns.heatmap(array, cmap='RdYlGn_r',yticklabels=False,xticklabels=False)
@@ -119,11 +423,24 @@ def plot_latent_space(latent_space,predictions,fold,results_dir,method):
 
     print("Plotting UMAP...")
     reducer = umap.UMAP()
-    umap_proj = reducer.fit_transform(latent_space[:, 3:]) #First column are TCR-pMHC identifiers,second column are "true" labels
-    colors_dict = {0:"mediumaquamarine",1:"orangered"}
-    colors_true = np.vectorize(colors_dict.get)(latent_space[:,1])
-    colors_predicted = np.vectorize(colors_dict.get)(predictions)
-    #colors_peptides_identifiers = np.vectorize(colors_dict_peptides.get)(latent_space[:,0])
+    umap_proj = reducer.fit_transform(latent_space[:, 4:])
+
+    colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
+    colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,1])
+    colors_predicted = np.vectorize(colors_dict_labels.get)(predictions)
+    #Highlight: Confidence scores colors
+    confidence_scores = latent_space[:,2]
+    confidence_scores_unique = np.unique(confidence_scores).tolist()
+    colormap_confidence = matplotlib.cm.get_cmap('plasma', len(confidence_scores_unique))
+    colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
+    colors_confidence = np.vectorize(colors_dict.get, signature='()->(n)')(confidence_scores)
+    #Highlight: Immunodominance scores colors
+    immunodominance_scores = latent_space[:,3]
+    immunodominance_scores_unique = np.unique(immunodominance_scores).tolist()
+    colormap_immunodominance = matplotlib.cm.get_cmap('plasma', len(immunodominance_scores_unique))
+    colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
+    colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
+
 
     fig, [[ax1, ax2, ax3],[ax4,ax5,ax6],[ax7,ax8,ax9]] = plt.subplots(3, 3,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [4,4,2]})
     fig.suptitle('UMAP projections',fontsize=20)
@@ -131,16 +448,21 @@ def plot_latent_space(latent_space,predictions,fold,results_dir,method):
     ax1.set_title("True labels",fontsize=20)
     ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted, label=predictions, alpha=1,s=30)
     ax2.set_title("Predicted labels",fontsize=20)
+    ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=1, s=30)
+    ax4.set_title("Confidence scores", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence),ax=ax4)
+    ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=1, s=30)
+    ax5.set_title("Immunodominance scores", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance),ax=ax5)
     # ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_peptides_identifiers, label=latent_space[:,0], alpha=1, s=30)
     # ax4.set_title("Peptides identifiers", fontsize=20)
     ax3.axis("off")
-    ax5.axis("off")
     ax6.axis("off")
     ax7.axis("off")
     ax8.axis("off")
     ax9.axis("off")
-    negative_patch = mpatches.Patch(color=colors_dict[0], label='Class 0')
-    positive_patch = mpatches.Patch(color=colors_dict[1], label='Class 1')
+    negative_patch = mpatches.Patch(color=colors_dict_labels[0], label='Class 0')
+    positive_patch = mpatches.Patch(color=colors_dict_labels[1], label='Class 1')
     #peptides_color_patches = [mpatches.Patch(color='{}'.format(val), label='{}'.format(peptides_labels_dict[key])) if key in peptides_labels_dict.keys() else None for key,val in colors_dict_peptides.items()]
     #peptides_color_patches = [x for x in peptides_color_patches if x is not None]
     #ncol = [1 if len(peptides_color_patches) < 10 else math.ceil((len(peptides_color_patches)/10))][0]
@@ -200,12 +522,12 @@ def plot_blosum_cosine(blosum_array,storage_folder,args):
     plt.savefig('{}/{}/blosum_cosine.png'.format(storage_folder, args.dataset_name), dpi=600)
     plt.clf()
 
-def plot_feature_importance_old(feature_dict:dict,max_len:int,feature_columns:list,results_dir:str) -> None:
+def plot_feature_importance_old(feature_dict:dict,max_len:int,features_names:list,results_dir:str) -> None:
     """
     :rtype: object
     :param feature_dict:
     :param max_len:
-    :param feature_columns:
+    :param features_names:
     :param results_dir:
 
     """
@@ -226,7 +548,7 @@ def plot_feature_importance_old(feature_dict:dict,max_len:int,feature_columns:li
     if len(feature_dict["Fold_0"]) == max_len:
         labels = ["Pos.{}".format(pos) for pos in list(range(max_len))]
     else:
-        labels = ["Pos.{}".format(pos) for pos in list(range(max_len))] + feature_columns
+        labels = ["Pos.{}".format(pos) for pos in list(range(max_len))] + features_names
     colors_dict = dict(zip(labels,colors_list))
 
     fig,ax = plt.subplots(nrows=nrows,ncols=ncols,squeeze=False) #check this: https://stackoverflow.com/questions/9834452/how-do-i-make-a-single-legend-for-many-subplots
@@ -251,12 +573,12 @@ def plot_feature_importance_old(feature_dict:dict,max_len:int,feature_columns:li
     fig.suptitle("Feature importance")
     plt.savefig("{}/feature_importance_xgboost".format(results_dir))
 
-def plot_feature_importance(feature_dict:dict,max_len:int,feature_columns:list,results_dir:str) -> None:
+def plot_feature_importance(feature_dict:dict,max_len:int,features_names:list,results_dir:str) -> None:
     """
     :rtype: object
     :param feature_dict:
     :param max_len:
-    :param feature_columns:
+    :param features_names:
     :param results_dir:
 
     """
@@ -273,7 +595,7 @@ def plot_feature_importance(feature_dict:dict,max_len:int,feature_columns:list,r
     if len(feature_dict["Fold_0"]) == max_len:
         labels = ["Pos.{}".format(pos) for pos in list(range(max_len))]
     else:
-        labels = ["Pos.{}".format(pos) for pos in list(range(max_len))] + feature_columns
+        labels = ["Pos.{}".format(pos) for pos in list(range(max_len))] + features_names
     colors_dict = dict(zip(labels,colors_list))
     fig,axs = plt.subplots(nrows=nrows,ncols=ncols+1 ,squeeze=False) #check this: https://stackoverflow.com/questions/9834452/how-do-i-make-a-single-legend-for-many-subplots
     axs = axs.ravel()

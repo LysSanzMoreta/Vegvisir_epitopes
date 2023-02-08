@@ -1,4 +1,5 @@
 import json
+from scipy import stats
 import time,os,datetime
 from collections import defaultdict
 import numpy as np
@@ -10,7 +11,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from collections import namedtuple
 from pyro.infer.autoguide import AutoDelta,AutoNormal,AutoDiagonalNormal
-from  pyro.infer import SVI
+from  pyro.infer import SVI,config_enumerate
 import pyro.poutine as poutine
 import pyro
 import vegvisir
@@ -53,7 +54,7 @@ def train_loop(svi,Vegvisir,guide,data_loader, args):
         #Forward & Backward pass
         loss = svi.step(batch_data,batch_mask)
         guide_estimates = guide(batch_data,batch_mask)
-        sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates)
+        sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
         predicted_labels = sampling_output.predicted_labels
         latent_space = sampling_output.latent_space
         latent_spaces.append(latent_space.detach().cpu().numpy())
@@ -96,7 +97,7 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args):
             batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
             loss = svi.step(batch_data,batch_mask)
             guide_estimates = guide(batch_data,batch_mask)
-            sampling_out = Vegvisir.sample(batch_data,batch_mask,guide_estimates)
+            sampling_out = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
             predicted_labels = sampling_out.predicted_labels
             latent_space = sampling_out.latent_space
             latent_spaces.append(latent_space.detach().cpu().numpy())
@@ -132,7 +133,7 @@ def test_loop(Vegvisir,guide,data_loader,args):
             true_labels = batch_data_blosum[:,0,0,0]
             batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
             guide_estimates = guide(batch_data,batch_mask)
-            sampling_out = Vegvisir.sample(batch_data,batch_mask,guide_estimates)
+            sampling_out = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
             predicted_labels = sampling_out.predicted_labels
             latent_space = sampling_out.latent_space
             latent_spaces.append(latent_space.detach().cpu().numpy())
@@ -146,6 +147,34 @@ def test_loop(Vegvisir,guide,data_loader,args):
     print(f'Accuracy of the TCR-pMHC: {100 * correct // total} %')
 
     return predictions_arr,accuracy,latent_arr
+def sample_loop(Vegvisir,guide,data_loader,args):
+    Vegvisir.train(False)
+    print("Collecting {} samples".format(args.num_samples))
+    with torch.no_grad():
+        total_samples = []
+        for sample in range(args.num_samples):
+            batch_sample = []
+            for batch_number, batch_dataset in enumerate(data_loader):
+                batch_data_blosum = batch_dataset["batch_data_blosum"]
+                batch_data_int = batch_dataset["batch_data_int"]
+                batch_data_onehot = batch_dataset["batch_data_onehot"]
+                batch_data_blosum_norm = batch_dataset["batch_data_blosum_norm"]
+                batch_mask = batch_dataset["batch_mask"]
+                if args.use_cuda:
+                    batch_data_blosum = batch_data_blosum.cuda()
+                    batch_data_int = batch_data_int.cuda()
+                    batch_data_onehot = batch_data_onehot.cuda()
+                    batch_data_blosum_norm = batch_data_blosum_norm.cuda()
+                    batch_mask = batch_mask.cuda()
+                batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
+                guide_estimates = guide(batch_data, batch_mask)
+                sampling_out = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
+                predicted_labels = sampling_out.predicted_labels.detach()
+                batch_sample.append(predicted_labels)
+            data_sample = torch.cat(batch_sample,dim=0)
+            total_samples.append(data_sample)
+    total_samples_arr = torch.column_stack(total_samples)
+    return total_samples_arr
 def save_script(results_dir,output_name,script_name):
     """Saves the python script and its contents"""
     out_file = open("{}/{}.py".format(results_dir,output_name), "a+")
@@ -172,12 +201,14 @@ def select_model(model_load,results_dir,fold):
         vegvisir_model = VegvisirModels.VegvisirModel5a(model_load)
     else:
         vegvisir_model = VegvisirModels.VegvisirModel5b(model_load)
-    if fold == 0:
+    if fold == 0 or fold == "all":
         text_file = open("{}/Hyperparameters.txt".format(results_dir), "a")
         text_file.write("Model Class:  {} \n".format(vegvisir_model.get_class()))
         text_file.close()
-        save_script(results_dir, "ModelFunction", "models")
-        save_script(results_dir, "ModelUtilsFunction", "model_utils")
+        save_script("{}/Scripts".format(results_dir), "ModelFunction", "models")
+        save_script("{}/Scripts".format(results_dir), "ModelUtilsFunction", "model_utils")
+        save_script("{}/Scripts".format(results_dir), "GuidesFunction", "guides")
+        save_script("{}/Scripts".format(results_dir), "TrainFunction", "train_svi")
     #Initialize the weights
     with torch.no_grad():
         vegvisir_model.apply(init_weights)
@@ -259,6 +290,7 @@ def dataset_proportions(data,results_dir,type="TrainEval"):
     return (positives,positives_proportion),(negatives,negatives_proportion)
 def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitions"):
     """Perform kfolds and test split"""
+    raise Warning("Feature Scaling has not been implemented for k-fold cross validation, please remember to do so")
     if method == "predefined_partitions":
         traineval_data, test_data = data[data[:, 0,0, 3] == 1.], data[data[:, 0,0, 3] == 0.]
         dataset_proportions(traineval_data, results_dir)
@@ -291,7 +323,7 @@ def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitio
         dataset_proportions(test_data,results_dir, type="Test")
         kfolds = StratifiedShuffleSplit(n_splits=args.k_folds, random_state=13, test_size=0.2).split(traineval_data,traineval_data[:,0,0,0])
         return traineval_data,test_data,kfolds
-    elif method == "discard_test":
+    elif method == "predefined_partitions_discard_test":
         """Discard the test dataset (hard case) and use one of the partitions as the test instead. The rest of the dataset is used for the kfold partitions"""
         partition_idx = np.random.randint(0, 4)  # random selection of a partition as the test
         train_data = data[data[:, 0, 0, 2] != partition_idx]
@@ -316,7 +348,7 @@ def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitio
 
     else:
         raise ValueError("train test split method not available")
-def trainevaltest_split(data,args,results_dir,method="predefined_partitions"):
+def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names,method="predefined_partitions"):
     """Perform train-valid-test split"""
     info_file = open("{}/dataset_info.txt".format(results_dir),"a+")
     if method == "random_stratified":
@@ -327,7 +359,6 @@ def trainevaltest_split(data,args,results_dir,method="predefined_partitions"):
         dataset_proportions(train_data,results_dir, type="Train")
         dataset_proportions(valid_data,results_dir, type="Valid")
         dataset_proportions(test_data,results_dir, type="Test")
-        return train_data, valid_data, test_data
     elif method == "random_stratified_discard_test":
         """Discard the predefined test dataset"""
         data = data[data[:,0,0,3] == 1] #pick only the pre assigned training data
@@ -338,7 +369,6 @@ def trainevaltest_split(data,args,results_dir,method="predefined_partitions"):
         dataset_proportions(train_data,results_dir, type="Train")
         dataset_proportions(valid_data,results_dir, type="Valid")
         dataset_proportions(test_data,results_dir, type="Test")
-        return train_data,valid_data,test_data
 
     elif method == "predefined_partitions_discard_test":
         """Discard the test dataset (because it seems a hard case) and use one of the partitions as the test instead. 
@@ -351,13 +381,24 @@ def trainevaltest_split(data,args,results_dir,method="predefined_partitions"):
         dataset_proportions(train_data, results_dir, type="Train")
         dataset_proportions(valid_data, results_dir, type="Valid")
         dataset_proportions(test_data, results_dir, type="Test")
-        info_file.write("-------------------------------------------------")
-        info_file.write("Using partition {} as test:".format(partition_idx))
-
-        return train_data, valid_data, test_data
-
+        info_file.write("\n -------------------------------------------------")
+        info_file.write("\n Using partition {} as test:".format(partition_idx))
     else:
         raise ValueError("train test split method not available")
+
+    if seq_max_len != max_len:
+        print("Feature preprocessing for train/valid/test splits")
+        train_feats,scaler =  VegvisirUtils.features_preprocessing(train_data[:,1,seq_max_len:,0],method="minmax") #TODO: Do after train/valid/test split
+        valid_feats = scaler.transform(valid_data[:,1,seq_max_len:,0])
+        test_feats = scaler.transform(test_data[:,1,seq_max_len:,0])
+        train_data[:,1, seq_max_len:, 0] = torch.from_numpy(train_feats)
+        valid_data[:,1, seq_max_len:, 0] = torch.from_numpy(valid_feats)
+        test_data[:,1, seq_max_len:, 0] = torch.from_numpy(test_feats)
+        VegvisirPlots.plot_features_histogram(train_feats, features_names, "{}/Train".format(results_dir), "preprocessed")
+        VegvisirPlots.plot_features_histogram(valid_feats, features_names, "{}/Valid".format(results_dir), "preprocessed")
+        VegvisirPlots.plot_features_histogram(test_feats, features_names, "{}/Test".format(results_dir), "preprocessed")
+
+    return train_data,valid_data,test_data
 def kfold_crossvalidation(dataset_info,additional_info,args):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
@@ -376,7 +417,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
     #Highlight: Train- Test split and kfold generator
     #TODO: Develop method to partition sequences, sequences in train and test must differ. Partitions must have similar distributions (Tree based on distance matrix?
     # In the loop computer another cosine similarity among the vectors of cos sim of each sequence?)
-    traineval_data_blosum,test_data_blosum,kfolds = trainevaltest_split_kfolds(data_blosum,args,results_dir,method="predefined_partitions")
+    traineval_data_blosum,test_data_blosum,kfolds = trainevaltest_split_kfolds(data_blosum,args,results_dir,method="predefined_partitions_discard_test")
 
     #Highlight:Also split the rest of arrays
     traineval_idx = (data_blosum[:,0,0,1][..., None] == traineval_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
@@ -404,7 +445,6 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
     valid_accuracy = None
     train_accuracy=None
     for fold, (train_idx, valid_idx) in enumerate(kfolds): #returns k-splits for train and validation
-
         # #Highlight: Minmax scale the confidence scores #TODO: function or for loop?
         fold_train_data_blosum = traineval_data_blosum[train_idx]
         fold_train_data_int = traineval_data_int[train_idx]
@@ -498,9 +538,13 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                 VegvisirPlots.plot_classification_score(train_auk,valid_auk,epochs_list,fold,additional_info.results_dir,method="AUK")
                 Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer)
                 if epoch == args.num_epochs:
-                    print("Saving final results")
-                    train_predictions_fold = train_predictions
-                    valid_predictions_fold = valid_predictions
+                    print("Calculating Monte Carlo estimate of the posterior predictive")
+                    train_predictions_fold = sample_loop(Vegvisir, guide, train_loader, args)
+                    valid_predictions_fold = sample_loop(Vegvisir, guide, valid_loader, args)
+                    train_predictions_fold_mode = stats.mode(train_predictions_fold.cpu().numpy(), axis=1,
+                                                        keepdims=True).mode.squeeze(-1)
+                    valid_predictions_fold_mode = stats.mode(valid_predictions_fold.cpu().numpy(), axis=1,
+                                                        keepdims=True).mode.squeeze(-1)
                     VegvisirPlots.plot_gradients(gradient_norms, results_dir, fold)
                     Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer)
                     # params = vegvisir_model.capture_parameters([name for name,val in vegvisir_model.named_parameters()])
@@ -510,8 +554,8 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
             torch.cuda.empty_cache()
             epoch += 1 #TODO: early stop?
         #predictions_fold,labels,accuracy,fold,results_dir
-        fold_auc(valid_predictions_fold,fold_valid_data_blosum[:,0,0,0],valid_accuracy,fold,results_dir,mode="Valid")
-        fold_auc(train_predictions_fold,fold_train_data_blosum[:,0,0,0],train_accuracy,fold,results_dir,mode="Train")
+        fold_auc(valid_predictions_fold_mode,fold_valid_data_blosum[:,0,0,0],valid_accuracy,fold,results_dir,mode="Valid")
+        fold_auc(train_predictions_fold_mode,fold_train_data_blosum[:,0,0,0],train_accuracy,fold,results_dir,mode="Train")
 
 
     if args.test: #TODO: Function for training
@@ -574,13 +618,14 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                 VegvisirPlots.plot_classification_score(train_auc, None, epochs_list, "final",additional_info.results_dir, method="AUC")
                 VegvisirPlots.plot_classification_score(train_auk, None, epochs_list, "final",additional_info.results_dir, method="AUK")
                 if epoch == args.num_epochs:
-                    print("Saving final results")
-                    train_predictions_fold = train_predictions
+                    print("Calculating Monte Carlo estimate of the posterior predictive")
+                    train_predictions_fold = sample_loop(Vegvisir, guide, train_loader, args)
+                    train_predictions_fold_mode = stats.mode(train_predictions_fold.cpu().numpy(), axis=1,keepdims=True).mode.squeeze(-1)
                     VegvisirPlots.plot_gradients(gradient_norms, results_dir, "final")
                     Vegvisir.save_checkpoint("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir), optimizer)
             epoch += 1
             torch.cuda.empty_cache()
-        fold_auc(train_predictions_fold,traineval_data_blosum[:,0,0,0],train_accuracy,"final",results_dir,mode="Train")
+        fold_auc(train_predictions_fold_mode,traineval_data_blosum[:,0,0,0],train_accuracy,"final",results_dir,mode="Train")
         #Highlight: Testing
         test_data_blosum[:,0,0,4] = VegvisirUtils.minmax_scale(test_data_blosum[:,0,0,4])
         test_data_int[:,0,4] = test_data_blosum[:,0,0,4]
@@ -595,6 +640,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         predictions = test_loop(Vegvisir,guide,test_loader,args)
         score = roc_auc_score(y_true=test_data_blosum[:, 0, 0, 0].numpy(), y_score=predictions)
         print("Final AUC score : {}".format( score))
+
 def train_model(dataset_info,additional_info,args):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
@@ -611,7 +657,7 @@ def train_model(dataset_info,additional_info,args):
     #Highlight: Train- Test split and kfold generator
     #TODO: Develop method to partition sequences, sequences in train and test must differ. Partitions must have similar distributions (Tree based on distance matrix?
     # In the loop computer another cosine similarity among the vectors of cos sim of each sequence?)
-    train_data_blosum,valid_data_blosum,test_data_blosum = trainevaltest_split(data_blosum,args,results_dir,method="predefined_partitions_discard_test")
+    train_data_blosum,valid_data_blosum,test_data_blosum = trainevaltest_split(data_blosum,args,results_dir,seq_max_len,dataset_info.max_len,dataset_info.features_names,method="predefined_partitions_discard_test")
 
     #Highlight:Also split the rest of arrays
     train_idx = (data_blosum[:,0,0,1][..., None] == train_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
@@ -667,7 +713,9 @@ def train_model(dataset_info,additional_info,args):
         raise ValueError("selected optimizer {} not implemented".format(args.optimizer_name))
     loss_func = Vegvisir.loss()
     guide = select_quide(Vegvisir,model_load,n_data,args.guide)
-    svi = SVI(poutine.scale(Vegvisir.model,scale=1.0/n_data), guide, optimizer, loss_func)
+    #svi = SVI(poutine.scale(Vegvisir.model,scale=1.0/n_data), poutine.scale(guide,scale=1.0/n_data), optimizer, loss_func)
+    svi = SVI(Vegvisir.model, config_enumerate(guide), optimizer, loss_func)
+    #svi = SVI(Vegvisir.model, guide, optimizer, loss_func)
 
     #TODO: Dictionary that gathers the results from each fold
     start = time.time()
@@ -683,6 +731,8 @@ def train_model(dataset_info,additional_info,args):
     epoch = 0.
     train_predictions = None
     valid_predictions = None
+    train_predictions_mode = None
+    valid_predictions_mode = None
     train_accuracy = None
     valid_accuracy = None
     gradient_norms = defaultdict(list)
@@ -719,12 +769,14 @@ def train_model(dataset_info,additional_info,args):
             VegvisirPlots.plot_classification_score(train_auk,valid_auk,epochs_list,"all",additional_info.results_dir,method="AUK")
             Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir), optimizer)
             if epoch == args.num_epochs:
-                print("Saving final results")
-                train_predictions = train_predictions
-                valid_predictions = valid_predictions
+                print("Calculating Monte Carlo estimate of the posterior predictive")
+                train_predictions = sample_loop(Vegvisir,guide,train_loader,args)
+                valid_predictions = sample_loop(Vegvisir,guide,valid_loader,args)
+                train_predictions_mode = stats.mode(train_predictions.cpu().numpy(), axis=1,keepdims=True).mode.squeeze(-1)
+                valid_predictions_mode = stats.mode(valid_predictions.cpu().numpy(), axis=1,keepdims=True).mode.squeeze(-1)
                 VegvisirPlots.plot_gradients(gradient_norms, results_dir, "all")
-                VegvisirPlots.plot_latent_space(train_latent_space, train_predictions, "all",results_dir, method="Train")
-                VegvisirPlots.plot_latent_space(valid_latent_space,valid_predictions, "all",results_dir, method="Valid")
+                VegvisirPlots.plot_latent_space(train_latent_space, train_predictions_mode, "all",results_dir, method="Train")
+                VegvisirPlots.plot_latent_space(valid_latent_space,valid_predictions_mode, "all",results_dir, method="Valid")
                 Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer)
                 # params = vegvisir_model.capture_parameters([name for name,val in vegvisir_model.named_parameters()])
                 # gradients = vegvisir_model.capture_gradients([name for name,val in vegvisir_model.named_parameters()])
@@ -732,8 +784,8 @@ def train_model(dataset_info,additional_info,args):
 
         torch.cuda.empty_cache()
         epoch += 1 #TODO: early stop?
-    fold_auc(train_predictions,train_data_blosum[:,0,0,0],train_accuracy,"all",results_dir,mode="Train")
-    fold_auc(valid_predictions,valid_data_blosum[:,0,0,0],valid_accuracy,"all",results_dir,mode="Valid")
+    fold_auc(train_predictions_mode,train_data_blosum[:,0,0,0],train_accuracy,"all",results_dir,mode="Train")
+    fold_auc(valid_predictions_mode,valid_data_blosum[:,0,0,0],valid_accuracy,"all",results_dir,mode="Valid")
     stop = time.time()
     print('Final timing: {}'.format(str(datetime.timedelta(seconds=stop-start))))
 
@@ -749,6 +801,10 @@ def train_model(dataset_info,additional_info,args):
         test_loader = DataLoader(custom_dataset_test, batch_size=batch_size, shuffle=True,
                                  generator=torch.Generator(device=args.device), **kwargs)
         test_predictions,test_accuracy,test_latent_space = test_loop(Vegvisir,guide,test_loader,args)
-        fold_auc(test_predictions, test_data_blosum[:, 0, 0, 0], test_accuracy,"all", results_dir, mode="Test")
+        VegvisirPlots.plot_latent_space(test_latent_space, train_predictions_mode, "all", results_dir, method="Train")
+        print("Calculating Monte Carlo estimate of the posterior predictive")
+        test_predictions = sample_loop(Vegvisir, guide, test_loader, args)
+        test_predictions_mode = stats.mode(test_predictions.cpu().numpy(), axis=1, keepdims=True).mode.squeeze(-1)
+        fold_auc(test_predictions_mode, test_data_blosum[:, 0, 0, 0], test_accuracy,"all", results_dir, mode="Test")
 
 

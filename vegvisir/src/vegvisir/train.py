@@ -152,7 +152,7 @@ def select_model(model_load,results_dir,fold):
         vegvisir_model = VegvisirModels.VegvisirModel6a(model_load)
     else:
         vegvisir_model = VegvisirModels.VegvisirModel6b(model_load)
-    if fold == 0:
+    if fold == 0 or fold == "all":
         text_file = open("{}/Hyperparameters.txt".format(results_dir), "a")
         text_file.write("Model Class:  {} \n".format(vegvisir_model.get_class()))
         text_file.close()

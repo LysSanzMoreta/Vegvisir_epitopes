@@ -79,9 +79,9 @@ def train_xgboost_binary_classifier(dataset_info,additional_info,args):
     data_blosum_norm = dataset_info.data_array_blosum_norm
     results_dir = additional_info.results_dir
     max_len = dataset_info.max_len
-    feature_columns = dataset_info.feature_columns
-    if feature_columns is not None:
-        feature_names = ["Pos.{}".format(pos) for pos in list(range(max_len))] + feature_columns
+    features_names = dataset_info.features_names
+    if features_names is not None:
+        feature_names = ["Pos.{}".format(pos) for pos in list(range(max_len))] + features_names
     else:
         feature_names = ["Pos.{}".format(pos) for pos in list(range(max_len))]
 
@@ -147,7 +147,7 @@ def train_xgboost_binary_classifier(dataset_info,additional_info,args):
     auc_df_styled = auc_df.style.format(na_rep = "-") #cmap="BuPu"
     #auc_df_styled.to_html()
     dfi.export(auc_df_styled, "{}/AUC_df.png".format(results_dir), dpi=600)
-    VegvisirPlots.plot_feature_importance(feature_dict, max_len,feature_columns,results_dir)
+    VegvisirPlots.plot_feature_importance(feature_dict, max_len,features_names,results_dir)
 
 def train_xgboost_regression(dataset_info,additional_info,args):
     """
@@ -160,9 +160,9 @@ def train_xgboost_regression(dataset_info,additional_info,args):
     data_blosum_norm = dataset_info.data_array_blosum_norm
     results_dir = additional_info.results_dir
     max_len = dataset_info.max_len
-    feature_columns = dataset_info.feature_columns
-    if feature_columns is not None:
-        feature_names = ["Pos.{}".format(pos) for pos in list(range(max_len))] + feature_columns
+    features_names = dataset_info.features_names
+    if features_names is not None:
+        feature_names = ["Pos.{}".format(pos) for pos in list(range(max_len))] + features_names
     else:
         feature_names = ["Pos.{}".format(pos) for pos in list(range(max_len))]
 
@@ -232,7 +232,7 @@ def train_xgboost_regression(dataset_info,additional_info,args):
     # r2score_df_styled.to_html()
     dfi.export(rmse_df_styled, "{}/RMSE_df.png".format(results_dir), dpi=600)
 
-    VegvisirPlots.plot_feature_importance(feature_dict, max_len,feature_columns,results_dir)
+    VegvisirPlots.plot_feature_importance(feature_dict, max_len,features_names,results_dir)
 
 
 

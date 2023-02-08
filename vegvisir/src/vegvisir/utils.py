@@ -11,7 +11,7 @@ import numpy as np
 import os,shutil
 from collections import defaultdict
 import time,datetime
-
+from sklearn import preprocessing
 import pandas as pd
 import torch
 
@@ -556,11 +556,6 @@ def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksiz
             # Highlight: Apply masks to calculate the similarities. NOTE: To get the data with the filled value use k = np.ma.getdata(kmers_matrix_diag_masked)
             ##PERCENT IDENTITY (binary pairwise comparison) ###############
             percent_identity_mean_ij = np.ma.masked_array(pairwise_sim_j, mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
-            # print(percent_identity_mean_ij.shape)
-            # print("------------BEFORE------------------------")
-            # print("start store point i {}".format(start_store_point_i))
-            # print("end store point i {}".format(end_store_point_i))
-            # print("----------------------------------------------------")
             percent_identity_mean_i[:,start_store_point_i:end_store_point_i] = percent_identity_mean_ij #TODO: Probably no need to store this either
             ##COSINE SIMILARITY (pairwise comparison of cosine similarities)########################
             cosine_similarity_mean_ij = np.ma.masked_array(cosine_sim_j[:, :, diag_idx_maxlen[0], diag_idx_maxlen[1]],mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
@@ -650,25 +645,32 @@ def minmax_scale(array,suffix=None,column_name=None,low=0.,high=1.):
     WARNING USE SEPARATELY FOR TRAIN AND TEST DATASETS, OTHERWISE INFORMATION FROM THE TEST GETS TRANSFERRED TO THE TRAIN
     """
     if isinstance(array,pd.DataFrame):
-        assert column_name is not None
-        assert suffix is not None
-        mean_val = array[column_name].mean()
-        std_val = array[column_name].std()
-        max_val = array[column_name].max()
-        min_val = array[column_name].min()
-        array["{}{}".format(column_name,suffix)] = (array[column_name] - min_val)/max_val-min_val
-        array["{}{}".format(column_name,suffix)] = array["{}{}".format(column_name,suffix)] * (high - low) + low #Scale in range min_val,max_val
+        assert column_name is not None, "Please select a column name"
+        assert suffix is not None, "Please select a suffix of the new column or give an empty string to overwrite it"
+        array["{}{}".format(column_name,suffix)]  =preprocessing.MinMaxScaler().fit_transform(array[column_name].to_numpy()[:,None])
         return array
+    elif isinstance(array,np.ndarray):
+        return preprocessing.MinMaxScaler().fit_transform(array)
     elif isinstance(array,torch.Tensor):
-        mean_val = array.mean()
-        std_val = array.std(dim=-1)
-        max_val = array.max()
-        min_val = array.min()
-        array_scaled = (array - min_val)/max_val-min_val
-        array_scaled = array_scaled * (high - low) + low #Scale in range min_val,max_val
-        return array_scaled
+        return torch.from_numpy(preprocessing.MinMaxScaler().fit_transform(array.to_numpy()))
     else:
         raise ValueError("Not implemented for this data type")
+def features_preprocessing(array,method="minmax"):
+    """Applies a preprocessing procedure to each feature independently
+    Notes:
+        - https://datascience.stackexchange.com/questions/54908/data-normalization-before-or-after-train-test-split
+    :returns
+    array_scaled
+    scaler: sklearm method
+    """
+    if array.ndim == 1:
+        array = array[:,None]
+    if method == "minmax":
+        scaler = preprocessing.MinMaxScaler()
+        array_scaled =scaler.fit_transform(array)
+        return array_scaled,scaler
+    else:
+        raise ValueError("method {} not available yet".format(method))
 
 def autolabel(rects, ax):
     # Get y-axis height to calculate label position from.
