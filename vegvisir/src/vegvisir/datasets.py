@@ -340,6 +340,7 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data = pd.merge(data_a, data_b, on='Icore', how='outer')
     #TODO: Move filters to args
     filters_dict = {"filter_kmers":[False,9,"Icore"],
+                    "filter_alleles": [True],
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}
@@ -427,7 +428,9 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data_features = pd.read_csv("{}/{}/dataset_all_features.tsv".format(storage_folder,args.dataset_name),sep="\s+",index_col=0)
     data_partitions = pd.read_csv("{}/viral_dataset3/dataset_target.tsv".format(storage_folder),sep = "\t",index_col=0)
     data_partitions.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
-    data_partitions = data_partitions[["Icore","Icore_non_anchor","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","partition","target","training"]]
+    # print(data_partitions["allele"].value_counts())
+    # exit()
+    data_partitions = data_partitions[["Icore","Icore_non_anchor","allele","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","partition","target","training"]]
     data_features = data_features[["Icore","Pred_netstab","prot_inst_index","prot_median_iupred_score_long","prot_molar_excoef_cys_cys_bond","prot_p[q3_E]_netsurfp","prot_p[q3_C]_netsurfp","prot_rsa_netsurfp"]]
     features_names = data_features.columns.tolist()
     features_names.pop(0)
@@ -444,6 +447,7 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     #TODO: Move filters to args
     filters_dict = {"filter_kmers":[False,9,"Icore"],
+                    "filter_alleles":[True],
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}

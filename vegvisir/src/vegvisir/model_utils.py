@@ -459,8 +459,8 @@ class RNN_guide(nn.Module):
         output_r = output_r[:,-1]
         output = output_r
         output = self.softplus(self.fc1(output))
-        z_mean = self.softplus(self.fc2a(output))
-        z_scale = self.softplus(self.fc2b(output))
+        z_mean = self.fc2a(output)
+        z_scale = self.softplus(torch.exp((self.fc2b(output))))
         return z_mean,z_scale
 
 class RBF(nn.Module):

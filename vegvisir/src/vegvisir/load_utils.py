@@ -4,7 +4,12 @@
 Vegvisir :
 =======================
 """
+import numpy as np
 from torch.utils.data import Dataset, DataLoader
+from sklearn.model_selection import KFold,train_test_split,StratifiedShuffleSplit,StratifiedGroupKFold
+import torch
+import vegvisir.utils as VegvisirUtils
+import vegvisir.plots as VegvisirPlots
 
 class CustomDataset(Dataset):
     def __init__(self, data_array_blosum,data_array_int,data_array_onehot,data_array_blosum_norm,batch_mask):
@@ -26,4 +31,129 @@ class CustomDataset(Dataset):
                 'batch_mask':batch_mask}
     def __len__(self):
         return len(self.batch_data_blosum)
+def dataset_proportions(data,results_dir,type="TrainEval"):
+    """Calculates distribution of data points based on their labeling"""
+    if isinstance(data,np.ndarray):
+        data = torch.from_numpy(data)
+    if data.ndim == 4:
+        positives = torch.sum(data[:,0,0,0])
+    else:
+        positives = torch.sum(data[:,0,0])
+    positives_proportion = (positives*100)/torch.tensor([data.shape[0]])
+    negatives = data.shape[0] - positives
+    negatives_proportion = 100-positives_proportion
+    print("{} dataset: \n \t Total number of data points: {} \n \t Number positives : {}; \n \t Proportion positives : {} ; \n \t Number negatives : {} ; \n \t Proportion negatives : {}".format(type,data.shape[0],positives,positives_proportion.item(),negatives,negatives_proportion.item()))
+    return (positives,positives_proportion),(negatives,negatives_proportion)
+
+def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitions"):
+    """Perform kfolds and test split"""
+    raise Warning("Feature Scaling has not been implemented for k-fold cross validation, please remember to do so")
+    if method == "predefined_partitions":
+        traineval_data, test_data = data[data[:, 0,0, 3] == 1.], data[data[:, 0,0, 3] == 0.]
+        dataset_proportions(traineval_data, results_dir)
+        dataset_proportions(test_data, results_dir, type="Test")
+        partitions = traineval_data[:, 0,0, 2]
+        unique_partitions = np.unique(partitions)
+        assert args.kfolds <= len(unique_partitions), "kfold number is too high, please select a number lower than {}".format(len(unique_partitions))
+        i = 1
+        kfolds = []
+        for part_num in unique_partitions:
+            # train_idx = traineval_data[traineval_data[:,0,2] != part_num]
+            train_idx = (traineval_data[:, 0,0, 2][..., None] != part_num).any(-1)
+            valid_idx = (traineval_data[:, 0,0, 2][..., None] == part_num).any(-1)
+            kfolds.append((train_idx, valid_idx))
+            if args.k_folds <= i :
+                break
+            else:
+                i+=1
+        return traineval_data, test_data, kfolds
+    elif method == "stratified_group_partitions":
+        traineval_data,test_data = data[data[:,0,0,3] == 1.], data[data[:,0,0,3] == 0.]
+        dataset_proportions(traineval_data,results_dir)
+        dataset_proportions(test_data,results_dir,type="Test")
+        kfolds = StratifiedGroupKFold(n_splits=args.k_folds).split(traineval_data, traineval_data[:,0,0,0], traineval_data[:,0,0,2])
+        return traineval_data,test_data,kfolds
+    elif method == "random_stratified":
+        data_labels = data[:,0,0,0]
+        traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
+        dataset_proportions(traineval_data,results_dir)
+        dataset_proportions(test_data,results_dir, type="Test")
+        kfolds = StratifiedShuffleSplit(n_splits=args.k_folds, random_state=13, test_size=0.2).split(traineval_data,traineval_data[:,0,0,0])
+        return traineval_data,test_data,kfolds
+    elif method == "predefined_partitions_discard_test":
+        """Discard the test dataset (hard case) and use one of the partitions as the test instead. The rest of the dataset is used for the kfold partitions"""
+        partition_idx = np.random.randint(0, 4)  # random selection of a partition as the test
+        train_data = data[data[:, 0, 0, 2] != partition_idx]
+        test_data = data[data[:, 0, 0, 2] == partition_idx]  # data[data[:, 0, 0, 3] == 1.],
+        dataset_proportions(train_data, results_dir)
+        dataset_proportions(test_data, results_dir, type="Test")
+        partitions = train_data[:, 0, 0, 2]
+        unique_partitions = np.unique(partitions)
+        assert args.kfolds <= len(unique_partitions), "kfold number is too high, please select a number lower than {}".format(len(unique_partitions))
+        i = 1
+        kfolds = []
+        for part_num in unique_partitions:
+            # train_idx = traineval_data[traineval_data[:,0,2] != part_num]
+            train_idx = (train_data[:, 0, 0, 2][..., None] != part_num).any(-1)
+            valid_idx = (train_data[:, 0, 0, 2][..., None] == part_num).any(-1)
+            kfolds.append((train_idx, valid_idx))
+            if args.k_folds <= i:
+                break
+            else:
+                i += 1
+        return train_data, test_data, kfolds
+
+    else:
+        raise ValueError("train test split method not available")
+def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names,method="predefined_partitions_discard_test"):
+    """Perform train-valid-test split"""
+    info_file = open("{}/dataset_info.txt".format(results_dir),"a+")
+    if method == "random_stratified":
+        data_labels = data[:,0,0,0]
+        traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
+        traineval_labels = traineval_data[:,0,0,0]
+        train_data, valid_data = train_test_split(data, test_size=0.1, random_state=13, stratify=traineval_labels,shuffle=True)
+        dataset_proportions(train_data,results_dir, type="Train")
+        dataset_proportions(valid_data,results_dir, type="Valid")
+        dataset_proportions(test_data,results_dir, type="Test")
+    elif method == "random_stratified_discard_test":
+        """Discard the predefined test dataset"""
+        data = data[data[:,0,0,3] == 1] #pick only the pre assigned training data
+        data_labels = data[:,0,0,0]
+        traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
+        traineval_labels = traineval_data[:,0,0,0]
+        train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13, stratify=traineval_labels,shuffle=True)
+        dataset_proportions(train_data,results_dir, type="Train")
+        dataset_proportions(valid_data,results_dir, type="Valid")
+        dataset_proportions(test_data,results_dir, type="Test")
+
+    elif method == "predefined_partitions_discard_test":
+        """Discard the test dataset (because it seems a hard case) and use one of the partitions as the test instead. 
+        The rest of the dataset is used for the training, and a portion for validation"""
+        partition_idx = np.random.randint(0,4) #random selection of a partition as the test
+        traineval_data = data[data[:, 0, 0, 2] != partition_idx]
+        test_data = data[data[:, 0, 0, 2] == partition_idx] #data[data[:, 0, 0, 3] == 1.]
+        traineval_labels = traineval_data[:,0,0,0]
+        train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
+        dataset_proportions(train_data, results_dir, type="Train")
+        dataset_proportions(valid_data, results_dir, type="Valid")
+        dataset_proportions(test_data, results_dir, type="Test")
+        info_file.write("\n -------------------------------------------------")
+        info_file.write("\n Using partition {} as test:".format(partition_idx))
+    else:
+        raise ValueError("train test split method not available")
+
+    if seq_max_len != max_len:
+        print("Feature preprocessing for train/valid/test splits")
+        train_feats,scaler =  VegvisirUtils.features_preprocessing(train_data[:,1,seq_max_len:,0],method="minmax") #TODO: Do after train/valid/test split
+        valid_feats = scaler.transform(valid_data[:,1,seq_max_len:,0])
+        test_feats = scaler.transform(test_data[:,1,seq_max_len:,0])
+        train_data[:,1, seq_max_len:, 0] = torch.from_numpy(train_feats)
+        valid_data[:,1, seq_max_len:, 0] = torch.from_numpy(valid_feats)
+        test_data[:,1, seq_max_len:, 0] = torch.from_numpy(test_feats)
+        VegvisirPlots.plot_features_histogram(train_feats, features_names, "{}/Train".format(results_dir), "preprocessed")
+        VegvisirPlots.plot_features_histogram(valid_feats, features_names, "{}/Valid".format(results_dir), "preprocessed")
+        VegvisirPlots.plot_features_histogram(test_feats, features_names, "{}/Test".format(results_dir), "preprocessed")
+
+    return train_data,valid_data,test_data
 

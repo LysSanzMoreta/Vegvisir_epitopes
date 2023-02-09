@@ -23,7 +23,7 @@ import vegvisir.guides as VegvisirGuides
 ModelLoad = namedtuple("ModelLoad",["args","max_len","seq_max_len","n_data","input_dim","aa_types","blosum"])
 
 
-def train_loop(svi,Vegvisir,guide,data_loader, args):
+def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
     """Regular batch training
     :param pyro.infer svi
     :param nn.Module,PyroModule Vegvisir: Neural net architecture
@@ -35,6 +35,7 @@ def train_loop(svi,Vegvisir,guide,data_loader, args):
     train_loss = 0.0
     correct = 0
     total = 0
+    reconstruction_accuracies = []
     predictions = []
     latent_spaces = []
     for batch_number, batch_dataset in enumerate(data_loader):
@@ -57,6 +58,9 @@ def train_loop(svi,Vegvisir,guide,data_loader, args):
         sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
         predicted_labels = sampling_output.predicted_labels
         latent_space = sampling_output.latent_space
+        reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
+        reconstruction_accuracy = ((batch_data_int[:,1,:model_load.seq_max_len] == reconstructed_sequences).sum(dim=1))/model_load.seq_max_len
+        reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
         latent_spaces.append(latent_space.detach().cpu().numpy())
         total += true_labels.size(0)
         correct += (predicted_labels == true_labels).sum().item()
@@ -66,9 +70,11 @@ def train_loop(svi,Vegvisir,guide,data_loader, args):
     train_loss /= len(data_loader)
     predictions_arr = np.concatenate(predictions,axis=0)
     latent_arr = np.concatenate(latent_spaces,axis=0)
-    accuracy= 100 * correct // total
-    return train_loss,accuracy,predictions_arr,latent_arr
-def valid_loop(svi,Vegvisir,guide, data_loader, args):
+    target_accuracy= 100 * correct // total
+    reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
+    reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
+    return train_loss,target_accuracy,predictions_arr,latent_arr, reconstruction_accuracies_dict
+def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
     """Regular batch training
     :param svi: pyro infer engine
     :param dataloader data_loader: Pytorch dataloader
@@ -80,6 +86,7 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args):
     correct = 0.
     predictions = []
     latent_spaces = []
+    reconstruction_accuracies = []
     with torch.no_grad(): #do not update parameters with the evaluation data
         for batch_number, batch_dataset in enumerate(data_loader):
             batch_data_blosum = batch_dataset["batch_data_blosum"]
@@ -97,9 +104,12 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args):
             batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
             loss = svi.step(batch_data,batch_mask)
             guide_estimates = guide(batch_data,batch_mask)
-            sampling_out = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
-            predicted_labels = sampling_out.predicted_labels
-            latent_space = sampling_out.latent_space
+            sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
+            predicted_labels = sampling_output.predicted_labels
+            reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
+            reconstruction_accuracy = ((batch_data_int[:, 1, :model_load.seq_max_len] == reconstructed_sequences).sum(dim=1)) / model_load.seq_max_len
+            reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
+            latent_space = sampling_output.latent_space
             latent_spaces.append(latent_space.detach().cpu().numpy())
             total += true_labels.size(0)
             correct += (predicted_labels == true_labels).sum().item()
@@ -108,14 +118,17 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args):
     valid_loss /= len(data_loader)
     predictions_arr = np.concatenate(predictions,axis=0)
     latent_arr = np.concatenate(latent_spaces,axis=0)
-    accuracy= 100 * correct // total
-    return valid_loss,accuracy,predictions_arr,latent_arr
-def test_loop(Vegvisir,guide,data_loader,args):
+    target_accuracy= 100 * correct // total
+    reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
+    reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
+    return valid_loss,target_accuracy,predictions_arr,latent_arr, reconstruction_accuracies_dict
+def test_loop(Vegvisir,guide,data_loader,args,model_load):
     Vegvisir.train(False)
     correct = 0
     total = 0
     latent_spaces = []
     predictions = []
+    reconstruction_accuracies = []
     # since we're not training, we don't need to calculate the gradients for our outputs
     with torch.no_grad():
         for batch_number, batch_dataset in enumerate(data_loader):
@@ -133,9 +146,12 @@ def test_loop(Vegvisir,guide,data_loader,args):
             true_labels = batch_data_blosum[:,0,0,0]
             batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
             guide_estimates = guide(batch_data,batch_mask)
-            sampling_out = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
-            predicted_labels = sampling_out.predicted_labels
-            latent_space = sampling_out.latent_space
+            sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
+            predicted_labels = sampling_output.predicted_labels
+            reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
+            reconstruction_accuracy = ((batch_data_int[:, 1, :model_load.seq_max_len] == reconstructed_sequences).sum(dim=1)) / model_load.seq_max_len
+            reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
+            latent_space = sampling_output.latent_space
             latent_spaces.append(latent_space.detach().cpu().numpy())
             total += true_labels.size(0)
             correct += (predicted_labels == true_labels).sum().item()
@@ -145,8 +161,9 @@ def test_loop(Vegvisir,guide,data_loader,args):
     latent_arr = np.concatenate(latent_spaces,axis=0)
     accuracy = 100 * correct // total
     print(f'Accuracy of the TCR-pMHC: {100 * correct // total} %')
-
-    return predictions_arr,accuracy,latent_arr
+    reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
+    reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
+    return predictions_arr,accuracy,latent_arr, reconstruction_accuracies_dict
 def sample_loop(Vegvisir,guide,data_loader,args):
     Vegvisir.train(False)
     print("Collecting {} samples".format(args.num_samples))
@@ -200,7 +217,7 @@ def select_model(model_load,results_dir,fold):
     if model_load.seq_max_len == model_load.max_len:
         vegvisir_model = VegvisirModels.VegvisirModel5a(model_load)
     else:
-        vegvisir_model = VegvisirModels.VegvisirModel5b(model_load)
+        vegvisir_model = VegvisirModels.VegvisirModel5c(model_load)
     if fold == 0 or fold == "all":
         text_file = open("{}/Hyperparameters.txt".format(results_dir), "a")
         text_file.write("Model Class:  {} \n".format(vegvisir_model.get_class()))
@@ -275,130 +292,6 @@ def fold_auc(predictions_fold,labels,accuracy,fold,results_dir,mode="Train"):
                                     index=["Negative", "Positive"])
     VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,accuracy,"{}/{}".format(results_dir,mode))
     return auc_score,auk_score
-def dataset_proportions(data,results_dir,type="TrainEval"):
-    """Calculates distribution of data points based on their labeling"""
-    if isinstance(data,np.ndarray):
-        data = torch.from_numpy(data)
-    if data.ndim == 4:
-        positives = torch.sum(data[:,0,0,0])
-    else:
-        positives = torch.sum(data[:,0,0])
-    positives_proportion = (positives*100)/torch.tensor([data.shape[0]])
-    negatives = data.shape[0] - positives
-    negatives_proportion = 100-positives_proportion
-    print("{} dataset: \n \t Total number of data points: {} \n \t Number positives : {}; \n \t Proportion positives : {} ; \n \t Number negatives : {} ; \n \t Proportion negatives : {}".format(type,data.shape[0],positives,positives_proportion.item(),negatives,negatives_proportion.item()))
-    return (positives,positives_proportion),(negatives,negatives_proportion)
-def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitions"):
-    """Perform kfolds and test split"""
-    raise Warning("Feature Scaling has not been implemented for k-fold cross validation, please remember to do so")
-    if method == "predefined_partitions":
-        traineval_data, test_data = data[data[:, 0,0, 3] == 1.], data[data[:, 0,0, 3] == 0.]
-        dataset_proportions(traineval_data, results_dir)
-        dataset_proportions(test_data, results_dir, type="Test")
-        partitions = traineval_data[:, 0,0, 2]
-        unique_partitions = np.unique(partitions)
-        assert args.kfolds <= len(unique_partitions), "kfold number is too high, please select a number lower than {}".format(len(unique_partitions))
-        i = 1
-        kfolds = []
-        for part_num in unique_partitions:
-            # train_idx = traineval_data[traineval_data[:,0,2] != part_num]
-            train_idx = (traineval_data[:, 0,0, 2][..., None] != part_num).any(-1)
-            valid_idx = (traineval_data[:, 0,0, 2][..., None] == part_num).any(-1)
-            kfolds.append((train_idx, valid_idx))
-            if args.k_folds <= i :
-                break
-            else:
-                i+=1
-        return traineval_data, test_data, kfolds
-    elif method == "stratified_group_partitions":
-        traineval_data,test_data = data[data[:,0,0,3] == 1.], data[data[:,0,0,3] == 0.]
-        dataset_proportions(traineval_data,results_dir)
-        dataset_proportions(test_data,results_dir,type="Test")
-        kfolds = StratifiedGroupKFold(n_splits=args.k_folds).split(traineval_data, traineval_data[:,0,0,0], traineval_data[:,0,0,2])
-        return traineval_data,test_data,kfolds
-    elif method == "random_stratified":
-        data_labels = data[:,0,0,0]
-        traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
-        dataset_proportions(traineval_data,results_dir)
-        dataset_proportions(test_data,results_dir, type="Test")
-        kfolds = StratifiedShuffleSplit(n_splits=args.k_folds, random_state=13, test_size=0.2).split(traineval_data,traineval_data[:,0,0,0])
-        return traineval_data,test_data,kfolds
-    elif method == "predefined_partitions_discard_test":
-        """Discard the test dataset (hard case) and use one of the partitions as the test instead. The rest of the dataset is used for the kfold partitions"""
-        partition_idx = np.random.randint(0, 4)  # random selection of a partition as the test
-        train_data = data[data[:, 0, 0, 2] != partition_idx]
-        test_data = data[data[:, 0, 0, 2] == partition_idx]  # data[data[:, 0, 0, 3] == 1.],
-        dataset_proportions(train_data, results_dir)
-        dataset_proportions(test_data, results_dir, type="Test")
-        partitions = train_data[:, 0, 0, 2]
-        unique_partitions = np.unique(partitions)
-        assert args.kfolds <= len(unique_partitions), "kfold number is too high, please select a number lower than {}".format(len(unique_partitions))
-        i = 1
-        kfolds = []
-        for part_num in unique_partitions:
-            # train_idx = traineval_data[traineval_data[:,0,2] != part_num]
-            train_idx = (train_data[:, 0, 0, 2][..., None] != part_num).any(-1)
-            valid_idx = (train_data[:, 0, 0, 2][..., None] == part_num).any(-1)
-            kfolds.append((train_idx, valid_idx))
-            if args.k_folds <= i:
-                break
-            else:
-                i += 1
-        return train_data, test_data, kfolds
-
-    else:
-        raise ValueError("train test split method not available")
-def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names,method="predefined_partitions"):
-    """Perform train-valid-test split"""
-    info_file = open("{}/dataset_info.txt".format(results_dir),"a+")
-    if method == "random_stratified":
-        data_labels = data[:,0,0,0]
-        traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
-        traineval_labels = traineval_data[:,0,0,0]
-        train_data, valid_data = train_test_split(data, test_size=0.1, random_state=13, stratify=traineval_labels,shuffle=True)
-        dataset_proportions(train_data,results_dir, type="Train")
-        dataset_proportions(valid_data,results_dir, type="Valid")
-        dataset_proportions(test_data,results_dir, type="Test")
-    elif method == "random_stratified_discard_test":
-        """Discard the predefined test dataset"""
-        data = data[data[:,0,0,3] == 1] #pick only the pre assigned training data
-        data_labels = data[:,0,0,0]
-        traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
-        traineval_labels = traineval_data[:,0,0,0]
-        train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13, stratify=traineval_labels,shuffle=True)
-        dataset_proportions(train_data,results_dir, type="Train")
-        dataset_proportions(valid_data,results_dir, type="Valid")
-        dataset_proportions(test_data,results_dir, type="Test")
-
-    elif method == "predefined_partitions_discard_test":
-        """Discard the test dataset (because it seems a hard case) and use one of the partitions as the test instead. 
-        The rest of the dataset is used for the training, and a portion for validation"""
-        partition_idx = np.random.randint(0,4) #random selection of a partition as the test
-        traineval_data = data[data[:, 0, 0, 2] != partition_idx]
-        test_data = data[data[:, 0, 0, 2] == partition_idx] #data[data[:, 0, 0, 3] == 1.]
-        traineval_labels = traineval_data[:,0,0,0]
-        train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
-        dataset_proportions(train_data, results_dir, type="Train")
-        dataset_proportions(valid_data, results_dir, type="Valid")
-        dataset_proportions(test_data, results_dir, type="Test")
-        info_file.write("\n -------------------------------------------------")
-        info_file.write("\n Using partition {} as test:".format(partition_idx))
-    else:
-        raise ValueError("train test split method not available")
-
-    if seq_max_len != max_len:
-        print("Feature preprocessing for train/valid/test splits")
-        train_feats,scaler =  VegvisirUtils.features_preprocessing(train_data[:,1,seq_max_len:,0],method="minmax") #TODO: Do after train/valid/test split
-        valid_feats = scaler.transform(valid_data[:,1,seq_max_len:,0])
-        test_feats = scaler.transform(test_data[:,1,seq_max_len:,0])
-        train_data[:,1, seq_max_len:, 0] = torch.from_numpy(train_feats)
-        valid_data[:,1, seq_max_len:, 0] = torch.from_numpy(valid_feats)
-        test_data[:,1, seq_max_len:, 0] = torch.from_numpy(test_feats)
-        VegvisirPlots.plot_features_histogram(train_feats, features_names, "{}/Train".format(results_dir), "preprocessed")
-        VegvisirPlots.plot_features_histogram(valid_feats, features_names, "{}/Valid".format(results_dir), "preprocessed")
-        VegvisirPlots.plot_features_histogram(test_feats, features_names, "{}/Test".format(results_dir), "preprocessed")
-
-    return train_data,valid_data,test_data
 def kfold_crossvalidation(dataset_info,additional_info,args):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
@@ -417,7 +310,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
     #Highlight: Train- Test split and kfold generator
     #TODO: Develop method to partition sequences, sequences in train and test must differ. Partitions must have similar distributions (Tree based on distance matrix?
     # In the loop computer another cosine similarity among the vectors of cos sim of each sequence?)
-    traineval_data_blosum,test_data_blosum,kfolds = trainevaltest_split_kfolds(data_blosum,args,results_dir,method="predefined_partitions_discard_test")
+    traineval_data_blosum,test_data_blosum,kfolds = VegvisirLoadUtils.trainevaltest_split_kfolds(data_blosum,args,results_dir,method="predefined_partitions_discard_test")
 
     #Highlight:Also split the rest of arrays
     traineval_idx = (data_blosum[:,0,0,1][..., None] == traineval_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
@@ -511,7 +404,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         while epoch <= args.num_epochs:
             start = time.time()
             #svi,Vegvisir,guide,data_loader, args
-            train_epoch_loss,train_accuracy,train_predictions = train_loop(svi,Vegvisir,guide, train_loader, args)
+            train_epoch_loss,train_accuracy,train_predictions,train_reconstruction_accuracies_dict = train_loop(svi,Vegvisir,guide, train_loader, args,model_load)
             stop = time.time()
             memory_usage_mib = torch.cuda.max_memory_allocated() * 9.5367 * 1e-7  # convert byte to MiB
             print("[epoch %03d]  average training loss: %.4f %.5g time/epoch %.2f MiB/epoch" % (epoch, train_epoch_loss, stop - start, memory_usage_mib))
@@ -520,7 +413,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
             if (check_point_epoch > 0 and epoch > 0 and epoch % check_point_epoch == 0) or epoch == args.num_epochs :
                 for name_i, value in pyro.get_param_store().named_parameters(): #TODO: https://stackoverflow.com/questions/68634707/best-way-to-detect-vanishing-exploding-gradient-in-pytorch-via-tensorboard
                     value.register_hook(lambda g, name_i=name_i: gradient_norms[name_i].append(g.norm().detach().item()))
-                valid_epoch_loss,valid_accuracy,valid_predictions = valid_loop(svi,Vegvisir,guide, valid_loader, args)
+                valid_epoch_loss,valid_accuracy,valid_predictions,valid_reconstruction_accuracies_dict = valid_loop(svi,Vegvisir,guide, valid_loader, args,model_load)
                 valid_loss.append(valid_epoch_loss)
                 epochs_list.append(epoch)
                 valid_accuracies.append(valid_accuracy)
@@ -596,7 +489,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         while epoch <= args.num_epochs:
             start = time.time()
             # svi,Vegvisir,guide,data_loader, args
-            train_epoch_loss, train_accuracy, train_predictions = train_loop(svi, Vegvisir, guide, train_loader, args)
+            train_epoch_loss, train_accuracy, train_predictions,train_reconstruction_accuracies_dict = train_loop(svi, Vegvisir, guide, train_loader, args,model_load)
             stop = time.time()
             memory_usage_mib = torch.cuda.max_memory_allocated() * 9.5367 * 1e-7  # convert byte to MiB
             print("[epoch %03d]  average training loss: %.4f %.5g time/epoch %.2f MiB/epoch" % (
@@ -637,10 +530,9 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                                                               test_mask)
         test_loader = DataLoader(custom_dataset_test, batch_size=batch_size, shuffle=True,
                                  generator=torch.Generator(device=args.device), **kwargs)
-        predictions = test_loop(Vegvisir,guide,test_loader,args)
+        predictions = test_loop(Vegvisir,guide,test_loader,args,model_load)
         score = roc_auc_score(y_true=test_data_blosum[:, 0, 0, 0].numpy(), y_score=predictions)
         print("Final AUC score : {}".format( score))
-
 def train_model(dataset_info,additional_info,args):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
@@ -657,7 +549,7 @@ def train_model(dataset_info,additional_info,args):
     #Highlight: Train- Test split and kfold generator
     #TODO: Develop method to partition sequences, sequences in train and test must differ. Partitions must have similar distributions (Tree based on distance matrix?
     # In the loop computer another cosine similarity among the vectors of cos sim of each sequence?)
-    train_data_blosum,valid_data_blosum,test_data_blosum = trainevaltest_split(data_blosum,args,results_dir,seq_max_len,dataset_info.max_len,dataset_info.features_names,method="predefined_partitions_discard_test")
+    train_data_blosum,valid_data_blosum,test_data_blosum = VegvisirLoadUtils.trainevaltest_split(data_blosum,args,results_dir,seq_max_len,dataset_info.max_len,dataset_info.features_names,method="predefined_partitions_discard_test")
 
     #Highlight:Also split the rest of arrays
     train_idx = (data_blosum[:,0,0,1][..., None] == train_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
@@ -695,13 +587,13 @@ def train_model(dataset_info,additional_info,args):
     #Restart the model each fold
     Vegvisir = select_model(model_load, additional_info.results_dir,"all")
     params_config = config_build(args,results_dir)
-    if args.optimizer_name == "Adam":
+    if args.optimizer_name == "Adam" and not args.clip_gradients:
         adam_args = {"lr":params_config["lr"],
                     "betas": (params_config["beta1"], params_config["beta2"]),
                     "eps": params_config["eps"],
                     "weight_decay": params_config["weight_decay"]}
         optimizer = pyro.optim.Adam(adam_args)
-    elif args.optimizer_name == "ClippedAdam":
+    elif args.optimizer_name == "ClippedAdam" or (args.optimizer_name == "Adam" and args.clip_gradients):
         clippedadam_args = {"lr": params_config["lr"],
                         "betas": (params_config["beta1"], params_config["beta2"]),
                         "eps": params_config["eps"],
@@ -710,7 +602,7 @@ def train_model(dataset_info,additional_info,args):
                         "lrd": params_config["lrd"]}
         optimizer = pyro.optim.ClippedAdam(clippedadam_args)
     else:
-        raise ValueError("selected optimizer {} not implemented".format(args.optimizer_name))
+        raise ValueError("selected optimizer <{}> not implemented with <{}> clip gradients".format(args.optimizer_name,args.clip_gradients))
     loss_func = Vegvisir.loss()
     guide = select_quide(Vegvisir,model_load,n_data,args.guide)
     #svi = SVI(poutine.scale(Vegvisir.model,scale=1.0/n_data), poutine.scale(guide,scale=1.0/n_data), optimizer, loss_func)
@@ -722,6 +614,8 @@ def train_model(dataset_info,additional_info,args):
     epochs_list = []
     train_loss = []
     train_accuracies = []
+    train_reconstruction_accuracies_dict = {"mean":[],"std":[]}
+    valid_reconstruction_accuracies_dict = {"mean":[],"std":[]}
     train_auc = []
     train_auk = []
     valid_loss = []
@@ -739,19 +633,24 @@ def train_model(dataset_info,additional_info,args):
     while epoch <= args.num_epochs:
         start = time.time()
         #svi,Vegvisir,guide,data_loader, args
-        train_epoch_loss,train_accuracy,train_predictions, train_latent_space = train_loop(svi,Vegvisir,guide, train_loader, args)
+        train_epoch_loss,train_accuracy,train_predictions, train_latent_space,train_reconstruction_accuracy_dict = train_loop(svi,Vegvisir,guide, train_loader, args,model_load)
         stop = time.time()
         memory_usage_mib = torch.cuda.max_memory_allocated() * 9.5367 * 1e-7  # convert byte to MiB
         print("[epoch %03d]  average training loss: %.4f %.5g time/epoch %.2f MiB/epoch" % (epoch, train_epoch_loss, stop - start, memory_usage_mib))
         train_loss.append(train_epoch_loss)
         train_accuracies.append(train_accuracy)
+        train_reconstruction_accuracies_dict["mean"].append(train_reconstruction_accuracy_dict["mean"])
+        train_reconstruction_accuracies_dict["std"].append(train_reconstruction_accuracy_dict["std"])
+
         if (check_point_epoch > 0 and epoch > 0 and epoch % check_point_epoch == 0) or epoch == args.num_epochs :
             for name_i, value in pyro.get_param_store().named_parameters(): #TODO: https://stackoverflow.com/questions/68634707/best-way-to-detect-vanishing-exploding-gradient-in-pytorch-via-tensorboard
                 value.register_hook(lambda g, name_i=name_i: gradient_norms[name_i].append(g.norm().detach().item()))
             epochs_list.append(epoch)
-            valid_epoch_loss, valid_accuracy, valid_predictions, valid_latent_space = valid_loop(svi, Vegvisir, guide, valid_loader, args)
+            valid_epoch_loss, valid_accuracy, valid_predictions, valid_latent_space,valid_reconstruction_accuracy_dict = valid_loop(svi, Vegvisir, guide, valid_loader, args,model_load)
             valid_loss.append(valid_epoch_loss)
             valid_accuracies.append(valid_accuracy)
+            valid_reconstruction_accuracies_dict["mean"].append(valid_reconstruction_accuracy_dict["mean"])
+            valid_reconstruction_accuracies_dict["std"].append(valid_reconstruction_accuracy_dict["std"])
             train_auc_score = roc_auc_score(y_true=train_data_blosum[:,0,0,0], y_score=train_predictions)
             train_auk_score = VegvisirUtils.AUK(probabilities= train_predictions,labels=train_data_blosum[:,0,0,0].numpy()).calculate_auk()
             train_auk.append(train_auk_score)
@@ -765,6 +664,7 @@ def train_model(dataset_info,additional_info,args):
 
             VegvisirPlots.plot_ELBO(train_loss,valid_loss,epochs_list,"all",additional_info.results_dir)
             VegvisirPlots.plot_accuracy(train_accuracies,valid_accuracies,epochs_list,"all",additional_info.results_dir)
+            VegvisirPlots.plot_accuracy(train_reconstruction_accuracies_dict,valid_reconstruction_accuracies_dict,epochs_list,"all",additional_info.results_dir)
             VegvisirPlots.plot_classification_score(train_auc,valid_auc,epochs_list,"all",additional_info.results_dir,method="AUC")
             VegvisirPlots.plot_classification_score(train_auk,valid_auk,epochs_list,"all",additional_info.results_dir,method="AUK")
             Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir), optimizer)
@@ -800,7 +700,7 @@ def train_model(dataset_info,additional_info,args):
                                                               data_array_blosum_encoding_mask[test_idx])
         test_loader = DataLoader(custom_dataset_test, batch_size=batch_size, shuffle=True,
                                  generator=torch.Generator(device=args.device), **kwargs)
-        test_predictions,test_accuracy,test_latent_space = test_loop(Vegvisir,guide,test_loader,args)
+        test_predictions,test_accuracy,test_latent_space, test_reconstruction_accuracies_dict = test_loop(Vegvisir,guide,test_loader,args,model_load)
         VegvisirPlots.plot_latent_space(test_latent_space, train_predictions_mode, "all", results_dir, method="Train")
         print("Calculating Monte Carlo estimate of the posterior predictive")
         test_predictions = sample_loop(Vegvisir, guide, test_loader, args)

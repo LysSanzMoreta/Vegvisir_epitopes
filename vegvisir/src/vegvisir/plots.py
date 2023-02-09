@@ -263,13 +263,13 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
 
     confidence_scores = data_array_blosum_norm[:,0,5]
     confidence_scores_unique = np.unique(confidence_scores).tolist()
-    colormap_confidence = matplotlib.cm.get_cmap('plasma', len(confidence_scores_unique))
+    colormap_confidence = matplotlib.cm.get_cmap('plasma_r', len(confidence_scores_unique))
     colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
     colors_confidence = np.vectorize(colors_dict.get, signature='()->(n)')(confidence_scores)
 
     immunodominance_scores = data_array_blosum_norm[:,0,4]
     immunodominance_scores_unique = np.unique(immunodominance_scores).tolist()
-    colormap_immunodominance = matplotlib.cm.get_cmap('plasma', len(immunodominance_scores_unique))
+    colormap_immunodominance = matplotlib.cm.get_cmap('plasma_r', len(immunodominance_scores_unique))
     colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
     colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
 
@@ -335,7 +335,7 @@ def plot_umap1(array,labels,storage_folder,args,title_name,file_name):
         colors_dict = {0:"red",1:"green"}
         color_labels = np.vectorize(colors_dict.get)(labels)
     else:
-        colormap = matplotlib.cm.get_cmap('plasma', len(unique))
+        colormap = matplotlib.cm.get_cmap('plasma_r', len(unique))
         colors_dict = dict(zip(unique,colormap.colors))
         color_labels = np.vectorize(colors_dict.get, signature='()->(n)')(labels)
 
@@ -379,26 +379,48 @@ def plot_ELBO(train_loss,valid_loss,epochs_list,fold,results_dir):
     plt.clf()
 
 def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir):
-    """Plots the model's error loss
+    """Plots the model's accuracies, both for target label and for sequence reconstruction loss
     :param list train_elbo: list of accumulated error losses during training
     :param str results_dict: path to results directory
     """
-    "train_loss, valid_loss,additional_info.results_dir,epochs_list,fold"
-    train_accuracies = np.array(train_accuracies)
-    valid_accuracies = np.array(valid_accuracies)
-    epochs_idx = np.array(epochs_list)
-    train_accuracies = train_accuracies[epochs_idx.astype(int)] #select the same epochs as the vaidation
+    if isinstance(train_accuracies,dict):
+        epochs_idx = np.array(epochs_list)
+        train_accuracies_mean = np.array(train_accuracies["mean"])[epochs_idx.astype(int)]
+        valid_accuracies_mean = np.array(valid_accuracies["mean"])
+        train_accuracies_std = np.array(train_accuracies["std"])[epochs_idx.astype(int)]
+        valid_accuracies_std = np.array(valid_accuracies["std"])
+        epochs_idx = np.array(epochs_list)
 
-    plt.plot(epochs_idx,train_accuracies, color="deepskyblue",label="train")
-    if valid_accuracies is not None:
-        plt.plot(epochs_idx,valid_accuracies, color="salmon", label="validation")
-    plt.xlabel("Epochs")
-    plt.ylabel("Accuracy (number of correct predictions)")
-    plt.title("Accuracy (Train/valid)")
-    plt.legend()
-    plt.savefig("{}/accuracies_{}fold.png".format(results_dir,fold))
-    plt.close()
-    plt.clf()
+        plt.plot(epochs_idx, train_accuracies_mean, color="deepskyblue", label="train")
+        plt.fill_between(epochs_idx,train_accuracies_mean-train_accuracies_std,train_accuracies_mean+train_accuracies_std,color="cyan",alpha=0.2)
+        if valid_accuracies is not None:
+            plt.plot(epochs_idx, valid_accuracies_mean, color="salmon", label="validation")
+            plt.fill_between(epochs_idx, valid_accuracies_mean - valid_accuracies_std,
+                             valid_accuracies_mean + valid_accuracies_std, color="salmon", alpha=0.2)
+        plt.xlabel("Epochs")
+        plt.ylabel("Accuracy (average number of correct \n  amino acids across all sequences)")
+        plt.title("Sequence Reconstruction Accuracy (Train/valid)")
+        plt.legend()
+        plt.savefig("{}/reconstruction_accuracies_{}fold.png".format(results_dir, fold))
+        plt.close()
+        plt.clf()
+    
+    else:
+        train_accuracies = np.array(train_accuracies)
+        valid_accuracies = np.array(valid_accuracies)
+        epochs_idx = np.array(epochs_list)
+        train_accuracies = train_accuracies[epochs_idx.astype(int)] #select the same epochs as the vaidation
+    
+        plt.plot(epochs_idx,train_accuracies, color="deepskyblue",label="train")
+        if valid_accuracies is not None:
+            plt.plot(epochs_idx,valid_accuracies, color="salmon", label="validation")
+        plt.xlabel("Epochs")
+        plt.ylabel("Accuracy (number of correct predictions)")
+        plt.title("Accuracy (Train/valid)")
+        plt.legend()
+        plt.savefig("{}/accuracies_{}fold.png".format(results_dir,fold))
+        plt.close()
+        plt.clf()
 
 def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,method):
     """Plots the AUC/AUK scores while training
@@ -431,13 +453,13 @@ def plot_latent_space(latent_space,predictions,fold,results_dir,method):
     #Highlight: Confidence scores colors
     confidence_scores = latent_space[:,2]
     confidence_scores_unique = np.unique(confidence_scores).tolist()
-    colormap_confidence = matplotlib.cm.get_cmap('plasma', len(confidence_scores_unique))
+    colormap_confidence = matplotlib.cm.get_cmap('plasma_r', len(confidence_scores_unique))
     colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
     colors_confidence = np.vectorize(colors_dict.get, signature='()->(n)')(confidence_scores)
     #Highlight: Immunodominance scores colors
     immunodominance_scores = latent_space[:,3]
     immunodominance_scores_unique = np.unique(immunodominance_scores).tolist()
-    colormap_immunodominance = matplotlib.cm.get_cmap('plasma', len(immunodominance_scores_unique))
+    colormap_immunodominance = matplotlib.cm.get_cmap('plasma_r', len(immunodominance_scores_unique))
     colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
     colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
 

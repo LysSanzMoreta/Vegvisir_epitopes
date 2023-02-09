@@ -18,7 +18,7 @@ def run(dataset_info,results_dir,args):
         print("Done running NNAlign ....")
     else:
         #VegvisirTrain.kfold_crossvalidation(dataset_info,additional_info,args)
-        #VegvisirTrain.train_model(dataset_info,additional_info,args) #ordinary train,val,test split without
+        #VegvisirTrain.train_model(dataset_info,additional_info,args) #ordinary train,val,test split without k-fold cross validation.The validation set changes every time
 
         #VegvisirTrainSVI.kfold_crossvalidation(dataset_info,additional_info,args)
         VegvisirTrainSVI.train_model(dataset_info,additional_info,args)
