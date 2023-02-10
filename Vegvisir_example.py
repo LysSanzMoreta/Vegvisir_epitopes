@@ -78,6 +78,10 @@ if __name__ == "__main__":
     parser.add_argument('-guide', type=str, nargs='?', default="custom", help='<custom>: See guides.py'
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
     parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
+    parser.add_argument('-seq-padding', type=str, nargs='?', default="borders", help='Controls how the sequences are padded to the length of the longest sequence \n'
+                                                                                    '<ends>: The sequences are padded at the end'
+                                                                                    '<borders>: The sequences are padded at the beginning and the end.'
+                                                                                    '<random>: random insertion of 0 along the sequence')
     parser.add_argument('-z-dim', type=int, nargs='?', default=30, help='Latent space dimension')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=50, help='')

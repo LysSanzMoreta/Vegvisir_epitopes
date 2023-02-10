@@ -127,7 +127,7 @@ def create_blosum(aa_types,subs_matrix_name,zero_characters=[],include_zero_char
         blosum_array_dict = dict(enumerate(subs_array[1:,1:]))
     else:
         blosum_array_dict = dict(enumerate(subs_array[1:, 2:])) # Highlight: Changed to [1:,2:] instead of [1:,1:] to skip the scores for non-aa elements
-    blosum_array_dict[0] = np.full((aa_types),0)  #np.nan == np.nan is False ...
+    #blosum_array_dict[0] = np.full((aa_types),0)  #np.nan == np.nan is False ...
 
     return subs_array, subs_dict, blosum_array_dict
 
@@ -709,6 +709,7 @@ def euclidean_2d_norm(A,B,squared=True):
         return distance.clip(min=0) #to avoid nan/negative values, set them to 0
     else:
         return distance.clip(min=0)
+
 
 
 

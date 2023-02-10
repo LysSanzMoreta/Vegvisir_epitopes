@@ -988,7 +988,7 @@ class VegvisirModel5c(VEGVISIRModelClass,PyroModule):
         """"""
         batch_sequences_blosum = batch_data["blosum"][:, 1, :self.seq_max_len].squeeze(1)
         batch_features = batch_data["blosum"][:, 1, self.seq_max_len:, 0]
-
+        batch_sequences_int = batch_data["int"][:,1,:self.seq_max_len]
         batch_sequences_norm = batch_data["norm"][:, 1, :self.seq_max_len]  # only sequences norm
         batch_sequences_feats = batch_data["norm"][:, 1, self.seq_max_len:]  # only features
         batch_sequences_norm_feats = batch_data["norm"][:, 1]  # both
@@ -1042,8 +1042,7 @@ class VegvisirModel5c(VEGVISIRModelClass,PyroModule):
         true_labels = batch_data["blosum"][:, 0, 0, 0]
         confidence_score = batch_data["blosum"][:, 0, 0, 5]
         immunodominace_score = batch_data["blosum"][:, 0, 0, 4]
-        latent_space = torch.column_stack(
-            [identifiers, true_labels, confidence_score, immunodominace_score, latent_space])
+        latent_space = torch.column_stack([identifiers, true_labels, confidence_score, immunodominace_score, latent_space])
 
         return SamplingOutput(latent_space=latent_space,
                               predicted_labels=predicted_labels,

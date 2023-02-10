@@ -21,6 +21,7 @@ from sklearn.cluster import DBSCAN
 import matplotlib.patches as mpatches
 import vegvisir.nnalign as VegvisirNNalign
 import vegvisir.utils as VegvisirUtils
+import vegvisir.load_utils as VegvisirLoadUtils
 import vegvisir.plots as VegvisirPlots
 plt.style.use('ggplot')
 DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_array_raw","data_array_int","data_array_int_mask",
@@ -430,6 +431,8 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data_partitions.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
     # print(data_partitions["allele"].value_counts())
     # exit()
+    allele_dict = data_partitions["allele"].value_counts()
+
     data_partitions = data_partitions[["Icore","Icore_non_anchor","allele","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","partition","target","training"]]
     data_features = data_features[["Icore","Pred_netstab","prot_inst_index","prot_median_iupred_score_long","prot_molar_excoef_cys_cys_bond","prot_p[q3_E]_netsurfp","prot_p[q3_C]_netsurfp","prot_rsa_netsurfp"]]
     features_names = data_features.columns.tolist()
@@ -517,6 +520,8 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
 def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",features_names=None,plot_blosum=False,plot_umap=False):
     """
+    Notes:
+      - Mid-padding : https://www.nature.com/articles/s41598-020-71450-8
     :param pandas dataframe data: Contains Icore, immunodominance_score, immunodominance_score_scaled, training , partition and Rnk_EL
     :param args: Commmand line arguments
     :param storage_folder: Data location path
@@ -532,14 +537,14 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     if len(unique_lens) > 1:
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types , zero_characters=["#"])
         #Pad the sequences (relevant when not all of them are 9-mers)
-        epitopes = [list(seq.ljust(seq_max_len, "#")) for seq in epitopes]
+        epitopes = VegvisirLoadUtils.SequencePadding(epitopes,seq_max_len,args.seq_padding).run()
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types , args.subs_matrix,
                                                                                    zero_characters= ["#"],
                                                                                    include_zero_characters=True)
-
     else:
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types)
-        epitopes = [list(seq) for seq in epitopes]
+        #epitopes = [list(seq) for seq in epitopes]
+        epitopes = list(map(lambda seq: list(seq),epitopes)) #faster?
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, args.subs_matrix,
                                                                                    zero_characters=["#"],
                                                                                    include_zero_characters=False)
