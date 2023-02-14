@@ -73,6 +73,48 @@ class VEGVISIRGUIDES(EasyGuide):
             # smooth_factor = self.losses.label_smoothing(class_logits, true_labels, confidence_scores, self.num_classes)
             # class_logits = class_logits*smooth_factor
             if self.semi_supervised:
+                class_predictions = pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1), obs_mask=confidence_mask,obs=true_labels)
+            else:
+                class_predictions = pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1), obs=true_labels)
+
+
+        return {"latent_z": latent_z,
+                "z_mean": z_mean,
+                "z_scale": z_scale,
+                "class_predictions":None}
+    def guide_b(self, batch_data, batch_mask):
+        """
+        Amortized inference with only sequences
+        Notes:
+            -https://pyro.ai/examples/easyguide.html
+            -https://medium.com/analytics-vidhya/activity-detection-using-the-variational-autoencoder-d2b017da1a88
+            -https://sites.google.com/illinois.edu/supervised-vae?pli=1
+            -TODO: https://github.com/analytique-bourassa/VAE-Classifier
+        :param batch_data:
+        :param batch_mask:
+        :return:
+        """
+        # pyro.module("guide_rnn", self.guide_rnn)
+        # #pyro.module("guide_fcl1", self.guide_fcl1)
+        pyro.module("vae_guide", self)
+        batch_sequences_blosum = batch_data["blosum"][:, 1, :self.seq_max_len].squeeze(1)
+        true_labels = batch_data["blosum"][:, 0, 0, 0]
+        batch_sequences_norm = batch_data["norm"][:, 1]  # only sequences norm
+
+        # immunodominance_scores = batch_data["blosum"][:,0,0,4]
+        confidence_scores = batch_data["blosum"][:,0,0,5]
+        confidence_mask = (confidence_scores[..., None] < 0.7).any(-1) #now we try to predict those with a low confidence score
+        init_h_0 = self.h_0_GUIDE.expand(self.guide_rnn.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
+        with pyro.plate("data", batch_sequences_norm.shape[0],device=self.device): #dim = -2
+            z_mean, z_scale = self.guide_rnn(batch_sequences_norm[:,:,None], init_h_0)
+            assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
+            assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
+            latent_z = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(1))  # ,infer=dict(baseline={'nn_baseline': self.guide_rnn,'nn_baseline_input': batch_sequences_blosum}))  # [z_dim,n]
+            logits_class = self.guide_fcl1(latent_z,None)
+            class_logits = self.logsoftmax(logits_class)
+            # smooth_factor = self.losses.label_smoothing(class_logits, true_labels, confidence_scores, self.num_classes)
+            # class_logits = class_logits*smooth_factor
+            if self.semi_supervised:
                 class_predictions = pyro.sample("predictions", dist.Categorical(logits=class_logits), obs_mask=confidence_mask,obs=true_labels)
             else:
                 class_predictions = pyro.sample("predictions", dist.Categorical(logits=class_logits), obs=true_labels)
@@ -83,7 +125,7 @@ class VEGVISIRGUIDES(EasyGuide):
                 "z_scale": z_scale,
                 "class_predictions":None}
 
-    def guide_b(self, batch_data,batch_mask):
+    def guide_c(self, batch_data,batch_mask):
         """
         Amortized inference with features and sequences
         Notes:
@@ -138,7 +180,7 @@ class VEGVISIRGUIDES(EasyGuide):
                 "class_predictions": None}
 
 
-    def guide_c(self, batch_data,batch_mask):
+    def guide_d(self, batch_data,batch_mask):
         """
         Amortized inference with features and sequences
         Notes:

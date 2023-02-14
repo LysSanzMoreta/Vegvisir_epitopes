@@ -14,7 +14,7 @@ import vegvisir.utils as VegvisirUtils
 import vegvisir.load_utils as VegvisirLoadUtils
 import vegvisir.plots as VegvisirPlots
 import vegvisir.models as VegvisirModels
-ModelLoad = namedtuple("ModelLoad",["args","seq_max_len","max_len","n_data","input_dim","aa_types","blosum"])
+ModelLoad = namedtuple("ModelLoad",["args","seq_max_len","max_len","n_data","input_dim","aa_types","blosum","class_weights"])
 
 
 def train_loop(model,loss_func,optimizer, data_loader, args):
@@ -223,7 +223,11 @@ def fold_auc(predictions_fold,labels,accuracy,fold,results_dir,mode="Train"):
     confusion_matrix_df = pd.DataFrame([[tn, fp], [fn, tp]],
                                     columns=["Negative", "Positive"],
                                     index=["Negative", "Positive"])
-    VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,accuracy,"{}/{}".format(results_dir,mode))
+    recall = tp/(tp + fn)
+    precision = tp/(tp + fp)
+    f1score = (2*precision*recall)/precision+recall
+    performance_metrics = {"recall/tpr":recall,"precision":precision,"accuracy":accuracy,"f1score":f1score}
+    VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode))
     return auc_score,auk_score
 def kfold_crossvalidation(dataset_info,additional_info,args):
     """Set up k-fold cross validation and the training loop"""
@@ -233,6 +237,8 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
     data_onehot = dataset_info.data_array_onehot_encoding
     data_array_blosum_encoding_mask = dataset_info.data_array_blosum_encoding_mask
     data_blosum_norm = dataset_info.data_array_blosum_norm
+    seq_max_len = dataset_info.seq_max_len
+
     results_dir = additional_info.results_dir
     kwargs = {'num_workers': 0, 'pin_memory': args.use_cuda}  # pin-memory has to do with transferring CPU tensors to GPU
     #TODO: Detect and correct batch_size automatically?
@@ -260,13 +266,13 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                            n_data = dataset_info.n_data,
                            input_dim = dataset_info.input_dim,
                            aa_types = dataset_info.corrected_aa_types,
-                           blosum = dataset_info.blosum)
+                           blosum = dataset_info.blosum,
+                           class_weights= VegvisirLoadUtils.calculate_class_weights(traineval_data_blosum,args))
 
     valid_predictions_fold = None
     train_predictions_fold = None
     for fold, (train_idx, valid_idx) in enumerate(kfolds): #returns k-splits for train and validation
 
-        # #Highlight: Minmax scale the confidence scores #TODO: function or for loop?
         fold_train_data_blosum = traineval_data_blosum[train_idx]
         fold_train_data_int = traineval_data_int[train_idx]
         fold_train_data_onehot = traineval_data_onehot[train_idx]
@@ -307,7 +313,6 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         loss_func = vegvisir_model.loss
 
         #TODO: Dictionary that gathers the results from each fold
-        epochs_list = []
         train_loss = []
         epochs_list = []
         train_accuracies = []
@@ -346,7 +351,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                 valid_auk_score = VegvisirUtils.AUK(probabilities= valid_predictions,labels = fold_valid_data_blosum[:,0,0,0].numpy()).calculate_auk()
                 valid_auk.append(valid_auk_score)
                 valid_auc.append(valid_auc_score)
-                VegvisirPlots.plot_ELBO(train_loss,valid_loss,epochs_list,fold,additional_info.results_dir)
+                VegvisirPlots.plot_loss(train_loss,valid_loss,epochs_list,fold,additional_info.results_dir)
                 VegvisirPlots.plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,additional_info.results_dir)
                 VegvisirPlots.plot_classification_score(train_auc,valid_auc,epochs_list,fold,additional_info.results_dir,method="AUC")
                 VegvisirPlots.plot_classification_score(train_auk,valid_auk,epochs_list,fold,additional_info.results_dir,method="AUK")
@@ -391,6 +396,7 @@ def train_model(dataset_info,additional_info,args):
     data_onehot = dataset_info.data_array_onehot_encoding
     data_array_blosum_encoding_mask = dataset_info.data_array_blosum_encoding_mask
     data_blosum_norm = dataset_info.data_array_blosum_norm
+    seq_max_len = dataset_info.seq_max_len
 
     results_dir = additional_info.results_dir
     kwargs = {'num_workers': 0, 'pin_memory': args.use_cuda}  # pin-memory has to do with transferring CPU tensors to GPU
@@ -398,7 +404,7 @@ def train_model(dataset_info,additional_info,args):
     #Highlight: Train- Test split and kfold generator
     #TODO: Develop method to partition sequences, sequences in train and test must differ. Partitions must have similar distributions (Tree based on distance matrix?
     # In the loop computer another cosine similarity among the vectors of cos sim of each sequence?)
-    train_data_blosum,valid_data_blosum,test_data_blosum = VegvisirLoadUtils.trainevaltest_split(data_blosum,args,results_dir,method="random_stratified_discard_test")
+    train_data_blosum,valid_data_blosum,test_data_blosum = VegvisirLoadUtils.trainevaltest_split(data_blosum,args,results_dir,seq_max_len,dataset_info.max_len,dataset_info.features_names,method="random_stratified_discard_test")
 
     #Highlight:Also split the rest of arrays
     train_idx = (data_blosum[:,0,0,1][..., None] == train_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
@@ -415,7 +421,8 @@ def train_model(dataset_info,additional_info,args):
                            n_data = dataset_info.n_data,
                            input_dim = dataset_info.input_dim,
                            aa_types = dataset_info.corrected_aa_types,
-                           blosum = dataset_info.blosum)
+                           blosum = dataset_info.blosum,
+                           class_weights= VegvisirLoadUtils.calculate_class_weights(train_data_blosum,args))
 
     valid_predictions_fold = None
     train_predictions_fold = None
@@ -430,7 +437,7 @@ def train_model(dataset_info,additional_info,args):
                                                            data_int[train_idx],
                                                            data_onehot[train_idx],
                                                            data_blosum_norm[train_idx],
-                                                            data_array_blosum_encoding_mask[train_idx])
+                                                           data_array_blosum_encoding_mask[train_idx])
     custom_dataset_valid = VegvisirLoadUtils.CustomDataset(valid_data_blosum,
                                                            data_int[valid_idx],
                                                            data_onehot[valid_idx],
@@ -489,7 +496,7 @@ def train_model(dataset_info,additional_info,args):
             valid_auk_score = VegvisirUtils.AUK(probabilities= valid_predictions,labels = valid_data_blosum[:,0,0,0].numpy()).calculate_auk()
             valid_auk.append(valid_auk_score)
             valid_auc.append(valid_auc_score)
-            VegvisirPlots.plot_ELBO(train_loss,valid_loss,epochs_list,fold,additional_info.results_dir)
+            VegvisirPlots.plot_loss(train_loss,valid_loss,epochs_list,fold,additional_info.results_dir)
             VegvisirPlots.plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,additional_info.results_dir)
             VegvisirPlots.plot_classification_score(train_auc,valid_auc,epochs_list,fold,additional_info.results_dir,method="AUC")
             VegvisirPlots.plot_classification_score(train_auk,valid_auk,epochs_list,fold,additional_info.results_dir,method="AUK")

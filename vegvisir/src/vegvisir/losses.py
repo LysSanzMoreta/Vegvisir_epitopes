@@ -37,18 +37,21 @@ class VegvisirLosses(object):
         self.max_len = max_len
         self.input_dim = input_dim
 
-    def calculate_weights(self,true_labels):
-        """Deals with unbalanced datsets"""
-        npositives = true_labels.sum() # we have more negatives in the raw data. Multiply by 10 to get 0.9 to 9 for example
-        nnegatives = true_labels.shape[0] - npositives
-        if npositives > nnegatives:
-            weights = [torch.tensor([1,float(npositives/nnegatives)]) if nnegatives != 0 else torch.tensor([1,1])][0]
-        elif npositives == 0:
-            weights = torch.tensor([0.5,1.])
-        elif nnegatives == 0:
-            weights = torch.tensor([1.,0.5])
-        else:
-            weights = [torch.tensor([float(nnegatives/npositives),1]) if npositives != 0 else torch.tensor([1,1])][0]
+    def calculate_weights(self,true_labels,weights=None):
+        """Weight class calculation"""
+        if weights is not None:
+            weights = weights
+        else: #estimate weights per batch
+            npositives = true_labels.sum() # we have more negatives in the raw data. Multiply by 10 to get 0.9 to 9 for example
+            nnegatives = true_labels.shape[0] - npositives
+            if npositives > nnegatives:
+                weights = [torch.tensor([1,float(npositives/nnegatives)]) if nnegatives != 0 else torch.tensor([1,1])][0]
+            elif npositives == 0:
+                weights = torch.tensor([0.5,1.])
+            elif nnegatives == 0:
+                weights = torch.tensor([1.,0.5])
+            else:
+                weights = [torch.tensor([float(nnegatives/npositives),1]) if npositives != 0 else torch.tensor([1,1])][0]
         array_weights = true_labels.clone()
         array_weights[array_weights == 0] = weights[0]
         array_weights[array_weights == 1] = weights[1]

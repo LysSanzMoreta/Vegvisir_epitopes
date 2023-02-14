@@ -450,7 +450,7 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     #TODO: Move filters to args
     filters_dict = {"filter_kmers":[False,9,"Icore"],
-                    "filter_alleles":[True],
+                    "filter_alleles":[False],
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}
@@ -507,7 +507,6 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     VegvisirPlots.plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
 
     VegvisirPlots.plot_features_histogram(data,features_names,"{}/{}".format(storage_folder,args.dataset_name),name_suffix)
-
     #Highlight: Prep data to run in NNalign
     if args.run_nnalign:
         #raise ValueError("Run NNalign only with sequences (viral_dataset3), not features")
@@ -527,33 +526,40 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     :param storage_folder: Data location path
     """
 
-    epitopes = data[[sequence_column]].values.tolist()
-    epitopes = functools.reduce(operator.iconcat, epitopes, [])  # flatten list of lists
-    seq_max_len = len(max(epitopes, key=len))
-    epitopes_lens = np.array(list(map(len, epitopes)))
+    epitopes_list = data[[sequence_column]].values.tolist()
+    epitopes_list = functools.reduce(operator.iconcat, epitopes_list, [])  # flatten list of lists
+    seq_max_len = len(max(epitopes_list, key=len))
+    epitopes_lens = np.array(list(map(len, epitopes_list)))
     unique_lens = list(set(epitopes_lens))
-    corrected_aa_types = len(set().union(*epitopes))
+    corrected_aa_types = len(set().union(*epitopes_list))
     corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
-    if len(unique_lens) > 1:
+    if len(unique_lens) > 1: # Highlight: Pad the sequences (relevant when they differ in length)
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types , zero_characters=["#"])
-        #Pad the sequences (relevant when not all of them are 9-mers)
-        epitopes = VegvisirLoadUtils.SequencePadding(epitopes,seq_max_len,args.seq_padding).run()
+        epitopes_pad_result = VegvisirLoadUtils.SequencePadding(epitopes_list,seq_max_len,args.seq_padding).run()
+        epitopes_padded, epitopes_padded_mask = zip(*epitopes_pad_result) #unpack list of tuples onto 2 lists
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types , args.subs_matrix,
                                                                                    zero_characters= ["#"],
                                                                                    include_zero_characters=True)
+
     else:
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types)
-        #epitopes = [list(seq) for seq in epitopes]
-        epitopes = list(map(lambda seq: list(seq),epitopes)) #faster?
+        epitopes_padded = list(map(lambda seq: list(seq),epitopes_list))
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, args.subs_matrix,
                                                                                    zero_characters=["#"],
                                                                                    include_zero_characters=False)
-    epitopes_array = np.array(epitopes)
+    epitopes_array = np.array(epitopes_padded)
+    if args.seq_padding == "replicated_borders":  # I keep it separately to avoid doing the loop from vectorized twice in other cases
+        epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
+        epitopes_array_mask = np.array(epitopes_padded_mask)
+        epitopes_array_int_mask = np.vectorize(aa_dict.get)(epitopes_array_mask)
+        epitopes_mask = epitopes_array_int_mask.astype(bool)
+    else:
+        epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
+        epitopes_mask = epitopes_array_int.astype(bool)
     if args.subset_data != "no":
         print("WARNING : Using a subset of the data of {}".format(args.subset_data))
         epitopes_array = epitopes_array[:args.subset_data]
-    epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
-    epitopes_mask = epitopes_array_int.astype(bool)
+        epitopes_mask = epitopes_mask[:args.subset_data]
     blosum_norm = np.linalg.norm(blosum_array[1:, 1:], axis=0)
     aa_list = [val for key, val in aa_dict.items() if val in list(blosum_array[:, 0])]
     blosum_norm_dict = dict(zip(aa_list,blosum_norm.tolist()))
@@ -580,11 +586,11 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
         kmers_cosine_similarity = np.load("{}/{}/similarities/kmers_cosine_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,ksize))
 
     if not os.path.exists("{}/{}/similarities/HEATMAP_percent_identity_mean.png".format(storage_folder,args.dataset_name)):
-
         VegvisirPlots.plot_heatmap(percent_identity_mean, "Percent Identity","{}/{}/similarities/HEATMAP_percent_identity_mean.png".format(storage_folder,args.dataset_name))
         VegvisirPlots.plot_heatmap(cosine_similarity_mean, "Cosine similarity","{}/{}/similarities/HEATMAP_cosine_similarity_mean.png".format(storage_folder,args.dataset_name))
         VegvisirPlots.plot_heatmap(kmers_pid_similarity, "Kmers ({}) percent identity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_pid_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
         VegvisirPlots.plot_heatmap(kmers_cosine_similarity, "Kmers ({}) cosine similarity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_cosine_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
+
     calculate_partitions = False
     if calculate_partitions: #TODO: move elsewhere
         import umap,hdbscan
@@ -596,7 +602,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
     #Highlight: Reattatch partition, identifier, label, immunodominance score
     labels = data[["target_corrected"]].values.tolist()
-    identifiers = data.index.values.tolist() #TODO: reset index in process data?
+    identifiers = data.index.values.tolist() #TODO: reset index in process data function?
     partitions = data[["partition"]].values.tolist()
     training = data[["training"]].values.tolist()
     confidence_scores = data["confidence_score"].values.tolist()
@@ -703,6 +709,8 @@ def prepare_nnalign(args,storage_folder,data,column_names):
     data_valid = data[(data["training"] == 1) & (data["partition"] == 4)][column_names]
     data_train = data_train.astype({'partition': 'int'})
     data_valid = data_valid.astype({'partition': 'int'})
+    data_train["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
+
     data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
     data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name), sep="\t",index=False,header=None) #TODO: Header None?
 

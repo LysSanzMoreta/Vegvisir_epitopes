@@ -654,6 +654,7 @@ class NNAlign(nn.Module):
         self.fc1 = nn.Linear(self.hidden_dim*self.ksize,int(self.hidden_dim/2))
         self.fc2 = nn.Linear(int(self.hidden_dim/2),self.num_classes)
         self.leakyrelu = nn.LeakyReLU()
+        self.sigmoid = nn.Sigmoid()
     def kmers_windows(self,array, clearing_time_index, max_time, sub_window_size, only_windows=True):
         """
         Creates indexes to extract kmers from a sequence, such as:
@@ -684,6 +685,7 @@ class NNAlign(nn.Module):
 
         input_blosum_kmers = input_blosum[:,overlapping_kmers]
         output = torch.matmul(input_blosum_kmers,self.weight) + self.bias
+        output = self.sigmoid(output)
         #mask_kmers = mask[:,overlapping_kmers,0].unsqueeze(-1).expand((output.shape))  #mask2 = output != 0
         #output = (output * mask_kmers).sum(dim=1) / mask_kmers.sum(dim=1)
         output = torch.max(output,dim=1).values #TODO: kmer with highest values (on average??)
@@ -697,5 +699,67 @@ class NNAlign(nn.Module):
         output = self.leakyrelu(output)
         output = self.fc2(output)
         output = self.leakyrelu(output)
+        return output
+
+class NNAlign2(nn.Module):
+
+    def __init__(self,input_dim,max_len,hidden_dim,num_classes,device):
+        super(NNAlign2, self).__init__()
+        self.input_dim = input_dim
+        self.num_classes = num_classes
+        self.hidden_dim = hidden_dim
+        self.device = device
+        self.max_len = max_len
+        self.ksize = 4
+        self.weight = nn.Parameter(torch.DoubleTensor(self.input_dim,self.hidden_dim),requires_grad=True).to(device)
+        self.bias = nn.Parameter(torch.FloatTensor(self.hidden_dim,), requires_grad=True).to(device)
+        #self.bias = torch.nn.init.kaiming_normal_(bias.data, nonlinearity='leaky_relu') #if you we do this we cannot
+        self.fc1 = nn.Linear(self.hidden_dim*self.ksize,int(self.hidden_dim/2))
+        self.fc2 = nn.Linear(int(self.hidden_dim/2),self.num_classes)
+        self.leakyrelu = nn.LeakyReLU()
+        self.sigmoid = nn.Sigmoid()
+    def kmers_windows(self,array, clearing_time_index, max_time, sub_window_size, only_windows=True):
+        """
+        Creates indexes to extract kmers from a sequence, such as:
+             seq =  [A,T,R,P,V,L]
+             kmers_idx = [0,1,2,1,2,3,2,3,4,3,4,5]
+             seq[kmers_idx] = [A,T,R,T,R,P,R,V,L,P,V,L]
+        From https://towardsdatascience.com/fast-and-robust-sliding-window-vectorization-with-numpy-3ad950ed62f5
+        :param int clearing_time_index: Indicates the starting index (0-python idx == 1 clearing_time_index;-1-python idx == 0 clearing_time_index)
+        :param max_time: max sequence len
+        :param sub_window_size:kmer size
+        """
+        start = clearing_time_index + 1 - sub_window_size + 1
+        sub_windows = (
+                start +
+                # expand_dims are used to convert a 1D array to 2D array.
+                torch.arange(sub_window_size)[None, :] +  # [0,1,2] ---> [[0,1,2]]
+                torch.arange(max_time + 1)[None, :].T
+        # [0,...,max_len+1] ---expand dim ---> [[[0,...,max_len+1] ]], indicates the
+        )  # The first row is the sum of the first row of a + the first element of b, and so on (in the diagonal the result of a[None,:] + b[None,:] is placed (without transposing b). )
+
+        if only_windows:
+            return sub_windows
+        else:
+            return array[:, sub_windows]
+    def forward(self,input_blosum,mask):
+
+        overlapping_kmers = self.kmers_windows(input_blosum, 2, self.max_len - self.ksize, self.ksize, only_windows=True)
+        input_blosum_kmers = input_blosum[:,overlapping_kmers]
+        output = torch.matmul(input_blosum_kmers,self.weight) + self.bias
+        #mask_kmers = mask[:,overlapping_kmers,0].unsqueeze(-1).expand((output.shape))  #mask2 = output != 0
+        #output = (output * mask_kmers).sum(dim=1) / mask_kmers.sum(dim=1)
+        #diff = [list(mask_kmers.size()).index(element) for element in list(mask_kmers.size()) if element not in list(output.size())][0]
+        #mask_kmers = [mask_kmers[:,:,0,:].squeeze(2) if diff == 2 else mask_kmers[:,0,:,:].squeeze(1)][0]
+        #output = output.mean(1) #Highlight: Mask does not seem to be necessary in the second round, since the "padded kmers" have been excluded on the first average
+        output = output.flatten(start_dim=2)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        output = self.fc1(output)
+        output = self.leakyrelu(output)
+        output = self.fc2(output)
+        output = self.leakyrelu(output)
+        #output = self.sigmoid(output)
+        output = torch.max(output,dim=1).values
         return output
 

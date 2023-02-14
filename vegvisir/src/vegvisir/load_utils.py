@@ -153,49 +153,26 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
         train_data[:,1, seq_max_len:, 0] = torch.from_numpy(train_feats)
         valid_data[:,1, seq_max_len:, 0] = torch.from_numpy(valid_feats)
         test_data[:,1, seq_max_len:, 0] = torch.from_numpy(test_feats)
-        VegvisirPlots.plot_features_histogram(train_feats, features_names, "{}/Train".format(results_dir), "preprocessed")
-        VegvisirPlots.plot_features_histogram(valid_feats, features_names, "{}/Valid".format(results_dir), "preprocessed")
-        VegvisirPlots.plot_features_histogram(test_feats, features_names, "{}/Test".format(results_dir), "preprocessed")
+        VegvisirPlots.plot_features_histogram(train_data, features_names, "{}/Train".format(results_dir), "preprocessed")
+        VegvisirPlots.plot_features_histogram(valid_data, features_names, "{}/Valid".format(results_dir), "preprocessed")
+        VegvisirPlots.plot_features_histogram(test_data, features_names, "{}/Test".format(results_dir), "preprocessed")
 
     return train_data,valid_data,test_data
 
-def random_padding(seq,max_len):
-    """Randomly padd sequence. Introduces <n pads> in random places until max_len"""
-    pad = max_len-len(seq)
-    if pad != 0:
-        idx = np.array(random.sample(range(0, max_len), pad),dtype=int)
-        new_seq = np.array(["#"]*max_len)
-        mask = np.full(max_len,True)
-        mask[idx] = False
-        new_seq[mask] = np.array(list(seq))
-        return new_seq.tolist()
+def calculate_class_weights(data,args):
+    """Implemented as in https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html"""
+    n_samples = data.shape[0]
+    y = data[:,0,0,0]
+    if isinstance(data,np.ndarray):
+        class_weights = n_samples / (args.num_classes * np.bincount(y,minlength=args.num_classes))
     else:
-        return list(seq)
+        class_weights = n_samples / (args.num_classes * torch.bincount(y.long(),minlength=args.num_classes))
 
-
-def border_padding(seq,max_len):
-    pad = max_len-len(seq)
-    if pad != 0:
-        half_pad = pad/2
-        even_pad = [True if pad%2 == 0 else False][0]
-        if even_pad:
-            idx_pads = np.concatenate([np.arange(0, int(half_pad)), np.arange(max_len - int(half_pad), max_len)])
-        else:
-            idx_choice = np.array(random.sample(range(0,1),1),dtype=int).item() #random choice of adding the extra padding to the beginning or end
-            idx_pads_dict = {0: np.concatenate([np.arange(0,int(half_pad) +1 ),np.arange(max_len-int(half_pad),max_len)]),
-                             1: np.concatenate([np.arange(0,int(half_pad) ),np.arange(max_len-(int(half_pad)+1),max_len)])}
-            idx_pads= idx_pads_dict[idx_choice]
-
-        new_seq = np.array(["#"]*max_len)
-        mask = np.full(max_len,True)
-        mask[idx_pads] = False
-        new_seq[mask] = np.array(list(seq))
-        return new_seq.tolist()
-    else:
-        return list(seq)
+    return class_weights.to(args.device)
 
 
 class SequencePadding(object):
+    """Performs padding of a list of given sequences to a given len"""
     def __init__(self,sequences,seq_max_len,method):
         self.sequences = sequences
         self.seq_max_len = seq_max_len
@@ -203,9 +180,10 @@ class SequencePadding(object):
 
     def run(self):
 
-        padded_sequences = {"ends":list(map(lambda seq: list(seq.ljust(self.seq_max_len, "#")),self.sequences)) ,
+        padded_sequences = {"ends":list(map(lambda seq: (list(seq.ljust(self.seq_max_len, "#")),list(seq.ljust(self.seq_max_len, "#"))),self.sequences)) ,
                             "random":list(map(lambda seq: self.random_padding(seq, self.seq_max_len), self.sequences)),
-                            "borders":list(map(lambda seq: self.border_padding(seq, self.seq_max_len), self.sequences))}
+                            "borders":list(map(lambda seq: self.border_padding(seq, self.seq_max_len), self.sequences)),
+                            "replicated_borders":list(map(lambda seq: self.replicated_border_padding(seq, self.seq_max_len), self.sequences))}
 
         if self.method not in padded_sequences.keys():
             raise ValueError("Padding method <{}> not implemented, please choose among <{}>".format(self.method,padded_sequences.keys()))
@@ -215,21 +193,23 @@ class SequencePadding(object):
     def random_padding(self,seq, max_len):
         """Randomly pad sequence. Introduces <n pads> in random places until max_len"""
         pad = max_len - len(seq)
+        seq = list(seq)
         if pad != 0:
             idx = np.array(random.sample(range(0, max_len), pad), dtype=int)
             new_seq = np.array(["#"] * max_len)
             mask = np.full(max_len, True)
             mask[idx] = False
-            new_seq[mask] = np.array(list(seq))
-            return new_seq.tolist()
+            new_seq[mask] = np.array(seq)
+            return (new_seq.tolist(),new_seq.tolist())
         else:
-            return list(seq)
+            return (seq,seq)
 
     def border_padding(self,seq, max_len):
         """For sequences shorter than seq_max_len introduced padding in the beginning and the ends of the sequences.
         If the amount of padding needed is divisible by 2 then the padding is shared evenly at the bginning and the end of the sequence.
         Otherwise randomly, the beginning or the end of the sequence will receive more padding"""
         pad = max_len - len(seq)
+        seq = list(seq)
         if pad != 0:
             half_pad = pad / 2
             even_pad = [True if pad % 2 == 0 else False][0]
@@ -245,10 +225,56 @@ class SequencePadding(object):
             new_seq = np.array(["#"] * max_len)
             mask = np.full(max_len, True)
             mask[idx_pads] = False
-            new_seq[mask] = np.array(list(seq))
-            return new_seq.tolist()
+            new_seq[mask] = np.array(seq)
+            return (new_seq.tolist(),new_seq.tolist())
         else:
-            return list(seq)
+            return (seq,seq)
+
+    def replicated_border_padding(self, seq, max_len):
+        """
+        Inspired by "replicated" padding in Convolutional NN https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
+        For sequences shorter than seq_max_len introduced padding in the beginning and the ends of the sequences.
+        If the amount of padding needed is divisible by 2 then the padding is shared evenly at the bginning and the end of the sequence.
+        Otherwise randomly, the beginning or the end of the sequence will receive more padding"""
+        random.seed(91)
+        pad = max_len - len(seq)
+        seq = list(seq)
+        if pad != 0:
+            half_pad = pad / 2
+            even_pad = [True if pad % 2 == 0 else False][0]
+            if even_pad:  # same amount of paddng added at the beginning and the end of the sequence
+                start = np.arange(0, int(half_pad))
+                end = np.arange(max_len - int(half_pad), max_len)
+                idx_pads = np.concatenate(
+                    [start, end])
+            else:
+                idx_choice = np.array(random.sample(range(0, 1), 1),
+                                      dtype=int).item()  # random choice of adding the extra padding to the beginning or end
+                start_0 = np.arange(0, int(half_pad) + 1)
+                end_0 = np.arange(max_len - int(half_pad), max_len)
+                start_1 = np.arange(0, int(half_pad))
+                end_1 = np.arange(max_len - (int(half_pad) + 1), max_len)
+                idx_pads_dict = {
+                    0: [np.concatenate([start_0, end_0]),start_0,end_0],
+                    1: [np.concatenate([start_1, end_1]),start_1,end_0]}
+                idx_pads,start,end = idx_pads_dict[idx_choice]
+
+            new_seq = np.array(["#"] * max_len)
+            new_seq_mask = np.array(["#"] * max_len)
+            mask = np.full(max_len, True)
+            mask[idx_pads] = False
+            new_seq[mask] = np.array(seq)
+            new_seq_mask[mask] = np.array(seq)
+            if start.size != 0 and end.size == 0:
+                new_seq[~mask] = np.array(seq[:len(start)])
+            elif start.size == 0 and end.size != 0:
+                    new_seq[~mask] = np.array(seq[-len(end):])
+            else:
+                new_seq[~mask] = np.concatenate([np.array(seq[:len(start)]),np.array(seq[-len(end):])])
+            return (new_seq.tolist(), new_seq_mask.tolist())
+        else:
+            return (seq,seq)
+
 
 
 

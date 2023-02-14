@@ -10,10 +10,12 @@ import  matplotlib
 import seaborn as sns
 import numpy as np
 import pandas as pd
+import torch
 import umap
 import vegvisir.utils as VegvisirUtils
 from sklearn.feature_selection import mutual_info_classif,mutual_info_regression
 plt.style.use('ggplot')
+colors_dict = {0: "red", 1: "green"}
 
 
 def plot_data_information(data, filters_dict, storage_folder, args, name_suffix):
@@ -21,7 +23,7 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     ndata = data.shape[0]
     fig, ax = plt.subplots(3, 3, figsize=(11, 10))
     num_bins = 50
-    colors_dict = {0: "orange", 1: "blue"}
+    #colors_dict = {0: "orange", 1: "blue"}
     labels_dict = {0: "Negative", 1: "Positive"}
 
     ############LABELS #############
@@ -202,8 +204,10 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder, args.dataset_name, name_suffix), dpi=300)
     plt.clf()
 
+
 def plot_features_histogram(data, features_names, results_dir, name_suffix):
-    """"""
+    """Plots the histogram densities featues of all data points
+    Notes: If feeling fancy try: https://stackoverflow.com/questions/38830250/how-to-fill-matplotlib-bars-with-a-gradient"""
     max_cols = 4
     num_bins = 50
     nplots = [int(len(features_names)) if int(len(features_names)) % 2 == 0 else int(len(features_names)) + 1][0]
@@ -214,8 +218,11 @@ def plot_features_histogram(data, features_names, results_dir, name_suffix):
     total_ax = len(axs)
     if isinstance(data,pd.DataFrame):
         i = 0
+        data_negative = data.loc[data["target_corrected"] == 0]
+        data_positive = data.loc[data["target_corrected"] == 1]
         for idx,feature_name in enumerate(features_names):
-            freq, bins, patches = axs[idx].hist(data[feature_name].to_numpy(), bins=num_bins, density=True, edgecolor='white')
+            freq, bins, patches = axs[idx].hist(data_negative[feature_name].to_numpy(), bins=num_bins, density=True,label="Negative",color=colors_dict[0],alpha=0.5)
+            freq, bins, patches = axs[idx].hist(data_positive[feature_name].to_numpy(), bins=num_bins, density=True,label="Positive",color = colors_dict[1],alpha=0.5)
             axs[idx].set_xlabel('')
             axs[idx].set_title('{} \n'.format(feature_name),fontsize=6)
             axs[idx].tick_params(axis='both', which='both', labelsize=5)
@@ -226,13 +233,22 @@ def plot_features_histogram(data, features_names, results_dir, name_suffix):
 
         fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
         fig.suptitle("Histogram Features")
+        negative_patch = mpatches.Patch(color=colors_dict[0], label='Class 0')
+        positive_patch = mpatches.Patch(color=colors_dict[1], label='Class 1')
+        plt.legend(handles=[negative_patch, positive_patch], prop={'size': 10}, loc='center right',
+                   bbox_to_anchor=(0.7, 0.5), ncol=1)
         plt.savefig("{}/Viruses_features_histograms_{}".format(results_dir, name_suffix), dpi=300)
         plt.clf()
-    if isinstance(data,np.ndarray):
+    elif isinstance(data,torch.Tensor) or isinstance(data,np.ndarray):
         i = 0
+        seq_max_len = data.shape[2] - len(features_names)
+        data_negative = data[data[:,0,0,0] == 0]
+        data_negative_features = data_negative[:,1, seq_max_len:, 0]
+        data_positive = data[data[:,0,0,0] == 1]
+        data_positive_features = data_positive[:,1, seq_max_len:, 0]
         for idx, feature_name in enumerate(features_names):
-            freq, bins, patches = axs[idx].hist(data[:,idx], bins=num_bins, density=True,
-                                                edgecolor='white',color="green")
+            freq, bins, patches = axs[idx].hist(data_negative_features[:,idx], bins=num_bins, density=True,label="Negative",color=colors_dict[0],alpha=0.5)
+            freq, bins, patches = axs[idx].hist(data_positive_features[:,idx], bins=num_bins, density=True,label="Positive",color = colors_dict[1],alpha=0.5)
             axs[idx].set_xlabel('')
             axs[idx].set_title('{} \n'.format(feature_name), fontsize=6)
             axs[idx].tick_params(axis='both', which='both', labelsize=5)
@@ -243,9 +259,15 @@ def plot_features_histogram(data, features_names, results_dir, name_suffix):
 
         fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
         fig.suptitle("Histogram Features (preprocessed)")
+        negative_patch = mpatches.Patch(color=colors_dict[0], label='Class 0')
+        positive_patch = mpatches.Patch(color=colors_dict[1], label='Class 1')
+        plt.legend(handles=[negative_patch, positive_patch], prop={'size': 10}, loc='center right',
+                   bbox_to_anchor=(0.7, 0.5), ncol=1)
         plt.savefig("{}/Viruses_features_histograms_{}".format(results_dir, name_suffix),
                     dpi=300)
         plt.clf()
+    else:
+        print("Data type not implemented, not plotting features histograms")
 
 
 def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset_name):
@@ -352,12 +374,13 @@ def plot_umap1(array,labels,storage_folder,args,title_name,file_name):
     plt.savefig("{}/{}/similarities/{}.png".format(storage_folder,args.dataset_name,file_name))
     plt.clf()
 
-def plot_ELBO(train_loss,valid_loss,epochs_list,fold,results_dir):
+def plot_loss(train_loss,valid_loss,epochs_list,fold,results_dir):
     """Plots the model's error loss
-    :param list train_elbo: list of accumulated error losses during training
+    :param list train_loss: list of accumulated error losses during training
+    :param list valid_loss: list of accumulated error losses during validation
+    :param list epochs_list: list of epochs
     :param str results_dict: path to results directory
     """
-    "train_loss, valid_loss,additional_info.results_dir,epochs_list,fold"
     train_loss = np.array(train_loss)
     valid_loss = np.array(valid_loss)
     epochs_idx = np.array(epochs_list)
@@ -493,7 +516,6 @@ def plot_latent_space(latent_space,predictions,fold,results_dir,method):
     plt.legend(handles=[negative_patch,positive_patch], prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5),ncol=1)
     plt.savefig("{}/{}/umap_fold{}".format(results_dir,method,fold))
     plt.clf()
-
 
 def plot_gradients(gradient_norms,results_dir,fold):
     print("Plotting gradients")
@@ -659,119 +681,22 @@ def plot_mutual_information(full_data,full_labels,feature_names,results_dir):
     plt.savefig("{}/mi_feature_importance".format(results_dir),dpi=600)
     plt.clf()
 
-def plot_layers(model,layer_name,results_dir): #TODO: Check
-    # Gets the layer object from the model
-    for name in layer_name.split('.'):
-        layer = getattr(model, name) # Gets the layer object from the model
-
-    # We are only looking at filters for 2D convolutions
-    # Takes the weight information
-    weights = layer.weight.data.cpu().numpy()
-    # The weights have channels_out (filter), channels_in, H, W shape
-    n_filters, n_channels, _, _ = weights.shape
-
-    # Builds a figure
-    size = (2 * n_channels + 2, 2 * n_filters)
-    fig, axes = plt.subplots(n_filters, n_channels, figsize=size)
-    axes = np.atleast_2d(axes).reshape(n_filters, n_channels)
-    # For each channel_out (filter)
-    for i in range(n_filters):
-        axs= axes[i,:]
-        x= weights[i]
-        yhat = None
-        y= None
-        title = 'Channel' if (i == 0) else None
-        layer_name = 'Filter #{}'.format(i),
-        # The number of images is the number of subplots in a row
-        n_images = len(axs)
-        # Gets max and min values for scaling the grayscale
-        minv, maxv = np.min(x[:n_images]), np.max(x[:n_images])
-        # For each image
-        for j, image in enumerate(x[:n_images]):
-            ax = axs[j]
-            # Sets title, labels, and removes ticks
-            if title is not None:
-                ax.set_title('{} #{}'.format(title, j), fontsize=12)
-            ax.set_ylabel(
-                '{}\n{}x{}'.format(layer_name, *np.atleast_2d(image).shape),
-                rotation=0, labelpad=40
-            )
-            xlabel1 = '' if y is None else '\nLabel: {}'.format(y[j])
-            xlabel2 = '' if yhat is None else '\nPredicted: {}'.format(yhat[j])
-            xlabel = '{}{}'.format(xlabel1, xlabel2)
-            if len(xlabel):
-                ax.set_xlabel(xlabel, fontsize=12)
-            ax.set_xticks([])
-            ax.set_yticks([])
-
-            # Plots weight as an image
-            ax.imshow(
-                np.atleast_2d(image.squeeze()),
-                cmap='gray',
-                vmin=minv,
-                vmax=maxv
-            )
-
-
-    for ax in axes.flat:
-        ax.label_outer()
-
-    fig.tight_layout()
-
-    plt.savefig("{}/layers.png".format(results_dir),dpi=200)
-
-
-    return fig
-
-def plot_model_parameters(train_loader, n_layers=5, hidden_units=100, activation_fn=None, use_bn=False, before=True,model=None):
-    #(train_loader, n_layers=5, hidden_units=100, activation_fn=None, use_bn=False, before=True,model=None)
-    import sys
-    sys.path.append('..')
-    from stepbystep.v3 import StepByStep
-
-    if model is None:
-        n_features = train_loader.dataset.tensors[0].shape[1]
-        if activation_fn is None:
-            activation_fn = nn.ReLU
-        model = build_model(n_layers, n_features, hidden_units, activation_fn, use_bn, before)
-
-    loss_fn = nn.BCEWithLogitsLoss()
-    optimizer = optim.SGD(model.parameters(), lr=1e-2)
-
-    n_layers = len(list(filter(lambda c: c[0][0] == 'h', model.named_children())))
-
-    sbs = StepByStep(model, loss_fn, optimizer)
-    sbs.set_loaders(train_loader)
-    sbs.capture_parameters([f'h{i}' for i in range(1, n_layers + 1)])
-    sbs.capture_gradients([f'h{i}' for i in range(1, n_layers + 1)])
-    sbs.attach_hooks([f'a{i}' for i in range(1, n_layers + 1)])
-    sbs.train(1)
-
-    names = [f'h{i}' for i in range(1, n_layers + 1)]
-
-    parameters = [[np.array(sbs._parameters[f'h{i}']['weight']).reshape(-1, ) for i in range(1, n_layers + 1)]]
-    parms_data = LayerViolinsData(names=names, values=parameters)
-
-    gradients = [[np.array(sbs._gradients[f'h{i}']['weight']).reshape(-1, ) for i in range(1, n_layers + 1)]]
-    gradients_data = LayerViolinsData(names=names, values=gradients)
-
-    activations = [[np.array(sbs.visualization[f'a{i}']).reshape(-1, ) for i in range(1, n_layers + 1)]]
-    activations_data = LayerViolinsData(names=names, values=activations)
-
-    return parms_data, gradients_data, activations_data
-
-def plot_confusion_matrix(confusion_matrix,accuracy,results_dir):
+def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir):
     """Plot confusion matrix
-    :param pandas dataframe confusion_matrix"""
+    :param pandas dataframe confusion_matrix
+    :param dict performance_metrics"""
     confusion_matrix_array = confusion_matrix.to_numpy()
-    fig,ax = plt.subplots(figsize=(7,7))
-    plt.imshow(confusion_matrix_array,cmap='Pastel1_r')
+    fig,ax = plt.subplots(nrows=1,ncols=2,figsize=(7,7),gridspec_kw={'width_ratios': [3, 1]})
+    ax[0].imshow(confusion_matrix_array,cmap='Pastel1_r')
     for i in range(confusion_matrix_array.shape[0]):
         for j in range(confusion_matrix_array.shape[1]):
-              ax.text(j, i, "{:.2f}".format(confusion_matrix_array[i, j]), ha="center", va="center")
+              ax[0].text(j, i, "{:.2f}".format(confusion_matrix_array[i, j]), ha="center", va="center")
     #[[true_negatives,false_positives],[false_negatives,true_positives]]
-    plt.xticks([0,1],confusion_matrix.columns)
-    plt.yticks([0,1],confusion_matrix.index)
-    plt.title("Confusion matrix. Accuracy: {}".format(accuracy))
+    ax[1].axis("off")
+    ax[0].set_xticks([0,1],confusion_matrix.columns)
+    ax[0].set_yticks([0,1],confusion_matrix.index)
+    fig.suptitle("Confusion matrix")
+    patches = [mpatches.Patch(color=colors_dict[0], label='{}:{}'.format(key,np.round(val,2))) for key,val in performance_metrics.items()]
+    ax[0].legend(handles=patches, prop={'size': 10}, loc='right',bbox_to_anchor=(1.5, 0.5), ncol=1)
     plt.savefig("{}/confusion_matrix.png".format(results_dir),dpi=100)
     plt.clf()
