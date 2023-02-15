@@ -592,7 +592,6 @@ class VegvisirModel5a(VEGVISIRModelClass,PyroModule):
 
         pyro.module("vae_model", self)
 
-
         batch_sequences_blosum = batch_data["blosum"][:,1].squeeze(1)
         batch_sequences_int = batch_data["int"][:,1].squeeze(1)
         batch_sequences_norm = batch_data["norm"][:,1]
@@ -1174,6 +1173,7 @@ class VegvisirModel5d(VEGVISIRModelClass,PyroModule):
                               predicted_labels=predicted_labels,
                               immunodominance_scores=None,  # predicted_immunodominance_scores,
                               reconstructed_sequences=reconstructed_sequences)
+
     def loss(self):
         """
         """

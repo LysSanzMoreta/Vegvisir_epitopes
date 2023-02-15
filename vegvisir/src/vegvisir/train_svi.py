@@ -20,7 +20,7 @@ import vegvisir.load_utils as VegvisirLoadUtils
 import vegvisir.plots as VegvisirPlots
 import vegvisir.models as VegvisirModels
 import vegvisir.guides as VegvisirGuides
-ModelLoad = namedtuple("ModelLoad",["args","max_len","seq_max_len","n_data","input_dim","aa_types","blosum"])
+ModelLoad = namedtuple("ModelLoad",["args","max_len","seq_max_len","n_data","input_dim","aa_types","blosum","class_weights"])
 
 
 def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
@@ -568,7 +568,9 @@ def train_model(dataset_info,additional_info,args):
                            n_data = dataset_info.n_data,
                            input_dim = dataset_info.input_dim,
                            aa_types = dataset_info.corrected_aa_types,
-                           blosum = dataset_info.blosum)
+                           blosum = dataset_info.blosum,
+                           class_weights=VegvisirLoadUtils.calculate_class_weights(train_data_blosum, args)
+                           )
 
     print('\t Number train data points: {}; Proportion: {}'.format(train_data_blosum.shape[0],(train_data_blosum.shape[0]*100)/train_data_blosum.shape[0]))
     print('\t Number eval data points: {}; Proportion: {}'.format(valid_data_blosum.shape[0],(valid_data_blosum.shape[0]*100)/valid_data_blosum.shape[0]))

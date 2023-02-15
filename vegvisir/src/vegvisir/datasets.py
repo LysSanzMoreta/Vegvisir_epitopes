@@ -333,18 +333,24 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
     data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
     data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
-
-    # Group data by Icore
-    data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
-    data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
-    # Reattach info on training
-    data = pd.merge(data_a, data_b, on='Icore', how='outer')
-    #TODO: Move filters to args
+    data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
     filters_dict = {"filter_kmers":[False,9,"Icore"],
-                    "filter_alleles": [True],
+                    "group_alleles": [False],
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}
+    if filters_dict["group_alleles"][0]:
+        # Group data by Icore, therefore the alleles are grouped
+        data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
+        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        # Reattach info on training
+        data = pd.merge(data_a, data_b, on='Icore', how='outer')
+    else:
+        allele_counts_dict = data["allele"].value_counts().to_dict()
+        allele_dict = dict(zip(allele_counts_dict.keys(),list(range(len(allele_counts_dict.keys())))))
+        data["allele_encoded"] = data["allele"]
+        data.replace({"allele_encoded": allele_dict},inplace=True)
+    #TODO: Move filters to args or Vegvisir_example?
     json.dump(filters_dict, dataset_info_file, indent=2)
 
     if filters_dict["filter_ntested"][0]:
@@ -429,32 +435,34 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data_features = pd.read_csv("{}/{}/dataset_all_features.tsv".format(storage_folder,args.dataset_name),sep="\s+",index_col=0)
     data_partitions = pd.read_csv("{}/viral_dataset3/dataset_target.tsv".format(storage_folder),sep = "\t",index_col=0)
     data_partitions.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
-    # print(data_partitions["allele"].value_counts())
-    # exit()
-    allele_dict = data_partitions["allele"].value_counts()
-
     data_partitions = data_partitions[["Icore","Icore_non_anchor","allele","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","partition","target","training"]]
-    data_features = data_features[["Icore","Pred_netstab","prot_inst_index","prot_median_iupred_score_long","prot_molar_excoef_cys_cys_bond","prot_p[q3_E]_netsurfp","prot_p[q3_C]_netsurfp","prot_rsa_netsurfp"]]
-    features_names = data_features.columns.tolist()
-    features_names.pop(0)
-    #features_dict = dict(zip(range(len(features_names)),features_names))
-    data = pd.merge(data_features,data_partitions, on='Icore', how='outer')
-    data = data.dropna(subset=["Icore_non_anchor","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
-    # Group data by Icore
-    data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
-    data_b = data.groupby('Icore', as_index=False)[features_names].agg(lambda x: sum(list(x)) / len(list(x)))
-    data_c = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
-    # Reattach info on training
-    data = pd.merge(data_a, data_b, on='Icore', how='outer')
-    data = pd.merge(data, data_c, on='Icore', how='outer')
+    data_features = data_features[["Icore","allele","Pred_netstab","prot_inst_index","prot_median_iupred_score_long","prot_molar_excoef_cys_cys_bond","prot_p[q3_E]_netsurfp","prot_p[q3_C]_netsurfp","prot_rsa_netsurfp"]]
+    features_names = data_features.columns.tolist()[2:]
+
+    data = pd.merge(data_features,data_partitions, on=['Icore',"allele"], how='outer')
+    data = data.dropna(subset=["Icore_non_anchor","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training","Pred_netstab"]).reset_index(drop=True)
 
     #TODO: Move filters to args
     filters_dict = {"filter_kmers":[False,9,"Icore"],
-                    "filter_alleles":[False],
+                    "group_alleles":[False],
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}
     json.dump(filters_dict, dataset_info_file, indent=2)
+    if filters_dict["group_alleles"][0]:
+        # Group data by Icore
+        data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
+        data_b = data.groupby('Icore', as_index=False)[features_names].agg(lambda x: sum(list(x)) / len(list(x)))
+        data_c = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        # Reattach info on training
+        data = pd.merge(data_a, data_b, on='Icore', how='outer')
+        data = pd.merge(data, data_c, on='Icore', how='outer')
+    else:
+        allele_counts_dict = data["allele"].value_counts().to_dict()
+        allele_dict = dict(zip(allele_counts_dict.keys(),list(range(len(allele_counts_dict.keys())))))
+        data["allele_encoded"] = data["allele"]
+        data.replace({"allele_encoded": allele_dict},inplace=True)
+        #features_names.append("allele_encoded")
 
     if filters_dict["filter_ntested"][0]:
         # Highlight: Filter the points with low subject count and only keep if all "negative"
@@ -505,12 +513,13 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
 
     VegvisirPlots.plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
-
     VegvisirPlots.plot_features_histogram(data,features_names,"{}/{}".format(storage_folder,args.dataset_name),name_suffix)
+
     #Highlight: Prep data to run in NNalign
     if args.run_nnalign:
         #raise ValueError("Run NNalign only with sequences (viral_dataset3), not features")
         prepare_nnalign(args,storage_folder,data,[filters_dict["filter_kmers"][2],"target_corrected","partition"])
+
 
 
     data_info = process_data(data,args,storage_folder,script_dir,sequence_column=filters_dict["filter_kmers"][2],features_names=features_names)

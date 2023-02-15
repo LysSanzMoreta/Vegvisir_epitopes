@@ -18,10 +18,11 @@ plt.style.use('ggplot')
 colors_dict = {0: "red", 1: "green"}
 
 
+
 def plot_data_information(data, filters_dict, storage_folder, args, name_suffix):
     """"""
     ndata = data.shape[0]
-    fig, ax = plt.subplots(3, 3, figsize=(11, 10))
+    fig, ax = plt.subplots(nrows=3,ncols=4, figsize=(11, 10))
     num_bins = 50
     #colors_dict = {0: "orange", 1: "blue"}
     labels_dict = {0: "Negative", 1: "Positive"}
@@ -29,44 +30,42 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     ############LABELS #############
     freq, bins, patches = ax[0][0].hist(data["target"].to_numpy(), bins=2, density=True, edgecolor='white')
     ax[0][0].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
-    ax[0][0].set_title('Histogram of targets/labels \n')
+    ax[0][0].set_title('Histogram of targets/labels \n',fontsize=10)
     ax[0][0].xaxis.set_ticks([0.25, 0.75])
     ax[0][0].set_xticklabels([0, 1])
     # Annotate the bars.
     for color, bar in zip(colors_dict.values(), patches):  # iterate over the bars
         n_data_bin = (bar.get_height() * ndata) / 2
-        ax[0][0].annotate(format(n_data_bin, '.2f'),
+        ax[0][0].annotate(int(n_data_bin),
                           (bar.get_x() + bar.get_width() / 2,
                            bar.get_height()), ha='center', va='center',
-                          size=15, xytext=(0, 8),
+                          size=12, xytext=(0, 8),
                           textcoords='offset points')
         bar.set_facecolor(color)
 
     ############LABELS CORRECTED #############
     freq, bins, patches = ax[0][1].hist(data["target_corrected"].to_numpy(), bins=2, density=True, edgecolor='white')
     ax[0][1].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
-    ax[0][1].set_title('Histogram of re-assigned \n targets/labels')
+    ax[0][1].set_title('Histogram of re-assigned \n targets/labels',fontsize=10)
     ax[0][1].xaxis.set_ticks([0.25, 0.75])
     ax[0][1].set_xticklabels([0, 1])
     # Annotate the bars.
     for color, bar in zip(colors_dict.values(), patches):  # iterate over the bars
         n_data_bin = (bar.get_height() * ndata) / 2
-        ax[0][1].annotate(format(n_data_bin, '.2f'),
+        ax[0][1].annotate(int(n_data_bin),
                           (bar.get_x() + bar.get_width() / 2,
                            bar.get_height()), ha='center', va='center',
-                          size=15, xytext=(0, 8),
+                          size=12, xytext=(0, 8),
                           textcoords='offset points')
         bar.set_facecolor(color)
     ####### Immunodominance scores ###################
     ax[1][0].hist(data["immunodominance_score_scaled"].to_numpy(), num_bins, density=True)
-    ax[1][0].set_xlabel('Minmax scaled immunodominance score \n (N_+ / Total Nsubjects)')
-    ax[1][0].set_title('Histogram of \n immunodominance scores')
+    ax[1][0].set_xlabel('Minmax scaled \n immunodominance score \n (N_+ / Total Nsubjects)',fontsize=10)
+    ax[1][0].set_title('Histogram of \n immunodominance scores',fontsize=10)
     ######## Sequence length distribution ####################
     ######Train#############################3
-    data_lens_train_negative = data.loc[
-        (data["training"] == True) & (data["target_corrected"] == 0.), filters_dict["filter_kmers"][2]].str.len()
-    data_lens_train_positive = data.loc[
-        (data["training"] == True) & (data["target_corrected"] == 1.), filters_dict["filter_kmers"][2]].str.len()
+    data_lens_train_negative = data.loc[(data["training"] == True) & (data["target_corrected"] == 0.), filters_dict["filter_kmers"][2]].str.len()
+    data_lens_train_positive = data.loc[(data["training"] == True) & (data["target_corrected"] == 1.), filters_dict["filter_kmers"][2]].str.len()
     dict_counts = {0: data_lens_train_negative.value_counts(), 1: data_lens_train_positive.value_counts()}
     longest, shortest = [(1, 0) if len(dict_counts[1].keys()) > len(dict_counts[0].keys()) else (0, 1)][0]
     position = 0
@@ -75,18 +74,15 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
         ax[2][0].bar(position, count_i, label=longest, color=colors_dict[longest], width=0.1, edgecolor='white')
         if val_i in dict_counts[shortest].keys():
             count_j = dict_counts[shortest][val_i]
-            ax[2][0].bar(position + 0.1, count_j, label=shortest, color=colors_dict[shortest], width=0.1,
-                         edgecolor='white')
+            ax[2][0].bar(position + 0.1, count_j, label=shortest, color=colors_dict[shortest], width=0.1,edgecolor='white')
         positions.append(position + 0.05)
         position += 0.25
     ax[2][0].xaxis.set_ticks(positions)
     ax[2][0].set_xticklabels(dict_counts[longest].keys())
-    ax[2][0].set_title("Sequence length distribution of \n  the Train-valid dataset")
+    ax[2][0].set_title("Sequence length distribution of \n  the Train-valid dataset",fontsize=10)
     ###### Test #####################
-    data_lens_test_negative = data.loc[
-        (data["training"] == False) & (data["target_corrected"] == 0.), filters_dict["filter_kmers"][2]].str.len()
-    data_lens_test_positive = data.loc[
-        (data["training"] == False) & (data["target_corrected"] == 1.), filters_dict["filter_kmers"][2]].str.len()
+    data_lens_test_negative = data.loc[(data["training"] == False) & (data["target_corrected"] == 0.), filters_dict["filter_kmers"][2]].str.len()
+    data_lens_test_positive = data.loc[(data["training"] == False) & (data["target_corrected"] == 1.), filters_dict["filter_kmers"][2]].str.len()
     dict_counts = {0: data_lens_test_negative.value_counts(), 1: data_lens_test_positive.value_counts()}
     longest, shortest = [(1, 0) if len(dict_counts[1].keys()) > len(dict_counts[0].keys()) else (0, 1)][0]
     position = 0
@@ -101,12 +97,10 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
         position += 0.25
     ax[2][1].xaxis.set_ticks(positions)
     ax[2][1].set_xticklabels(dict_counts[longest].keys())
-    ax[2][1].set_title("Sequence length distribution of \n  the Test dataset")
-    ax[2][2].axis("off")
+    ax[2][1].set_title("Sequence length distribution of \n  the Test dataset",fontsize=10)
     ############TEST PROPORTIONS #############
     data_partitions = data[["partition", "training", "target_corrected"]]
-    test_counts = data_partitions[data_partitions["training"] == False].value_counts(
-        "target_corrected")  # returns a dict
+    test_counts = data_partitions[data_partitions["training"] == False].value_counts("target_corrected")  # returns a dict
     if len(test_counts.keys()) > 1:
         if test_counts[0] > test_counts[1]:
             bar1 = ax[1][1].bar(0, test_counts[0], label="Negative", color=colors_dict[0], width=0.1, edgecolor='white')
@@ -114,21 +108,21 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
             bar2 = ax[0][2].bar(0, test_counts[1], label="Positive", color=colors_dict[1], width=0.1, edgecolor='white')
             bar2 = bar2.patches[0]
         else:
-            bar1 = ax[1][1].bar(0, test_counts[1], label="Positive", color="orange", width=0.1, edgecolor='white')
+            bar1 = ax[1][1].bar(0, test_counts[1], label="Positive", color=colors_dict[0], width=0.1, edgecolor='white')
             bar1 = bar1.patches[0]
-            bar2 = ax[1][1].bar(0, test_counts[0], label="Negative", color="blue", width=0.1, edgecolor='white')
+            bar2 = ax[1][1].bar(0, test_counts[0], label="Negative", color=colors_dict[1], width=0.1, edgecolor='white')
             bar2 = bar2.patches[0]
         ax[1][1].xaxis.set_ticks([0])
         n_data_test = sum([val for key, val in test_counts.items()])
         ax[1][1].annotate("{}({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_test), 2),
                           (bar1.get_x() + bar1.get_width() / 2,
                            bar1.get_height()), ha='center', va='center',
-                          size=15, xytext=(0, 8),
+                          size=12, xytext=(0, 8),
                           textcoords='offset points')
         ax[1][1].annotate("{}({}%)".format(bar2.get_height(), np.round((bar2.get_height() * 100) / n_data_test), 2),
                           (bar2.get_x() + bar2.get_width() / 2,
                            bar2.get_height()), ha='center', va='center',
-                          size=15, xytext=(0, 8),
+                          size=12, xytext=(0, 8),
                           textcoords='offset points')
     else:
         key = test_counts.keys()[0]
@@ -140,11 +134,11 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
         ax[1][1].annotate("{}({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_test), 2),
                           (bar1.get_x() + bar1.get_width() / 2,
                            bar1.get_height()), ha='center', va='center',
-                          size=15, xytext=(0, 8),
+                          size=12, xytext=(0, 8),
                           textcoords='offset points')
 
-    ax[1][1].set_xticklabels(["Test proportions"], fontsize=15)
-    ax[1][1].set_title('Test dataset \n +/- proportions')
+    ax[1][1].set_xticklabels(["Test proportions"], fontsize=10)
+    ax[1][1].set_title('Test dataset \n +/- proportions',fontsize=10)
 
     ################ TRAIN PARTITION PROPORTIONS###################################
     train_set = data_partitions[data_partitions["training"] == True]
@@ -156,15 +150,15 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
         group_counts = group.value_counts("target_corrected")  # returns a dict
         if len(group_counts.keys()) > 1:
             if group_counts[0] > group_counts[1]:
-                bar1 = ax[0][2].bar(i, group_counts[0], label="Negative", color="orange", width=0.1, edgecolor='white')
+                bar1 = ax[0][2].bar(i, group_counts[0], label="Negative", color=colors_dict[0], width=0.1, edgecolor='white')
                 bar1 = bar1.patches[0]
-                bar2 = ax[0][2].bar(i, group_counts[1], label="Positive", color="blue", width=0.1)
+                bar2 = ax[0][2].bar(i, group_counts[1], label="Positive", color=colors_dict[1], width=0.1)
                 bar2 = bar2.patches[0]
 
             else:
-                bar1 = ax[0][2].bar(i, group_counts[1], label="Positive", color="orange", width=0.1, edgecolor='white')
+                bar1 = ax[0][2].bar(i, group_counts[1], label="Positive", color=colors_dict[0], width=0.1, edgecolor='white')
                 bar1 = bar1.patches[0]
-                bar2 = ax[0][2].bar(i, group_counts[0], label="Negative", color="blue", width=0.1, edgecolor='white')
+                bar2 = ax[0][2].bar(i, group_counts[0], label="Negative", color=colors_dict[1], width=0.1, edgecolor='white')
                 bar2 = bar2.patches[0]
 
             i += 0.4
@@ -173,13 +167,13 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
                 "{}\n({}%)".format(bar1.get_height(), np.round((bar1.get_height() * 100) / n_data_partition), 2),
                 (bar1.get_x() + bar1.get_width() / 2,
                  bar1.get_height()), ha='center', va='center',
-                size=10, xytext=(0, 8),
+                size=8, xytext=(0, 8),
                 textcoords='offset points')
             ax[0][2].annotate(
                 "{}\n({}%)".format(bar2.get_height(), np.round((bar2.get_height() * 100) / n_data_partition), 2),
                 (bar2.get_x() + bar2.get_width() / 2,
                  bar2.get_height()), ha='center', va='center',
-                size=10, xytext=(0, 8),
+                size=8, xytext=(0, 8),
                 textcoords='offset points')
         else:
             key = group_counts.keys()[0]
@@ -196,14 +190,55 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
         partitions_names.append(name)
     ax[0][2].xaxis.set_ticks([0, 0.4, 0.8, 1.2, 1.6])
     ax[0][2].set_xticklabels(["Part. {}".format(int(i)) for i in partitions_names])
-    ax[0][2].set_title('TrainEval dataset \n +/- proportions per partition')
-    ax[1][2].axis("off")
-    legends = [mpatches.Patch(color=color, label='Class {}'.format(label)) for label, color in colors_dict.items()]
-    fig.legend(handles=legends, prop={'size': 12}, loc='center right', bbox_to_anchor=(0.9, 0.3))
-    fig.tight_layout(pad=0.1)
-    plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder, args.dataset_name, name_suffix), dpi=300)
-    plt.clf()
+    ax[0][2].set_title('TrainEval dataset \n +/- proportions per partition',fontsize=10)
+    ################### ALLELES PROPORTIONS PER CLASS ##############################################
+    #Train
+    data_alleles_train_negative = data.loc[(data["training"] == True) & (data["target_corrected"] == 0.), "allele"].value_counts().to_dict()
+    data_alleles_train_positive = data.loc[(data["training"] == True) & (data["target_corrected"] == 1.), "allele"].value_counts().to_dict()
+    dict_counts = {0: data_alleles_train_negative, 1: data_alleles_train_positive}
+    longest, shortest = [(1, 0) if len(dict_counts[1].keys()) > len(dict_counts[0].keys()) else (0, 1)][0]
+    position = 0
+    positions = []
+    for val_i, count_i in dict_counts[longest].items():
+        ax[1][2].bar(position, count_i, label=longest, color=colors_dict[longest], width=0.4)
+        if val_i in dict_counts[shortest].keys():
+            count_j = dict_counts[shortest][val_i]
+            ax[1][2].bar(position + 0.45, count_j, label=shortest, color=colors_dict[shortest], width=0.4)
+        positions.append(position + 0.1)
+        position += 1.1
+    ax[1][2].xaxis.set_ticks(positions)
+    ax[1][2].set_xticklabels(dict_counts[longest].keys(),rotation=90,fontsize=2)
+    ax[1][2].xaxis.set_tick_params(width=0.1)
+    ax[1][2].set_title("Allele distribution of \n  the Train-valid dataset")
+    #Test
+    data_alleles_test_negative = data.loc[(data["training"] == False) & (data["target_corrected"] == 0.), "allele"].value_counts().to_dict()
+    data_alleles_test_positive = data.loc[(data["training"] == False) & (data["target_corrected"] == 1.), "allele"].value_counts().to_dict()
+    dict_counts = {0: data_alleles_test_negative, 1: data_alleles_test_positive}
+    longest, shortest = [(1, 0) if len(dict_counts[1].keys()) > len(dict_counts[0].keys()) else (0, 1)][0]
+    position = 0
+    positions = []
+    for val_i, count_i in dict_counts[longest].items():
+        ax[2][2].bar(position, count_i, label=longest, color=colors_dict[longest], width=0.4)
+        if val_i in dict_counts[shortest].keys():
+            count_j = dict_counts[shortest][val_i]
+            ax[2][2].bar(position + 0.45, count_j, label=shortest, color=colors_dict[shortest], width=0.4)
+        positions.append(position + 0.1)
+        position += 1.1
+    ax[2][2].xaxis.set_ticks(positions)
+    ax[2][2].set_xticklabels(dict_counts[longest].keys(),rotation=90,fontsize=2)
+    ax[2][2].xaxis.set_tick_params(width=0.1)
+    ax[2][2].set_title("Allele distribution of \n  the Test dataset",fontsize=10)
 
+
+    ax[0][3].axis("off")
+    ax[1][3].axis("off")
+    ax[2][3].axis("off")
+
+    legends = [mpatches.Patch(color=color, label='Class {}'.format(label)) for label, color in colors_dict.items()]
+    fig.legend(handles=legends, prop={'size': 12}, loc='center right', bbox_to_anchor=(0.9, 0.5))
+    fig.tight_layout(pad=0.1)
+    plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder, args.dataset_name, name_suffix), dpi=500)
+    plt.clf()
 
 def plot_features_histogram(data, features_names, results_dir, name_suffix):
     """Plots the histogram densities featues of all data points
@@ -235,8 +270,7 @@ def plot_features_histogram(data, features_names, results_dir, name_suffix):
         fig.suptitle("Histogram Features")
         negative_patch = mpatches.Patch(color=colors_dict[0], label='Class 0')
         positive_patch = mpatches.Patch(color=colors_dict[1], label='Class 1')
-        plt.legend(handles=[negative_patch, positive_patch], prop={'size': 10}, loc='center right',
-                   bbox_to_anchor=(0.7, 0.5), ncol=1)
+        plt.legend(handles=[negative_patch, positive_patch], prop={'size': 8}, loc='center',bbox_to_anchor=(-1.6, -0.2), ncol=2)
         plt.savefig("{}/Viruses_features_histograms_{}".format(results_dir, name_suffix), dpi=300)
         plt.clf()
     elif isinstance(data,torch.Tensor) or isinstance(data,np.ndarray):
@@ -261,14 +295,12 @@ def plot_features_histogram(data, features_names, results_dir, name_suffix):
         fig.suptitle("Histogram Features (preprocessed)")
         negative_patch = mpatches.Patch(color=colors_dict[0], label='Class 0')
         positive_patch = mpatches.Patch(color=colors_dict[1], label='Class 1')
-        plt.legend(handles=[negative_patch, positive_patch], prop={'size': 10}, loc='center right',
-                   bbox_to_anchor=(0.7, 0.5), ncol=1)
+        plt.legend(handles=[negative_patch, positive_patch], prop={'size': 8}, loc='center right',bbox_to_anchor=(-1.6, -0.2), ncol=2)
         plt.savefig("{}/Viruses_features_histograms_{}".format(results_dir, name_suffix),
                     dpi=300)
         plt.clf()
     else:
         print("Data type not implemented, not plotting features histograms")
-
 
 def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset_name):
     """Plotting the projections of the data"""
