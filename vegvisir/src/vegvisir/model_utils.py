@@ -119,6 +119,35 @@ class FCL3(nn.Module):
         output = self.leakyrelu(output)
         return output
 
+
+class FCL4(nn.Module):
+
+    def __init__(self,z_dim,max_len,hidden_dim,num_classes,device):
+        super(FCL4, self).__init__()
+        self.z_dim = z_dim
+        self.max_len = max_len
+        self.num_classes = num_classes
+        self.hidden_dim = hidden_dim
+        self.device = device
+        self.fc1 = nn.Linear(self.z_dim * self.max_len,self.hidden_dim*2,bias=True)
+        self.fc2 = nn.Linear(self.hidden_dim*2,self.hidden_dim,bias=True)
+        self.fc3 = nn.Linear(self.hidden_dim,self.num_classes,bias=True)
+        self.leakyrelu = nn.LeakyReLU()
+        self.logsoftmax = nn.LogSoftmax(dim=-1)
+    def forward(self,input,mask):
+
+        output = self.fc1(input.flatten(start_dim=1))
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        output = self.fc2(output)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        output = self.fc3(output)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        return output
+
+
 class CNN_FCL(nn.Module):
 
     def __init__(self,input_dim,hidden_dim,num_parameters,device,max_len):

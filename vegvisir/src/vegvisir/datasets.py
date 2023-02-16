@@ -310,7 +310,7 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
 def select_filters():
     filters_dict = {"filter_kmers":[False,9,"Icore"],
-                    "group_alleles":[False],
+                    "group_alleles":[True],
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}
@@ -526,6 +526,9 @@ def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,updat
         data.replace({"allele_encoded": allele_dict},inplace=True)
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
+    raise Warning("Setting low confidence score to the artificial negatives in the test dataset")
+    data.loc[mask,"confidence_score"] = 0.6
+
     data_info = process_data(data,args,storage_folder,script_dir,filters_dict["filter_kmers"][2])
 
     return data_info
@@ -561,7 +564,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
                                                                                    zero_characters=["#"],
                                                                                    include_zero_characters=False)
     epitopes_array = np.array(epitopes_padded)
-    if args.seq_padding == "replicated_borders":  # I keep it separately to avoid doing the loop from vectorized twice in other cases
+    if args.seq_padding == "replicated_borders":  # I keep it separately to avoid doing the np vectorized loop twice
         epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
         epitopes_array_mask = np.array(epitopes_padded_mask)
         epitopes_array_int_mask = np.vectorize(aa_dict.get)(epitopes_array_mask)
