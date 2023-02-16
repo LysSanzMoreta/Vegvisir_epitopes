@@ -32,7 +32,8 @@ def available_datasets():
     datasets = {0:"viral_dataset",
                 1:"viral_dataset2",
                 2:"viral_dataset3",
-                3:"viral_dataset4"}
+                3:"viral_dataset4",
+                4:"viral_dataset5"}
     return datasets
 
 def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
@@ -44,7 +45,8 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     func_dict = {"viral_dataset": viral_dataset,
                  "viral_dataset2":viral_dataset2,
                  "viral_dataset3":viral_dataset3,
-                 "viral_dataset4":viral_dataset4}
+                 "viral_dataset4":viral_dataset4,
+                 "viral_dataset5":viral_dataset5}
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
 
     dataset_load_fx = lambda f,dataset_name,current_path,storage_folder,args,results_dir,update: lambda dataset_name,current_path,storage_folder,args,results_dir,update: f(dataset_name,current_path,storage_folder,args,results_dir,update)
@@ -54,7 +56,7 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
 
     return dataset
 
-def viral_dataset(dataset_name,current_path,storage_folder,args,results_dir,update):
+def viral_dataset(dataset_name,current_path,storage_folder,args,results_dir,update): #TODO: Remove?
     """Loads the viral dataset generated from **IEDB** using parameters:
            -Epitope: Linear peptide
            -Assay: T-cell
@@ -127,7 +129,7 @@ def viral_dataset(dataset_name,current_path,storage_folder,args,results_dir,upda
     if args.run_nnalign:
         VegvisirNNalign.run_nnalign(args,storage_folder)
 
-def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,update):
+def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,update): #TODO: Remove?
     """Loads the viral dataset generated from **IEDB** database using parameters:
            -Epitope: Linear peptide
            -Assay: T-cell
@@ -306,52 +308,16 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data_info = process_data(data_a,args,storage_folder,script_dir,"Icore")
     return data_info
 
-def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,update):
-    """
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-
-    return
-          :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
-                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
-                  training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
-                  target: Pre-assigned target(given)
-                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
-            """
-    dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
-    data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
-    data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
-    data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
+def select_filters():
     filters_dict = {"filter_kmers":[False,9,"Icore"],
-                    "group_alleles": [False],
+                    "group_alleles":[False],
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}
-    if filters_dict["group_alleles"][0]:
-        # Group data by Icore, therefore the alleles are grouped
-        data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
-        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
-        # Reattach info on training
-        data = pd.merge(data_a, data_b, on='Icore', how='outer')
-    else:
-        allele_counts_dict = data["allele"].value_counts().to_dict()
-        allele_dict = dict(zip(allele_counts_dict.keys(),list(range(len(allele_counts_dict.keys())))))
-        data["allele_encoded"] = data["allele"]
-        data.replace({"allele_encoded": allele_dict},inplace=True)
-    #TODO: Move filters to args or Vegvisir_example?
-    json.dump(filters_dict, dataset_info_file, indent=2)
+    return filters_dict
+
+def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file):
+    """Filters, groups and prepares the files from the viral_dataset*() functions"""
 
     if filters_dict["filter_ntested"][0]:
         # Highlight: Filter the points with low subject count and only keep if all "negative"
@@ -402,6 +368,52 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
     if args.run_nnalign:
         prepare_nnalign(args,storage_folder,data,[filters_dict["filter_kmers"][2],"target_corrected","partition"])
 
+    return data
+
+def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,update):
+    """
+    ####################
+    #HEADER DESCRIPTIONS#
+    ####################
+    allele
+    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
+    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
+    Number of Subjects Responded
+    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
+    training
+    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
+    partition
+
+    return
+          :param pandas dataframe: Results pandas dataframe with the following structure:
+                  Icore:Interaction peptide core
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  training: True assign data point to train , else assign to Test (given)
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  target: Pre-assigned target(given)
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+            """
+    dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
+    data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
+    data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
+    filters_dict = select_filters()
+    json.dump(filters_dict, dataset_info_file, indent=2)
+
+    if filters_dict["group_alleles"][0]:
+        # Group data by Icore, therefore the alleles are grouped
+        data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
+        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        # Reattach info on training
+        data = pd.merge(data_a, data_b, on='Icore', how='outer')
+    else:
+        allele_counts_dict = data["allele"].value_counts().to_dict()
+        allele_dict = dict(zip(allele_counts_dict.keys(),list(range(len(allele_counts_dict.keys())))))
+        data["allele_encoded"] = data["allele"]
+        data.replace({"allele_encoded": allele_dict},inplace=True)
+
+    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
 
     data_info = process_data(data,args,storage_folder,script_dir,filters_dict["filter_kmers"][2])
 
@@ -440,15 +452,12 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     features_names = data_features.columns.tolist()[2:]
 
     data = pd.merge(data_features,data_partitions, on=['Icore',"allele"], how='outer')
+
     data = data.dropna(subset=["Icore_non_anchor","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training","Pred_netstab"]).reset_index(drop=True)
 
-    #TODO: Move filters to args
-    filters_dict = {"filter_kmers":[False,9,"Icore"],
-                    "group_alleles":[False],
-                    "filter_ntested":[False,10],
-                    "filter_lowconfidence":[False],
-                    "corrected_immunodominance_score":[False,10]}
+    filters_dict = select_filters()
     json.dump(filters_dict, dataset_info_file, indent=2)
+
     if filters_dict["group_alleles"][0]:
         # Group data by Icore
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
@@ -464,65 +473,60 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
         data.replace({"allele_encoded": allele_dict},inplace=True)
         #features_names.append("allele_encoded")
 
-    if filters_dict["filter_ntested"][0]:
-        # Highlight: Filter the points with low subject count and only keep if all "negative"
-        threshold = filters_dict["filter_ntested"][1]
-        nprefilter = data.shape[0]
-        data = data[(data["Assay_number_of_subjects_tested"] > threshold)]
-        nfiltered = data.shape[0]
-        dataset_info_file.write("Filter 1: Icores with number of subjects lower than {}. Drops {} data points, remaining {} \n".format(threshold,nprefilter - nfiltered, nfiltered))
-
-
-    data["immunodominance_score"] = data["Assay_number_of_subjects_responded"] / data["Assay_number_of_subjects_tested"]
-    data = data.fillna({"immunodominance_score":0})
-
-    if filters_dict["corrected_immunodominance_score"][0]:
-        treshold = filters_dict["corrected_immunodominance_score"][1]
-        data.loc[(data["Assay_number_of_subjects_tested"] < treshold) | (data["Assay_number_of_subjects_responded"] == 0), "immunodominance_score"] = 0.01
-
-    # Highlight: Scale-standarize values . This is done here for visualization purposes, it is done afterwards separately for train, eval and test
-    data = VegvisirUtils.minmax_scale(data, column_name="immunodominance_score", suffix="_scaled")
-
-    if filters_dict["filter_kmers"][0]:
-        #Highlight: Grab only k-mers
-        use_column = filters_dict["filter_kmers"][2]
-        kmer_size = filters_dict["filter_kmers"][1]
-        nprefilter = data.shape[0]
-        data = data[data[use_column].apply(lambda x: len(x) == kmer_size)]
-        nfiltered = data.shape[0]
-        dataset_info_file.write("Filter 2: {} whose length is different than 9. Drops {} data points, remaining {} \n".format(use_column,kmer_size,nprefilter-nfiltered,nfiltered))
-
-    #Highlight: Strict target reassignment
-    data.loc[data["immunodominance_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
-    #print(data_a.sort_values(by="immunodominance_score", ascending=True)[["immunodominance_score","target"]])
-    data.loc[data["immunodominance_score_scaled"] > 0.,"target_corrected"] = 1.
-
-    #Highlight: Filter data points with low confidence (!= 0, 1)
-    if filters_dict["filter_lowconfidence"][0]:
-        nprefilter = data.shape[0]
-        data = data[data["immunodominance_score"].isin([0.,1.])]
-        nfiltered = data.shape[0]
-        dataset_info_file.write("Filter 3: Remove data points with low immunodominance score. Drops {} data points, remaining {} \n".format(nprefilter - nfiltered, nfiltered))
-
-
-    #Highlight: Annotate which data points have low confidence
-    data = set_confidence_score(data)
+    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
 
     name_suffix = "__".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
-
-    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
-
-    VegvisirPlots.plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     VegvisirPlots.plot_features_histogram(data,features_names,"{}/{}".format(storage_folder,args.dataset_name),name_suffix)
-
-    #Highlight: Prep data to run in NNalign
-    if args.run_nnalign:
-        #raise ValueError("Run NNalign only with sequences (viral_dataset3), not features")
-        prepare_nnalign(args,storage_folder,data,[filters_dict["filter_kmers"][2],"target_corrected","partition"])
-
-
-
     data_info = process_data(data,args,storage_folder,script_dir,sequence_column=filters_dict["filter_kmers"][2],features_names=features_names)
+
+    return data_info
+
+def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,update):
+    """
+    Contains "artificial" or fake negative epitopes
+    HEADER descriptions:
+    allele: MHC allele
+    Icore: Intercaction peptide core
+    Number of Subjects Tested
+    Number of Subjects Responded
+    target
+    training
+    Icore_non_anchor
+    partition
+    confidence_score
+    immunodominance
+    Length
+    Rnk_EL
+    """
+    dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
+    data_partitions = pd.read_csv("{}/{}/dataset_target_correction_artificial_negatives.tsv".format(storage_folder,args.dataset_name),sep = "\t")
+
+    data_partitions.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition","confidence_score","immunodominance","Length","Rnk_EL"]
+    data = data_partitions[["Icore","Icore_non_anchor","allele","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","partition","target","training"]]
+    #mask = data["Assay_number_of_subjects_tested"] == 0
+    #Highlight: Dealing with the artificial data points
+    mask = data["Assay_number_of_subjects_tested"] == 0
+    data.loc[mask,"training"] = 0
+    data = data.copy() #needed to avoid funky column re-assignation warning errors
+    data.loc[:,'training'] = data.loc[:,'training'].replace({1: True, 0: False})
+    data = data.dropna(subset=["Icore_non_anchor","training"]).reset_index(drop=True)
+
+    filters_dict = select_filters()
+
+    if filters_dict["group_alleles"][0]:
+        # Group data by Icore only, therefore the alleles are grouped
+        data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
+        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        # Reattach info on training
+        data = pd.merge(data_a, data_b, on='Icore', how='outer')
+    else:
+        allele_counts_dict = data["allele"].value_counts().to_dict()
+        allele_dict = dict(zip(allele_counts_dict.keys(),list(range(len(allele_counts_dict.keys())))))
+        data["allele_encoded"] = data["allele"]
+        data.replace({"allele_encoded": allele_dict},inplace=True)
+
+    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
+    data_info = process_data(data,args,storage_folder,script_dir,filters_dict["filter_kmers"][2])
 
     return data_info
 
@@ -688,6 +692,8 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
     data_array_blosum_encoding_mask = np.broadcast_to(epitopes_mask[:, None, :, None], (n_data, 2, seq_max_len,corrected_aa_types))  # I do it like this in case the padding is not represented as 0, otherwise just use bool. Note: The first row of the second dimension is a dummy
     #distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
+
+
     data_info = DatasetInfo(script_dir=script_dir,
                             storage_folder=storage_folder,
                             data_array_raw=data_array_raw,
@@ -713,7 +719,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
         VegvisirPlots.plot_data_umap(data_array_blosum_norm,data_info.seq_max_len,data_info.max_len,storage_folder,args.dataset_name)
     return data_info
 
-def prepare_nnalign(args,storage_folder,data,column_names):
+def prepare_nnalign_no_test(args,storage_folder,data,column_names):
     data_train = data[(data["training"] == 1) & (data["partition"] != 4)][column_names]
     data_valid = data[(data["training"] == 1) & (data["partition"] == 4)][column_names]
     data_train = data_train.astype({'partition': 'int'})
@@ -722,7 +728,16 @@ def prepare_nnalign(args,storage_folder,data,column_names):
 
     data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
     data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name), sep="\t",index=False,header=None) #TODO: Header None?
+    VegvisirNNalign.run_nnalign(args,storage_folder)
+def prepare_nnalign(args,storage_folder,data,column_names):
+    data_train = data[data["training"] == True][column_names]
+    data_valid = data[data["training"] == False][column_names]
+    data_train = data_train.astype({'partition': 'int'})
+    data_valid.drop("partition",axis=1,inplace=True)
+    data_train["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
 
+    data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
+    data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name), sep="\t",index=False,header=None) #TODO: Header None?
     VegvisirNNalign.run_nnalign(args,storage_folder)
 
 def set_confidence_score(data):

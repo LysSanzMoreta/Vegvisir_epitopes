@@ -105,12 +105,12 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
         if test_counts[0] > test_counts[1]:
             bar1 = ax[1][1].bar(0, test_counts[0], label="Negative", color=colors_dict[0], width=0.1, edgecolor='white')
             bar1 = bar1.patches[0]
-            bar2 = ax[0][2].bar(0, test_counts[1], label="Positive", color=colors_dict[1], width=0.1, edgecolor='white')
+            bar2 = ax[1][1].bar(0, test_counts[1], label="Positive", color=colors_dict[1], width=0.1, edgecolor='white')
             bar2 = bar2.patches[0]
         else:
-            bar1 = ax[1][1].bar(0, test_counts[1], label="Positive", color=colors_dict[0], width=0.1, edgecolor='white')
+            bar1 = ax[1][1].bar(0, test_counts[1], label="Positive", color=colors_dict[1], width=0.1, edgecolor='white')
             bar1 = bar1.patches[0]
-            bar2 = ax[1][1].bar(0, test_counts[0], label="Negative", color=colors_dict[1], width=0.1, edgecolor='white')
+            bar2 = ax[1][1].bar(0, test_counts[0], label="Negative", color=colors_dict[0], width=0.1, edgecolor='white')
             bar2 = bar2.patches[0]
         ax[1][1].xaxis.set_ticks([0])
         n_data_test = sum([val for key, val in test_counts.items()])
@@ -154,11 +154,10 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
                 bar1 = bar1.patches[0]
                 bar2 = ax[0][2].bar(i, group_counts[1], label="Positive", color=colors_dict[1], width=0.1)
                 bar2 = bar2.patches[0]
-
             else:
-                bar1 = ax[0][2].bar(i, group_counts[1], label="Positive", color=colors_dict[0], width=0.1, edgecolor='white')
+                bar1 = ax[0][2].bar(i, group_counts[1], label="Positive", color=colors_dict[1], width=0.1, edgecolor='white')
                 bar1 = bar1.patches[0]
-                bar2 = ax[0][2].bar(i, group_counts[0], label="Negative", color=colors_dict[1], width=0.1, edgecolor='white')
+                bar2 = ax[0][2].bar(i, group_counts[0], label="Negative", color=colors_dict[0], width=0.1, edgecolor='white')
                 bar2 = bar2.patches[0]
 
             i += 0.4
@@ -177,8 +176,7 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
                 textcoords='offset points')
         else:
             key = group_counts.keys()[0]
-            bar1 = ax[0][2].bar(i, group_counts[key], label=labels_dict[key], color=colors_dict[key], width=0.1,
-                                edgecolor='white')
+            bar1 = ax[0][2].bar(i, group_counts[key], label=labels_dict[key], color=colors_dict[key], width=0.1,edgecolor='white')
             bar1 = bar1.patches[0]
             n_data_partition = sum([val for key, val in group_counts.items()])
             ax[0][2].annotate(
@@ -192,42 +190,43 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     ax[0][2].set_xticklabels(["Part. {}".format(int(i)) for i in partitions_names])
     ax[0][2].set_title('TrainEval dataset \n +/- proportions per partition',fontsize=10)
     ################### ALLELES PROPORTIONS PER CLASS ##############################################
-    #Train
-    data_alleles_train_negative = data.loc[(data["training"] == True) & (data["target_corrected"] == 0.), "allele"].value_counts().to_dict()
-    data_alleles_train_positive = data.loc[(data["training"] == True) & (data["target_corrected"] == 1.), "allele"].value_counts().to_dict()
-    dict_counts = {0: data_alleles_train_negative, 1: data_alleles_train_positive}
-    longest, shortest = [(1, 0) if len(dict_counts[1].keys()) > len(dict_counts[0].keys()) else (0, 1)][0]
-    position = 0
-    positions = []
-    for val_i, count_i in dict_counts[longest].items():
-        ax[1][2].bar(position, count_i, label=longest, color=colors_dict[longest], width=0.4)
-        if val_i in dict_counts[shortest].keys():
-            count_j = dict_counts[shortest][val_i]
-            ax[1][2].bar(position + 0.45, count_j, label=shortest, color=colors_dict[shortest], width=0.4)
-        positions.append(position + 0.1)
-        position += 1.1
-    ax[1][2].xaxis.set_ticks(positions)
-    ax[1][2].set_xticklabels(dict_counts[longest].keys(),rotation=90,fontsize=2)
-    ax[1][2].xaxis.set_tick_params(width=0.1)
-    ax[1][2].set_title("Allele distribution of \n  the Train-valid dataset")
-    #Test
-    data_alleles_test_negative = data.loc[(data["training"] == False) & (data["target_corrected"] == 0.), "allele"].value_counts().to_dict()
-    data_alleles_test_positive = data.loc[(data["training"] == False) & (data["target_corrected"] == 1.), "allele"].value_counts().to_dict()
-    dict_counts = {0: data_alleles_test_negative, 1: data_alleles_test_positive}
-    longest, shortest = [(1, 0) if len(dict_counts[1].keys()) > len(dict_counts[0].keys()) else (0, 1)][0]
-    position = 0
-    positions = []
-    for val_i, count_i in dict_counts[longest].items():
-        ax[2][2].bar(position, count_i, label=longest, color=colors_dict[longest], width=0.4)
-        if val_i in dict_counts[shortest].keys():
-            count_j = dict_counts[shortest][val_i]
-            ax[2][2].bar(position + 0.45, count_j, label=shortest, color=colors_dict[shortest], width=0.4)
-        positions.append(position + 0.1)
-        position += 1.1
-    ax[2][2].xaxis.set_ticks(positions)
-    ax[2][2].set_xticklabels(dict_counts[longest].keys(),rotation=90,fontsize=2)
-    ax[2][2].xaxis.set_tick_params(width=0.1)
-    ax[2][2].set_title("Allele distribution of \n  the Test dataset",fontsize=10)
+    if not filters_dict["group_alleles"][0]:
+        #Train
+        data_alleles_train_negative = data.loc[(data["training"] == True) & (data["target_corrected"] == 0.), "allele"].value_counts().to_dict()
+        data_alleles_train_positive = data.loc[(data["training"] == True) & (data["target_corrected"] == 1.), "allele"].value_counts().to_dict()
+        dict_counts = {0: data_alleles_train_negative, 1: data_alleles_train_positive}
+        longest, shortest = [(1, 0) if len(dict_counts[1].keys()) > len(dict_counts[0].keys()) else (0, 1)][0]
+        position = 0
+        positions = []
+        for val_i, count_i in dict_counts[longest].items():
+            ax[1][2].bar(position, count_i, label=longest, color=colors_dict[longest], width=0.4)
+            if val_i in dict_counts[shortest].keys():
+                count_j = dict_counts[shortest][val_i]
+                ax[1][2].bar(position + 0.45, count_j, label=shortest, color=colors_dict[shortest], width=0.4)
+            positions.append(position + 0.1)
+            position += 1.1
+        ax[1][2].xaxis.set_ticks(positions)
+        ax[1][2].set_xticklabels(dict_counts[longest].keys(),rotation=90,fontsize=2)
+        ax[1][2].xaxis.set_tick_params(width=0.1)
+        ax[1][2].set_title("Allele distribution of \n  the Train-valid dataset")
+        #Test
+        data_alleles_test_negative = data.loc[(data["training"] == False) & (data["target_corrected"] == 0.), "allele"].value_counts().to_dict()
+        data_alleles_test_positive = data.loc[(data["training"] == False) & (data["target_corrected"] == 1.), "allele"].value_counts().to_dict()
+        dict_counts = {0: data_alleles_test_negative, 1: data_alleles_test_positive}
+        longest, shortest = [(1, 0) if len(dict_counts[1].keys()) > len(dict_counts[0].keys()) else (0, 1)][0]
+        position = 0
+        positions = []
+        for val_i, count_i in dict_counts[longest].items():
+            ax[2][2].bar(position, count_i, label=longest, color=colors_dict[longest], width=0.4)
+            if val_i in dict_counts[shortest].keys():
+                count_j = dict_counts[shortest][val_i]
+                ax[2][2].bar(position + 0.45, count_j, label=shortest, color=colors_dict[shortest], width=0.4)
+            positions.append(position + 0.1)
+            position += 1.1
+        ax[2][2].xaxis.set_ticks(positions)
+        ax[2][2].set_xticklabels(dict_counts[longest].keys(),rotation=90,fontsize=2)
+        ax[2][2].xaxis.set_tick_params(width=0.1)
+        ax[2][2].set_title("Allele distribution of \n  the Test dataset",fontsize=10)
 
 
     ax[0][3].axis("off")
@@ -281,8 +280,8 @@ def plot_features_histogram(data, features_names, results_dir, name_suffix):
         data_positive = data[data[:,0,0,0] == 1]
         data_positive_features = data_positive[:,1, seq_max_len:, 0]
         for idx, feature_name in enumerate(features_names):
-            freq, bins, patches = axs[idx].hist(data_negative_features[:,idx], bins=num_bins, density=True,label="Negative",color=colors_dict[0],alpha=0.5)
-            freq, bins, patches = axs[idx].hist(data_positive_features[:,idx], bins=num_bins, density=True,label="Positive",color = colors_dict[1],alpha=0.5)
+            freq, bins, patches = axs[idx].hist(data_negative_features[:,idx].numpy(), bins=num_bins, density=True,label="Negative",color=colors_dict[0],alpha=0.5)
+            freq, bins, patches = axs[idx].hist(data_positive_features[:,idx].numpy(), bins=num_bins, density=True,label="Positive",color = colors_dict[1],alpha=0.5)
             axs[idx].set_xlabel('')
             axs[idx].set_title('{} \n'.format(feature_name), fontsize=6)
             axs[idx].tick_params(axis='both', which='both', labelsize=5)
