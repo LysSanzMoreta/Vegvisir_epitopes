@@ -3,6 +3,9 @@ import torch
 from pyro.nn import PyroModule
 import  vegvisir
 from vegvisir.utils import extract_windows_vectorized
+
+
+
 def glorot_init(input_dim, output_dim):
     init_range = torch.sqrt(torch.tensor(6/(input_dim + output_dim)))
     initial = torch.rand(input_dim, output_dim)*2*init_range - init_range
@@ -93,6 +96,8 @@ class FCL2(nn.Module):
         output = self.leakyrelu(output)
         output = self.fc2(output)
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        # U, S, VT = torch.linalg.svd(output)
+        # output = output @ VT
         output = self.leakyrelu(output)
         output = self.sigmoid(output)
         return output
@@ -119,7 +124,6 @@ class FCL3(nn.Module):
         output = self.leakyrelu(output)
         return output
 
-
 class FCL4(nn.Module):
 
     def __init__(self,z_dim,max_len,hidden_dim,num_classes,device):
@@ -135,6 +139,11 @@ class FCL4(nn.Module):
         self.leakyrelu = nn.LeakyReLU()
         self.logsoftmax = nn.LogSoftmax(dim=-1)
     def forward(self,input,mask):
+        """
+        Notes:
+        - https://mane-aajay.medium.com/how-to-calculate-the-svd-from-scratch-with-python-bafcd7fc6945
+        -https://towardsdatascience.com/how-to-use-singular-value-decomposition-svd-for-image-classification-in-python-20b1b2ac4990
+        - https://www.cs.cmu.edu/afs/cs.cmu.edu/academic/class/15750-s20/www/notebooks/SVD-irises-clustering.html"""
 
         output = self.fc1(input.flatten(start_dim=1))
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
@@ -142,11 +151,15 @@ class FCL4(nn.Module):
         output = self.fc2(output)
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
+        # Singular-value decomposition
+        # U, S, VT = svd(A) #left singular, singular (max var), right singular
+        # Data projection = A@VT
+        # U,S,VT = torch.linalg.svd(output)
+        # output = output@VT
         output = self.fc3(output)
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         return output
-
 
 class CNN_FCL(nn.Module):
 
@@ -791,4 +804,17 @@ class NNAlign2(nn.Module):
         #output = self.sigmoid(output)
         output = torch.max(output,dim=1).values
         return output
+
+class DistanceMatrixClassifier(nn.Module):
+    """
+    - Notes:
+    https://arxiv.org/pdf/2108.12659.pdf
+    https://github.com/MaziarMF/deep-k-means
+    """
+    def __init__(self,z_dim):
+        super(DistanceMatrixClassifier, self).__init__()
+        self.z_dim = z_dim
+
+    def forward(self,input):
+        return input
 

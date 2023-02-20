@@ -59,7 +59,8 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
         predicted_labels = sampling_output.predicted_labels
         latent_space = sampling_output.latent_space
         reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
-        reconstruction_accuracy = ((batch_data_int[:,1,:model_load.seq_max_len] == reconstructed_sequences).sum(dim=1))/model_load.seq_max_len
+        mask_seq = batch_mask[:, 1:,:,0].squeeze(1)
+        reconstruction_accuracy = ((batch_data_int[:,1,:model_load.seq_max_len]*mask_seq == reconstructed_sequences*mask_seq).sum(dim=1))/mask_seq.sum(dim=1)
         reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
         latent_spaces.append(latent_space.detach().cpu().numpy())
         total += true_labels.size(0)
@@ -107,7 +108,8 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
             sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
             predicted_labels = sampling_output.predicted_labels
             reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
-            reconstruction_accuracy = ((batch_data_int[:, 1, :model_load.seq_max_len] == reconstructed_sequences).sum(dim=1)) / model_load.seq_max_len
+            mask_seq = batch_mask[:, 1:, :, 0].squeeze(1)
+            reconstruction_accuracy = ((batch_data_int[:, 1, :model_load.seq_max_len]*mask_seq == reconstructed_sequences*mask_seq).sum(dim=1)) / mask_seq.sum(dim=1)
             reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
             latent_space = sampling_output.latent_space
             latent_spaces.append(latent_space.detach().cpu().numpy())
@@ -149,7 +151,8 @@ def test_loop(Vegvisir,guide,data_loader,args,model_load):
             sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
             predicted_labels = sampling_output.predicted_labels
             reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
-            reconstruction_accuracy = ((batch_data_int[:, 1, :model_load.seq_max_len] == reconstructed_sequences).sum(dim=1)) / model_load.seq_max_len
+            mask_seq = batch_mask[:, 1:, :, 0].squeeze(1)
+            reconstruction_accuracy = ((batch_data_int[:, 1, :model_load.seq_max_len]*mask_seq == reconstructed_sequences*mask_seq).sum(dim=1)) / mask_seq.sum(dim=1)
             reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
             latent_space = sampling_output.latent_space
             latent_spaces.append(latent_space.detach().cpu().numpy())
