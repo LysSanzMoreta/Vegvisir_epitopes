@@ -727,7 +727,7 @@ def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir):
     ax[0].set_xticks([0,1],confusion_matrix.columns)
     ax[0].set_yticks([0,1],confusion_matrix.index)
     fig.suptitle("Confusion matrix")
-    patches = [mpatches.Patch(color=colors_dict[0], label='{}:{}'.format(key,np.round(val,2))) for key,val in performance_metrics.items()]
+    patches = [mpatches.Circle((0.5, 0.5),radius = 0.25,color=colors_dict[0], label='{}:{}'.format(key,np.round(val,2))) for key,val in performance_metrics.items()]
     ax[0].legend(handles=patches, prop={'size': 10}, loc='right',bbox_to_anchor=(1.5, 0.5), ncol=1)
     plt.savefig("{}/confusion_matrix.png".format(results_dir),dpi=100)
     plt.clf()

@@ -48,7 +48,7 @@ def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
-                        default="viral_dataset4",
+                        default="viral_dataset5",
                         help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data')
     parser.add_argument('-subset_data', type=str, default="no",
                         help="Pick only the first <n> datapoints (epitopes) for testing the pipeline\n"
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     parser.add_argument('-subs_matrix', default="BLOSUM62", type=str,
                         help='blosum matrix to create blosum embeddings, choose one from /home/lys/anaconda3/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data')
 
-    parser.add_argument('-k-folds', type=int, nargs='?', default=1, help='Number of k-fold for k-fold cross validation')
+    parser.add_argument('-k-folds', type=int, nargs='?', default=5, help='Number of k-fold for k-fold cross validation')
     parser.add_argument('-batch-size', type=int, nargs='?', default=100, help='Batch size')
     parser.add_argument('-optimizer_name', type=str, nargs='?', default="Adam", help='Gradient optimizer name')
     parser.add_argument('-loss-func', type=str, nargs='?', default="bcelogits", help="Error loss function to be optimized, options are: \n"

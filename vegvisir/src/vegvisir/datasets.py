@@ -8,6 +8,8 @@ import itertools
 import json
 import os
 import time,datetime
+import warnings
+
 import dill
 import pandas as pd
 import operator,functools
@@ -483,10 +485,10 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
 def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,update):
     """
-    Contains "artificial" or fake negative epitopes
+    Contains "artificial" or fake negative epitopes solely in the test dataset
     HEADER descriptions:
     allele: MHC allele
-    Icore: Intercaction peptide core
+    Icore: Interaction peptide core
     Number of Subjects Tested
     Number of Subjects Responded
     target
@@ -526,7 +528,7 @@ def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,updat
         data.replace({"allele_encoded": allele_dict},inplace=True)
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
-    raise Warning("Setting low confidence score to the artificial negatives in the test dataset")
+    warnings.warn("Setting low confidence score to the artificial negatives in the test dataset")
     data.loc[mask,"confidence_score"] = 0.6
 
     data_info = process_data(data,args,storage_folder,script_dir,filters_dict["filter_kmers"][2])
@@ -589,6 +591,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     ksize = 3 #TODO: manage in args
     if not os.path.exists("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
         print("Epitopes similarity matrices not existing, calculating (approx 2-3 min) ....")
+        VegvisirUtils.folders("{}/similarities".format(args.dataset_name), storage_folder)
         percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirUtils.calculate_similarity_matrix(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
         np.save("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name), percent_identity_mean)
         np.save("{}/{}/similarities/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name), cosine_similarity_mean)
@@ -732,6 +735,7 @@ def prepare_nnalign_no_test(args,storage_folder,data,column_names):
     data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
     data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name), sep="\t",index=False,header=None) #TODO: Header None?
     VegvisirNNalign.run_nnalign(args,storage_folder)
+
 def prepare_nnalign(args,storage_folder,data,column_names):
     data_train = data[data["training"] == True][column_names]
     data_valid = data[data["training"] == False][column_names]

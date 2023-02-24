@@ -6,3 +6,4 @@ vegvisir/dist/*
 vegvisir/src/vegvisir.egg-info/*
 vegvisir/src/vegvisir/__pycache__
 PLOTS_*
+*.pdf

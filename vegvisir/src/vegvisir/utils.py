@@ -12,8 +12,11 @@ import os,shutil
 from collections import defaultdict
 import time,datetime
 from sklearn import preprocessing
+from sklearn.metrics import auc,roc_auc_score,cohen_kappa_score,roc_curve,confusion_matrix
+
 import pandas as pd
 import torch
+import vegvisir.plots as VegvisirPlots
 
 def str2bool(v):
     """Converts a string into a boolean, useful for boolean arguments
@@ -655,6 +658,7 @@ def minmax_scale(array,suffix=None,column_name=None,low=0.,high=1.):
         return torch.from_numpy(preprocessing.MinMaxScaler().fit_transform(array.to_numpy()))
     else:
         raise ValueError("Not implemented for this data type")
+
 def features_preprocessing(array,method="minmax"):
     """Applies a preprocessing procedure to each feature independently
     Notes:
@@ -710,7 +714,29 @@ def euclidean_2d_norm(A,B,squared=True):
     else:
         return distance.clip(min=0)
 
-
+def fold_auc(predictions_fold,labels,accuracy,fold,results_dir,mode="Train"):
+    if isinstance(labels,torch.Tensor):
+        labels = labels.numpy()
+    # total_predictions = np.column_stack(predictions_fold)
+    # model_predictions = stats.mode(total_predictions, axis=1) #mode_predictions.mode
+    auc_score = roc_auc_score(y_true=labels, y_score=predictions_fold)
+    auk_score = AUK(predictions_fold, labels).calculate_auk()
+    fpr, tpr, threshold = roc_curve(y_true=labels, y_score=predictions_fold)
+    VegvisirPlots.plot_ROC_curve(fpr,tpr,auc_score,auk_score,"{}/{}".format(results_dir,mode),fold)
+    print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score))
+    print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score),file=open("{}/AUC_out.txt".format(results_dir),"a"))
+    tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=predictions_fold).ravel()
+    confusion_matrix_df = pd.DataFrame([[tn, fp], [fn, tp]],
+                                    columns=["Negative", "Positive"],
+                                    index=["Negative", "Positive"])
+    recall = tp/(tp + fn)
+    precision = tp/(tp + fp)
+    f1score = 2*tp/(2*tp + fp + fn)
+    tpr = tp/(tp + fn)
+    tnr = tn/(tn + fp)
+    performance_metrics = {"recall/tpr":recall,"precision":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr}
+    VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode))
+    return auc_score,auk_score
 
 
 

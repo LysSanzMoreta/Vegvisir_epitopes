@@ -278,27 +278,6 @@ def clip_backprop(model, clip_value):
             handle = p.register_hook(func)
             handles.append(handle)
     return handles
-def fold_auc(predictions_fold,labels,accuracy,fold,results_dir,mode="Train"):
-    if isinstance(labels,torch.Tensor):
-        labels = labels.numpy()
-    # total_predictions = np.column_stack(predictions_fold)
-    # model_predictions = stats.mode(total_predictions, axis=1) #mode_predictions.mode
-    auc_score = roc_auc_score(y_true=labels, y_score=predictions_fold)
-    auk_score = VegvisirUtils.AUK(predictions_fold, labels).calculate_auk()
-    fpr, tpr, threshold = roc_curve(y_true=labels, y_score=predictions_fold)
-    VegvisirPlots.plot_ROC_curve(fpr,tpr,auc_score,auk_score,"{}/{}".format(results_dir,mode),fold)
-    print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score))
-    print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score),file=open("{}/AUC_out.txt".format(results_dir),"a"))
-    tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=predictions_fold).ravel()
-    confusion_matrix_df = pd.DataFrame([[tn, fp], [fn, tp]],
-                                    columns=["Negative", "Positive"],
-                                    index=["Negative", "Positive"])
-    recall = tp/(tp + fn)
-    precision = tp/(tp + fp)
-    f1score = (2*precision*recall)/precision+recall
-    performance_metrics = {"recall/tpr":recall,"precision":precision,"accuracy":accuracy,"f1score":f1score}
-    VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode))
-    return auc_score,auk_score
 def kfold_crossvalidation(dataset_info,additional_info,args):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
@@ -453,8 +432,8 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
             torch.cuda.empty_cache()
             epoch += 1 #TODO: early stop?
         #predictions_fold,labels,accuracy,fold,results_dir
-        fold_auc(valid_predictions_fold_mode,fold_valid_data_blosum[:,0,0,0],valid_accuracy,fold,results_dir,mode="Valid")
-        fold_auc(train_predictions_fold_mode,fold_train_data_blosum[:,0,0,0],train_accuracy,fold,results_dir,mode="Train")
+        VegvisirUtils.fold_auc(valid_predictions_fold_mode,fold_valid_data_blosum[:,0,0,0],valid_accuracy,fold,results_dir,mode="Valid")
+        VegvisirUtils.fold_auc(train_predictions_fold_mode,fold_train_data_blosum[:,0,0,0],train_accuracy,fold,results_dir,mode="Train")
 
 
     if args.test: #TODO: Function for training
@@ -524,7 +503,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                     Vegvisir.save_checkpoint("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir), optimizer)
             epoch += 1
             torch.cuda.empty_cache()
-        fold_auc(train_predictions_fold_mode,traineval_data_blosum[:,0,0,0],train_accuracy,"final",results_dir,mode="Train")
+        VegvisirUtils.fold_auc(train_predictions_fold_mode,traineval_data_blosum[:,0,0,0],train_accuracy,"final",results_dir,mode="Train")
         #Highlight: Testing
         test_data_blosum[:,0,0,4] = VegvisirUtils.minmax_scale(test_data_blosum[:,0,0,4])
         test_data_int[:,0,4] = test_data_blosum[:,0,0,4]
@@ -615,6 +594,12 @@ def train_model(dataset_info,additional_info,args):
     guide = select_quide(Vegvisir,model_load,n_data,args.guide)
     #svi = SVI(poutine.scale(Vegvisir.model,scale=1.0/n_data), poutine.scale(guide,scale=1.0/n_data), optimizer, loss_func)
     #svi = SVI(Vegvisir.model, config_enumerate(guide), optimizer, loss_func)
+    # trace = pyro.poutine.trace(Vegvisir.model).get_trace({"blosum":train_data_blosum.cuda(),"norm":data_blosum_norm[train_idx].cuda(),"int":data_int[train_idx].cuda()},data_array_blosum_encoding_mask[train_idx].cuda())
+    # obs_mask = trace.nodes["sequences"]
+    n = 50
+    #Highlight: Draw the graph model
+    graph = pyro.render_model(Vegvisir.model, model_args=({"blosum":train_data_blosum.cuda()[:n],"norm":data_blosum_norm[train_idx].cuda()[:n],"int":data_int[train_idx].cuda()[:n]},data_array_blosum_encoding_mask[train_idx].cuda()[:n]), filename="{}/model_graph.pdf".format(results_dir))
+
     svi = SVI(Vegvisir.model, guide, optimizer, loss_func)
 
     #TODO: Dictionary that gathers the results from each fold
@@ -692,8 +677,8 @@ def train_model(dataset_info,additional_info,args):
 
         torch.cuda.empty_cache()
         epoch += 1 #TODO: early stop?
-    fold_auc(train_predictions_mode,train_data_blosum[:,0,0,0],train_accuracy,"all",results_dir,mode="Train")
-    fold_auc(valid_predictions_mode,valid_data_blosum[:,0,0,0],valid_accuracy,"all",results_dir,mode="Valid")
+    VegvisirUtils.fold_auc(train_predictions_mode,train_data_blosum[:,0,0,0],train_accuracy,"all",results_dir,mode="Train")
+    VegvisirUtils.fold_auc(valid_predictions_mode,valid_data_blosum[:,0,0,0],valid_accuracy,"all",results_dir,mode="Valid")
     stop = time.time()
     print('Final timing: {}'.format(str(datetime.timedelta(seconds=stop-start))))
 
@@ -713,6 +698,6 @@ def train_model(dataset_info,additional_info,args):
         print("Calculating Monte Carlo estimate of the posterior predictive")
         test_predictions = sample_loop(Vegvisir, guide, test_loader, args)
         test_predictions_mode = stats.mode(test_predictions.cpu().numpy(), axis=1, keepdims=True).mode.squeeze(-1)
-        fold_auc(test_predictions_mode, test_data_blosum[:, 0, 0, 0], test_accuracy,"all", results_dir, mode="Test")
+        VegvisirUtils.fold_auc(test_predictions_mode, test_data_blosum[:, 0, 0, 0], test_accuracy,"all", results_dir, mode="Test")
 
 

@@ -20,6 +20,7 @@ class VEGVISIRGUIDES(EasyGuide):
         super(VEGVISIRGUIDES, self).__init__(vegvisir_model)
         #self.guide_type = ModelLoad.args.select_guide
         #self.Vegvisir = Vegvisir
+        self.beta = 1.2
         self.semi_supervised = model_load.args.semi_supervised
         self.aa_types = model_load.aa_types
         self.max_len = model_load.max_len
@@ -34,9 +35,9 @@ class VEGVISIRGUIDES(EasyGuide):
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
         self.h_0_GUIDE = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
-        self.guide_rnn = RNN_guide(1,self.max_len,self.gru_hidden_dim,self.z_dim,self.device)
+        self.encoder = RNN_guide(1,self.max_len,self.gru_hidden_dim,self.z_dim,self.device)
         #self.guide_fcl1 = FCL1(self.z_dim, self.hidden_dim, self.num_classes, self.device, self.seq_max_len)
-        self.guide_fcl4 = FCL4(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
+        self.classifier_guide = FCL4(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
 
     def guide_a(self, batch_data, batch_mask):
         """
@@ -56,35 +57,35 @@ class VEGVISIRGUIDES(EasyGuide):
         batch_sequences_blosum = batch_data["blosum"][:, 1, :self.seq_max_len].squeeze(1)
         true_labels = batch_data["blosum"][:, 0, 0, 0]
         batch_sequences_norm = batch_data["norm"][:, 1]  # only sequences norm
-        mean = (batch_sequences_norm*batch_mask).mean(dim=1)
-        mean = mean[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
-
-        scale = (batch_sequences_norm*batch_mask).std(dim = 1)
-        scale = scale[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
+        # mean = (batch_sequences_norm*batch_mask).mean(dim=1)
+        # mean = mean[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
+        #
+        # scale = (batch_sequences_norm*batch_mask).std(dim = 1)
+        # scale = scale[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
         # immunodominance_scores = batch_data["blosum"][:,0,0,4]
         confidence_scores = batch_data["blosum"][:,0,0,5]
         confidence_mask = (confidence_scores[..., None] < 0.7).any(-1) #now we try to predict those with a low confidence score
         init_h_0 = self.h_0_GUIDE.expand(self.guide_rnn.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
-        with pyro.plate("plate_latent", batch_sequences_norm.shape[0],device=self.device): #dim = -2
-            z_mean, z_scale = self.guide_rnn(batch_sequences_norm[:,:,None], init_h_0)
-            z_mean = z_mean + mean
-            z_scale = z_scale + scale
-            assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
-            assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
-            latent_z = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(1))  # ,infer=dict(baseline={'nn_baseline': self.guide_rnn,'nn_baseline_input': batch_sequences_blosum}))  # [z_dim,n]
+        with pyro.poutine.scale(scale=self.beta):
+            with pyro.plate("plate_latent", batch_sequences_norm.shape[0],device=self.device): #dim = -2
+                z_mean, z_scale = self.encoder(batch_sequences_norm[:,:,None], init_h_0)
+                # z_mean = z_mean + mean
+                # z_scale = z_scale + scale
+                assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
+                assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
+                latent_z = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(1))  # ,infer=dict(baseline={'nn_baseline': self.guide_rnn,'nn_baseline_input': batch_sequences_blosum}))  # [z_dim,n]
 
         latent_z_seq = latent_z.repeat(1, self.seq_max_len).reshape(latent_z.shape[0], self.seq_max_len, self.z_dim)
         batch_sequences_norm = batch_sequences_norm[:, :, None].expand(batch_sequences_norm.shape[0],
                                                                        batch_sequences_norm.shape[1], self.z_dim)
         latent_z_seq += batch_sequences_norm
         with pyro.plate("plate_class", batch_sequences_blosum.shape[0], dim=-2, device=self.device):
-            class_logits = self.guide_fcl4(latent_z_seq, None)
+            class_logits = self.classifier_guide(latent_z_seq, None)
             class_logits = self.logsoftmax(class_logits)
             # smooth_factor = self.losses.label_smoothing(class_logits,true_labels,confidence_scores,self.num_classes)
             # class_logits = class_logits*smooth_factor
             if self.semi_supervised:
-                pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),
-                            obs_mask=confidence_mask, obs=true_labels)
+                pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs_mask=confidence_mask, obs=true_labels)
             else:
                 pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1), obs=true_labels)
 
@@ -127,19 +128,21 @@ class VEGVISIRGUIDES(EasyGuide):
         scale = scale[:, None].expand(batch_sequences_norm.shape[0], self.z_dim)
 
         init_h_0 = self.h_0_GUIDE.expand(self.guide_rnn.num_layers * 2, batch_sequences_norm_feats.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
-        with pyro.plate("plate_latent", batch_sequences_norm_feats.shape[0],device=self.device):
-            z_mean, z_scale = self.guide_rnn(batch_sequences_norm_feats[:,:,None],init_h_0)
-            assert z_mean.shape == (batch_sequences_norm_feats.shape[0],self.z_dim), "Wrong shape got {}".format(z_mean.shape)
-            assert z_scale.shape == (batch_sequences_norm_feats.shape[0],self.z_dim), "Wrong shape got {}".format(z_scale.shape)
-            z_mean += mean
-            z_scale += scale
-            latent_z = pyro.sample("latent_z", dist.Normal(z_mean, z_scale).to_event(1))#,infer=dict(baseline={'nn_baseline': self.guide_rnn,'nn_baseline_input': batch_sequences_blosum}))  # [z_dim,n]
+        with pyro.poutine.scale(scale=self.beta):
+            with pyro.plate("plate_latent", batch_sequences_norm_feats.shape[0],device=self.device):
+                z_mean, z_scale = self.encoder(batch_sequences_norm_feats[:,:,None],init_h_0)
+                assert z_mean.shape == (batch_sequences_norm_feats.shape[0],self.z_dim), "Wrong shape got {}".format(z_mean.shape)
+                assert z_scale.shape == (batch_sequences_norm_feats.shape[0],self.z_dim), "Wrong shape got {}".format(z_scale.shape)
+                z_mean += mean
+                z_scale += scale
+                latent_z = pyro.sample("latent_z", dist.Normal(z_mean, z_scale).to_event(1))#,infer=dict(baseline={'nn_baseline': self.guide_rnn,'nn_baseline_input': batch_sequences_blosum}))  # [z_dim,n]
+
         latent_z_seq = latent_z.repeat(1, self.seq_max_len).reshape(latent_z.shape[0], self.seq_max_len, self.z_dim)
         batch_sequences_norm = batch_sequences_norm[:,:,None].expand(batch_sequences_norm.shape[0],batch_sequences_norm.shape[1],self.z_dim)
         batch_sequences_feats = batch_sequences_feats[:,:,None].expand(batch_sequences_feats.shape[0],batch_sequences_feats.shape[1],self.z_dim)
         latent_z_seq += batch_sequences_norm
         with pyro.plate("plate_class",batch_sequences_blosum.shape[0],dim=-2,device=self.device):
-            class_logits = self.guide_fcl4(torch.concatenate([latent_z_seq,batch_sequences_feats],dim=1),None)
+            class_logits = self.classifier_guide(torch.concatenate([latent_z_seq,batch_sequences_feats],dim=1),None)
             class_logits = self.logsoftmax(class_logits)
             #smooth_factor = self.losses.label_smoothing(class_logits,true_labels,confidence_scores,self.num_classes)
             #class_logits = class_logits*smooth_factor

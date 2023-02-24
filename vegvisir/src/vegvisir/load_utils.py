@@ -5,6 +5,7 @@ Vegvisir :
 =======================
 """
 import random
+import warnings
 
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
@@ -44,25 +45,37 @@ def dataset_proportions(data,results_dir,type="TrainEval"):
     positives_proportion = (positives*100)/torch.tensor([data.shape[0]])
     negatives = data.shape[0] - positives
     negatives_proportion = 100-positives_proportion
-    print("{} dataset: \n \t Total number of data points: {} \n \t Number positives : {}; \n \t Proportion positives : {} ; \n \t Number negatives : {} ; \n \t Proportion negatives : {}".format(type,data.shape[0],positives,positives_proportion.item(),negatives,negatives_proportion.item()))
+    f = open("{}/dataset_info.txt".format(results_dir),"a+")
+    print("\n{} dataset: \n \t Total number of data points: {} \n \t Number positives : {}; \n \t Proportion positives : {} ; \n \t Number negatives : {} ; \n \t Proportion negatives : {}".format(type,data.shape[0],positives,positives_proportion.item(),negatives,negatives_proportion.item()))
+    print("\n{} dataset: \n \t Total number of data points: {} \n \t Number positives : {}; \n \t Proportion positives : {} ; \n \t Number negatives : {} ; \n \t Proportion negatives : {}".format(type,data.shape[0],positives,positives_proportion.item(),negatives,negatives_proportion.item()),file=f)
     return (positives,positives_proportion),(negatives,negatives_proportion)
 
 def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitions"):
-    """Perform kfolds and test split"""
-    raise Warning("Feature Scaling has not been implemented for k-fold cross validation, please remember to do so")
+    """Perform kfolds partitions division and test split"""
+
+    warnings.warn("Feature Scaling has not been implemented for k-fold cross validation, please remember to do so")
+    if data.ndim == 4: #TODO:not sure why the list comprehesion does not work with lambda
+        idx_select = lambda x,n: x[:,0,0,n] #TODO: Use ellipsis? so far not working, this is best
+    else:
+        idx_select = lambda x,n: x[:,0,n]
+
     if method == "predefined_partitions":
-        traineval_data, test_data = data[data[:, 0,0, 3] == 1.], data[data[:, 0,0, 3] == 0.]
+        #traineval_data, test_data = data[data[:, 0,0, 3] == 1.], data[data[:, 0,0, 3] == 0.]
+        traineval_data, test_data = data[idx_select(data,3) == 1.], data[idx_select(data,3) == 0.]
+
         dataset_proportions(traineval_data, results_dir)
         dataset_proportions(test_data, results_dir, type="Test")
-        partitions = traineval_data[:, 0,0, 2]
+        #partitions = traineval_data[:, 0,0, 2]
+        partitions = idx_select(traineval_data,2)
         unique_partitions = np.unique(partitions)
-        assert args.kfolds <= len(unique_partitions), "kfold number is too high, please select a number lower than {}".format(len(unique_partitions))
+        assert args.k_folds <= len(unique_partitions), "kfold number is too high, please select a number lower than {}".format(len(unique_partitions))
         i = 1
         kfolds = []
         for part_num in unique_partitions:
-            # train_idx = traineval_data[traineval_data[:,0,2] != part_num]
-            train_idx = (traineval_data[:, 0,0, 2][..., None] != part_num).any(-1)
-            valid_idx = (traineval_data[:, 0,0, 2][..., None] == part_num).any(-1)
+            #train_idx = (traineval_data[:, 0,0, 2][..., None] != part_num).any(-1)
+            train_idx = (idx_select(traineval_data,2)[..., None] != part_num).any(-1)
+            #valid_idx = (traineval_data[:, 0,0, 2][..., None] == part_num).any(-1)
+            valid_idx = (idx_select(traineval_data,2)[..., None] == part_num).any(-1)
             kfolds.append((train_idx, valid_idx))
             if args.k_folds <= i :
                 break
@@ -70,34 +83,34 @@ def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitio
                 i+=1
         return traineval_data, test_data, kfolds
     elif method == "stratified_group_partitions":
-        traineval_data,test_data = data[data[:,0,0,3] == 1.], data[data[:,0,0,3] == 0.]
+        traineval_data,test_data = data[idx_select(data,3) == 1.], data[idx_select(data,3) == 0.]
         dataset_proportions(traineval_data,results_dir)
         dataset_proportions(test_data,results_dir,type="Test")
-        kfolds = StratifiedGroupKFold(n_splits=args.k_folds).split(traineval_data, traineval_data[:,0,0,0], traineval_data[:,0,0,2])
+        kfolds = StratifiedGroupKFold(n_splits=args.k_folds).split(traineval_data, idx_select(traineval_data,0), idx_select(traineval_data,2))
         return traineval_data,test_data,kfolds
     elif method == "random_stratified":
-        data_labels = data[:,0,0,0]
+        data_labels = idx_select(data,0)
         traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
         dataset_proportions(traineval_data,results_dir)
         dataset_proportions(test_data,results_dir, type="Test")
-        kfolds = StratifiedShuffleSplit(n_splits=args.k_folds, random_state=13, test_size=0.2).split(traineval_data,traineval_data[:,0,0,0])
+        kfolds = StratifiedShuffleSplit(n_splits=args.k_folds, random_state=13, test_size=0.2).split(traineval_data,idx_select(traineval_data,0))
         return traineval_data,test_data,kfolds
     elif method == "predefined_partitions_discard_test":
         """Discard the test dataset (hard case) and use one of the partitions as the test instead. The rest of the dataset is used for the kfold partitions"""
         partition_idx = np.random.randint(0, 4)  # random selection of a partition as the test
-        train_data = data[data[:, 0, 0, 2] != partition_idx]
-        test_data = data[data[:, 0, 0, 2] == partition_idx]  # data[data[:, 0, 0, 3] == 1.],
+        train_data = data[idx_select(data,2) != partition_idx]
+        test_data = data[idx_select(data,2) == partition_idx]  # data[data[:, 0, 0, 3] == 1.],
         dataset_proportions(train_data, results_dir)
         dataset_proportions(test_data, results_dir, type="Test")
-        partitions = train_data[:, 0, 0, 2]
+        partitions = idx_select(train_data,2)
         unique_partitions = np.unique(partitions)
         assert args.kfolds <= len(unique_partitions), "kfold number is too high, please select a number lower than {}".format(len(unique_partitions))
         i = 1
         kfolds = []
         for part_num in unique_partitions:
             # train_idx = traineval_data[traineval_data[:,0,2] != part_num]
-            train_idx = (train_data[:, 0, 0, 2][..., None] != part_num).any(-1)
-            valid_idx = (train_data[:, 0, 0, 2][..., None] == part_num).any(-1)
+            train_idx = (idx_select(train_data,2)[..., None] != part_num).any(-1)
+            valid_idx = (idx_select(train_data,2)[..., None] == part_num).any(-1)
             kfolds.append((train_idx, valid_idx))
             if args.k_folds <= i:
                 break
@@ -106,7 +119,8 @@ def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitio
         return train_data, test_data, kfolds
 
     else:
-        raise ValueError("train test split method not available")
+        raise ValueError("train test split method <{}> not available".format(method))
+
 def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names,method="predefined_partitions_discard_test"):
     """Perform train-valid-test split"""
     info_file = open("{}/dataset_info.txt".format(results_dir),"a+")
