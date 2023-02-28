@@ -712,7 +712,7 @@ def plot_mutual_information(full_data,full_labels,feature_names,results_dir):
     plt.savefig("{}/mi_feature_importance".format(results_dir),dpi=600)
     plt.clf()
 
-def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir):
+def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold):
     """Plot confusion matrix
     :param pandas dataframe confusion_matrix
     :param dict performance_metrics"""
@@ -729,5 +729,5 @@ def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir):
     fig.suptitle("Confusion matrix")
     patches = [mpatches.Circle((0.5, 0.5),radius = 0.25,color=colors_dict[0], label='{}:{}'.format(key,np.round(val,2))) for key,val in performance_metrics.items()]
     ax[0].legend(handles=patches, prop={'size': 10}, loc='right',bbox_to_anchor=(1.5, 0.5), ncol=1)
-    plt.savefig("{}/confusion_matrix.png".format(results_dir),dpi=100)
+    plt.savefig("{}/confusion_matrix_{}.png".format(results_dir,fold),dpi=100)
     plt.clf()

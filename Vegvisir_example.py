@@ -48,7 +48,7 @@ def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
-                        default="viral_dataset5",
+                        default="viral_dataset3",
                         help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data')
     parser.add_argument('-subset_data', type=str, default="no",
                         help="Pick only the first <n> datapoints (epitopes) for testing the pipeline\n"
@@ -56,13 +56,13 @@ if __name__ == "__main__":
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
     parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=25, help='Number of epochs (number of times that the model is run through the entire dataset (all batches) ')
-    parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
+    parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=False, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. ')
     #TODO: include more blosum matrix types?
     parser.add_argument('-subs_matrix', default="BLOSUM62", type=str,
                         help='blosum matrix to create blosum embeddings, choose one from /home/lys/anaconda3/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data')
 
-    parser.add_argument('-k-folds', type=int, nargs='?', default=5, help='Number of k-fold for k-fold cross validation')
+    parser.add_argument('-k-folds', type=int, nargs='?', default=1, help='Number of k-fold for k-fold cross validation')
     parser.add_argument('-batch-size', type=int, nargs='?', default=100, help='Batch size')
     parser.add_argument('-optimizer_name', type=str, nargs='?', default="Adam", help='Gradient optimizer name')
     parser.add_argument('-loss-func', type=str, nargs='?', default="bcelogits", help="Error loss function to be optimized, options are: \n"
@@ -84,11 +84,13 @@ if __name__ == "__main__":
                                                                                     '<replicated_borders>: Padds by replicating the borders of the sequence'
                                                                                     '<random>: random insertion of 0 along the sequence')
     parser.add_argument('-z-dim', type=int, nargs='?', default=30, help='Latent space dimension')
+    parser.add_argument('-beta-scale', type=int, nargs='?', default=1, help='Scaling the KL (p(z) | p(z \mid x)) of the variational autoencoder')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=50, help='')
-    parser.add_argument('-semi-supervised', type=str2bool, nargs='?', default=False, help='True: semi-supervised model. The likelihood is only computed and maximized using the most confident scores. \n '
-                                                                                         'The non confident data points are inferred by the guide \n'
-                                                                                          'False: Supervised model. All target observations are used to compute the likelihood')
+    parser.add_argument('-learning-type', type=str, nargs='?', default="supervised", help='<unsupervised> Unsupervised learning. The class is inferred directly from the latent representation and via amortized inference \n'
+                                                                                        '<semisupervised> Semi-supervised model/learning. The likelihood of the class (p(c | z)) is only computed and maximized using the most confident scores. \n '
+                                                                                                            'The non confident data points are inferred by the guide \n'
+                                                                                        '<supervised> Supervised model. All target observations are used to compute the likelihood of the class given the latent representation')
     parser.add_argument('-num_classes', type=int, nargs='?', default=2, help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')
     parser.add_argument('-num_samples', type=int, nargs='?', default=15, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
 

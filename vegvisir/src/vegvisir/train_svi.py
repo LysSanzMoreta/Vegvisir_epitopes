@@ -63,7 +63,7 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
         reconstruction_accuracy = ((batch_data_int[:,1,:model_load.seq_max_len]*mask_seq == reconstructed_sequences*mask_seq).sum(dim=1))/mask_seq.sum(dim=1)
         reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
         latent_spaces.append(latent_space.detach().cpu().numpy())
-        total += true_labels.size(0)
+        #total += true_labels.size(0)
         correct += (predicted_labels == true_labels).sum().item()
         predictions.append(predicted_labels.detach().cpu().numpy())
         train_loss += loss
@@ -71,10 +71,11 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
     train_loss /= len(data_loader)
     predictions_arr = np.concatenate(predictions,axis=0)
     latent_arr = np.concatenate(latent_spaces,axis=0)
-    target_accuracy= 100 * correct // total
+    target_accuracy= 100 * (correct/latent_arr.shape[0])
     reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
     return train_loss,target_accuracy,predictions_arr,latent_arr, reconstruction_accuracies_dict
+
 def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
     """Regular batch training
     :param svi: pyro infer engine
@@ -113,14 +114,14 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
             reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
             latent_space = sampling_output.latent_space
             latent_spaces.append(latent_space.detach().cpu().numpy())
-            total += true_labels.size(0)
+            #total += true_labels.size(0)
             correct += (predicted_labels == true_labels).sum().item()
             predictions.append(predicted_labels.cpu().numpy())
             valid_loss += loss #TODO: Multiply by the data size?
     valid_loss /= len(data_loader)
     predictions_arr = np.concatenate(predictions,axis=0)
     latent_arr = np.concatenate(latent_spaces,axis=0)
-    target_accuracy= 100 * correct // total
+    target_accuracy= 100 * (correct/latent_arr.shape[0])
     reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
     return valid_loss,target_accuracy,predictions_arr,latent_arr, reconstruction_accuracies_dict
@@ -162,11 +163,11 @@ def test_loop(Vegvisir,guide,data_loader,args,model_load):
 
     predictions_arr = np.concatenate(predictions,axis=0)
     latent_arr = np.concatenate(latent_spaces,axis=0)
-    accuracy = 100 * correct // total
+    target_accuracy= 100 * (correct/latent_arr.shape[0])
     print(f'Accuracy of the TCR-pMHC: {100 * correct // total} %')
     reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
-    return predictions_arr,accuracy,latent_arr, reconstruction_accuracies_dict
+    return predictions_arr,target_accuracy,latent_arr, reconstruction_accuracies_dict
 def sample_loop(Vegvisir,guide,data_loader,args):
     Vegvisir.train(False)
     print("Collecting {} samples".format(args.num_samples))
@@ -316,7 +317,8 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                            n_data = dataset_info.n_data,
                            input_dim = dataset_info.input_dim,
                            aa_types = dataset_info.corrected_aa_types,
-                           blosum = dataset_info.blosum)
+                           blosum = dataset_info.blosum,
+                           class_weights=VegvisirLoadUtils.calculate_class_weights(traineval_data_blosum, args))
 
     valid_predictions_fold = None
     train_predictions_fold = None
@@ -598,7 +600,7 @@ def train_model(dataset_info,additional_info,args):
     # obs_mask = trace.nodes["sequences"]
     n = 50
     #Highlight: Draw the graph model
-    graph = pyro.render_model(Vegvisir.model, model_args=({"blosum":train_data_blosum.cuda()[:n],"norm":data_blosum_norm[train_idx].cuda()[:n],"int":data_int[train_idx].cuda()[:n]},data_array_blosum_encoding_mask[train_idx].cuda()[:n]), filename="{}/model_graph.pdf".format(results_dir))
+    graph = pyro.render_model(Vegvisir.model, model_args=({"blosum":train_data_blosum.to(args.device)[:n],"norm":data_blosum_norm[train_idx].to(args.device)[:n],"int":data_int[train_idx].to(args.device)[:n]},data_array_blosum_encoding_mask[train_idx].to(args.device)[:n]), filepath="{}/model_graph.pdf".format(results_dir))
 
     svi = SVI(Vegvisir.model, guide, optimizer, loss_func)
 
@@ -650,8 +652,7 @@ def train_model(dataset_info,additional_info,args):
             train_auc.append(train_auc_score)
 
             valid_auc_score = roc_auc_score(y_true=valid_data_blosum[:, 0, 0, 0], y_score=valid_predictions)
-            valid_auk_score = VegvisirUtils.AUK(probabilities=valid_predictions,
-                                                labels=valid_data_blosum[:, 0, 0, 0].numpy()).calculate_auk()
+            valid_auk_score = VegvisirUtils.AUK(probabilities=valid_predictions,labels=valid_data_blosum[:, 0, 0, 0].numpy()).calculate_auk()
             valid_auk.append(valid_auk_score)
             valid_auc.append(valid_auc_score)
 
@@ -663,22 +664,21 @@ def train_model(dataset_info,additional_info,args):
             Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir), optimizer)
             if epoch == args.num_epochs:
                 print("Calculating Monte Carlo estimate of the posterior predictive")
-                train_predictions = sample_loop(Vegvisir,guide,train_loader,args)
-                valid_predictions = sample_loop(Vegvisir,guide,valid_loader,args)
-                train_predictions_mode = stats.mode(train_predictions.cpu().numpy(), axis=1,keepdims=True).mode.squeeze(-1)
-                valid_predictions_mode = stats.mode(valid_predictions.cpu().numpy(), axis=1,keepdims=True).mode.squeeze(-1)
+                train_predictions_samples = sample_loop(Vegvisir,guide,train_loader,args)
+                valid_predictions_samples = sample_loop(Vegvisir,guide,valid_loader,args)
+                train_predictions_mode = stats.mode(train_predictions_samples.cpu().numpy(), axis=1,keepdims=True).mode.squeeze(-1)
+                valid_predictions_mode = stats.mode(valid_predictions_samples.cpu().numpy(), axis=1,keepdims=True).mode.squeeze(-1)
                 VegvisirPlots.plot_gradients(gradient_norms, results_dir, "all")
                 VegvisirPlots.plot_latent_space(train_latent_space, train_predictions_mode, "all",results_dir, method="Train")
                 VegvisirPlots.plot_latent_space(valid_latent_space,valid_predictions_mode, "all",results_dir, method="Valid")
                 Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer)
-                # params = vegvisir_model.capture_parameters([name for name,val in vegvisir_model.named_parameters()])
-                # gradients = vegvisir_model.capture_gradients([name for name,val in vegvisir_model.named_parameters()])
-                # activations = vegvisir_model.attach_hooks([name for name,val in vegvisir_model.named_parameters() if name.starstwith("a")])
 
         torch.cuda.empty_cache()
         epoch += 1 #TODO: early stop?
-    VegvisirUtils.fold_auc(train_predictions_mode,train_data_blosum[:,0,0,0],train_accuracy,"all",results_dir,mode="Train")
-    VegvisirUtils.fold_auc(valid_predictions_mode,valid_data_blosum[:,0,0,0],valid_accuracy,"all",results_dir,mode="Valid")
+    VegvisirUtils.fold_auc(train_predictions_mode,train_data_blosum[:,0,0,0],train_accuracy,"_mode_samples",results_dir,mode="Train")
+    VegvisirUtils.fold_auc(valid_predictions_mode,valid_data_blosum[:,0,0,0],valid_accuracy,"_mode_samples",results_dir,mode="Valid")
+    VegvisirUtils.fold_auc(train_predictions,train_data_blosum[:,0,0,0],train_accuracy,"argmax_sample",results_dir,mode="Train")
+    VegvisirUtils.fold_auc(valid_predictions,valid_data_blosum[:,0,0,0],valid_accuracy,"argmax_sample",results_dir,mode="Valid")
     stop = time.time()
     print('Final timing: {}'.format(str(datetime.timedelta(seconds=stop-start))))
 

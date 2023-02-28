@@ -54,7 +54,7 @@ class MLP(nn.Module):
 
 class FCL1(nn.Module):
 
-    def __init__(self,z_dim,hidden_dim,num_classes,device,max_len):
+    def __init__(self,z_dim,max_len,hidden_dim,num_classes,device):
         super(FCL1, self).__init__()
         self.z_dim = z_dim
         self.num_classes = num_classes
@@ -62,7 +62,8 @@ class FCL1(nn.Module):
         self.device = device
         self.max_len = max_len
         self.fc1 = nn.Linear(self.z_dim,self.hidden_dim,bias=True)
-        self.fc2 = nn.Linear(self.hidden_dim,self.num_classes,bias=True)
+        self.fc2 = nn.Linear(self.hidden_dim,self.hidden_dim,bias=True)
+        self.fc3 = nn.Linear(self.hidden_dim,self.num_classes,bias=True)
         self.leakyrelu = nn.LeakyReLU()
         self.logsoftmax = nn.LogSoftmax(dim=-1)
     def forward(self,input,mask):
@@ -71,6 +72,9 @@ class FCL1(nn.Module):
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc2(output)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        output = self.fc3(output)
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.logsoftmax(output)
@@ -133,9 +137,9 @@ class FCL4(nn.Module):
         self.num_classes = num_classes
         self.hidden_dim = hidden_dim
         self.device = device
-        self.fc1 = nn.Linear(self.z_dim * self.max_len,self.hidden_dim*2,bias=True)
-        self.fc2 = nn.Linear(self.hidden_dim*2,self.hidden_dim,bias=True)
-        self.fc3 = nn.Linear(self.hidden_dim,self.num_classes,bias=True)
+        self.fc1 = nn.Linear(self.z_dim ,self.hidden_dim,bias=True)
+        #self.fc2 = nn.Linear(self.hidden_dim*2,self.hidden_dim,bias=True)
+        self.fc2 = nn.Linear(self.hidden_dim,self.num_classes,bias=True)
         self.leakyrelu = nn.LeakyReLU()
         self.logsoftmax = nn.LogSoftmax(dim=-1)
     def forward(self,input,mask):
@@ -148,15 +152,12 @@ class FCL4(nn.Module):
         output = self.fc1(input.flatten(start_dim=1))
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
-        output = self.fc2(output)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
-        output = self.leakyrelu(output)
         # Singular-value decomposition
         # U, S, VT = svd(A) #left singular, singular (max var), right singular
         # Data projection = A@VT
         # U,S,VT = torch.linalg.svd(output)
         # output = output@VT
-        output = self.fc3(output)
+        output = self.fc2(output)
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         return output
@@ -199,13 +200,12 @@ class CNN_FCL(nn.Module):
         return output
 
 class CNN_layers(nn.Module):
-    def __init__(self,input_dim,max_len,hidden_dim,num_classes,device,loss_type):
+    def __init__(self,input_dim,max_len,hidden_dim,num_classes,device,loss_type="elbo"):
         super(CNN_layers, self).__init__()
         self.loss_type = loss_type
         self.input_dim = input_dim
         self.num_classes = num_classes
         self.hidden_dim = hidden_dim
-        self.loss_type = loss_type
         self.max_len = max_len
         self.device = device
         self.sigmoid = nn.Sigmoid()
@@ -258,7 +258,7 @@ class CNN_layers(nn.Module):
         https://www.stat.cmu.edu/~larry/=sml/Manifolds.pdf
         https://www.mdpi.com/1422-0067/23/14/7775#
         """
-
+        input = input[:,None,:]
         output = self.conv1(self.dropout(input))
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
@@ -272,8 +272,8 @@ class CNN_layers(nn.Module):
         output = self.fc2(self.leakyrelu(self.fc1(output)))
         output = self.leakyrelu(output)
         #output = torch.nn.functional.glu(output, dim=1) #divides by 2 the hidden dimensions
-        if mask is not None:
-            output = output.masked_fill(mask == 0, 1e10)
+        # if mask is not None:
+        #     output = output.masked_fill(mask == 0, 1e10)
         return output
 
 class LetNET5(nn.Module):
@@ -504,6 +504,52 @@ class RNN_guide(nn.Module):
         z_mean = self.fc2a(output)
         z_scale = self.softplus(torch.exp((self.fc2b(output))))
         return z_mean,z_scale
+
+class RNN_classifier(nn.Module):
+    def __init__(self,input_dim,max_len,gru_hidden_dim,num_classes,z_dim,device):
+        super(RNN_classifier, self).__init__()
+        self.device = device
+        self.input_dim = input_dim
+        self.z_dim = z_dim
+        self.gru_hidden_dim = gru_hidden_dim
+        self.max_len = max_len
+        self.num_classes = num_classes
+        self.num_layers = 1
+        self.rnn = nn.GRU(input_size=self.input_dim,
+                          hidden_size=gru_hidden_dim,
+                          batch_first=True,
+                          num_layers=self.num_layers,
+                          dropout=0.,
+                          bidirectional=True
+                          )
+        self.bnn = nn.BatchNorm1d(self.z_dim).to(self.device)
+        self.softplus = nn.Softplus()
+        self.leakyrelu = nn.LeakyReLU()
+        self.h = self.z_dim*self.gru_hidden_dim
+        self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
+        self.fc2 = nn.Linear(int(self.h/2),int(self.h/4),bias=False)
+        self.fc3 = nn.Linear(int(self.h/4),self.num_classes,bias=False)
+
+    def forward(self,input,init_h_0):
+        "For GRU with reversed sequences"
+        #seq_lens = input.bool().sum(1)
+        input_reverse = torch.flip(input,(1,))
+        #Highlight: Results on reversing the sequences
+        output, out_hidden = self.rnn(input_reverse,init_h_0)
+        output = self.softplus(output)
+        output = self.bnn(output)
+        forward_out_r,backward_out_r = output[:,:,:self.gru_hidden_dim],output[:,:,:self.gru_hidden_dim]
+        output = forward_out_r + backward_out_r
+        # output_r = output_r[:,-1]
+        # output = output_r
+        output = output.flatten(start_dim=1)
+        output = self.softplus(self.fc1(output))
+        output = self.leakyrelu(output)
+        output = self.softplus(self.fc2(output))
+        output = self.leakyrelu(output)
+        output = self.softplus(self.fc3(output))
+        output = self.leakyrelu(output)
+        return output
 
 class RBF(nn.Module):
     """

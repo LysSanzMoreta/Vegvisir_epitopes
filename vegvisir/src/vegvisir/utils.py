@@ -732,10 +732,10 @@ def fold_auc(predictions_fold,labels,accuracy,fold,results_dir,mode="Train"):
     recall = tp/(tp + fn)
     precision = tp/(tp + fp)
     f1score = 2*tp/(2*tp + fp + fn)
-    tpr = tp/(tp + fn)
     tnr = tn/(tn + fp)
+    accuracy = 100*((predictions_fold == labels).sum()/predictions_fold.shape[0])
     performance_metrics = {"recall/tpr":recall,"precision":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr}
-    VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode))
+    VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold)
     return auc_score,auk_score
 
 

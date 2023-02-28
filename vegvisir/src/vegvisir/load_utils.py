@@ -47,6 +47,7 @@ def dataset_proportions(data,results_dir,type="TrainEval"):
     negatives_proportion = 100-positives_proportion
     f = open("{}/dataset_info.txt".format(results_dir),"a+")
     print("\n{} dataset: \n \t Total number of data points: {} \n \t Number positives : {}; \n \t Proportion positives : {} ; \n \t Number negatives : {} ; \n \t Proportion negatives : {}".format(type,data.shape[0],positives,positives_proportion.item(),negatives,negatives_proportion.item()))
+    print("-------------------------------------------------------------",file=f)
     print("\n{} dataset: \n \t Total number of data points: {} \n \t Number positives : {}; \n \t Proportion positives : {} ; \n \t Number negatives : {} ; \n \t Proportion negatives : {}".format(type,data.shape[0],positives,positives_proportion.item(),negatives,negatives_proportion.item()),file=f)
     return (positives,positives_proportion),(negatives,negatives_proportion)
 

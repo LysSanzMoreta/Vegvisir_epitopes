@@ -21,7 +21,7 @@ SamplingOutput = namedtuple("SamplingOutput",["latent_space","predicted_labels",
 class VEGVISIRModelClass(nn.Module):
     def __init__(self, model_load):
         super(VEGVISIRModelClass, self).__init__()
-        self.beta = 1.2 #upscaling the weight of the ELBO error with respect to the reconstruction error
+        self.beta = model_load.args.beta_scale #scaling the KL divergence error
         self.aa_types = model_load.aa_types
         self.seq_max_len = model_load.seq_max_len
         self.max_len = model_load.max_len
@@ -36,7 +36,7 @@ class VEGVISIRModelClass(nn.Module):
         self.embedding_dim = model_load.args.embedding_dim
         self.blosum = model_load.blosum
         self.loss_type = model_load.args.loss_func
-        self.semi_supervised = model_load.args.semi_supervised
+        self.learning_type = model_load.args.learning_type
         self.class_weights = model_load.class_weights
         if self.use_cuda:
             # calling cuda() here will put all the parameters of
@@ -563,7 +563,9 @@ class VegvisirModel4(VEGVISIRModelClass):
 class VegvisirModel5a(VEGVISIRModelClass,PyroModule):
     """
     Variational Autoencoder
-    -Notes: https://pyro.ai/examples/cvae.html
+    -Notes:
+            https://pyro.ai/examples/cvae.html
+            https://avandekleut.github.io/vae/
     -Notes: on nan values
             http://pyro.ai/examples/svi_part_iv.html
             https://forum.pyro.ai/t/my-guide-keeps-producing-nan-values-what-am-i-doing-wrong/2024/8
@@ -573,10 +575,15 @@ class VegvisirModel5a(VEGVISIRModelClass,PyroModule):
         #self.embedder = Embedder(self.aa_types,self.hidden_dim,self.device)
         self.gru_hidden_dim = self.hidden_dim*2
         self.num_params = 2 #number of parameters of the beta distribution
-        self.encoder = RNN_guide(1,self.max_len,self.gru_hidden_dim,self.z_dim,self.device)
+        self.encoder = RNN_guide(self.aa_types,self.max_len,self.gru_hidden_dim,self.z_dim,self.device)
         self.decoder = RNN_model(self.aa_types,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device,self.loss_type)
+        #self.classifier_model = FCL4(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
         self.classifier_model = FCL4(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
-        self.h_0_MODEL = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
+        #self.classifier_model = CNN_layers(1,self.z_dim,self.hidden_dim,self.num_classes,self.device) #input_dim,max_len,hidden_dim,num_classes,device,loss_type
+        #self.classifier_model = RNN_classifier(1,self.max_len,self.gru_hidden_dim,self.num_classes,self.z_dim,self.device) #input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device
+        self.h_0_MODEL_encoder = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
+        self.h_0_MODEL_decoder = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
+        #self.h_0_MODEL_classifier = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
 
@@ -588,8 +595,11 @@ class VegvisirModel5a(VEGVISIRModelClass,PyroModule):
         - Notes:
             - https://medium.com/@amitnitdvaranasi/bayesian-classification-basics-svi-7cdceaf31230
             - https://maxhalford.github.io/blog/bayesian-linear-regression/
+            - https://link.springer.com/chapter/10.1007/978-3-031-06053-3_36
+            - https://bookdown.org/robertness/causalml/docs/tutorial-on-deep-probabilitic-modeling-with-pyro.html
+            - https://fehiepsi.github.io/rethinking-pyro/
         """
-
+        #TODO: https://pyro.ai/examples/search.html?q=VAE&check_keywords=yes&area=default !!!!!!!!!!!!1111
         pyro.module("vae_model", self)
         batch_sequences_blosum = batch_data["blosum"][:,1].squeeze(1)
         batch_sequences_int = batch_data["int"][:,1].squeeze(1)
@@ -600,13 +610,10 @@ class VegvisirModel5a(VEGVISIRModelClass,PyroModule):
         #immunodominance_scores = batch_data["blosum"][:,0,0,4]
         confidence_scores = batch_data["blosum"][:,0,0,5]
         confidence_mask = (confidence_scores[..., None] == 1.).any(-1)
-        # mean = (batch_sequences_norm*batch_mask).mean(dim=1)
-        # mean = mean[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
-        # scale = (batch_sequences_norm*batch_mask).std(dim = 1)
-        # scale = scale[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
 
-        init_h_0_encoder = self.h_0_GUIDE.expand(self.encoder.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
-        z_mean,z_scale = self.encoder(batch_sequences_norm[:,:,None],init_h_0_encoder)
+        init_h_0_encoder = self.h_0_MODEL_encoder.expand(self.encoder.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
+        #z_mean,z_scale = self.encoder(batch_sequences_norm[:,:,None],init_h_0_encoder)
+        z_mean,z_scale = self.encoder(batch_sequences_blosum,init_h_0_encoder)
 
         with pyro.poutine.scale(scale=self.beta):
             with pyro.plate("plate_latent", batch_sequences_blosum.shape[0],device=self.device):
@@ -628,18 +635,22 @@ class VegvisirModel5a(VEGVISIRModelClass,PyroModule):
                 #pyro.sample("immunodominance_prediction", dist.Beta(beta, alpha),obs=immunodominance_scores)  # obs_mask  If provided, events with mask=True will be conditioned on obs and remaining events will be imputed by sampling.
 
         latent_z_seq = latent_space.repeat(1, self.max_len).reshape(latent_space.shape[0], self.max_len, self.z_dim)
-        batch_sequences_norm = (batch_sequences_norm*batch_mask)[:,:,None].expand(batch_sequences_norm.shape[0],batch_sequences_norm.shape[1],self.z_dim)
-        latent_z_seq += batch_sequences_norm
+        #batch_sequences_norm = (batch_sequences_norm*batch_mask)[:,:,None].expand(batch_sequences_norm.shape[0],batch_sequences_norm.shape[1],self.z_dim)
+        #latent_z_seq += batch_sequences_norm
+        #init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
         with pyro.plate("plate_class",batch_sequences_blosum.shape[0],dim=-2,device=self.device):
-            class_logits = self.classifier_model(latent_z_seq,None)
+            class_logits = self.classifier_model(latent_space,None) #TODO: Is it better with latent_z_seq or latent_space?
+            #class_logits = self.classifier_model(latent_space[:,:,None],init_h_0_classifier)
             class_logits = self.logsoftmax(class_logits)
             #smooth_factor = self.losses.label_smoothing(class_logits,true_labels,confidence_scores,self.num_classes)
             #class_logits = class_logits*smooth_factor
-            if self.semi_supervised:
+            if self.learning_type == "semisupervised":
                 pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1), obs_mask=confidence_mask,obs=true_labels)
+            elif self.learning_type == "supervised":
+                pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=true_labels)
             else:
-                pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1), obs=true_labels)
-        init_h_0_decoder = self.h_0_MODEL.expand(self.decoder.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
+                pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1))
+        init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
         with pyro.poutine.mask(mask=batch_mask):
             with pyro.plate("data_len",self.seq_max_len,device=self.device):
                     with pyro.plate("data", batch_sequences_blosum.shape[0],device=self.device):
@@ -668,34 +679,31 @@ class VegvisirModel5a(VEGVISIRModelClass,PyroModule):
         #
         # scale = (batch_sequences_norm*batch_mask).std(dim = 1)
         # scale = scale[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
-        init_h_0_encoder = self.h_0_GUIDE.expand(self.encoder.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
-        z_mean,z_scale = self.encoder(batch_sequences_norm[:,:,None],init_h_0_encoder)
+        init_h_0_encoder = self.h_0_MODEL_encoder.expand(self.encoder.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
+
+        z_mean,z_scale = self.encoder(batch_sequences_blosum,init_h_0_encoder)
 
         #Highlight: Forward network
-        with pyro.plate("plate_latent", batch_sequences_blosum.shape[0], dim=-2):
-            # mean = torch.zeros((batch_sequences_blosum.shape[0], self.z_dim))
-            # scale = torch.ones((batch_sequences_blosum.shape[0], self.z_dim))
-            latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale))  # [n,z_dim]
-
-            # beta_params = self.fcl2(latent_z, None)
-            # # beta = pyro.sample("beta",dist.Uniform(0.4,0.6))
-            # # alpha = pyro.sample("alpha",dist.Uniform(0.5,0.7))
-            # beta = beta_params[:, 0]
-            # alpha = beta_params[:, 1]
-            # predicted_immunodominance_scores= dist.Beta(beta, alpha)  # obs_mask  If provided, events with mask=True will be conditioned on obs and remaining events will be imputed by sampling.
+        with pyro.poutine.scale(scale=self.beta):
+            with pyro.plate("plate_latent", batch_sequences_blosum.shape[0], dim=-2):
+                # mean = torch.zeros((batch_sequences_blosum.shape[0], self.z_dim))
+                # scale = torch.ones((batch_sequences_blosum.shape[0], self.z_dim))
+                latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale))  # [n,z_dim]
 
         latent_z_seq = latent_space.repeat(1, self.max_len).reshape(latent_space.shape[0], self.max_len, self.z_dim)
-        batch_sequences_norm = batch_sequences_norm[:,:,None].expand(batch_sequences_norm.shape[0],batch_sequences_norm.shape[1],self.z_dim)
-        latent_z_seq += batch_sequences_norm
+        #batch_sequences_norm = batch_sequences_norm[:,:,None].expand(batch_sequences_norm.shape[0],batch_sequences_norm.shape[1],self.z_dim)
+        #latent_z_seq += batch_sequences_norm
+        #init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
 
         with pyro.plate("plate_class",batch_sequences_blosum.shape[0],dim=-2,device=self.device):
-            class_logits = self.classifier_model(latent_z_seq, None)
+            class_logits = self.classifier_model(latent_space, None)
+            #class_logits = self.classifier_model(latent_space[:,:,None],init_h_0_classifier)
             class_logits = self.logsoftmax(class_logits)
             if argmax:
                 predicted_labels = torch.argmax(class_logits, dim=1)
             else:
                 predicted_labels = dist.Categorical(logits=class_logits).sample()
-        init_h_0_decoder = self.h_0_MODEL.expand(self.model_rnn.num_layers * 2, batch_sequences_blosum.shape[0],
+        init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * 2, batch_sequences_blosum.shape[0],
                                          self.gru_hidden_dim).contiguous()  # bidirectional
         with pyro.poutine.mask(mask=batch_mask):
             with pyro.plate("data_len", self.seq_max_len, dim=-1):

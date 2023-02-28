@@ -311,7 +311,7 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
     return data_info
 
 def select_filters():
-    filters_dict = {"filter_kmers":[False,9,"Icore"],
+    filters_dict = {"filter_kmers":[False,9,"Icore_non_anchor"], #Icore_non_anchor
                     "group_alleles":[True],
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
@@ -514,6 +514,8 @@ def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data = data.dropna(subset=["Icore_non_anchor","training"]).reset_index(drop=True)
 
     filters_dict = select_filters()
+    filters_dict = select_filters()
+    json.dump(filters_dict, dataset_info_file, indent=2)
 
     if filters_dict["group_alleles"][0]:
         # Group data by Icore only, therefore the alleles are grouped
@@ -530,7 +532,6 @@ def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
     warnings.warn("Setting low confidence score to the artificial negatives in the test dataset")
     data.loc[mask,"confidence_score"] = 0.6
-
     data_info = process_data(data,args,storage_folder,script_dir,filters_dict["filter_kmers"][2])
 
     return data_info
@@ -561,10 +562,11 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
     else:
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types)
-        epitopes_padded = list(map(lambda seq: list(seq),epitopes_list))
+        epitopes_padded = epitopes_padded_mask = list(map(lambda seq: list(seq),epitopes_list))
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, args.subs_matrix,
                                                                                    zero_characters=["#"],
                                                                                    include_zero_characters=False)
+
     epitopes_array = np.array(epitopes_padded)
     if args.seq_padding == "replicated_borders":  # I keep it separately to avoid doing the np vectorized loop twice
         epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
