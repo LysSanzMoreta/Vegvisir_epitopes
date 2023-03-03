@@ -219,7 +219,7 @@ def select_quide(Vegvisir,model_load,n_data,choice="autodelta"):
 def select_model(model_load,results_dir,fold):
     """Select among the available models at models.py"""
     if model_load.seq_max_len == model_load.max_len:
-        vegvisir_model = VegvisirModels.VegvisirModel5a(model_load)
+        vegvisir_model = VegvisirModels.VegvisirModel5b(model_load)
     else:
         vegvisir_model = VegvisirModels.VegvisirModel5c(model_load)
     if fold == 0 or fold == "all":
@@ -593,15 +593,18 @@ def train_model(dataset_info,additional_info,args):
     else:
         raise ValueError("selected optimizer <{}> not implemented with <{}> clip gradients".format(args.optimizer_name,args.clip_gradients))
     loss_func = Vegvisir.loss()
-    guide = select_quide(Vegvisir,model_load,n_data,args.guide)
+    if args.learning_type in ["semisupervised","unsupervised"]:
+        guide = config_enumerate(select_quide(Vegvisir,model_load,n_data,args.guide))
+    else:
+        guide = select_quide(Vegvisir,model_load,n_data,args.guide)
     #svi = SVI(poutine.scale(Vegvisir.model,scale=1.0/n_data), poutine.scale(guide,scale=1.0/n_data), optimizer, loss_func)
-    #svi = SVI(Vegvisir.model, config_enumerate(guide), optimizer, loss_func)
-    # trace = pyro.poutine.trace(Vegvisir.model).get_trace({"blosum":train_data_blosum.cuda(),"norm":data_blosum_norm[train_idx].cuda(),"int":data_int[train_idx].cuda()},data_array_blosum_encoding_mask[train_idx].cuda())
-    # obs_mask = trace.nodes["sequences"]
     n = 50
+    data_args_0 = {"blosum":train_data_blosum.to(args.device)[:n],"norm":data_blosum_norm[train_idx].to(args.device)[:n],"int":data_int[train_idx].to(args.device)[:n]}
+    data_args_1 = data_array_blosum_encoding_mask[train_idx].to(args.device)[:n]
+    trace = pyro.poutine.trace(Vegvisir.model).get_trace(data_args_0,data_args_1)
+    obs_mask = trace.nodes["predictions"]
     #Highlight: Draw the graph model
-    graph = pyro.render_model(Vegvisir.model, model_args=({"blosum":train_data_blosum.to(args.device)[:n],"norm":data_blosum_norm[train_idx].to(args.device)[:n],"int":data_int[train_idx].to(args.device)[:n]},data_array_blosum_encoding_mask[train_idx].to(args.device)[:n]), filepath="{}/model_graph.pdf".format(results_dir))
-
+    graph = pyro.render_model(Vegvisir.model, model_args=(data_args_0,data_args_1), filename="{}/model_graph.png".format(results_dir))
     svi = SVI(Vegvisir.model, guide, optimizer, loss_func)
 
     #TODO: Dictionary that gathers the results from each fold

@@ -7,3 +7,7 @@ vegvisir/src/vegvisir.egg-info/*
 vegvisir/src/vegvisir/__pycache__
 PLOTS_*
 *.pdf
+
+vegvisir/src/vegvisir/toyexample.py
+
+vegvisir/src/vegvisir/masking.py
