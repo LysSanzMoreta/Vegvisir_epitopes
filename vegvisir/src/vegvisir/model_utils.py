@@ -148,8 +148,15 @@ class FCL4(nn.Module):
         - https://mane-aajay.medium.com/how-to-calculate-the-svd-from-scratch-with-python-bafcd7fc6945
         -https://towardsdatascience.com/how-to-use-singular-value-decomposition-svd-for-image-classification-in-python-20b1b2ac4990
         - https://www.cs.cmu.edu/afs/cs.cmu.edu/academic/class/15750-s20/www/notebooks/SVD-irises-clustering.html"""
+        # if input.ndim == 3:
+        #     input = input.flatten(start_dim=2)
+        #     output = self.fc1(input)
+        # else:
+        #     input = input.flatten(start_dim=1) #Flattening only has effect if the input latent_space_z
+        #     output = self.fc1(input)
 
-        output = self.fc1(input.flatten(start_dim=1))
+        input = input.flatten(start_dim=1)  # Flattening only has effect if the input latent_space_z
+        output = self.fc1(input)
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         # Singular-value decomposition
@@ -414,14 +421,12 @@ class RNN_layers(nn.Module):
         return output
 
 class RNN_model(nn.Module):
-    def __init__(self,input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device,loss_type):
+    def __init__(self,input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device):
         super(RNN_model, self).__init__()
         self.device = device
-        self.loss_type = loss_type
         self.input_dim = input_dim
         self.z_dim = z_dim
         self.gru_hidden_dim = gru_hidden_dim
-        self.loss_type = loss_type
         self.max_len = max_len
         self.aa_types = aa_types
         self.num_layers = 1
@@ -465,14 +470,6 @@ class RNN_guide(nn.Module):
         self.gru_hidden_dim = gru_hidden_dim
         self.max_len = max_len
         self.num_layers = 1
-        # self.rnn1 = nn.GRU(input_size=int(input_dim),
-        #                   hidden_size=gru_hidden_dim,
-        #                   batch_first=True,
-        #                   num_layers=self.num_layers,
-        #                   dropout=0.,
-        #                   bidirectional=True
-        #                   )
-        # self.bnn1 = nn.BatchNorm1d(self.max_len).to(self.device)
         self.rnn1 = nn.GRU(input_size=int(input_dim),
                           hidden_size=gru_hidden_dim,
                           batch_first=True,

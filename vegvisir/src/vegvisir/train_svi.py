@@ -11,7 +11,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from collections import namedtuple
 from pyro.infer.autoguide import AutoDelta,AutoNormal,AutoDiagonalNormal
-from  pyro.infer import SVI,config_enumerate
+from  pyro.infer import SVI,config_enumerate, Predictive
 import pyro.poutine as poutine
 import pyro
 import vegvisir
@@ -53,19 +53,30 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
         true_labels = batch_data_blosum[:,0,0,0]
         batch_data = {"blosum":batch_data_blosum,"int":batch_data_int,"onehot":batch_data_onehot,"norm":batch_data_blosum_norm}
         #Forward & Backward pass
-        loss = svi.step(batch_data,batch_mask)
-        guide_estimates = guide(batch_data,batch_mask)
-        sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
-        predicted_labels = sampling_output.predicted_labels
-        latent_space = sampling_output.latent_space
-        reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
+        loss = svi.step(batch_data,batch_mask,sample=False)
+        #guide_estimates = guide(batch_data,batch_mask)
+        # sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
+        # predicted_labels = sampling_output.predicted_labels.detach().cpu()
+        # latent_space = sampling_output.latent_space
+        # reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
+        sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=1, return_sites=(), parallel=False)(batch_data,batch_mask,sample=True)
+        predicted_labels = sampling_output["predictions"].squeeze(0).squeeze(0).detach()
+        reconstructed_sequences = sampling_output["sequences"].squeeze(0).detach()
+        latent_space = sampling_output["latent_z"].squeeze(0).detach()
+        identifiers = batch_data["blosum"][:,0,0,1]
+        true_labels = batch_data["blosum"][:,0,0,0]
+        confidence_score = batch_data["blosum"][:,0,0,5]
+        immunodominace_score = batch_data["blosum"][:, 0, 0, 4]
+        latent_space = torch.column_stack([identifiers, true_labels, confidence_score, immunodominace_score, latent_space])
+
         mask_seq = batch_mask[:, 1:,:,0].squeeze(1)
-        reconstruction_accuracy = ((batch_data_int[:,1,:model_load.seq_max_len]*mask_seq == reconstructed_sequences*mask_seq).sum(dim=1))/mask_seq.sum(dim=1)
+        equal_aa = torch.Tensor((batch_data_int[:,1,:model_load.seq_max_len] == reconstructed_sequences)*mask_seq)
+        reconstruction_accuracy = (equal_aa.sum(dim=1))/mask_seq.sum(dim=1)
         reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
         latent_spaces.append(latent_space.detach().cpu().numpy())
         #total += true_labels.size(0)
         correct += (predicted_labels == true_labels).sum().item()
-        predictions.append(predicted_labels.detach().cpu().numpy())
+        predictions.append(predicted_labels.cpu().numpy())
         train_loss += loss
     #Normalize train loss
     train_loss /= len(data_loader)
@@ -75,7 +86,6 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
     reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
     return train_loss,target_accuracy,predictions_arr,latent_arr, reconstruction_accuracies_dict
-
 def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
     """Regular batch training
     :param svi: pyro infer engine
@@ -104,16 +114,29 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
                 batch_mask = batch_mask.cuda()
             true_labels = batch_data_blosum[:,0,0,0]
             batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
-            loss = svi.step(batch_data,batch_mask)
-            guide_estimates = guide(batch_data,batch_mask)
-            sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
-            predicted_labels = sampling_output.predicted_labels
-            reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
+            loss = svi.step(batch_data,batch_mask,sample=False)
+            # guide_estimates = guide(batch_data,batch_mask)
+            # sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
+            # predicted_labels = sampling_output.predicted_labels.detach()
+            # reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
+            #latent_space = sampling_output.latent_space.detach()
+
+            sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=1, return_sites=(), parallel=False)(
+                batch_data, batch_mask,sample=True)
+            predicted_labels = sampling_output["predictions"].squeeze(0).squeeze(0).detach()
+            reconstructed_sequences = sampling_output["sequences"].squeeze(0).detach()
+            latent_space = sampling_output["latent_z"].squeeze(0).detach()
+            identifiers = batch_data["blosum"][:, 0, 0, 1]
+            true_labels = batch_data["blosum"][:, 0, 0, 0]
+            confidence_score = batch_data["blosum"][:, 0, 0, 5]
+            immunodominace_score = batch_data["blosum"][:, 0, 0, 4]
+            latent_space = torch.column_stack([identifiers, true_labels, confidence_score, immunodominace_score, latent_space])
+
             mask_seq = batch_mask[:, 1:, :, 0].squeeze(1)
-            reconstruction_accuracy = ((batch_data_int[:, 1, :model_load.seq_max_len]*mask_seq == reconstructed_sequences*mask_seq).sum(dim=1)) / mask_seq.sum(dim=1)
+            equal_aa = torch.Tensor((batch_data_int[:, 1, :model_load.seq_max_len] == reconstructed_sequences) * mask_seq)
+            reconstruction_accuracy = (equal_aa.sum(dim=1)) / mask_seq.sum(dim=1)
             reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
-            latent_space = sampling_output.latent_space
-            latent_spaces.append(latent_space.detach().cpu().numpy())
+            latent_spaces.append(latent_space.cpu().numpy())
             #total += true_labels.size(0)
             correct += (predicted_labels == true_labels).sum().item()
             predictions.append(predicted_labels.cpu().numpy())
@@ -148,15 +171,27 @@ def test_loop(Vegvisir,guide,data_loader,args,model_load):
                 batch_mask = batch_mask.cuda()
             true_labels = batch_data_blosum[:,0,0,0]
             batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
-            guide_estimates = guide(batch_data,batch_mask)
-            sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
-            predicted_labels = sampling_output.predicted_labels
-            reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
+            # guide_estimates = guide(batch_data,batch_mask)
+            # sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
+            # predicted_labels = sampling_output.predicted_labels.detach()
+            # reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
+            #latent_space = sampling_output.latent_space.detach()
+            sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=1, return_sites=(), parallel=True)(batch_data, batch_mask,sample=True)
+            predicted_labels = sampling_output["predictions"].squeeze(0).squeeze(0).detach()
+            reconstructed_sequences = sampling_output["sequences"].squeeze(0).detach()
+            latent_space = sampling_output["latent_space"].squeeze(0).detach()
+            identifiers = batch_data["blosum"][:, 0, 0, 1]
+            true_labels = batch_data["blosum"][:, 0, 0, 0]
+            confidence_score = batch_data["blosum"][:, 0, 0, 5]
+            immunodominace_score = batch_data["blosum"][:, 0, 0, 4]
+            latent_space = torch.column_stack(
+                [identifiers, true_labels, confidence_score, immunodominace_score, latent_space])
+
             mask_seq = batch_mask[:, 1:, :, 0].squeeze(1)
-            reconstruction_accuracy = ((batch_data_int[:, 1, :model_load.seq_max_len]*mask_seq == reconstructed_sequences*mask_seq).sum(dim=1)) / mask_seq.sum(dim=1)
+            equal_aa = torch.Tensor((batch_data_int[:, 1, :model_load.seq_max_len] == reconstructed_sequences) * mask_seq)
+            reconstruction_accuracy = (equal_aa.sum(dim=1)) / mask_seq.sum(dim=1)
             reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
-            latent_space = sampling_output.latent_space
-            latent_spaces.append(latent_space.detach().cpu().numpy())
+            latent_spaces.append(latent_space.cpu().numpy())
             total += true_labels.size(0)
             correct += (predicted_labels == true_labels).sum().item()
             predictions.append(predicted_labels.cpu().numpy())
@@ -168,7 +203,7 @@ def test_loop(Vegvisir,guide,data_loader,args,model_load):
     reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
     return predictions_arr,target_accuracy,latent_arr, reconstruction_accuracies_dict
-def sample_loop(Vegvisir,guide,data_loader,args):
+def sample_loop(Vegvisir,guide,data_loader,args,custom=False):
     Vegvisir.train(False)
     print("Collecting {} samples".format(args.num_samples))
     with torch.no_grad():
@@ -188,13 +223,20 @@ def sample_loop(Vegvisir,guide,data_loader,args):
                     batch_data_blosum_norm = batch_data_blosum_norm.cuda()
                     batch_mask = batch_mask.cuda()
                 batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
-                guide_estimates = guide(batch_data, batch_mask)
-                sampling_out = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
-                predicted_labels = sampling_out.predicted_labels.detach()
+                if custom:
+                    guide_estimates = guide(batch_data, batch_mask)
+                    sampling_out = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
+                    predicted_labels = sampling_out.predicted_labels.detach()
+                else: #TODO: more samples?
+                    sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=1,return_sites=(), parallel=False)(batch_data, batch_mask,sample=True)
+                    predicted_labels = sampling_output["predictions"].squeeze(0).squeeze(0).detach()
+
                 batch_sample.append(predicted_labels)
             data_sample = torch.cat(batch_sample,dim=0)
             total_samples.append(data_sample)
     total_samples_arr = torch.column_stack(total_samples)
+
+
     return total_samples_arr
 def save_script(results_dir,output_name,script_name):
     """Saves the python script and its contents"""

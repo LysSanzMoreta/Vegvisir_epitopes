@@ -36,13 +36,16 @@ class VEGVISIRGUIDES(EasyGuide):
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
         self.h_0_GUIDE = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
         self.h_0_GUIDE_classifier = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
+        self.h_0_GUIDE_decoder = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
         self.encoder_guide = RNN_guide(self.aa_types,self.max_len,self.gru_hidden_dim,self.z_dim,self.device)
+        #self.decoder_guide = RNN_model(self.aa_types,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
+        #self.h_0_MODEL_decoder = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
         if self.learning_type in ["semisupervised","unsupervised"]:
             self.classifier_guide = FCL4(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
         #self.classifier_guide = FCL1(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
         #self.classifier_guide = RNN_classifier(1,self.max_len,self.gru_hidden_dim,self.num_classes,self.z_dim,self.device) #input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device
 
-    def guide_a(self, batch_data, batch_mask):
+    def guide_a(self, batch_data, batch_mask,sample=False):
         """
         Amortized inference with only sequences
         Notes:
@@ -105,7 +108,7 @@ class VEGVISIRGUIDES(EasyGuide):
                 "z_scale": z_scale,
                 "class_predictions":None}
 
-    def guide_b(self, batch_data, batch_mask):
+    def guide_b(self, batch_data, batch_mask,sample=False):
         """
         Amortized inference with only sequences
         Notes:
@@ -121,6 +124,7 @@ class VEGVISIRGUIDES(EasyGuide):
         batch_mask = batch_mask[:, 1]
         batch_mask = batch_mask[:, :, 0]
         batch_sequences_blosum = batch_data["blosum"][:, 1, :self.seq_max_len].squeeze(1)
+        batch_size = batch_sequences_blosum.shape[0]
         true_labels = batch_data["blosum"][:, 0, 0, 0]
         batch_sequences_norm = batch_data["norm"][:, 1]  # only sequences norm
         # mean = (batch_sequences_norm*batch_mask).mean(dim=1)
@@ -141,11 +145,14 @@ class VEGVISIRGUIDES(EasyGuide):
                 assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
                 assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
                 latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(1))  # ,infer=dict(baseline={'nn_baseline': self.guide_rnn,'nn_baseline_input': batch_sequences_blosum}))  # [z_dim,n]
-
-                #latent_z_seq = latent_space.repeat(1, self.seq_max_len).reshape(latent_space.shape[0], self.seq_max_len, self.z_dim)
-                #batch_sequences_norm = batch_sequences_norm[:, :, None].expand(batch_sequences_norm.shape[0],batch_sequences_norm.shape[1], self.z_dim)
-                #latent_z_seq += batch_sequences_norm
-                #init_h_0_classifier = self.h_0_GUIDE_classifier.expand(self.classifier_guide.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
+                #latent_z_seq = latent_space.repeat(1, self.max_len).reshape(batch_size, self.max_len, self.z_dim)
+                #Highlight: Inferring masked positions?
+                #init_h_0_decoder = self.h_0_GUIDE_decoder.expand(self.decoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
+                #with pyro.plate("plate_len",dim=-2, device=self.device):  #Highlight: not to_event(1) and with our without plate over the len dimension
+                # with pyro.poutine.mask(mask=~batch_mask):
+                #         sequences_logits = self.decoder_guide(latent_z_seq,init_h_0_decoder)
+                #         sequences_logits = self.logsoftmax(sequences_logits)
+                #         pyro.sample("sequences",dist.Categorical(logits=sequences_logits).mask(~batch_mask),infer={'enumerate': 'parallel'})
                 # Highlight: We only need to specify a variational distribution over the class/class if class/label is unobserved
                 if self.learning_type in ["semisupervised","unsupervised"]:
                     with pyro.poutine.mask(mask=[confidence_mask if self.learning_type in ["semisupervised"] else confidence_mask_true][0]):
@@ -167,7 +174,7 @@ class VEGVISIRGUIDES(EasyGuide):
                 "class_predictions":None}
 
 
-    def guide_c(self, batch_data,batch_mask):
+    def guide_c(self, batch_data,batch_mask,sample=False):
         """
         Amortized inference with features and sequences
         Notes:
@@ -230,11 +237,11 @@ class VEGVISIRGUIDES(EasyGuide):
 
 
 
-    def guide(self,batch_data,batch_mask):
+    def guide(self,batch_data,batch_mask,sample):
         if self.seq_max_len == self.max_len:
-            return self.guide_b(batch_data,batch_mask)
+            return self.guide_b(batch_data,batch_mask,sample)
         else:
-            return self.guide_c(batch_data,batch_mask)
+            return self.guide_c(batch_data,batch_mask,sample)
 
 
 
