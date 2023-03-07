@@ -478,7 +478,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         #predictions_fold,labels,accuracy,fold,results_dir
         VegvisirUtils.fold_auc(valid_predictions_fold_mode,fold_valid_data_blosum[:,0,0,0],valid_accuracy,fold,results_dir,mode="Valid")
         VegvisirUtils.fold_auc(train_predictions_fold_mode,fold_train_data_blosum[:,0,0,0],train_accuracy,fold,results_dir,mode="Train")
-
+        pyro.clear_param_store()
 
     if args.test: #TODO: Function for training
         print("Final training & testing")
@@ -646,7 +646,8 @@ def train_model(dataset_info,additional_info,args):
     trace = pyro.poutine.trace(Vegvisir.model).get_trace(data_args_0,data_args_1)
     obs_mask = trace.nodes["predictions"]
     #Highlight: Draw the graph model
-    graph = pyro.render_model(Vegvisir.model, model_args=(data_args_0,data_args_1), filename="{}/model_graph.png".format(results_dir))
+    pyro.render_model(Vegvisir.model, model_args=(data_args_0,data_args_1,False), filename="{}/model_graph.png".format(results_dir),render_distributions=True,render_params=True)
+    pyro.render_model(guide, model_args=(data_args_0,data_args_1,False), filename="{}/guide_graph.png".format(results_dir),render_distributions=True,render_params=True)
     svi = SVI(Vegvisir.model, guide, optimizer, loss_func)
 
     #TODO: Dictionary that gathers the results from each fold

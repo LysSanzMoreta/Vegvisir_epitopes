@@ -817,7 +817,7 @@ class VegvisirModel5b(VEGVISIRModelClass,PyroModule):
                 with pyro.poutine.mask(mask=batch_mask):
                     sequences_logits = self.decoder(latent_z_seq,init_h_0_decoder)
                     sequences_logits = self.logsoftmax(sequences_logits)
-                    pyro.sample("sequences",dist.Categorical(logits=sequences_logits),obs=[None if sample else batch_sequences_int][0])
+                    pyro.sample("sequences",dist.Categorical(logits=sequences_logits).mask(batch_mask),obs=[None if sample else batch_sequences_int][0])
 
 
 

@@ -17,6 +17,7 @@ from pyro.nn import PyroModule
 from pyro.distributions import constraints
 class VEGVISIRGUIDES(EasyGuide):
     def __init__(self,vegvisir_model,model_load, Vegvisir):
+        """The guide provides a valid joint probability density over all the latent random variables in the model or variational distribution."""
         super(VEGVISIRGUIDES, self).__init__(vegvisir_model)
         #self.guide_type = ModelLoad.args.select_guide
         #self.Vegvisir = Vegvisir
@@ -146,13 +147,7 @@ class VEGVISIRGUIDES(EasyGuide):
                 assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
                 latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(1))  # ,infer=dict(baseline={'nn_baseline': self.guide_rnn,'nn_baseline_input': batch_sequences_blosum}))  # [z_dim,n]
                 #latent_z_seq = latent_space.repeat(1, self.max_len).reshape(batch_size, self.max_len, self.z_dim)
-                #Highlight: Inferring masked positions?
-                #init_h_0_decoder = self.h_0_GUIDE_decoder.expand(self.decoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
-                #with pyro.plate("plate_len",dim=-2, device=self.device):  #Highlight: not to_event(1) and with our without plate over the len dimension
-                # with pyro.poutine.mask(mask=~batch_mask):
-                #         sequences_logits = self.decoder_guide(latent_z_seq,init_h_0_decoder)
-                #         sequences_logits = self.logsoftmax(sequences_logits)
-                #         pyro.sample("sequences",dist.Categorical(logits=sequences_logits).mask(~batch_mask),infer={'enumerate': 'parallel'})
+
                 # Highlight: We only need to specify a variational distribution over the class/class if class/label is unobserved
                 if self.learning_type in ["semisupervised","unsupervised"]:
                     with pyro.poutine.mask(mask=[confidence_mask if self.learning_type in ["semisupervised"] else confidence_mask_true][0]):
