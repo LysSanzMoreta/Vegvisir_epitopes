@@ -714,18 +714,26 @@ def euclidean_2d_norm(A,B,squared=True):
     else:
         return distance.clip(min=0)
 
-def fold_auc(predictions_fold,labels,accuracy,fold,results_dir,mode="Train"):
+def fold_auc(predictions_dict,labels,fold,results_dir,mode="Train"):
+    """
+    :param predictions_dict: {"mode": tensor of (N,), "frequencies": tensor of (N, num_classes)}
+    :param labels:
+    :param fold:
+    :param results_dir:
+    :param mode:
+    :return:
+    """
     if isinstance(labels,torch.Tensor):
         labels = labels.numpy()
     # total_predictions = np.column_stack(predictions_fold)
     # model_predictions = stats.mode(total_predictions, axis=1) #mode_predictions.mode
-    auc_score = roc_auc_score(y_true=labels, y_score=predictions_fold)
-    auk_score = AUK(predictions_fold, labels).calculate_auk()
-    fpr, tpr, threshold = roc_curve(y_true=labels, y_score=predictions_fold)
+    auc_score = roc_auc_score(y_true=labels, y_score=predictions_dict["mode"])
+    auk_score = AUK(predictions_dict["mode"], labels).calculate_auk()
+    fpr, tpr, threshold = roc_curve(y_true=labels, y_score=predictions_dict["mode"])
     VegvisirPlots.plot_ROC_curve(fpr,tpr,auc_score,auk_score,"{}/{}".format(results_dir,mode),fold)
     print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score))
     print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score),file=open("{}/AUC_out.txt".format(results_dir),"a"))
-    tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=predictions_fold).ravel()
+    tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=predictions_dict["mode"]).ravel()
     confusion_matrix_df = pd.DataFrame([[tn, fp], [fn, tp]],
                                     columns=["Negative", "Positive"],
                                     index=["Negative", "Positive"])
@@ -733,7 +741,7 @@ def fold_auc(predictions_fold,labels,accuracy,fold,results_dir,mode="Train"):
     precision = tp/(tp + fp)
     f1score = 2*tp/(2*tp + fp + fn)
     tnr = tn/(tn + fp)
-    accuracy = 100*((predictions_fold == labels).sum()/predictions_fold.shape[0])
+    accuracy = 100*((predictions_dict["mode"] == labels).sum()/predictions_dict["mode"].shape[0])
     performance_metrics = {"recall/tpr":recall,"precision":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr}
     VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold)
     return auc_score,auk_score

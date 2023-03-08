@@ -55,7 +55,7 @@ if __name__ == "__main__":
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=25, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=2, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. ')
     #TODO: include more blosum matrix types?
@@ -80,7 +80,7 @@ if __name__ == "__main__":
     parser.add_argument('-guide', type=str, nargs='?', default="custom", help='<custom>: See guides.py \n'
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
     parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
-    parser.add_argument('-seq-padding', type=str, nargs='?', default="ends", help='Controls how the sequences are padded to the length of the longest sequence \n'
+    parser.add_argument('-seq-padding', type=str, nargs='?', default="replicated_borders", help='Controls how the sequences are padded to the length of the longest sequence \n'
                                                                                     '<ends>: The sequences are padded at the end'
                                                                                     '<borders>: The sequences are padded at the beginning and the end. Random choice when the pad is an even number'
                                                                                     '<replicated_borders>: Padds by replicating the borders of the sequence'

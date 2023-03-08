@@ -664,10 +664,8 @@ def train_model(dataset_info,additional_info,args):
     valid_auc = []
     valid_auk = []
     epoch = 0.
-    train_predictions = None
-    valid_predictions = None
-    train_predictions_mode = None
-    valid_predictions_mode = None
+    train_predictions_dict = None
+    valid_predictions_dict = None
     train_accuracy = None
     valid_accuracy = None
     gradient_norms = defaultdict(list)
@@ -714,24 +712,40 @@ def train_model(dataset_info,additional_info,args):
                 valid_predictions_samples = sample_loop(Vegvisir,guide,valid_loader,args)
                 train_predictions_mode = stats.mode(train_predictions_samples.cpu().numpy(), axis=1,keepdims=True).mode.squeeze(-1)
                 valid_predictions_mode = stats.mode(valid_predictions_samples.cpu().numpy(), axis=1,keepdims=True).mode.squeeze(-1)
+                train_frequencies = torch.stack([torch.bincount(x_i, minlength=args.num_classes) for i, x_i in enumerate(torch.unbind(train_predictions_samples.type(torch.int64), dim=0), 0)], dim=0)
+                train_frequencies = train_frequencies/args.num_samples
+                valid_frequencies = torch.stack([torch.bincount(x_i, minlength=args.num_classes) for i, x_i in enumerate(torch.unbind(valid_predictions_samples.type(torch.int64), dim=0), 0)], dim=0)
+                valid_frequencies = valid_frequencies/args.num_samples
+
+                train_predictions_dict = {"mode":train_predictions_mode,
+                                          "frequencies": train_frequencies.detach().cpu().numpy(),
+                                          # "y_perc_5": svi_gdp.kthvalue(int(len(svi_gdp) * 0.05), dim=0)[
+                                          #     0].detach().cpu().numpy(),
+                                          # "y_perc_95": svi_gdp.kthvalue(int(len(svi_gdp) * 0.95), dim=0)[
+                                          #     0].detach().cpu().numpy(),
+                                          }
+
+                valid_predictions_dict = {"mode": valid_predictions_mode,
+                                          "frequencies": valid_frequencies.detach().cpu().numpy()}
                 VegvisirPlots.plot_gradients(gradient_norms, results_dir, "all")
-                VegvisirPlots.plot_latent_space(train_latent_space, train_predictions_mode, "all",results_dir, method="Train")
-                VegvisirPlots.plot_latent_space(valid_latent_space,valid_predictions_mode, "all",results_dir, method="Valid")
+                VegvisirPlots.plot_latent_space(train_latent_space, train_predictions_dict, "all",results_dir, method="Train")
+                VegvisirPlots.plot_latent_space(valid_latent_space,valid_predictions_dict, "all",results_dir, method="Valid")
                 Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer)
 
         torch.cuda.empty_cache()
         epoch += 1 #TODO: early stop?
-    VegvisirUtils.fold_auc(train_predictions_mode,train_data_blosum[:,0,0,0],train_accuracy,"_mode_samples",results_dir,mode="Train")
-    VegvisirUtils.fold_auc(valid_predictions_mode,valid_data_blosum[:,0,0,0],valid_accuracy,"_mode_samples",results_dir,mode="Valid")
-    VegvisirUtils.fold_auc(train_predictions,train_data_blosum[:,0,0,0],train_accuracy,"argmax_sample",results_dir,mode="Train")
-    VegvisirUtils.fold_auc(valid_predictions,valid_data_blosum[:,0,0,0],valid_accuracy,"argmax_sample",results_dir,mode="Valid")
+    VegvisirUtils.fold_auc(train_predictions_dict,train_data_blosum[:,0,0,0],"_mode_samples",results_dir,mode="Train")
+    VegvisirUtils.fold_auc(valid_predictions_dict,valid_data_blosum[:,0,0,0],"_mode_samples",results_dir,mode="Valid")
+    # VegvisirUtils.fold_auc(train_predictions,train_data_blosum[:,0,0,0],train_accuracy,"argmax_sample",results_dir,mode="Train")
+    # VegvisirUtils.fold_auc(valid_predictions,valid_data_blosum[:,0,0,0],valid_accuracy,"argmax_sample",results_dir,mode="Valid")
     stop = time.time()
     print('Final timing: {}'.format(str(datetime.timedelta(seconds=stop-start))))
 
 
-    if args.test: #TODO: Function for training
+    if args.test: #TODO: Fix , it is  a mess
         print("Final testing")
-
+        print("NEEDS TO BE FIXED!!!!!!!!!1")
+        exit()
         custom_dataset_test = VegvisirLoadUtils.CustomDataset(data_blosum[test_idx],
                                                               data_int[test_idx],
                                                               data_onehot[test_idx],
@@ -740,6 +754,7 @@ def train_model(dataset_info,additional_info,args):
         test_loader = DataLoader(custom_dataset_test, batch_size=batch_size, shuffle=True,
                                  generator=torch.Generator(device=args.device), **kwargs)
         test_predictions,test_accuracy,test_latent_space, test_reconstruction_accuracies_dict = test_loop(Vegvisir,guide,test_loader,args,model_load)
+
         VegvisirPlots.plot_latent_space(test_latent_space, train_predictions_mode, "all", results_dir, method="Train")
         print("Calculating Monte Carlo estimate of the posterior predictive")
         test_predictions = sample_loop(Vegvisir, guide, test_loader, args)

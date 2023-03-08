@@ -6,6 +6,7 @@ Vegvisir :
 """
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from matplotlib.colors import Normalize
 import  matplotlib
 import seaborn as sns
 import numpy as np
@@ -495,7 +496,7 @@ def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,m
     plt.close()
     plt.clf()
 
-def plot_latent_space(latent_space,predictions,fold,results_dir,method):
+def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
 
     print("Plotting UMAP...")
     reducer = umap.UMAP()
@@ -503,7 +504,7 @@ def plot_latent_space(latent_space,predictions,fold,results_dir,method):
 
     colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,1])
-    colors_predicted = np.vectorize(colors_dict_labels.get)(predictions)
+    colors_predicted = np.vectorize(colors_dict_labels.get)(predictions_dict["mode"])
     #Highlight: Confidence scores colors
     confidence_scores = latent_space[:,2]
     confidence_scores_unique = np.unique(confidence_scores).tolist()
@@ -516,34 +517,46 @@ def plot_latent_space(latent_space,predictions,fold,results_dir,method):
     colormap_immunodominance = matplotlib.cm.get_cmap('plasma_r', len(immunodominance_scores_unique))
     colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
     colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
+    #Highlight: Frequency scores per class: https://stackoverflow.com/questions/65927253/linearsegmentedcolormap-to-list
+    frequency_class0_unique = np.unique(predictions_dict["frequencies"][:,0]).tolist()
+    colormap_frequency_class0 = matplotlib.cm.get_cmap('BuGn', len(frequency_class0_unique)) #This one is  a LinearSegmentedColor map and works slightly different
+    colormap_frequency_class0_array =  np.array([colormap_frequency_class0(i) for i in range(colormap_frequency_class0.N)])
+    colors_dict = dict(zip(frequency_class0_unique, colormap_frequency_class0_array))
+    colors_frequency_class0 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["frequencies"][:,0])
+    frequency_class1_unique = np.unique(predictions_dict["frequencies"][:,1]).tolist()
+    colormap_frequency_class1 = matplotlib.cm.get_cmap('OrRd', len(frequency_class1_unique))
+    colormap_frequency_class1_array =  np.array([colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
+    colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
+    colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["frequencies"][:,1])
 
-
-    fig, [[ax1, ax2, ax3],[ax4,ax5,ax6],[ax7,ax8,ax9]] = plt.subplots(3, 3,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [4,4,2]})
+    fig, [[ax1, ax2, ax3],[ax4,ax5,ax6],[ax7,ax8,ax9],[ax10,ax11,ax12]] = plt.subplots(4, 3,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [4,4,4,2]})
     fig.suptitle('UMAP projections',fontsize=20)
     ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:,2], alpha=1,s=30)
     ax1.set_title("True labels",fontsize=20)
-    ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted, label=predictions, alpha=1,s=30)
-    ax2.set_title("Predicted labels",fontsize=20)
+    ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted, label=predictions_dict["mode"], alpha=1,s=30)
+    ax2.set_title("Predicted labels (mode)",fontsize=20)
     ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=1, s=30)
     ax4.set_title("Confidence scores", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence),ax=ax4)
-    ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=1, s=30)
-    ax5.set_title("Immunodominance scores", fontsize=20)
-    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance),ax=ax5)
-    # ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_peptides_identifiers, label=latent_space[:,0], alpha=1, s=30)
-    # ax4.set_title("Peptides identifiers", fontsize=20)
+    ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class0, alpha=1, s=30)
+    ax5.set_title("Probability class 0 (frequency)", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable( norm = Normalize(0,1),cmap=colormap_frequency_class0),ax=ax5)
+    ax7.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=1, s=30)
+    ax7.set_title("Probability class 1 (frequency)", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable( cmap=colormap_frequency_class1),ax=ax7)
+    ax8.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=1, s=30)
+    ax8.set_title("Immunodominance scores", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance),ax=ax8)
+
     ax3.axis("off")
     ax6.axis("off")
-    ax7.axis("off")
-    ax8.axis("off")
     ax9.axis("off")
+    ax10.axis("off")
+    ax11.axis("off")
+    ax12.axis("off")
     negative_patch = mpatches.Patch(color=colors_dict_labels[0], label='Class 0')
     positive_patch = mpatches.Patch(color=colors_dict_labels[1], label='Class 1')
-    #peptides_color_patches = [mpatches.Patch(color='{}'.format(val), label='{}'.format(peptides_labels_dict[key])) if key in peptides_labels_dict.keys() else None for key,val in colors_dict_peptides.items()]
-    #peptides_color_patches = [x for x in peptides_color_patches if x is not None]
-    #ncol = [1 if len(peptides_color_patches) < 10 else math.ceil((len(peptides_color_patches)/10))][0]
-    # xloc = [0.55 if ncol == 1 else 1][0]
-    # yloc = [0.5 if ncol == 1 else 0.35][0]
+    fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
     plt.legend(handles=[negative_patch,positive_patch], prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5),ncol=1)
     plt.savefig("{}/{}/umap_fold{}".format(results_dir,method,fold))
     plt.clf()

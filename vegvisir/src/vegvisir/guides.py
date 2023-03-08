@@ -111,7 +111,7 @@ class VEGVISIRGUIDES(EasyGuide):
 
     def guide_b(self, batch_data, batch_mask,sample=False):
         """
-        Amortized inference with only sequences
+        Amortized inference with only sequences usian a mean field approximation
         Notes:
             -https://pyro.ai/examples/easyguide.html
             -https://medium.com/analytics-vidhya/activity-detection-using-the-variational-autoencoder-d2b017da1a88

@@ -724,7 +724,7 @@ class AutoEncoder(nn.Module):
         return reconstructed_sequences.permute(0,2,1),class_output
 
 class NNAlign(nn.Module):
-
+    """2 step mini batch sampler: https://discuss.pytorch.org/t/custom-batchsampler-for-two-step-mini-batch/20309/2"""
     def __init__(self,input_dim,max_len,hidden_dim,num_classes,device):
         super(NNAlign, self).__init__()
         self.input_dim = input_dim
