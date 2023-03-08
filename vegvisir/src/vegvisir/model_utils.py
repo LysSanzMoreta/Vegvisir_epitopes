@@ -519,10 +519,10 @@ class RNN_classifier(nn.Module):
                           dropout=0.,
                           bidirectional=True
                           )
-        self.bnn = nn.BatchNorm1d(self.z_dim).to(self.device)
+        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
         self.softplus = nn.Softplus()
         self.leakyrelu = nn.LeakyReLU()
-        self.h = self.z_dim*self.gru_hidden_dim
+        self.h = self.max_len*self.gru_hidden_dim
         self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
         self.fc2 = nn.Linear(int(self.h/2),int(self.h/4),bias=False)
         self.fc3 = nn.Linear(int(self.h/4),self.num_classes,bias=False)

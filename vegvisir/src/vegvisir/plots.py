@@ -496,6 +496,45 @@ def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,m
     plt.close()
     plt.clf()
 
+def plot_latent_vector(latent_space,predictions_dict,fold,results_dir,method):
+
+    print("Plotting Latent Vector...")
+    latent_vector = latent_space[:,4:]
+    colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
+    colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,1])
+    colors_predicted = np.vectorize(colors_dict_labels.get)(predictions_dict["predictions"])
+    #Highlight: Confidence scores colors
+    confidence_scores = latent_space[:,2]
+    confidence_scores_unique = np.unique(confidence_scores).tolist()
+    colormap_confidence = matplotlib.cm.get_cmap('plasma_r', len(confidence_scores_unique))
+    colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
+    colors_confidence = np.vectorize(colors_dict.get, signature='()->(n)')(confidence_scores)
+
+    fig, [[ax1, ax2, ax3],[ax4,ax5,ax6],[ax7,ax8,ax9]] = plt.subplots(3, 3,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [4,4,2]})
+    fig.suptitle('UMAP projections',fontsize=20)
+    ax1.plot(latent_vector, color=colors_true, label=latent_space[:,2], alpha=1)
+    ax1.set_title("True labels",fontsize=20)
+    ax2.plot(latent_vector, color=colors_predicted, label=predictions_dict["predictions"], alpha=1)
+    ax2.set_title("Predicted labels (samples mode)",fontsize=20)
+    ax4.plot(latent_vector, color=colors_confidence, alpha=1)
+    ax4.set_title("Confidence scores", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence),ax=ax4)
+    ax3.axis("off")
+    ax5.axis("off")
+    ax6.axis("off")
+    ax7.axis("off")
+    ax8.axis("off")
+    ax9.axis("off")
+
+    negative_patch = mpatches.Patch(color=colors_dict_labels[0], label='Class 0')
+    positive_patch = mpatches.Patch(color=colors_dict_labels[1], label='Class 1')
+    fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
+    plt.legend(handles=[negative_patch,positive_patch], prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5),ncol=1)
+    plt.savefig("{}/{}/zvector_fold{}".format(results_dir,method,fold))
+    plt.clf()
+
+
+
 def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
 
     print("Plotting UMAP...")
@@ -504,7 +543,7 @@ def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
 
     colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,1])
-    colors_predicted = np.vectorize(colors_dict_labels.get)(predictions_dict["mode"])
+    colors_predicted = np.vectorize(colors_dict_labels.get)(predictions_dict["predictions"])
     #Highlight: Confidence scores colors
     confidence_scores = latent_space[:,2]
     confidence_scores_unique = np.unique(confidence_scores).tolist()
@@ -533,8 +572,8 @@ def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
     fig.suptitle('UMAP projections',fontsize=20)
     ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:,2], alpha=1,s=30)
     ax1.set_title("True labels",fontsize=20)
-    ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted, label=predictions_dict["mode"], alpha=1,s=30)
-    ax2.set_title("Predicted labels (mode)",fontsize=20)
+    ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted, label=predictions_dict["predictions"], alpha=1,s=30)
+    ax2.set_title("Predicted labels (samples mode)",fontsize=20)
     ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=1, s=30)
     ax4.set_title("Confidence scores", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence),ax=ax4)
