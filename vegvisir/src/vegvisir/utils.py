@@ -738,9 +738,10 @@ def fold_auc(predictions_dict,labels,fold,results_dir,mode="Train"):
     print("Fold : {}, {} AUC score (train/valid loop) : {}, AUK score {}".format(fold,mode, auc_score_train,auk_score))
     print("Fold : {}, {} AUC score (train/valid loop) : {}, AUK score {}".format(fold,mode, auc_score_train,auk_score),file=open("{}/AUC_out.txt".format(results_dir),"a"))
     tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=predictions_dict["samples_mode"]).ravel()
-    confusion_matrix_df = pd.DataFrame([[tn, fp], [fn, tp]],
-                                    columns=["Negative", "Positive"],
-                                    index=["Negative", "Positive"])
+    confusion_matrix_df = pd.DataFrame([[tn, fp],
+                                        [fn, tp]],
+                                    columns=["Negative\n(True)", "Positive"],
+                                    index=["Negative", "Positive\n(True)"])
     recall = tp/(tp + fn)
     precision = tp/(tp + fp)
     f1score = 2*tp/(2*tp + fp + fn)

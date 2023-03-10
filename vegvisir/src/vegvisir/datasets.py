@@ -697,7 +697,6 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
         data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:,None]], axis=1)
         data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:,None]], axis=1)
 
-
     data_array_blosum_encoding_mask = np.broadcast_to(epitopes_mask[:, None, :, None], (n_data, 2, seq_max_len,corrected_aa_types))  # I do it like this in case the padding is not represented as 0, otherwise just use bool. Note: The first row of the second dimension is a dummy
     #distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
 

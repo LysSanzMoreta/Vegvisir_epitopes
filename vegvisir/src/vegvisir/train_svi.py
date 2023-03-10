@@ -58,15 +58,19 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
         # latent_space = sampling_output.latent_space
         # reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
         sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=1, return_sites=(), parallel=False)(batch_data,batch_mask,sample=True)
-        predicted_labels = sampling_output["predictions"].squeeze(0).squeeze(0).detach()
-        reconstructed_sequences = sampling_output["sequences"].squeeze(0).detach()
-        latent_space = sampling_output["latent_z"].squeeze(0).detach()
+        if args.learning_type in ["semisupervised","unsupervised"]:
+            predicted_labels = torch.concatenate([sampling_output[f"predictions_{t}"].squeeze(0).squeeze(0).detach() for t in range(batch_data_blosum.shape[0])],dim=0)
+        else:
+            predicted_labels = sampling_output["predictions"].squeeze(0).squeeze(0).squeeze(0).detach()
+        reconstructed_sequences = sampling_output["sequences"].squeeze(0).squeeze(0).squeeze(0).detach()
+        latent_space = sampling_output["latent_z"].squeeze(0).squeeze(0).detach()
+
         identifiers = batch_data["blosum"][:,0,0,1]
         true_labels_batch = batch_data["blosum"][:,0,0,0]
         confidence_score = batch_data["blosum"][:,0,0,5]
         immunodominace_score = batch_data["blosum"][:, 0, 0, 4]
-        latent_space = torch.column_stack([identifiers, true_labels_batch, confidence_score, immunodominace_score, latent_space])
 
+        latent_space = torch.column_stack([identifiers, true_labels_batch, confidence_score, immunodominace_score, latent_space])
         mask_seq = batch_mask[:, 1:,:,0].squeeze(1)
         equal_aa = torch.Tensor((batch_data_int[:,1,:model_load.seq_max_len] == reconstructed_sequences)*mask_seq)
         reconstruction_accuracy = (equal_aa.sum(dim=1))/mask_seq.sum(dim=1)
@@ -119,9 +123,14 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
 
             sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=1, return_sites=(), parallel=False)(
                 batch_data, batch_mask,sample=True)
-            predicted_labels = sampling_output["predictions"].squeeze(0).squeeze(0).detach()
-            reconstructed_sequences = sampling_output["sequences"].squeeze(0).detach()
-            latent_space = sampling_output["latent_z"].squeeze(0).detach()
+            if args.learning_type in ["semisupervised", "unsupervised"]:
+                predicted_labels = torch.concatenate(
+                    [sampling_output[f"predictions_{t}"].squeeze(0).squeeze(0).detach() for t in
+                     range(batch_data_blosum.shape[0])], dim=0)
+            else:
+                predicted_labels = sampling_output["predictions"].squeeze(0).squeeze(0).squeeze(0).detach()
+            reconstructed_sequences = sampling_output["sequences"].squeeze(0).squeeze(0).squeeze(0).detach()
+            latent_space = sampling_output["latent_z"].squeeze(0).squeeze(0).detach()
             identifiers = batch_data["blosum"][:, 0, 0, 1]
             true_labels_batch = batch_data["blosum"][:, 0, 0, 0]
             confidence_score = batch_data["blosum"][:, 0, 0, 5]
@@ -173,9 +182,15 @@ def test_loop(Vegvisir,guide,data_loader,args,model_load):
             # reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
             #latent_space = sampling_output.latent_space.detach()
             sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=1, return_sites=(), parallel=True)(batch_data, batch_mask,sample=True)
-            predicted_labels = sampling_output["predictions"].squeeze(0).squeeze(0).detach()
+            #predicted_labels = sampling_output["predictions"].squeeze(0).squeeze(0).squeeze(0).detach()
+            if args.learning_type in ["semisupervised", "unsupervised"]:
+                predicted_labels = torch.concatenate(
+                    [sampling_output[f"predictions_{t}"].squeeze(0).squeeze(0).detach() for t in
+                     range(batch_data_blosum.shape[0])], dim=0)
+            else:
+                predicted_labels = sampling_output["predictions"].squeeze(0).squeeze(0).squeeze(0).detach()
             reconstructed_sequences = sampling_output["sequences"].squeeze(0).detach()
-            latent_space = sampling_output["latent_space"].squeeze(0).detach()
+            latent_space = sampling_output["latent_space"].squeeze(0).squeeze(0).detach()
             identifiers = batch_data["blosum"][:, 0, 0, 1]
             true_labels_batch = batch_data["blosum"][:, 0, 0, 0]
             confidence_score = batch_data["blosum"][:, 0, 0, 5]
@@ -237,7 +252,6 @@ def sample_loop1(Vegvisir,guide,data_loader,args,custom=False):
 def sample_loop(Vegvisir,guide,data_loader,args,custom=False):
     Vegvisir.train(False)
     print("Collecting {} samples".format(args.num_samples))
-
     with torch.no_grad():
         batch_samples = []
         for batch_number, batch_dataset in enumerate(data_loader):
@@ -264,11 +278,18 @@ def sample_loop(Vegvisir,guide,data_loader,args,custom=False):
 
             else: #TODO: more samples?
                 sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=args.num_samples,return_sites=(), parallel=False)(batch_data, batch_mask,sample=True)
-                predicted_labels = sampling_output["predictions"].squeeze(1).detach().T
+                if args.learning_type in ["semisupervised", "unsupervised"]:
+                    predicted_labels = torch.concatenate(
+                        [sampling_output[f"predictions_{t}"].squeeze(1).detach() for t in
+                         range(batch_data_blosum.shape[0])], dim=0)
+                else:
+                    #predicted_labels = sampling_output["predictions"].squeeze(0).squeeze(0).squeeze(0).detach()
+                    predicted_labels = sampling_output["predictions"].squeeze(1).detach().T
                 batch_samples.append(predicted_labels)
+                print(predicted_labels.shape)
+                exit()
         total_samples = torch.cat(batch_samples,dim=0)
     return total_samples
-
 def save_script(results_dir,output_name,script_name):
     """Saves the python script and its contents"""
     out_file = open("{}/{}.py".format(results_dir,output_name), "a+")
@@ -286,13 +307,14 @@ def select_quide(Vegvisir,model_load,n_data,choice="autodelta"):
     #guide = GleipnirGuides.GLEIPNIRGUIDES(Gleipnir.model,model_load,Gleipnir)
     guide = {"autodelta":AutoDelta(Vegvisir.model),
              "autonormal":AutoNormal(Vegvisir.model,init_scale=0.1),
+             "autodiagonalnormal": AutoDiagonalNormal(Vegvisir.model, init_scale=0.1), #Mean Field approximation, only diagonal variance
              "custom":VegvisirGuides.VEGVISIRGUIDES(Vegvisir.model,model_load,Vegvisir)}
     return guide[choice]
     #return poutine.scale(guide[choice],scale=1.0/n_data) #Scale the ELBo to the data size
 def select_model(model_load,results_dir,fold):
     """Select among the available models at models.py"""
     if model_load.seq_max_len == model_load.max_len:
-        vegvisir_model = VegvisirModels.VegvisirModel5b(model_load)
+        vegvisir_model = VegvisirModels.VegvisirModel5a(model_load)
     else:
         vegvisir_model = VegvisirModels.VegvisirModel5c(model_load)
     if fold == 0 or fold == "all":
@@ -675,7 +697,7 @@ def train_model(dataset_info,additional_info,args):
     data_args_0 = {"blosum":train_data_blosum.to(args.device)[:n],"norm":data_blosum_norm[train_idx].to(args.device)[:n],"int":data_int[train_idx].to(args.device)[:n]}
     data_args_1 = data_array_blosum_encoding_mask[train_idx].to(args.device)[:n]
     trace = pyro.poutine.trace(Vegvisir.model).get_trace(data_args_0,data_args_1)
-    obs_mask = trace.nodes["predictions"]
+    #obs_mask = trace.nodes["predictions"]
     #Highlight: Draw the graph model
     pyro.render_model(Vegvisir.model, model_args=(data_args_0,data_args_1,False), filename="{}/model_graph.png".format(results_dir),render_distributions=True,render_params=True)
     pyro.render_model(guide, model_args=(data_args_0,data_args_1,False), filename="{}/guide_graph.png".format(results_dir),render_distributions=True,render_params=True)
