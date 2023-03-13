@@ -629,24 +629,27 @@ class VegvisirModel5a(VEGVISIRModelClass,PyroModule):
             #class_logits = self.classifier_model(latent_space[:,:,None],init_h_0_classifier)
             class_logits = self.logsoftmax(class_logits)
             #Highlight: Declaring first dimensions as conditionally independent is essential (.to_event(1))
-            if self.learning_type == "semisupervised":
-                #pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=[None if sample else true_labels][0],obs_mask=confidence_mask)
-                for t, y in enumerate(class_logits):
-                    pyro.sample(f"predictions_{t}", dist.Categorical(class_logits[t]),obs=[None if sample else true_labels[t]][0],obs_mask=confidence_mask[t],infer={"enumerate": "parallel"})
-            elif self.learning_type == "unsupervised":
-                #pyro.sample("predictions", dist.Categorical(logits=class_logits).mask(confidence_mask_true))
-                for t, y in enumerate(class_logits):
-                    pyro.sample(f"predictions_{t}", dist.Categorical(class_logits[t]),infer={"enumerate": "parallel"})
-            else:
-                pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=[None if sample else true_labels][0])
+            with pyro.poutine.mask(mask=[confidence_mask if self.learning_type in ["semisupervised"] else confidence_mask_true][0]):
+                if self.learning_type == "semisupervised":
+                    with pyro.poutine.mask(mask=confidence_mask):
+                        #pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1).mask(confidence_mask),obs=[None if sample else true_labels][0],obs_mask=confidence_mask)
+                        for t, y in enumerate(class_logits):
+                            pyro.sample(f"predictions_{t}", dist.Categorical(class_logits[t]).mask(confidence_mask[t]),obs=[None if sample else true_labels[t]][0],obs_mask=confidence_mask[t])
+                elif self.learning_type == "unsupervised":
+                    #pyro.sample("predictions", dist.Categorical(logits=class_logits))
+                    for t, y in enumerate(class_logits):
+                        pyro.sample(f"predictions_{t}", dist.Categorical(class_logits[t]),infer={"enumerate": "parallel"})
+                    #pyro.sample("predictions", dist.Categorical(class_logits), infer={"enumerate": "sequential"})
+
+                else:
+                    pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=[None if sample else true_labels][0])
 
             init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
-            with pyro.plate("plate_len",dim=-2, device=self.device):  #Highlight: not to_event(1) and with our without plate over the len dimension
-                #with pyro.poutine.mask(mask=batch_mask):#https://pyro.ai/examples/enumeration.html
-                sequences_logits = self.decoder(latent_z_seq,init_h_0_decoder)
-                sequences_logits = self.logsoftmax(sequences_logits)
-                pyro.sample("sequences",dist.Categorical(logits=sequences_logits),obs=[None if sample else batch_sequences_int][0],obs_mask=batch_mask)
-
+            with pyro.poutine.mask(mask=batch_mask):
+                with pyro.plate("plate_len",dim=-2, device=self.device):  #Highlight: not to_event(1) and with our without plate over the len dimension
+                    sequences_logits = self.decoder(latent_z_seq,init_h_0_decoder)
+                    sequences_logits = self.logsoftmax(sequences_logits)
+                    pyro.sample("sequences",dist.Categorical(logits=sequences_logits).mask(batch_mask),obs=[None if sample else batch_sequences_int][0],obs_mask=batch_mask)
 
         return {"sequences_logits":None}
                 # "beta":beta,

@@ -63,6 +63,9 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
         else:
             predicted_labels = sampling_output["predictions"].squeeze(0).squeeze(0).squeeze(0).detach()
         reconstructed_sequences = sampling_output["sequences"].squeeze(0).squeeze(0).squeeze(0).detach()
+        print(batch_data_int[0:2,1,:model_load.seq_max_len])
+        print(reconstructed_sequences[0:2])
+
         latent_space = sampling_output["latent_z"].squeeze(0).squeeze(0).detach()
 
         identifiers = batch_data["blosum"][:,0,0,1]
@@ -279,16 +282,16 @@ def sample_loop(Vegvisir,guide,data_loader,args,custom=False):
             else: #TODO: more samples?
                 sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=args.num_samples,return_sites=(), parallel=False)(batch_data, batch_mask,sample=True)
                 if args.learning_type in ["semisupervised", "unsupervised"]:
-                    predicted_labels = torch.concatenate(
-                        [sampling_output[f"predictions_{t}"].squeeze(1).detach() for t in
+                    predicted_labels = torch.concatenate([sampling_output[f"predictions_{t}"].squeeze(1).squeeze(1).detach()[None,:] for t in
                          range(batch_data_blosum.shape[0])], dim=0)
                 else:
-                    #predicted_labels = sampling_output["predictions"].squeeze(0).squeeze(0).squeeze(0).detach()
-                    predicted_labels = sampling_output["predictions"].squeeze(1).detach().T
+                    if sampling_output["predictions"].ndim == 4:
+                        predicted_labels = sampling_output["predictions"].squeeze(1).squeeze(1).detach().T
+                    else:
+                        predicted_labels = sampling_output["predictions"].squeeze(1).detach().T
                 batch_samples.append(predicted_labels)
-                print(predicted_labels.shape)
-                exit()
         total_samples = torch.cat(batch_samples,dim=0)
+
     return total_samples
 def save_script(results_dir,output_name,script_name):
     """Saves the python script and its contents"""
@@ -304,7 +307,6 @@ def select_quide(Vegvisir,model_load,n_data,choice="autodelta"):
     :param str choice: guide name"""
 
     print("Using {} as guide".format(choice))
-    #guide = GleipnirGuides.GLEIPNIRGUIDES(Gleipnir.model,model_load,Gleipnir)
     guide = {"autodelta":AutoDelta(Vegvisir.model),
              "autonormal":AutoNormal(Vegvisir.model,init_scale=0.1),
              "autodiagonalnormal": AutoDiagonalNormal(Vegvisir.model, init_scale=0.1), #Mean Field approximation, only diagonal variance
@@ -697,6 +699,12 @@ def train_model(dataset_info,additional_info,args):
     data_args_0 = {"blosum":train_data_blosum.to(args.device)[:n],"norm":data_blosum_norm[train_idx].to(args.device)[:n],"int":data_int[train_idx].to(args.device)[:n]}
     data_args_1 = data_array_blosum_encoding_mask[train_idx].to(args.device)[:n]
     trace = pyro.poutine.trace(Vegvisir.model).get_trace(data_args_0,data_args_1)
+    #print(trace.nodes["predictions"])
+    #print(trace.nodes["sequences"])
+    guide_tr = poutine.trace(guide).get_trace(data_args_0,data_args_1,sample=False)
+    model_tr = poutine.trace(poutine.replay(Vegvisir.model, trace=guide_tr)).get_trace(data_args_0,data_args_1,sample=False)
+    monte_carlo_elbo = model_tr.log_prob_sum() - guide_tr.log_prob_sum()
+    #print(monte_carlo_elbo)
     #obs_mask = trace.nodes["predictions"]
     #Highlight: Draw the graph model
     pyro.render_model(Vegvisir.model, model_args=(data_args_0,data_args_1,False), filename="{}/model_graph.png".format(results_dir),render_distributions=True,render_params=True)

@@ -539,7 +539,6 @@ def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
     print("Plotting UMAP...")
     reducer = umap.UMAP()
     umap_proj = reducer.fit_transform(latent_space[:, 4:])
-
     colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,1])
     colors_predicted = np.vectorize(colors_dict_labels.get)(predictions_dict["predictions"])

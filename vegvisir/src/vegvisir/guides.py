@@ -134,15 +134,10 @@ class VEGVISIRGUIDES(EasyGuide):
         batch_sequences_blosum = batch_data["blosum"][:, 1, :self.seq_max_len].squeeze(1)
         batch_size = batch_sequences_blosum.shape[0]
         batch_sequences_norm = batch_data["norm"][:, 1]  # only sequences norm
-        # mean = (batch_sequences_norm*batch_mask).mean(dim=1)
-        # mean = mean[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
-        #
-        # scale = (batch_sequences_norm*batch_mask).std(dim = 1)
-        # scale = scale[:,None].expand(batch_sequences_norm.shape[0],self.z_dim)
-        # immunodominance_scores = batch_data["blosum"][:,0,0,4]
+
         confidence_scores = batch_data["blosum"][:,0,0,5]
         confidence_mask = (confidence_scores[..., None] < 0.7).any(-1) #now we try to predict those with a low confidence score
-        #confidence_mask_true = torch.ones_like(confidence_mask).bool()
+        confidence_mask_true = torch.ones_like(confidence_mask).bool()
         init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
         with pyro.plate("plate_batch",dim= -1,device=self.device): #dim = -2
             z_mean, z_scale = self.encoder_guide(batch_sequences_blosum, init_h_0)
@@ -157,20 +152,22 @@ class VEGVISIRGUIDES(EasyGuide):
                         #smooth_factor = self.losses.label_smoothing(class_logits,true_labels,confidence_scores,self.num_classes)
                         #class_logits = class_logits*smooth_factor
                         if self.learning_type == "semisupervised":
-                            #pyro.sample("predictions_unobserved", dist.Categorical(logits=class_logits).to_event(1).mask(confidence_mask),infer={'enumerate': 'parallel'})
-                            for t, y in enumerate(class_logits):
-                                pyro.sample(f"predictions_{t}_unobserved", dist.Categorical(class_logits[t]).mask(confidence_mask[t]),infer={"enumerate": "parallel"}) #TODO: mask or not?
+                            #with pyro.poutine.mask(mask=confidence_mask): #TODO: The poutine mask gives issues with unsupervised
+                                #pyro.sample("predictions_unobserved", dist.Categorical(logits=class_logits).to_event(1).mask(confidence_mask),infer={'enumerate': 'parallel'})
+                                for t, y in enumerate(class_logits):
+                                    pyro.sample(f"predictions_{t}_unobserved", dist.Categorical(class_logits[t]).mask(confidence_mask[t]),infer={"enumerate": "parallel"}) #TODO: mask or not?
                         else: #unsupervised
-                            #pyro.sample("predictions", dist.Categorical(logits=class_logits),infer={'enumerate': 'parallel'})
+                            # p = pyro.sample("predictions_unobserved", dist.Categorical(logits=class_logits)) #,infer={'enumerate': 'sequential'}
                             for t, y in enumerate(class_logits):
                                 pyro.sample(f"predictions_{t}_unobserved", dist.Categorical(class_logits[t]), infer={"enumerate": "parallel"})
 
             # latent_z_seq = latent_space.repeat(1, self.seq_max_len).reshape(batch_size, self.max_len, self.z_dim)
             # init_h_0_decoder = self.h_0_GUIDE_decoder.expand(self.decoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             # with pyro.plate("plate_len",dim=-2, device=self.device):  #Highlight: not to_event(1) and with our without plate over the len dimension
-            #     sequences_logits = self.decoder_guide(latent_z_seq, init_h_0_decoder)
-            #     sequences_logits = self.logsoftmax(sequences_logits)
-            #     pyro.sample("sequences_unobserved", dist.Categorical(logits=sequences_logits).mask(~batch_mask),infer={"enumerate": "parallel"})
+            #     with pyro.poutine.mask(mask=~batch_mask):
+            #         sequences_logits = self.decoder_guide(latent_z_seq, init_h_0_decoder)
+            #         sequences_logits = self.logsoftmax(sequences_logits)
+            #         pyro.sample("sequences_unobserved", dist.Categorical(logits=sequences_logits).mask(~batch_mask),infer={"enumerate": "parallel"})
 
         return {"latent_z": latent_space,
                 "z_mean": z_mean,
