@@ -141,6 +141,7 @@ class FCL4(nn.Module):
         #self.fc2 = nn.Linear(self.hidden_dim*2,self.hidden_dim,bias=True)
         self.fc2 = nn.Linear(self.hidden_dim,self.num_classes,bias=True)
         self.leakyrelu = nn.LeakyReLU()
+        self.relu= nn.ReLU()
         self.logsoftmax = nn.LogSoftmax(dim=-1)
     def forward(self,input,mask):
         """
@@ -166,7 +167,7 @@ class FCL4(nn.Module):
         # output = output@VT
         output = self.fc2(output)
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
-        output = self.leakyrelu(output)
+        output = self.relu(output)
         return output
 
 class CNN_FCL(nn.Module):

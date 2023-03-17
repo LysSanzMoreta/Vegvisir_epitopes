@@ -499,12 +499,12 @@ def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,m
 def plot_latent_vector(latent_space,predictions_dict,fold,results_dir,method):
 
     print("Plotting Latent Vector...")
-    latent_vectors = latent_space[:,4:]
+    latent_vectors = latent_space[:,5:]
     colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
-    colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,1])
-    colors_predicted = np.vectorize(colors_dict_labels.get)(predictions_dict["predictions"])
+    colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,0])
+    colors_predicted = np.vectorize(colors_dict_labels.get)(predictions_dict["class_logits_predictions_samples_argmax_mode"])
     #Highlight: Confidence scores colors
-    confidence_scores = latent_space[:,2]
+    confidence_scores = latent_space[:,4]
     confidence_scores_unique = np.unique(confidence_scores).tolist()
     colormap_confidence = matplotlib.cm.get_cmap('plasma_r', len(confidence_scores_unique))
     colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
@@ -515,7 +515,7 @@ def plot_latent_vector(latent_space,predictions_dict,fold,results_dir,method):
     for i in range(latent_vectors.shape[0]):
         ax1.plot(latent_vectors[i], color=colors_true[i], alpha=1,linewidth=4)
         ax1.set_title("True labels",fontsize=20)
-        ax2.plot(latent_vectors[i], color=colors_predicted[i], label=predictions_dict["predictions"], alpha=1)
+        ax2.plot(latent_vectors[i], color=colors_predicted[i], alpha=1)
         ax2.set_title("Predicted labels (samples mode)",fontsize=20)
         ax4.plot(latent_vectors[i], color=colors_confidence[i], alpha=1)
         ax4.set_title("Confidence scores", fontsize=20)
@@ -538,12 +538,14 @@ def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
 
     print("Plotting UMAP...")
     reducer = umap.UMAP()
-    umap_proj = reducer.fit_transform(latent_space[:, 4:])
+    umap_proj = reducer.fit_transform(latent_space[:, 5:])
     colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
-    colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,1])
-    colors_predicted = np.vectorize(colors_dict_labels.get)(predictions_dict["predictions"])
+    colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,0])
+    colors_predicted_argmax = np.vectorize(colors_dict_labels.get)(predictions_dict["class_logits_predictions_samples_argmax_mode"])
+    colors_predicted_samples_mode = np.vectorize(colors_dict_labels.get)(predictions_dict["class_binary_predictions_samples_mode"])
+
     #Highlight: Confidence scores colors
-    confidence_scores = latent_space[:,2]
+    confidence_scores = latent_space[:,4]
     confidence_scores_unique = np.unique(confidence_scores).tolist()
     colormap_confidence = matplotlib.cm.get_cmap('plasma_r', len(confidence_scores_unique))
     colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
@@ -555,42 +557,46 @@ def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
     colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
     colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
     #Highlight: Frequency scores per class: https://stackoverflow.com/questions/65927253/linearsegmentedcolormap-to-list
-    frequency_class0_unique = np.unique(predictions_dict["frequencies"][:,0]).tolist()
+    frequency_class0_unique = np.unique(predictions_dict["class_logits_predictions_samples_argmax_frequencies"][:,0]).tolist()
     colormap_frequency_class0 = matplotlib.cm.get_cmap('BuGn', len(frequency_class0_unique)) #This one is  a LinearSegmentedColor map and works slightly different
     colormap_frequency_class0_array =  np.array([colormap_frequency_class0(i) for i in range(colormap_frequency_class0.N)])
     colors_dict = dict(zip(frequency_class0_unique, colormap_frequency_class0_array))
-    colors_frequency_class0 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["frequencies"][:,0])
-    frequency_class1_unique = np.unique(predictions_dict["frequencies"][:,1]).tolist()
+    colors_frequency_class0 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_logits_predictions_samples_argmax_frequencies"][:,0])
+    frequency_class1_unique = np.unique(predictions_dict["class_logits_predictions_samples_argmax_frequencies"][:,1]).tolist()
     colormap_frequency_class1 = matplotlib.cm.get_cmap('OrRd', len(frequency_class1_unique))
     colormap_frequency_class1_array =  np.array([colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
     colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
-    colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["frequencies"][:,1])
+    colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_logits_predictions_samples_argmax_frequencies"][:,1])
 
-    fig, [[ax1, ax2, ax3],[ax4,ax5,ax6],[ax7,ax8,ax9],[ax10,ax11,ax12]] = plt.subplots(4, 3,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [4,4,4,2]})
+    fig, [[ax1, ax2, ax3],[ax4,ax5,ax6],[ax7,ax8,ax9],[ax10,ax11,ax12],[ax13,ax14,ax15]] = plt.subplots(5, 3,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [4,4,4,4,2]})
     fig.suptitle('UMAP projections',fontsize=20)
     ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:,2], alpha=1,s=30)
     ax1.set_title("True labels",fontsize=20)
-    ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted, label=predictions_dict["predictions"], alpha=1,s=30)
-    ax2.set_title("Predicted labels (samples mode)",fontsize=20)
-    ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=1, s=30)
-    ax4.set_title("Confidence scores", fontsize=20)
-    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence),ax=ax4)
-    ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class0, alpha=1, s=30)
-    ax5.set_title("Probability class 0 (frequency)", fontsize=20)
-    fig.colorbar(plt.cm.ScalarMappable( norm = Normalize(0,1),cmap=colormap_frequency_class0),ax=ax5)
-    ax7.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=1, s=30)
-    ax7.set_title("Probability class 1 (frequency)", fontsize=20)
-    fig.colorbar(plt.cm.ScalarMappable( cmap=colormap_frequency_class1),ax=ax7)
-    ax8.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=1, s=30)
-    ax8.set_title("Immunodominance scores", fontsize=20)
-    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance),ax=ax8)
+    ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_samples_mode, alpha=1,s=30)
+    ax2.set_title("Predicted labels (samples binary mode)",fontsize=20)
+    ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_argmax, alpha=1,s=30)
+    ax4.set_title("Predicted labels (samples logits argmax mode)",fontsize=20)
+    ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=1, s=30)
+    ax5.set_title("Confidence scores", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence),ax=ax5)
+    ax7.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class0, alpha=1, s=30)
+    ax7.set_title("Probability class 0 (frequency argmax)", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable( norm = Normalize(0,1),cmap=colormap_frequency_class0),ax=ax7)
+    ax8.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=1, s=30)
+    ax8.set_title("Probability class 1 (frequency argmax)", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable( cmap=colormap_frequency_class1),ax=ax8)
+    ax10.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=1, s=30)
+    ax10.set_title("Immunodominance scores", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance),ax=ax10)
 
     ax3.axis("off")
     ax6.axis("off")
     ax9.axis("off")
-    ax10.axis("off")
-    ax11.axis("off")
     ax12.axis("off")
+    ax13.axis("off")
+    ax14.axis("off")
+    ax15.axis("off")
+
     negative_patch = mpatches.Patch(color=colors_dict_labels[0], label='Class 0')
     positive_patch = mpatches.Patch(color=colors_dict_labels[1], label='Class 1')
     fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
@@ -615,7 +621,7 @@ def plot_gradients(gradient_norms,results_dir,fold):
     plt.savefig("{}/gradients_fold{}".format(results_dir,fold))
     plt.clf()
 
-def plot_ROC_curve(fpr,tpr,roc_auc,auk_score,results_dir,fold):
+def plot_ROC_curve(fpr,tpr,roc_auc,auk_score,results_dir,fold,method):
     plt.title('Receiver Operating Characteristic',fontdict={"size":20})
     plt.plot(fpr, tpr, 'b', label='AUC = %0.2f \n '
                                   'AUK = %0.2f' % (roc_auc,auk_score))
@@ -625,7 +631,7 @@ def plot_ROC_curve(fpr,tpr,roc_auc,auk_score,results_dir,fold):
     plt.ylim([0, 1])
     plt.ylabel('True Positive Rate',fontsize=20)
     plt.xlabel('False Positive Rate',fontsize=20)
-    plt.savefig("{}/ROC_curve_fold{}".format(results_dir,fold))
+    plt.savefig("{}/ROC_curve_fold{}_{}".format(results_dir,fold,method))
     plt.clf()
 
 def plot_blosum_cosine(blosum_array,storage_folder,args):
@@ -762,7 +768,7 @@ def plot_mutual_information(full_data,full_labels,feature_names,results_dir):
     plt.savefig("{}/mi_feature_importance".format(results_dir),dpi=600)
     plt.clf()
 
-def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold):
+def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold,method):
     """Plot confusion matrix
     :param pandas dataframe confusion_matrix
     :param dict performance_metrics"""
@@ -779,5 +785,5 @@ def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold)
     fig.suptitle("Confusion matrix")
     patches = [mpatches.Circle((0.5, 0.5),radius = 0.25,color=colors_dict[0], label='{}:{}'.format(key,np.round(val,2))) for key,val in performance_metrics.items()]
     ax[0].legend(handles=patches, prop={'size': 10}, loc='right',bbox_to_anchor=(1.5, 0.5), ncol=1)
-    plt.savefig("{}/confusion_matrix_{}.png".format(results_dir,fold),dpi=100)
+    plt.savefig("{}/confusion_matrix_fold{}_{}.png".format(results_dir,fold,method),dpi=100)
     plt.clf()

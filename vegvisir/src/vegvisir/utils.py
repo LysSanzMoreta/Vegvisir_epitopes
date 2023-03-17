@@ -17,7 +17,7 @@ from sklearn.metrics import auc,roc_auc_score,cohen_kappa_score,roc_curve,confus
 import pandas as pd
 import torch
 import vegvisir.plots as VegvisirPlots
-
+from scipy import stats
 def str2bool(v):
     """Converts a string into a boolean, useful for boolean arguments
     :param str v"""
@@ -727,29 +727,84 @@ def fold_auc(predictions_dict,labels,fold,results_dir,mode="Train"):
         labels = labels.numpy()
     # total_predictions = np.column_stack(predictions_fold)
     # model_predictions = stats.mode(total_predictions, axis=1) #mode_predictions.mode
-    auc_score = roc_auc_score(y_true=labels, y_score=predictions_dict["samples_mode"])
-    auc_score_train = roc_auc_score(y_true=labels, y_score=predictions_dict["predictions"])
+    auc_score_binary_predictions_samples_mode = roc_auc_score(y_true=labels, y_score=predictions_dict["class_binary_predictions_samples_mode"])
+    auc_score_logits_predictions_samples_argmax_mode = roc_auc_score(y_true=labels, y_score=predictions_dict["class_logits_predictions_samples_argmax_mode"])
 
-    auk_score = AUK(predictions_dict["samples_mode"], labels).calculate_auk()
-    fpr, tpr, threshold = roc_curve(y_true=labels, y_score=predictions_dict["samples_mode"])
-    VegvisirPlots.plot_ROC_curve(fpr,tpr,auc_score,auk_score,"{}/{}".format(results_dir,mode),fold)
-    print("Fold : {}, {} AUC score (sample loop): {}, AUK score {}".format(fold,mode, auc_score,auk_score))
-    print("Fold : {}, {} AUC score : {}, AUK score {}".format(fold,mode, auc_score,auk_score),file=open("{}/AUC_out.txt".format(results_dir),"a"))
-    print("Fold : {}, {} AUC score (train/valid loop) : {}, AUK score {}".format(fold,mode, auc_score_train,auk_score))
-    print("Fold : {}, {} AUC score (train/valid loop) : {}, AUK score {}".format(fold,mode, auc_score_train,auk_score),file=open("{}/AUC_out.txt".format(results_dir),"a"))
-    tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=predictions_dict["samples_mode"]).ravel()
-    confusion_matrix_df = pd.DataFrame([[tn, fp],
-                                        [fn, tp]],
-                                    columns=["Negative", "Positive"],
-                                    index=["Negative\n(True)", "Positive\n(True)"])
-    recall = tp/(tp + fn)
-    precision = tp/(tp + fp)
-    f1score = 2*tp/(2*tp + fp + fn)
-    tnr = tn/(tn + fp)
-    accuracy = 100*((predictions_dict["samples_mode"] == labels).sum()/predictions_dict["samples_mode"].shape[0])
-    performance_metrics = {"recall/tpr":recall,"precision":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr}
-    VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold)
-    return auc_score,auk_score
+    auk_score_binary_predictions_samples_mode = AUK(predictions_dict["class_binary_predictions_samples_mode"], labels).calculate_auk()
+    auk_score_logits_predictions_samples_argmax_mode = AUK(predictions_dict["class_logits_predictions_samples_argmax_mode"], labels).calculate_auk()
+
+    for key_name,stats_name in zip(["average_prob","single_sample_prob"],["class_probs_predictions_samples_true_average","class_probs_prediction_single_sample_true"]):
+        fpr, tpr, threshold = roc_curve(y_true=labels, y_score=predictions_dict[stats_name])
+        VegvisirPlots.plot_ROC_curve(fpr,tpr,auc_score_binary_predictions_samples_mode,auk_score_binary_predictions_samples_mode,"{}/{}".format(results_dir,mode),fold,key_name)
+
+    print("Fold : {}, {} AUC score (binary sample loop MODE): {}, AUK score {}".format(fold,mode, auc_score_binary_predictions_samples_mode,auk_score_binary_predictions_samples_mode))
+    print("Fold : {}, {} AUC score (binary sample loop MODE): {}, AUK score {}".format(fold,mode, auc_score_binary_predictions_samples_mode,auk_score_binary_predictions_samples_mode),file=open("{}/AUC_out.txt".format(results_dir),"a"))
+    print("Fold : {}, {} AUC score (logits-argmax sample loop MODE): {}, AUK score {}".format(fold, mode,
+                                                                                       auc_score_logits_predictions_samples_argmax_mode,
+                                                                                       auk_score_logits_predictions_samples_argmax_mode))
+    print("Fold : {}, {} AUC score (logits-argmax sample loop MODE): {}, AUK score {}".format(fold, mode,
+                                                                                       auc_score_logits_predictions_samples_argmax_mode,
+                                                                                       auk_score_logits_predictions_samples_argmax_mode),
+                                                                                       file=open("{}/AUC_out.txt".format(results_dir), "a"))
+
+    for key_name,stats_name in zip(["class_binary_predictions_samples_mode","class_logits_predictions_samples_argmax_mode"],["Binary_class_samples_mode","Logits_argmax_samples_mode"]):
+        tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=predictions_dict[key_name]).ravel()
+        confusion_matrix_df = pd.DataFrame([[tn, fp],
+                                            [fn, tp]],
+                                        columns=["Negative", "Positive"],
+                                        index=["Negative\n(True)", "Positive\n(True)"])
+        recall = tp/(tp + fn)
+        precision = tp/(tp + fp)
+        f1score = 2*tp/(2*tp + fp + fn)
+        tnr = tn/(tn + fp)
+        accuracy = 100*((predictions_dict[key_name] == labels).sum()/predictions_dict[key_name].shape[0])
+        performance_metrics = {"recall/tpr":recall,"precision":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr}
+        VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold,stats_name)
 
 
+def manage_predictions(samples_dict,args,predictions_dict,true_labels):
+    """
+
+    :param samples_dict: Collects the binary, logits and probabilities predicted for args.num_samples  from the posterior predictive after training
+    :param args:
+    :param predictions_dict: Collects the binary, logits and probabilities predicted for 1 sample from the posterior predictive during training
+    :return:
+    """
+    binary_predictions_samples = samples_dict["binary"]
+    logits_predictions_samples = samples_dict["logits"]
+    probs_predictions_samples = samples_dict["probs"]
+    n_data = true_labels.shape[0]
+    probs_predictions_samples_true = probs_predictions_samples[np.arange(0, n_data),:, true_labels.long()].cpu().numpy()  # pick the probability of the true target for every sample
+
+    class_logits_predictions_samples_argmax = torch.argmax(logits_predictions_samples,dim=-1).cpu()
+    class_logits_predictions_samples_argmax_mode = stats.mode(class_logits_predictions_samples_argmax.numpy(), axis=1,keepdims=True).mode.squeeze(-1)
+    binary_predictions_samples_mode = stats.mode(binary_predictions_samples.cpu().numpy(), axis=1,
+                                               keepdims=True).mode.squeeze(-1)
+
+    binary_frequencies = torch.stack([torch.bincount(x_i, minlength=args.num_classes) for i, x_i in
+                                     enumerate(torch.unbind(binary_predictions_samples.type(torch.int64), dim=0),
+                                               0)], dim=0)
+    binary_frequencies = binary_frequencies / args.num_samples
+
+    argmax_frequencies = torch.stack([torch.bincount(x_i, minlength=args.num_classes) for i, x_i in
+                                      enumerate(torch.unbind(class_logits_predictions_samples_argmax.type(torch.int64), dim=0),
+                                                0)], dim=0)
+    argmax_frequencies = argmax_frequencies / args.num_samples
+    summary_dict = {  "class_binary_predictions_samples": binary_predictions_samples,
+                      "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
+                      "class_binary_prediction_samples_frequencies": binary_frequencies.detach().cpu().numpy(),
+                      "class_logits_predictions_samples": logits_predictions_samples,
+                      "class_logits_predictions_samples_argmax": class_logits_predictions_samples_argmax,
+                      "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies.detach().cpu().numpy(),
+                      "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
+                      "class_probs_predictions_samples": probs_predictions_samples,
+                      "class_probs_predictions_samples_true": probs_predictions_samples_true,
+                      "class_probs_predictions_samples_true_average": np.mean(probs_predictions_samples_true,axis=1),
+                      "class_binary_prediction_single_sample": predictions_dict["binary"],
+                      "class_logits_prediction_single_sample": predictions_dict["logits"],
+                      "class_logits_prediction_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
+                      "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),true_labels.long()],
+                      }
+
+    return summary_dict
 
