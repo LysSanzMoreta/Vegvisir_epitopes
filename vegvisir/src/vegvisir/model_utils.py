@@ -3,6 +3,29 @@ import torch
 from pyro.nn import PyroModule
 import  vegvisir
 from vegvisir.utils import extract_windows_vectorized
+
+class ScaledDotProductAttention(nn.Module):
+    ''' Scaled Dot-Product Attention as in Attention is all You need
+    Notes:
+        ''https://storrs.io/attention/ '''
+
+    def __init__(self, temperature, attn_dropout=0.1):
+        super().__init__()
+        self.temperature = temperature
+        self.dropout = nn.Dropout(attn_dropout)
+
+    def forward(self, q, k, v, mask=None):
+
+        attn = torch.matmul(q / self.temperature, k.transpose(2, 3))
+
+        if mask is not None:
+            attn = attn.masked_fill(mask == 0, -1e9)
+
+        attn = self.dropout(torch.nn.softmax(attn, dim=-1)) #attention weights!!!!
+        output = torch.matmul(attn, v)
+
+        return output, attn
+
 def glorot_init(input_dim, output_dim):
     init_range = torch.sqrt(torch.tensor(6/(input_dim + output_dim)))
     initial = torch.rand(input_dim, output_dim)*2*init_range - init_range
@@ -51,7 +74,7 @@ class MLP(nn.Module):
 
 class FCL1(nn.Module):
 
-    def __init__(self,z_dim,hidden_dim,num_classes,device,max_len):
+    def __init__(self,z_dim,max_len,hidden_dim,num_classes,device):
         super(FCL1, self).__init__()
         self.z_dim = z_dim
         self.num_classes = num_classes
@@ -59,7 +82,8 @@ class FCL1(nn.Module):
         self.device = device
         self.max_len = max_len
         self.fc1 = nn.Linear(self.z_dim,self.hidden_dim,bias=True)
-        self.fc2 = nn.Linear(self.hidden_dim,self.num_classes,bias=True)
+        self.fc2 = nn.Linear(self.hidden_dim,self.hidden_dim,bias=True)
+        self.fc3 = nn.Linear(self.hidden_dim,self.num_classes,bias=True)
         self.leakyrelu = nn.LeakyReLU()
         self.logsoftmax = nn.LogSoftmax(dim=-1)
     def forward(self,input,mask):
@@ -68,6 +92,9 @@ class FCL1(nn.Module):
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc2(output)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        output = self.fc3(output)
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.logsoftmax(output)
@@ -93,6 +120,8 @@ class FCL2(nn.Module):
         output = self.leakyrelu(output)
         output = self.fc2(output)
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        # U, S, VT = torch.linalg.svd(output)
+        # output = output @ VT
         output = self.leakyrelu(output)
         output = self.sigmoid(output)
         return output
@@ -117,6 +146,48 @@ class FCL3(nn.Module):
         output = self.fc2(output)
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
+        return output
+
+class FCL4(nn.Module):
+
+    def __init__(self,z_dim,max_len,hidden_dim,num_classes,device):
+        super(FCL4, self).__init__()
+        self.z_dim = z_dim
+        self.max_len = max_len
+        self.num_classes = num_classes
+        self.hidden_dim = hidden_dim
+        self.device = device
+        self.fc1 = nn.Linear(self.z_dim ,self.hidden_dim,bias=True)
+        #self.fc2 = nn.Linear(self.hidden_dim*2,self.hidden_dim,bias=True)
+        self.fc2 = nn.Linear(self.hidden_dim,self.num_classes,bias=True)
+        self.leakyrelu = nn.LeakyReLU()
+        self.relu= nn.ReLU()
+        self.logsoftmax = nn.LogSoftmax(dim=-1)
+    def forward(self,input,mask):
+        """
+        Notes:
+        - https://mane-aajay.medium.com/how-to-calculate-the-svd-from-scratch-with-python-bafcd7fc6945
+        -https://towardsdatascience.com/how-to-use-singular-value-decomposition-svd-for-image-classification-in-python-20b1b2ac4990
+        - https://www.cs.cmu.edu/afs/cs.cmu.edu/academic/class/15750-s20/www/notebooks/SVD-irises-clustering.html"""
+        # if input.ndim == 3:
+        #     input = input.flatten(start_dim=2)
+        #     output = self.fc1(input)
+        # else:
+        #     input = input.flatten(start_dim=1) #Flattening only has effect if the input latent_space_z
+        #     output = self.fc1(input)
+
+        input = input.flatten(start_dim=1)  # Flattening only has effect if the input latent_space_z
+        output = self.fc1(input)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        # Singular-value decomposition
+        # U, S, VT = svd(A) #left singular, singular (max var), right singular
+        # Data projection = A@VT
+        # U,S,VT = torch.linalg.svd(output)
+        # output = output@VT
+        output = self.fc2(output)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.relu(output)
         return output
 
 class CNN_FCL(nn.Module):
@@ -157,13 +228,12 @@ class CNN_FCL(nn.Module):
         return output
 
 class CNN_layers(nn.Module):
-    def __init__(self,input_dim,max_len,hidden_dim,num_classes,device,loss_type):
+    def __init__(self,input_dim,max_len,hidden_dim,num_classes,device,loss_type="elbo"):
         super(CNN_layers, self).__init__()
         self.loss_type = loss_type
         self.input_dim = input_dim
         self.num_classes = num_classes
         self.hidden_dim = hidden_dim
-        self.loss_type = loss_type
         self.max_len = max_len
         self.device = device
         self.sigmoid = nn.Sigmoid()
@@ -216,7 +286,7 @@ class CNN_layers(nn.Module):
         https://www.stat.cmu.edu/~larry/=sml/Manifolds.pdf
         https://www.mdpi.com/1422-0067/23/14/7775#
         """
-
+        input = input[:,None,:]
         output = self.conv1(self.dropout(input))
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
@@ -230,8 +300,8 @@ class CNN_layers(nn.Module):
         output = self.fc2(self.leakyrelu(self.fc1(output)))
         output = self.leakyrelu(output)
         #output = torch.nn.functional.glu(output, dim=1) #divides by 2 the hidden dimensions
-        if mask is not None:
-            output = output.masked_fill(mask == 0, 1e10)
+        # if mask is not None:
+        #     output = output.masked_fill(mask == 0, 1e10)
         return output
 
 class LetNET5(nn.Module):
@@ -372,14 +442,12 @@ class RNN_layers(nn.Module):
         return output
 
 class RNN_model(nn.Module):
-    def __init__(self,input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device,loss_type):
+    def __init__(self,input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device):
         super(RNN_model, self).__init__()
         self.device = device
-        self.loss_type = loss_type
         self.input_dim = input_dim
         self.z_dim = z_dim
         self.gru_hidden_dim = gru_hidden_dim
-        self.loss_type = loss_type
         self.max_len = max_len
         self.aa_types = aa_types
         self.num_layers = 1
@@ -391,7 +459,7 @@ class RNN_model(nn.Module):
                           bidirectional=True
                           )
         self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
-        self.leakyrelu = nn.LeakyReLU()
+        self.softplus = nn.Softplus()
         self.h = self.gru_hidden_dim
         self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
         self.fc2 = nn.Linear(int(self.h/2),int(self.h/4),bias=False)
@@ -403,15 +471,15 @@ class RNN_model(nn.Module):
         input_reverse = torch.flip(input,(1,))
         #Highlight: Results on reversing the sequences
         output, out_hidden = self.rnn(input_reverse,init_h_0)
-        output = self.leakyrelu(output)
+        output = self.softplus(output)
         output = self.bnn(output)
         forward_out_r,backward_out_r = output[:,:,:self.gru_hidden_dim],output[:,:,:self.gru_hidden_dim]
         output = forward_out_r + backward_out_r
         # output_r = output_r[:,-1]
         # output = output_r
-        output = self.leakyrelu(self.fc1(output))
-        output = self.leakyrelu(self.fc2(output))
-        output = self.leakyrelu(self.fc3(output))
+        output = self.softplus(self.fc1(output))
+        output = self.softplus(self.fc2(output))
+        output = self.softplus(self.fc3(output))
         return output
 
 class RNN_guide(nn.Module):
@@ -423,14 +491,6 @@ class RNN_guide(nn.Module):
         self.gru_hidden_dim = gru_hidden_dim
         self.max_len = max_len
         self.num_layers = 1
-        # self.rnn1 = nn.GRU(input_size=int(input_dim),
-        #                   hidden_size=gru_hidden_dim,
-        #                   batch_first=True,
-        #                   num_layers=self.num_layers,
-        #                   dropout=0.,
-        #                   bidirectional=True
-        #                   )
-        # self.bnn1 = nn.BatchNorm1d(self.max_len).to(self.device)
         self.rnn1 = nn.GRU(input_size=int(input_dim),
                           hidden_size=gru_hidden_dim,
                           batch_first=True,
@@ -439,8 +499,7 @@ class RNN_guide(nn.Module):
                           bidirectional=True
                           )
         self.bnn2 = nn.BatchNorm1d(self.max_len).to(self.device)
-        self.leakyrelu = nn.LeakyReLU()
-        self.relu = nn.ReLU()
+        self.softplus = nn.Softplus()
         self.h = self.gru_hidden_dim
         self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
         self.fc2a = nn.Linear(int(self.h/2),self.z_dim,bias=False)
@@ -453,16 +512,62 @@ class RNN_guide(nn.Module):
         input_reverse = torch.flip(input,(1,))
         #Highlight: Results on reversing the sequences
         output_r, out_hidden = self.rnn1(input_reverse,init_h_0)
-        output_r = self.leakyrelu(output_r)
+        output_r = self.softplus(output_r)
         output_r = self.bnn2(output_r)
         forward_out_r,backward_out_r = output_r[:,:,:self.gru_hidden_dim],output_r[:,:,:self.gru_hidden_dim]
         output_r = forward_out_r + backward_out_r
         output_r = output_r[:,-1]
         output = output_r
-        output = self.leakyrelu(self.fc1(output))
-        z_mean = self.leakyrelu(self.fc2a(output))
-        z_scale = self.relu(self.fc2b(output))
+        output = self.softplus(self.fc1(output))
+        z_mean = self.fc2a(output)
+        z_scale = self.softplus(torch.exp((self.fc2b(output))))
         return z_mean,z_scale
+
+class RNN_classifier(nn.Module):
+    def __init__(self,input_dim,max_len,gru_hidden_dim,num_classes,z_dim,device):
+        super(RNN_classifier, self).__init__()
+        self.device = device
+        self.input_dim = input_dim
+        self.z_dim = z_dim
+        self.gru_hidden_dim = gru_hidden_dim
+        self.max_len = max_len
+        self.num_classes = num_classes
+        self.num_layers = 1
+        self.rnn = nn.GRU(input_size=self.input_dim,
+                          hidden_size=gru_hidden_dim,
+                          batch_first=True,
+                          num_layers=self.num_layers,
+                          dropout=0.,
+                          bidirectional=True
+                          )
+        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
+        self.softplus = nn.Softplus()
+        self.leakyrelu = nn.LeakyReLU()
+        self.h = self.max_len*self.gru_hidden_dim
+        self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
+        self.fc2 = nn.Linear(int(self.h/2),int(self.h/4),bias=False)
+        self.fc3 = nn.Linear(int(self.h/4),self.num_classes,bias=False)
+
+    def forward(self,input,init_h_0):
+        "For GRU with reversed sequences"
+        #seq_lens = input.bool().sum(1)
+        input_reverse = torch.flip(input,(1,))
+        #Highlight: Results on reversing the sequences
+        output, out_hidden = self.rnn(input_reverse,init_h_0)
+        output = self.softplus(output)
+        output = self.bnn(output)
+        forward_out_r,backward_out_r = output[:,:,:self.gru_hidden_dim],output[:,:,:self.gru_hidden_dim]
+        output = forward_out_r + backward_out_r
+        # output_r = output_r[:,-1]
+        # output = output_r
+        output = output.flatten(start_dim=1)
+        output = self.softplus(self.fc1(output))
+        output = self.leakyrelu(output)
+        output = self.softplus(self.fc2(output))
+        output = self.leakyrelu(output)
+        output = self.softplus(self.fc3(output))
+        output = self.leakyrelu(output)
+        return output
 
 class RBF(nn.Module):
     """
@@ -640,7 +745,7 @@ class AutoEncoder(nn.Module):
         return reconstructed_sequences.permute(0,2,1),class_output
 
 class NNAlign(nn.Module):
-
+    """2 step mini batch sampler: https://discuss.pytorch.org/t/custom-batchsampler-for-two-step-mini-batch/20309/2"""
     def __init__(self,input_dim,max_len,hidden_dim,num_classes,device):
         super(NNAlign, self).__init__()
         self.input_dim = input_dim
@@ -649,13 +754,13 @@ class NNAlign(nn.Module):
         self.device = device
         self.max_len = max_len
         self.ksize = 4
-
-        weight = nn.Parameter(torch.DoubleTensor(self.input_dim,self.hidden_dim),requires_grad=True).to(device)
-        self.weight = torch.nn.init.kaiming_normal_(weight.data,nonlinearity='leaky_relu')
+        self.weight = nn.Parameter(torch.DoubleTensor(self.input_dim,self.hidden_dim),requires_grad=True).to(device)
         self.bias = nn.Parameter(torch.FloatTensor(self.hidden_dim,), requires_grad=True).to(device)
-        #self.bias = torch.nn.init.kaiming_normal_(bias.data, nonlinearity='leaky_relu')
-
+        #self.bias = torch.nn.init.kaiming_normal_(bias.data, nonlinearity='leaky_relu') #if you we do this we cannot
+        self.fc1 = nn.Linear(self.hidden_dim*self.ksize,int(self.hidden_dim/2))
+        self.fc2 = nn.Linear(int(self.hidden_dim/2),self.num_classes)
         self.leakyrelu = nn.LeakyReLU()
+        self.sigmoid = nn.Sigmoid()
     def kmers_windows(self,array, clearing_time_index, max_time, sub_window_size, only_windows=True):
         """
         Creates indexes to extract kmers from a sequence, such as:
@@ -680,23 +785,100 @@ class NNAlign(nn.Module):
             return sub_windows
         else:
             return array[:, sub_windows]
-    def forward(self,input_blosum,seq_lens):
+    def forward(self,input_blosum,mask):
 
-        overlapping_kmers = self.kmers_windows(input, 2, self.max_len - self.ksize, self.ksize, only_windows=True)
+        overlapping_kmers = self.kmers_windows(input_blosum, 2, self.max_len - self.ksize, self.ksize, only_windows=True)
+
         input_blosum_kmers = input_blosum[:,overlapping_kmers]
         output = torch.matmul(input_blosum_kmers,self.weight) + self.bias
-        mask = output != 0
-        output = (output * mask).sum(dim=1) / mask.sum(dim=1)
-        mask = output != 0
-        print(mask)
-        print((output*mask).shape)
-        #TODO: https://discuss.pytorch.org/t/use-tensor-mean-method-but-ignore-0-values/60170/3
-        output = (output * mask).sum(dim=1) / mask.sum(dim=1)
-        exit()
-        exit()
-        output = self.fc1(input)
+        output = self.sigmoid(output)
+        #mask_kmers = mask[:,overlapping_kmers,0].unsqueeze(-1).expand((output.shape))  #mask2 = output != 0
+        #output = (output * mask_kmers).sum(dim=1) / mask_kmers.sum(dim=1)
+        output = torch.max(output,dim=1).values #TODO: kmer with highest values (on average??)
+        #diff = [list(mask_kmers.size()).index(element) for element in list(mask_kmers.size()) if element not in list(output.size())][0]
+        #mask_kmers = [mask_kmers[:,:,0,:].squeeze(2) if diff == 2 else mask_kmers[:,0,:,:].squeeze(1)][0]
+        #output = output.mean(1) #Highlight: Mask does not seem to be necessary in the second round, since the "padded kmers" have been excluded on the first average
+        output = output.flatten(start_dim=1)
         output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
-
+        output = self.fc1(output)
+        output = self.leakyrelu(output)
+        output = self.fc2(output)
+        output = self.leakyrelu(output)
         return output
+
+class NNAlign2(nn.Module):
+
+    def __init__(self,input_dim,max_len,hidden_dim,num_classes,device):
+        super(NNAlign2, self).__init__()
+        self.input_dim = input_dim
+        self.num_classes = num_classes
+        self.hidden_dim = hidden_dim
+        self.device = device
+        self.max_len = max_len
+        self.ksize = 4
+        self.weight = nn.Parameter(torch.DoubleTensor(self.input_dim,self.hidden_dim),requires_grad=True).to(device)
+        self.bias = nn.Parameter(torch.FloatTensor(self.hidden_dim,), requires_grad=True).to(device)
+        #self.bias = torch.nn.init.kaiming_normal_(bias.data, nonlinearity='leaky_relu') #if you we do this we cannot
+        self.fc1 = nn.Linear(self.hidden_dim*self.ksize,int(self.hidden_dim/2))
+        self.fc2 = nn.Linear(int(self.hidden_dim/2),self.num_classes)
+        self.leakyrelu = nn.LeakyReLU()
+        self.sigmoid = nn.Sigmoid()
+    def kmers_windows(self,array, clearing_time_index, max_time, sub_window_size, only_windows=True):
+        """
+        Creates indexes to extract kmers from a sequence, such as:
+             seq =  [A,T,R,P,V,L]
+             kmers_idx = [0,1,2,1,2,3,2,3,4,3,4,5]
+             seq[kmers_idx] = [A,T,R,T,R,P,R,V,L,P,V,L]
+        From https://towardsdatascience.com/fast-and-robust-sliding-window-vectorization-with-numpy-3ad950ed62f5
+        :param int clearing_time_index: Indicates the starting index (0-python idx == 1 clearing_time_index;-1-python idx == 0 clearing_time_index)
+        :param max_time: max sequence len
+        :param sub_window_size:kmer size
+        """
+        start = clearing_time_index + 1 - sub_window_size + 1
+        sub_windows = (
+                start +
+                # expand_dims are used to convert a 1D array to 2D array.
+                torch.arange(sub_window_size)[None, :] +  # [0,1,2] ---> [[0,1,2]]
+                torch.arange(max_time + 1)[None, :].T
+        # [0,...,max_len+1] ---expand dim ---> [[[0,...,max_len+1] ]], indicates the
+        )  # The first row is the sum of the first row of a + the first element of b, and so on (in the diagonal the result of a[None,:] + b[None,:] is placed (without transposing b). )
+
+        if only_windows:
+            return sub_windows
+        else:
+            return array[:, sub_windows]
+    def forward(self,input_blosum,mask):
+
+        overlapping_kmers = self.kmers_windows(input_blosum, 2, self.max_len - self.ksize, self.ksize, only_windows=True)
+        input_blosum_kmers = input_blosum[:,overlapping_kmers]
+        output = torch.matmul(input_blosum_kmers,self.weight) + self.bias
+        #mask_kmers = mask[:,overlapping_kmers,0].unsqueeze(-1).expand((output.shape))  #mask2 = output != 0
+        #output = (output * mask_kmers).sum(dim=1) / mask_kmers.sum(dim=1)
+        #diff = [list(mask_kmers.size()).index(element) for element in list(mask_kmers.size()) if element not in list(output.size())][0]
+        #mask_kmers = [mask_kmers[:,:,0,:].squeeze(2) if diff == 2 else mask_kmers[:,0,:,:].squeeze(1)][0]
+        #output = output.mean(1) #Highlight: Mask does not seem to be necessary in the second round, since the "padded kmers" have been excluded on the first average
+        output = output.flatten(start_dim=2)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        output = self.fc1(output)
+        output = self.leakyrelu(output)
+        output = self.fc2(output)
+        output = self.leakyrelu(output)
+        #output = self.sigmoid(output)
+        output = torch.max(output,dim=1).values
+        return output
+
+class DistanceMatrixClassifier(nn.Module):
+    """
+    - Notes:
+    https://arxiv.org/pdf/2108.12659.pdf
+    https://github.com/MaziarMF/deep-k-means
+    """
+    def __init__(self,z_dim):
+        super(DistanceMatrixClassifier, self).__init__()
+        self.z_dim = z_dim
+
+    def forward(self,input):
+        return input
 

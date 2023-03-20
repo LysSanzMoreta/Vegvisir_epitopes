@@ -1,10 +1,12 @@
 from xgboost import XGBClassifier,XGBRegressor
 import xgboost as xgb
-from vegvisir.train import dataset_proportions,fold_auc
+import vegvisir.load_utils as VegvisirLoadUtils
+import vegvisir.utils as VegvisirUtils
 import vegvisir.plots as VegvisirPlots
 from sklearn.model_selection import KFold,train_test_split,StratifiedShuffleSplit,StratifiedGroupKFold
 import numpy as np
 import pandas as pd
+import torch
 from collections import defaultdict
 import dataframe_image as dfi
 import seaborn as sns
@@ -27,47 +29,6 @@ def regression_accuracy(predictions,targets,fold,mode):
     print("{}. The Root Mean Absolute Error of our Model is {}".format(mode,round(rmse_score, 2)))
     return round(r2score, 2) * 100,round(mse_error, 2),round(rmse_score, 2)
 
-def trainevaltest_split(data,args,results_dir,method="predefined_partitions"):
-    """Perform train-test split"""
-    if method == "predefined_partitions":
-        #Train - Test split
-        traineval_data,test_data = data[data[:,0,3] == 1.], data[data[:,0,3] == 0.]
-        dataset_proportions(traineval_data,results_dir)
-        dataset_proportions(test_data,results_dir,type="Test")
-        partitions = traineval_data[:,0,2]
-        unique_partitions = np.unique(partitions)
-        i=1
-        kfolds = []
-        for part_num in unique_partitions:
-            #train_idx = traineval_data[traineval_data[:,0,2] != part_num]
-            train_idx = (traineval_data[:,0,2][..., None] != part_num).any(-1)
-            valid_idx = (traineval_data[:,0,2][..., None] == part_num).any(-1)
-            kfolds.append((train_idx,valid_idx))
-            if args.k_folds <= i :
-                break
-            else:
-                i+=1
-        return traineval_data,test_data,kfolds
-
-    elif method == "stratified_group_partitions":
-        #Train - Test split
-        traineval_data,test_data = data[data[:,0,3] == 1.], data[data[:,0,3] == 0.]
-        dataset_proportions(traineval_data,results_dir)
-        dataset_proportions(test_data,results_dir,type="Test")
-        partitions = traineval_data[:,0,2]
-        #Train - Eval split
-        kfolds = StratifiedGroupKFold(n_splits=args.k_folds).split(traineval_data, traineval_data[:,0,0], partitions)
-        return traineval_data,test_data,kfolds
-    elif method == "random_stratified":
-        data_labels = data[:,0,0]
-        traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
-        dataset_proportions(traineval_data,results_dir)
-        dataset_proportions(test_data,results_dir, type="Test")
-        # Train - Eval split
-        kfolds = StratifiedShuffleSplit(n_splits=args.k_folds, random_state=13, test_size=0.2).split(traineval_data,traineval_data[:,0,0])
-        return traineval_data,test_data,kfolds
-    else:
-        raise ValueError("train test split method not available")
 
 def train_xgboost_binary_classifier(dataset_info,additional_info,args):
     """
@@ -79,15 +40,15 @@ def train_xgboost_binary_classifier(dataset_info,additional_info,args):
     data_blosum_norm = dataset_info.data_array_blosum_norm
     results_dir = additional_info.results_dir
     max_len = dataset_info.max_len
-    feature_columns = dataset_info.feature_columns
-    if feature_columns is not None:
-        feature_names = ["Pos.{}".format(pos) for pos in list(range(max_len))] + feature_columns
+    features_names = dataset_info.features_names
+    if features_names is not None:
+        feature_names = ["Pos.{}".format(pos) for pos in list(range(max_len))] + features_names
     else:
         feature_names = ["Pos.{}".format(pos) for pos in list(range(max_len))]
 
     VegvisirPlots.plot_mutual_information(data_blosum_norm,data_blosum_norm[:,0,0],feature_names,results_dir)
 
-    traineval_data_blosum,test_data_blosum,kfolds = trainevaltest_split(data_blosum_norm,args,results_dir,method="predefined_partitions")
+    traineval_data_blosum,test_data_blosum,kfolds = VegvisirLoadUtils.trainevaltest_split_kfolds(data_blosum_norm,args,results_dir,method="predefined_partitions")
 
     auc_dict = defaultdict(lambda : defaultdict(list))
     auk_dict = defaultdict(lambda : defaultdict(list))
@@ -95,14 +56,14 @@ def train_xgboost_binary_classifier(dataset_info,additional_info,args):
     for fold, (train_idx, valid_idx) in enumerate(kfolds): #returns k-splits for train and validation
         print("Running fold {} ......".format(fold))
         train_data_blosum = traineval_data_blosum[train_idx]
-        eval_data_blosum = traineval_data_blosum[valid_idx]
+        valid_data_blosum = traineval_data_blosum[valid_idx]
         print("\t Total number of data points: {}".format(traineval_data_blosum.shape[0]))
         print('\t Number train data points: {}; Proportion: {}'.format(len(train_data_blosum), (len(train_data_blosum) * 100) /
                                                                        traineval_data_blosum.shape[0]))
-        print('\t Number valid data points: {}; Proportion: {}'.format(len(eval_data_blosum), (len(eval_data_blosum) * 100) /
+        print('\t Number valid data points: {}; Proportion: {}'.format(len(valid_data_blosum), (len(valid_data_blosum) * 100) /
                                                                        traineval_data_blosum.shape[0]))
-        dataset_proportions(train_data_blosum,results_dir)
-        dataset_proportions(eval_data_blosum,results_dir,type="Valid")
+        VegvisirLoadUtils.dataset_proportions(train_data_blosum,results_dir)
+        VegvisirLoadUtils.dataset_proportions(valid_data_blosum,results_dir,type="Valid")
 
         # create model instance
         xgbc = XGBClassifier(n_estimators=1000, max_depth=8, learning_rate=0.01, objective='binary:logistic',tree_method="auto")
@@ -110,12 +71,13 @@ def train_xgboost_binary_classifier(dataset_info,additional_info,args):
         xgbc.fit(train_data_blosum[:,1:].squeeze(1), train_data_blosum[:,0,0])
         # make predictions
         preds_train = xgbc.predict(train_data_blosum[:,1:].squeeze(1))
-        preds_eval = xgbc.predict(eval_data_blosum[:,1:].squeeze(1))
-        auc_score_train,auk_score_train=fold_auc(preds_train,train_data_blosum[:,0,0],fold,results_dir,mode="Train")
+        preds_valid = xgbc.predict(valid_data_blosum[:,1:].squeeze(1))
+        accuracy_train = (torch.Tensor(preds_train).cpu() == train_data_blosum[:,0,0]).sum()/preds_train.shape[0]
+        auc_score_train,auk_score_train=VegvisirUtils.fold_auc(preds_train,train_data_blosum[:,0,0],accuracy_train,fold,results_dir,mode="Train")
         auc_dict["Fold_{}".format(fold)]["Train"] = auc_score_train
         auk_dict["Fold_{}".format(fold)]["Train"] = auk_score_train
-
-        auc_score_valid,auk_score_valid=fold_auc(preds_eval,eval_data_blosum[:,0,0],fold,results_dir,mode="Valid")
+        accuracy_valid = (torch.Tensor(preds_valid).cpu() == valid_data_blosum[:,0,0]).sum()/preds_train.shape[0]
+        auc_score_valid,auk_score_valid=VegvisirUtils.fold_auc(preds_valid,valid_data_blosum[:,0,0],accuracy_valid,fold,results_dir,mode="Valid")
         auc_dict["Fold_{}".format(fold)]["Valid"] = auc_score_valid
         auk_dict["Fold_{}".format(fold)]["Valid"] = auk_score_valid
 
@@ -133,10 +95,12 @@ def train_xgboost_binary_classifier(dataset_info,additional_info,args):
     preds_train = xgbc.predict(traineval_data_blosum[:, 1:].squeeze(1))
     preds_test = xgbc.predict(test_data_blosum[:, 1:].squeeze(1))
     # Cross validation: https://xgboost.readthedocs.io/en/stable/python/examples/cross_validation.html
-    auc_score_train, auk_score_train=fold_auc(preds_train, traineval_data_blosum[:, 0, 0], "all", results_dir, mode="Train")
+    accuracy_train = (torch.Tensor(preds_train).cpu() == traineval_data_blosum[:, 0, 0]).sum() / preds_train.shape[0]
+    auc_score_train, auk_score_train=VegvisirUtils.fold_auc(preds_train, traineval_data_blosum[:, 0, 0],accuracy_train, "all", results_dir, mode="Train")
     auc_dict["Full_dataset"]["Train"] = auc_score_train
     auk_dict["Full_dataset"]["Train"] = auk_score_train
-    auc_score_test, auk_score_test=fold_auc(preds_test, test_data_blosum[:, 0, 0], "all", results_dir, mode="Test")
+    accuracy_test = (torch.Tensor(preds_test).cpu() == test_data_blosum[:, 0, 0]).sum() / preds_test.shape[0]
+    auc_score_test, auk_score_test=VegvisirUtils.fold_auc(preds_test, test_data_blosum[:, 0, 0], accuracy_test,"all", results_dir, mode="Test")
     auc_dict["Full_dataset"]["Test"] = auc_score_test
     auk_dict["Full_dataset"]["Test"] = auk_score_test
     feature_dict["Full_dataset"] = xgbc.feature_importances_
@@ -147,7 +111,7 @@ def train_xgboost_binary_classifier(dataset_info,additional_info,args):
     auc_df_styled = auc_df.style.format(na_rep = "-") #cmap="BuPu"
     #auc_df_styled.to_html()
     dfi.export(auc_df_styled, "{}/AUC_df.png".format(results_dir), dpi=600)
-    VegvisirPlots.plot_feature_importance(feature_dict, max_len,feature_columns,results_dir)
+    VegvisirPlots.plot_feature_importance(feature_dict, max_len,features_names,results_dir)
 
 def train_xgboost_regression(dataset_info,additional_info,args):
     """
@@ -160,15 +124,15 @@ def train_xgboost_regression(dataset_info,additional_info,args):
     data_blosum_norm = dataset_info.data_array_blosum_norm
     results_dir = additional_info.results_dir
     max_len = dataset_info.max_len
-    feature_columns = dataset_info.feature_columns
-    if feature_columns is not None:
-        feature_names = ["Pos.{}".format(pos) for pos in list(range(max_len))] + feature_columns
+    features_names = dataset_info.features_names
+    if features_names is not None:
+        feature_names = ["Pos.{}".format(pos) for pos in list(range(max_len))] + features_names
     else:
         feature_names = ["Pos.{}".format(pos) for pos in list(range(max_len))]
 
     VegvisirPlots.plot_mutual_information(data_blosum_norm,data_blosum_norm[:,0,0],feature_names,results_dir)
 
-    traineval_data_blosum,test_data_blosum,kfolds = trainevaltest_split(data_blosum_norm,args,results_dir,method="predefined_partitions")
+    traineval_data_blosum,test_data_blosum,kfolds = VegvisirLoadUtils.trainevaltest_split_kfolds(data_blosum_norm,args,results_dir,method="predefined_partitions")
 
     rs2score_dict = defaultdict(lambda : defaultdict(list))
     rmse_dict = defaultdict(lambda : defaultdict(list))
@@ -182,8 +146,8 @@ def train_xgboost_regression(dataset_info,additional_info,args):
                                                                        traineval_data_blosum.shape[0]))
         print('\t Number valid data points: {}; Proportion: {}'.format(len(eval_data_blosum), (len(eval_data_blosum) * 100) /
                                                                        traineval_data_blosum.shape[0]))
-        dataset_proportions(train_data_blosum,results_dir)
-        dataset_proportions(eval_data_blosum,results_dir,type="Valid")
+        VegvisirLoadUtils.dataset_proportions(train_data_blosum,results_dir)
+        VegvisirLoadUtils.dataset_proportions(eval_data_blosum,results_dir,type="Valid")
 
         # create model instance
         xgbc = XGBRegressor(n_estimators=1000, max_depth=8, learning_rate=0.01, objective='reg:logistic',tree_method="auto")
@@ -232,7 +196,7 @@ def train_xgboost_regression(dataset_info,additional_info,args):
     # r2score_df_styled.to_html()
     dfi.export(rmse_df_styled, "{}/RMSE_df.png".format(results_dir), dpi=600)
 
-    VegvisirPlots.plot_feature_importance(feature_dict, max_len,feature_columns,results_dir)
+    VegvisirPlots.plot_feature_importance(feature_dict, max_len,features_names,results_dir)
 
 
 

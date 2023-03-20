@@ -11,10 +11,13 @@ import numpy as np
 import os,shutil
 from collections import defaultdict
 import time,datetime
+from sklearn import preprocessing
+from sklearn.metrics import auc,roc_auc_score,cohen_kappa_score,roc_curve,confusion_matrix
 
 import pandas as pd
 import torch
-
+import vegvisir.plots as VegvisirPlots
+from scipy import stats
 def str2bool(v):
     """Converts a string into a boolean, useful for boolean arguments
     :param str v"""
@@ -34,7 +37,10 @@ def str2None(v):
     if v.lower() in ('None'):
         return None
     else:
-        v = ast.literal_eval(v)
+        try:
+            v = ast.literal_eval(v)
+        except:
+            v = str(v)
         return v
 
 def folders(folder_name,basepath):
@@ -127,7 +133,7 @@ def create_blosum(aa_types,subs_matrix_name,zero_characters=[],include_zero_char
         blosum_array_dict = dict(enumerate(subs_array[1:,1:]))
     else:
         blosum_array_dict = dict(enumerate(subs_array[1:, 2:])) # Highlight: Changed to [1:,2:] instead of [1:,1:] to skip the scores for non-aa elements
-    blosum_array_dict[0] = np.full((aa_types),0)  #np.nan == np.nan is False ...
+    #blosum_array_dict[0] = np.full((aa_types),0)  #np.nan == np.nan is False ...
 
     return subs_array, subs_dict, blosum_array_dict
 
@@ -556,11 +562,6 @@ def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksiz
             # Highlight: Apply masks to calculate the similarities. NOTE: To get the data with the filled value use k = np.ma.getdata(kmers_matrix_diag_masked)
             ##PERCENT IDENTITY (binary pairwise comparison) ###############
             percent_identity_mean_ij = np.ma.masked_array(pairwise_sim_j, mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
-            # print(percent_identity_mean_ij.shape)
-            # print("------------BEFORE------------------------")
-            # print("start store point i {}".format(start_store_point_i))
-            # print("end store point i {}".format(end_store_point_i))
-            # print("----------------------------------------------------")
             percent_identity_mean_i[:,start_store_point_i:end_store_point_i] = percent_identity_mean_ij #TODO: Probably no need to store this either
             ##COSINE SIMILARITY (pairwise comparison of cosine similarities)########################
             cosine_similarity_mean_ij = np.ma.masked_array(cosine_sim_j[:, :, diag_idx_maxlen[0], diag_idx_maxlen[1]],mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
@@ -650,25 +651,33 @@ def minmax_scale(array,suffix=None,column_name=None,low=0.,high=1.):
     WARNING USE SEPARATELY FOR TRAIN AND TEST DATASETS, OTHERWISE INFORMATION FROM THE TEST GETS TRANSFERRED TO THE TRAIN
     """
     if isinstance(array,pd.DataFrame):
-        assert column_name is not None
-        assert suffix is not None
-        mean_val = array[column_name].mean()
-        std_val = array[column_name].std()
-        max_val = array[column_name].max()
-        min_val = array[column_name].min()
-        array["{}{}".format(column_name,suffix)] = (array[column_name] - min_val)/max_val-min_val
-        array["{}{}".format(column_name,suffix)] = array["{}{}".format(column_name,suffix)] * (high - low) + low #Scale in range min_val,max_val
+        assert column_name is not None, "Please select a column name"
+        assert suffix is not None, "Please select a suffix of the new column or give an empty string to overwrite it"
+        array["{}{}".format(column_name,suffix)]  =preprocessing.MinMaxScaler().fit_transform(array[column_name].to_numpy()[:,None])
         return array
+    elif isinstance(array,np.ndarray):
+        return preprocessing.MinMaxScaler().fit_transform(array)
     elif isinstance(array,torch.Tensor):
-        mean_val = array.mean()
-        std_val = array.std(dim=-1)
-        max_val = array.max()
-        min_val = array.min()
-        array_scaled = (array - min_val)/max_val-min_val
-        array_scaled = array_scaled * (high - low) + low #Scale in range min_val,max_val
-        return array_scaled
+        return torch.from_numpy(preprocessing.MinMaxScaler().fit_transform(array.to_numpy()))
     else:
         raise ValueError("Not implemented for this data type")
+
+def features_preprocessing(array,method="minmax"):
+    """Applies a preprocessing procedure to each feature independently
+    Notes:
+        - https://datascience.stackexchange.com/questions/54908/data-normalization-before-or-after-train-test-split
+    :returns
+    array_scaled
+    scaler: sklearm method
+    """
+    if array.ndim == 1:
+        array = array[:,None]
+    if method == "minmax":
+        scaler = preprocessing.MinMaxScaler()
+        array_scaled =scaler.fit_transform(array)
+        return array_scaled,scaler
+    else:
+        raise ValueError("method {} not available yet".format(method))
 
 def autolabel(rects, ax):
     # Get y-axis height to calculate label position from.
@@ -708,6 +717,126 @@ def euclidean_2d_norm(A,B,squared=True):
     else:
         return distance.clip(min=0)
 
+def fold_auc(predictions_dict,labels,fold,results_dir,mode="Train"):
+    """
+    http://www.med.mcgill.ca/epidemiology/hanley/software/Hanley_McNeil_Radiology_82.pdf
+    https://jorgetendeiro.github.io/SHARE-UMCG-14-Nov-2019/Part2
+    :param predictions_dict: {"mode": tensor of (N,), "frequencies": tensor of (N, num_classes)}
+    :param labels:
+    :param fold:
+    :param results_dir:
+    :param mode:
+    :return:
+    """
+    if isinstance(labels,torch.Tensor):
+        labels = labels.numpy()
+    # total_predictions = np.column_stack(predictions_fold)
+    # model_predictions = stats.mode(total_predictions, axis=1) #mode_predictions.mode
+    auc_score_binary_predictions_samples_mode = roc_auc_score(y_true=labels, y_score=predictions_dict["class_binary_predictions_samples_mode"])
+    if predictions_dict["class_binary_prediction_single_sample"] is not None:
+        auc_score_binary_predictions_single_sample= roc_auc_score(y_true=labels, y_score=predictions_dict["class_binary_prediction_single_sample"])
+    else:
+        auc_score_binary_predictions_single_sample = None
+
+    auk_score_binary_predictions_samples_mode = AUK(predictions_dict["class_binary_predictions_samples_mode"], labels).calculate_auk()
+    if predictions_dict["class_binary_prediction_single_sample"] is not None:
+        auk_score_binary_predictions_single_sample = AUK(predictions_dict["class_binary_prediction_single_sample"], labels).calculate_auk()
+    else:
+        auk_score_binary_predictions_single_sample = None
+
+    for key_name,stats_name in zip(["average_prob","single_sample_prob"],["class_positive_probs_predictions_samples_average","class_positive_probs_prediction_single_sample"]):
+        if predictions_dict[stats_name] is not None:
+            fpr, tpr, threshold = roc_curve(y_true=labels, y_score=predictions_dict[stats_name])
+            VegvisirPlots.plot_ROC_curve(fpr,tpr,auc_score_binary_predictions_samples_mode,auk_score_binary_predictions_samples_mode,"{}/{}".format(results_dir,mode),fold,key_name)
+
+    print("Fold : {}, {} AUC score (binary sample loop MODE): {}, AUK score {}".format(fold,mode, auc_score_binary_predictions_samples_mode,auk_score_binary_predictions_samples_mode))
+    print("Fold : {}, {} AUC score (binary sample loop MODE): {}, AUK score {}".format(fold,mode, auc_score_binary_predictions_samples_mode,auk_score_binary_predictions_samples_mode),file=open("{}/AUC_out.txt".format(results_dir),"a"))
+    print("Fold : {}, {} AUC score (logits-argmax sample loop MODE): {}, AUK score {}".format(fold, mode,
+                                                                                       auc_score_binary_predictions_single_sample,
+                                                                                       auk_score_binary_predictions_single_sample))
+    print("Fold : {}, {} AUC score (logits-argmax sample loop MODE): {}, AUK score {}".format(fold, mode,
+                                                                                       auc_score_binary_predictions_single_sample,
+                                                                                       auk_score_binary_predictions_single_sample),
+                                                                                       file=open("{}/AUC_out.txt".format(results_dir), "a"))
+
+    for stats_name,key_name in zip(["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"],["samples_mode","single_sample"]):
+        if predictions_dict[stats_name] is not None:
+            tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=predictions_dict[stats_name]).ravel()
+            confusion_matrix_df = pd.DataFrame([[tn, fp],
+                                                [fn, tp]],
+                                            columns=["Negative", "Positive"],
+                                            index=["Negative\n(True)", "Positive\n(True)"])
+            recall = tp/(tp + fn)
+            precision = tp/(tp + fp)
+            f1score = 2*tp/(2*tp + fp + fn)
+            tnr = tn/(tn + fp)
+            accuracy = 100*((predictions_dict[stats_name] == labels).sum()/predictions_dict[stats_name].shape[0])
+            performance_metrics = {"recall/tpr":recall,"precision":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr}
+            VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold,key_name)
 
 
+def manage_predictions(samples_dict,args,predictions_dict,true_labels):
+    """
+
+    :param samples_dict: Collects the binary, logits and probabilities predicted for args.num_samples  from the posterior predictive after training
+    :param args:
+    :param predictions_dict: Collects the binary, logits and probabilities predicted for 1 sample from the posterior predictive during training
+    :return:
+    """
+    binary_predictions_samples = samples_dict["binary"]
+    logits_predictions_samples = samples_dict["logits"]
+    probs_predictions_samples = samples_dict["probs"]
+    n_data = true_labels.shape[0]
+    #probs_predictions_samples_true = probs_predictions_samples[np.arange(0, n_data),:, true_labels.long()]  # pick the probability of the true target for every sample
+    probs_positive_class = probs_predictions_samples[:,:, 1]  # pick the probability of the positive class for every sample
+
+    class_logits_predictions_samples_argmax = np.argmax(logits_predictions_samples,axis=-1)
+    class_logits_predictions_samples_argmax_mode = stats.mode(class_logits_predictions_samples_argmax, axis=1,keepdims=True).mode.squeeze(-1)
+    binary_predictions_samples_mode = stats.mode(binary_predictions_samples, axis=1,keepdims=True).mode.squeeze(-1)
+
+    # binary_frequencies = torch.stack([torch.bincount(x_i, minlength=args.num_classes) for i, x_i in
+    #                                  enumerate(torch.unbind(binary_predictions_samples.type(torch.int64), dim=0),
+    #                                            0)], dim=0)
+    binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=binary_predictions_samples.astype("int64"))
+    binary_frequencies = binary_frequencies / args.num_samples
+    # argmax_frequencies = torch.stack([torch.bincount(x_i, minlength=args.num_classes) for i, x_i in
+    #                                   enumerate(torch.unbind(class_logits_predictions_samples_argmax.type(torch.int64), dim=0),
+    #                                             0)], dim=0)
+    argmax_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=class_logits_predictions_samples_argmax.astype("int64")).T
+
+    argmax_frequencies = argmax_frequencies / args.num_samples
+    if predictions_dict is not None:
+        summary_dict = {  "class_binary_predictions_samples": binary_predictions_samples,
+                          "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
+                          "class_binary_prediction_samples_frequencies": binary_frequencies,
+                          "class_logits_predictions_samples": logits_predictions_samples,
+                          "class_logits_predictions_samples_argmax": class_logits_predictions_samples_argmax,
+                          "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
+                          "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
+                          "class_probs_predictions_samples": probs_predictions_samples,
+                          "class_positive_probs_predictions_samples_average": np.mean(probs_positive_class,axis=1),
+                          "class_binary_prediction_single_sample": predictions_dict["binary"],
+                          "class_logits_prediction_single_sample": predictions_dict["logits"],
+                          "class_logits_prediction_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
+                          "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),true_labels.long()],
+                          "class_positive_probs_prediction_single_sample": predictions_dict["probs"][:,1],
+                          }
+    else:
+        summary_dict = {"class_binary_predictions_samples": binary_predictions_samples,
+                        "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
+                        "class_binary_prediction_samples_frequencies": binary_frequencies,
+                        "class_logits_predictions_samples": logits_predictions_samples,
+                        "class_logits_predictions_samples_argmax": class_logits_predictions_samples_argmax,
+                        "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
+                        "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
+                        "class_probs_predictions_samples": probs_predictions_samples,
+                        "class_positive_probs_predictions_samples_average": np.mean(probs_positive_class, axis=1),
+                        "class_binary_prediction_single_sample": None,
+                        "class_logits_prediction_single_sample": None,
+                        "class_logits_prediction_single_sample_argmax": None,
+                        "class_probs_prediction_single_sample_true": None,
+                        "class_positive_probs_prediction_single_sample": None,
+                        }
+
+    return summary_dict
 
