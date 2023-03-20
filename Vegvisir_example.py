@@ -55,7 +55,7 @@ if __name__ == "__main__":
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=50, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=10, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-aa-types', type=int, nargs='?', default=40, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. ')
     #TODO: include more blosum matrix types?
@@ -80,12 +80,12 @@ if __name__ == "__main__":
     parser.add_argument('-guide', type=str, nargs='?', default="custom", help='<custom>: See guides.py \n'
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
     parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
-    parser.add_argument('-p','--seq-padding', type=str, nargs='?', default="replicated_borders", help='Controls how the sequences are padded to the length of the longest sequence \n'
+    parser.add_argument('-p','--seq-padding', type=str, nargs='?', default="ends", help='Controls how the sequences are padded to the length of the longest sequence \n'
                                                                                     '<ends>: The sequences are padded at the end'
                                                                                     '<borders>: The sequences are padded at the beginning and the end. Random choice when the pad is an even number'
                                                                                     '<replicated_borders>: Padds by replicating the borders of the sequence'
                                                                                     '<random>: random insertion of 0 along the sequence')
-    parser.add_argument('-z-dim','--z-dim', type=int, nargs='?', default=5, help='Latent space dimension')
+    parser.add_argument('-z-dim','--z-dim', type=int, nargs='?', default=10, help='Latent space dimension')
     parser.add_argument('-beta-scale', type=int, nargs='?', default=1, help='Scaling the KL (p(z) | p(z \mid x)) of the variational autoencoder')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=50, help='')
@@ -95,6 +95,9 @@ if __name__ == "__main__":
                                                                                         '<supervised> Supervised model. All target observations are used to compute the likelihood of the class given the latent representation')
     parser.add_argument('-num_classes', type=int, nargs='?', default=2, help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')
     parser.add_argument('-num_samples', type=int, nargs='?', default=30, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
+    parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset3_2023_03_20_22h11min24s747633ms_50epochs", help='Load the checkpoints (state_dict and optimizer) from a previous run'
+                                                                                                                                                                                                'None: Trains model'
+                                                                                                                                                                                                'str: Loads pre-trained model from given path')
 
     args = parser.parse_args()
     if args.use_cuda:

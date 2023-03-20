@@ -19,14 +19,14 @@ long_description = (here / 'README.md').read_text(encoding='utf-8')
 
 # Arguments marked as "Required" below must be included for upload to PyPI.
 # Fields marked as "Optional" may be commented out.
-setup(name='nnalignpy',
+setup(name='vegvisir',
       version='0.0.1',
       # list folders, not files
       packages=find_packages('src'),
       package_dir={'': 'src'},
-      py_modules=[splitext(basename(path))[0] for path in glob('nnalignpy/src/nnalignpy/*.py')],
+      py_modules=[splitext(basename(path))[0] for path in glob('vegvisir/src/vegvisir/*.py')],
       #scripts=['bin/script1.py'],
-      package_data={'nnalignpy': ['data/*']},
+      package_data={'vegvisir': ['data/*']},
       description= '',
       long_description=long_description,
       classifiers=[  # Optional

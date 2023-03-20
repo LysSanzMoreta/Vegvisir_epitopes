@@ -4,7 +4,27 @@ from pyro.nn import PyroModule
 import  vegvisir
 from vegvisir.utils import extract_windows_vectorized
 
+class ScaledDotProductAttention(nn.Module):
+    ''' Scaled Dot-Product Attention as in Attention is all You need
+    Notes:
+        ''https://storrs.io/attention/ '''
 
+    def __init__(self, temperature, attn_dropout=0.1):
+        super().__init__()
+        self.temperature = temperature
+        self.dropout = nn.Dropout(attn_dropout)
+
+    def forward(self, q, k, v, mask=None):
+
+        attn = torch.matmul(q / self.temperature, k.transpose(2, 3))
+
+        if mask is not None:
+            attn = attn.masked_fill(mask == 0, -1e9)
+
+        attn = self.dropout(torch.nn.softmax(attn, dim=-1)) #attention weights!!!!
+        output = torch.matmul(attn, v)
+
+        return output, attn
 
 def glorot_init(input_dim, output_dim):
     init_range = torch.sqrt(torch.tensor(6/(input_dim + output_dim)))

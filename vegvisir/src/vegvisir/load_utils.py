@@ -122,7 +122,7 @@ def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitio
     else:
         raise ValueError("train test split method <{}> not available".format(method))
 
-def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names,method="predefined_partitions_discard_test"):
+def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names,partition_test,method="predefined_partitions_discard_test"):
     """Perform train-valid-test split"""
     info_file = open("{}/dataset_info.txt".format(results_dir),"a+")
     if method == "random_stratified":
@@ -147,7 +147,10 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
     elif method == "predefined_partitions_discard_test":
         """Discard the test dataset (because it seems a hard case) and use one of the partitions as the test instead. 
         The rest of the dataset is used for the training, and a portion for validation"""
-        partition_idx = np.random.randint(0,4) #random selection of a partition as the test
+        if partition_test is not None:
+            partition_idx = partition_test
+        else:
+            partition_idx = np.random.randint(0,4) #random selection of a partition as the test
         traineval_data = data[data[:, 0, 0, 2] != partition_idx]
         test_data = data[data[:, 0, 0, 2] == partition_idx] #data[data[:, 0, 0, 3] == 1.]
         traineval_labels = traineval_data[:,0,0,0]
@@ -156,7 +159,7 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
         dataset_proportions(valid_data, results_dir, type="Valid")
         dataset_proportions(test_data, results_dir, type="Test")
         info_file.write("\n -------------------------------------------------")
-        info_file.write("\n Using partition {} as test:".format(partition_idx))
+        info_file.write("\n Using as test partition: {}".format(partition_idx))
     else:
         raise ValueError("train test split method not available")
 
@@ -184,7 +187,6 @@ def calculate_class_weights(data,args):
         class_weights = n_samples / (args.num_classes * torch.bincount(y.long(),minlength=args.num_classes))
 
     return class_weights.to(args.device)
-
 
 class SequencePadding(object):
     """Performs padding of a list of given sequences to a given len"""

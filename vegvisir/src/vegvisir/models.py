@@ -65,21 +65,22 @@ class VEGVISIRModelClass(nn.Module):
         checkpoint = {'model_state_dict': self.state_dict(),
                       'optimizer_state_dict': optimizer.state_dict()}
         torch.save(checkpoint, filename)
-    def save_checkpoint_pyro(self, filename,optimizer):
+    def save_checkpoint_pyro(self, filename,optimizer,guide):
         """Stores the model weight parameters and optimizer status"""
         # Builds dictionary with all elements for resuming training
         checkpoint = {'model_state_dict': self.state_dict(),
-                      'optimizer_state_dict': optimizer.get_state()}
+                      'optimizer_state_dict': optimizer.get_state(),
+                      'guide_state_dict':guide.state_dict()}
         torch.save(checkpoint, filename)
 
-    def load_checkpoint(self, filename,optimizer=None):
+    def load_checkpoint(self, filename,optimizer):
         # Loads dictionary
         checkpoint = torch.load(filename)
         # Restore state for model and optimizer
         self.load_state_dict(checkpoint['model_state_dict'])
         if optimizer is not None:
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.train() # resume training
+        self.eval() # resume training
     def load_checkpoint_pyro(self, filename,optimizer=None):
         # Loads dictionary
         checkpoint = torch.load(filename)
@@ -87,7 +88,7 @@ class VEGVISIRModelClass(nn.Module):
         self.load_state_dict(checkpoint['model_state_dict'])
         if optimizer is not None:
             optimizer.set_state(checkpoint['optimizer_state_dict'])
-        self.train() # resume training
+        self.eval() # resume training
     def save_model_output(self,filename,output_dict):
         """"""
         torch.save(output_dict, filename)
@@ -761,8 +762,8 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         confidence_mask = (confidence_scores[..., None] > 0.7).any(-1) #now we try to predict those with a low confidence score
         confidence_mask_true = torch.ones_like(confidence_mask).bool() #TODO: Check
         init_h_0_encoder = self.h_0_MODEL_encoder.expand(self.encoder.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
-        z_mean,z_scale = self.encoder(batch_sequences_blosum,init_h_0_encoder)
-        #z_mean,z_scale = torch.zeros((batch_size,self.z_dim)), torch.ones((batch_size,self.z_dim))
+        #z_mean,z_scale = self.encoder(batch_sequences_blosum,init_h_0_encoder)
+        z_mean,z_scale = torch.zeros((batch_size,self.z_dim)), torch.ones((batch_size,self.z_dim))
         #with pyro.plate("plate_batch",dim=-1,device=self.device):
         latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale).to_event(2))  # [n,z_dim]
         latent_z_seq = latent_space.repeat(1, self.seq_max_len).reshape(batch_size, self.max_len, self.z_dim)

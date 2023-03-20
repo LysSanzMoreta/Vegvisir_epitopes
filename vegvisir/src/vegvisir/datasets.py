@@ -311,7 +311,7 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
     return data_info
 
 def select_filters():
-    filters_dict = {"filter_kmers":[False,9,"Icore_non_anchor"], #Icore_non_anchor
+    filters_dict = {"filter_kmers":[False,9,"Icore"], #Icore_non_anchor
                     "group_alleles":[True],
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
@@ -363,7 +363,8 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file):
 
     #Highlight: Annotate which data points have low confidence
     data = set_confidence_score(data)
-    name_suffix = "__".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
+    name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
+
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
     VegvisirPlots.plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     #Highlight: Prep data to run in NNalign
