@@ -36,7 +36,6 @@ class VEGVISIRGUIDES(EasyGuide):
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
         self.h_0_GUIDE = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
-        #self.h_0_GUIDE_decoder = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
         self.encoder_guide = RNN_guide(self.aa_types,self.max_len,self.gru_hidden_dim,self.z_dim,self.device)
         #self.decoder_guide = RNN_model(self.aa_types,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
         self.num_iafs = 0
@@ -44,9 +43,10 @@ class VEGVISIRGUIDES(EasyGuide):
         self.iafs = [dist.transforms.affine_autoregressive(self.z_dim, hidden_dims=[self.iaf_dim]) for _ in range(self.num_iafs)]
         self.iafs_modules = nn.ModuleList(self.iafs)
         if self.learning_type in ["semisupervised","unsupervised"]:
-            self.classifier_guide = FCL4(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
-        #self.classifier_guide = FCL1(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
-        #self.classifier_guide = RNN_classifier(1,self.max_len,self.gru_hidden_dim,self.num_classes,self.z_dim,self.device) #input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device
+            #self.classifier_guide = FCL4(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
+            #self.classifier_guide = FCL1(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
+            self.h_0_GUIDE_classifier = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
+            self.classifier_guide = RNN_classifier(self.aa_types,self.max_len,self.gru_hidden_dim,self.num_classes,self.z_dim,self.device) #input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device
 
 
     def guide_a_works(self, batch_data, batch_mask,sample=False):
@@ -169,23 +169,21 @@ class VEGVISIRGUIDES(EasyGuide):
         confidence_mask = (confidence_scores[..., None] < 0.7).any(-1) #now we try to predict those with a low confidence score
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
         init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
-        with pyro.plate("plate_batch",dim= -1,device=self.device):
-            z_mean, z_scale = self.encoder_guide(batch_sequences_blosum, init_h_0)
-            assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
-            assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
-            latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(1))  # ,infer=dict(baseline={'nn_baseline': self.guide_rnn,'nn_baseline_input': batch_sequences_blosum}))  # [z_dim,n]
-            # Highlight: We only need to specify a variational distribution over the class/class if class/label is unobserved
-            class_logits = self.classifier_guide(latent_space, None)
-            class_logits = self.logsoftmax(class_logits)
-            #pyro.param("class_logits",class_logits)
+        #with pyro.plate("plate_batch",dim= -1,device=self.device):
+        z_mean, z_scale = self.encoder_guide(batch_sequences_blosum, init_h_0)
+        assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
+        assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
+        latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(2))  # ,infer=dict(baseline={'nn_baseline': self.guide_rnn,'nn_baseline_input': batch_sequences_blosum}))  # [z_dim,n]
+        # Highlight: We only need to specify a variational distribution over the class/class if class/label is unobserved
+        #class_logits = self.classifier_guide(latent_space, None)
+        init_h_0_classifier = self.h_0_GUIDE_classifier.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
+        #latent_z_seq = latent_space.repeat(1, self.seq_max_len).reshape(batch_size, self.max_len, self.z_dim)
+        class_logits = self.classifier_guide(batch_sequences_blosum,init_h_0_classifier)
+        class_logits = self.logsoftmax(class_logits)
+        pyro.deterministic("class_logits",class_logits)
+        with pyro.poutine.mask(mask=confidence_mask_true):
             pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1)) #,infer={'enumerate': 'sequential'}
 
-            # latent_z_seq = latent_space.repeat(1, self.seq_max_len).reshape(batch_size, self.max_len, self.z_dim)
-            # init_h_0_decoder = self.h_0_GUIDE_decoder.expand(self.decoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
-            # sequences_logits = self.decoder_guide(latent_z_seq,init_h_0_decoder)
-            # sequences_logits = self.logsoftmax(sequences_logits)
-            # with pyro.poutine.mask(mask=batch_mask):
-            #     pyro.sample("sequences",dist.Categorical(logits=sequences_logits).mask(batch_mask).to_event(2)) #infer={"is_auxiliary":"True"}
 
         return {"latent_z": latent_space,
                 "z_mean": z_mean,

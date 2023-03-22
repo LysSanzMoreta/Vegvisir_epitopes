@@ -12,7 +12,6 @@ import os,shutil
 from collections import defaultdict
 import time,datetime
 from sklearn import preprocessing
-from sklearn.metrics import auc,roc_auc_score,cohen_kappa_score,roc_curve,confusion_matrix
 
 import pandas as pd
 import torch
@@ -717,63 +716,6 @@ def euclidean_2d_norm(A,B,squared=True):
     else:
         return distance.clip(min=0)
 
-def fold_auc(predictions_dict,labels,fold,results_dir,mode="Train"):
-    """
-    http://www.med.mcgill.ca/epidemiology/hanley/software/Hanley_McNeil_Radiology_82.pdf
-    https://jorgetendeiro.github.io/SHARE-UMCG-14-Nov-2019/Part2
-    :param predictions_dict: {"mode": tensor of (N,), "frequencies": tensor of (N, num_classes)}
-    :param labels:
-    :param fold:
-    :param results_dir:
-    :param mode:
-    :return:
-    """
-    if isinstance(labels,torch.Tensor):
-        labels = labels.numpy()
-    # total_predictions = np.column_stack(predictions_fold)
-    # model_predictions = stats.mode(total_predictions, axis=1) #mode_predictions.mode
-    auc_score_binary_predictions_samples_mode = roc_auc_score(y_true=labels, y_score=predictions_dict["class_binary_predictions_samples_mode"])
-    if predictions_dict["class_binary_prediction_single_sample"] is not None:
-        auc_score_binary_predictions_single_sample= roc_auc_score(y_true=labels, y_score=predictions_dict["class_binary_prediction_single_sample"])
-    else:
-        auc_score_binary_predictions_single_sample = None
-
-    auk_score_binary_predictions_samples_mode = AUK(predictions_dict["class_binary_predictions_samples_mode"], labels).calculate_auk()
-    if predictions_dict["class_binary_prediction_single_sample"] is not None:
-        auk_score_binary_predictions_single_sample = AUK(predictions_dict["class_binary_prediction_single_sample"], labels).calculate_auk()
-    else:
-        auk_score_binary_predictions_single_sample = None
-
-    for key_name,stats_name in zip(["average_prob","single_sample_prob"],["class_positive_probs_predictions_samples_average","class_positive_probs_prediction_single_sample"]):
-        if predictions_dict[stats_name] is not None:
-            fpr, tpr, threshold = roc_curve(y_true=labels, y_score=predictions_dict[stats_name])
-            VegvisirPlots.plot_ROC_curve(fpr,tpr,auc_score_binary_predictions_samples_mode,auk_score_binary_predictions_samples_mode,"{}/{}".format(results_dir,mode),fold,key_name)
-
-    print("Fold : {}, {} AUC score (binary sample loop MODE): {}, AUK score {}".format(fold,mode, auc_score_binary_predictions_samples_mode,auk_score_binary_predictions_samples_mode))
-    print("Fold : {}, {} AUC score (binary sample loop MODE): {}, AUK score {}".format(fold,mode, auc_score_binary_predictions_samples_mode,auk_score_binary_predictions_samples_mode),file=open("{}/AUC_out.txt".format(results_dir),"a"))
-    print("Fold : {}, {} AUC score (logits-argmax sample loop MODE): {}, AUK score {}".format(fold, mode,
-                                                                                       auc_score_binary_predictions_single_sample,
-                                                                                       auk_score_binary_predictions_single_sample))
-    print("Fold : {}, {} AUC score (logits-argmax sample loop MODE): {}, AUK score {}".format(fold, mode,
-                                                                                       auc_score_binary_predictions_single_sample,
-                                                                                       auk_score_binary_predictions_single_sample),
-                                                                                       file=open("{}/AUC_out.txt".format(results_dir), "a"))
-
-    for stats_name,key_name in zip(["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"],["samples_mode","single_sample"]):
-        if predictions_dict[stats_name] is not None:
-            tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=predictions_dict[stats_name]).ravel()
-            confusion_matrix_df = pd.DataFrame([[tn, fp],
-                                                [fn, tp]],
-                                            columns=["Negative", "Positive"],
-                                            index=["Negative\n(True)", "Positive\n(True)"])
-            recall = tp/(tp + fn)
-            precision = tp/(tp + fp)
-            f1score = 2*tp/(2*tp + fp + fn)
-            tnr = tn/(tn + fp)
-            accuracy = 100*((predictions_dict[stats_name] == labels).sum()/predictions_dict[stats_name].shape[0])
-            performance_metrics = {"recall/tpr":recall,"precision":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr}
-            VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold,key_name)
-
 
 def manage_predictions(samples_dict,args,predictions_dict,true_labels):
     """
@@ -788,7 +730,7 @@ def manage_predictions(samples_dict,args,predictions_dict,true_labels):
     probs_predictions_samples = samples_dict["probs"]
     n_data = true_labels.shape[0]
     #probs_predictions_samples_true = probs_predictions_samples[np.arange(0, n_data),:, true_labels.long()]  # pick the probability of the true target for every sample
-    probs_positive_class = probs_predictions_samples[:,:, 1]  # pick the probability of the positive class for every sample
+    #probs_positive_class = probs_predictions_samples[:,:, 1]  # pick the probability of the positive class for every sample
 
     class_logits_predictions_samples_argmax = np.argmax(logits_predictions_samples,axis=-1)
     class_logits_predictions_samples_argmax_mode = stats.mode(class_logits_predictions_samples_argmax, axis=1,keepdims=True).mode.squeeze(-1)
@@ -803,8 +745,8 @@ def manage_predictions(samples_dict,args,predictions_dict,true_labels):
     #                                   enumerate(torch.unbind(class_logits_predictions_samples_argmax.type(torch.int64), dim=0),
     #                                             0)], dim=0)
     argmax_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=class_logits_predictions_samples_argmax.astype("int64")).T
-
     argmax_frequencies = argmax_frequencies / args.num_samples
+
     if predictions_dict is not None:
         summary_dict = {  "class_binary_predictions_samples": binary_predictions_samples,
                           "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
@@ -814,12 +756,13 @@ def manage_predictions(samples_dict,args,predictions_dict,true_labels):
                           "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
                           "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
                           "class_probs_predictions_samples": probs_predictions_samples,
-                          "class_positive_probs_predictions_samples_average": np.mean(probs_positive_class,axis=1),
+                          "class_probs_predictions_samples_average": np.mean(probs_predictions_samples,axis=1),
                           "class_binary_prediction_single_sample": predictions_dict["binary"],
                           "class_logits_prediction_single_sample": predictions_dict["logits"],
                           "class_logits_prediction_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
-                          "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),true_labels.long()],
-                          "class_positive_probs_prediction_single_sample": predictions_dict["probs"][:,1],
+                          "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),true_labels.astype(int)],
+                          "class_probs_prediction_single_sample": predictions_dict["probs"],
+                          "samples_average_accuracy":samples_dict["accuracy"]
                           }
     else:
         summary_dict = {"class_binary_predictions_samples": binary_predictions_samples,
@@ -830,12 +773,13 @@ def manage_predictions(samples_dict,args,predictions_dict,true_labels):
                         "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
                         "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
                         "class_probs_predictions_samples": probs_predictions_samples,
-                        "class_positive_probs_predictions_samples_average": np.mean(probs_positive_class, axis=1),
+                        "class_probs_predictions_samples_average": np.mean(probs_predictions_samples, axis=1),
                         "class_binary_prediction_single_sample": None,
                         "class_logits_prediction_single_sample": None,
                         "class_logits_prediction_single_sample_argmax": None,
                         "class_probs_prediction_single_sample_true": None,
-                        "class_positive_probs_prediction_single_sample": None,
+                        "class_probs_prediction_single_sample": None,
+                        "samples_average_accuracy": samples_dict["accuracy"]
                         }
 
     return summary_dict

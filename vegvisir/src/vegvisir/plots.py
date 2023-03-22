@@ -15,6 +15,7 @@ import torch
 import umap
 import vegvisir.utils as VegvisirUtils
 from sklearn.feature_selection import mutual_info_classif,mutual_info_regression
+from sklearn.metrics import auc,roc_auc_score,cohen_kappa_score,roc_curve,confusion_matrix,precision_score
 plt.style.use('ggplot')
 colors_dict = {0: "red", 1: "green"}
 
@@ -793,3 +794,99 @@ def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold,
     ax[0].legend(handles=patches, prop={'size': 10}, loc='right',bbox_to_anchor=(1.5, 0.5), ncol=1)
     plt.savefig("{}/confusion_matrix_fold{}_{}.png".format(results_dir,fold,method),dpi=100)
     plt.clf()
+
+
+def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode="Train"):
+    """
+    http://www.med.mcgill.ca/epidemiology/hanley/software/Hanley_McNeil_Radiology_82.pdf
+    https://jorgetendeiro.github.io/SHARE-UMCG-14-Nov-2019/Part2
+    Avoid AUC: https://onlinelibrary.wiley.com/doi/10.1111/j.1466-8238.2007.00358.x
+    :param predictions_dict: {"mode": tensor of (N,), "frequencies": tensor of (N, num_classes)}
+    :param labels:
+    :param fold:
+    :param results_dir:
+    :param mode:
+    :return:
+    """
+    if isinstance(data,torch.Tensor):
+        data = data.numpy()
+    labels = data[:,0,0,0]
+    onehot_labels = np.zeros((labels.shape[0],args.num_classes))
+    onehot_labels[np.arange(0,labels.shape[0]),labels.astype(int)] = 1
+    confidence_scores = data[:,0,0,5]
+    idx_all = np.ones_like(labels).astype(bool)
+    idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
+
+    for idx,idx_name in zip([idx_all,idx_highconfidence],["ALL","HIGH_CONFIDENCE"]):
+        print("---------------- {} data points ----------------".format(idx_name))
+        print("---------------- {} data points ----------------".format(idx_name),file=open("{}/AUC_out.txt".format(results_dir), "a"))
+        try:
+            auk_score_binary_predictions_samples_mode = VegvisirUtils.AUK(predictions_dict["class_binary_predictions_samples_mode"][idx], labels[idx]).calculate_auk()
+        except:
+            auk_score_binary_predictions_samples_mode = None
+        if predictions_dict["class_binary_prediction_single_sample"] is not None:
+            auk_score_binary_predictions_single_sample = VegvisirUtils.AUK(predictions_dict["class_binary_prediction_single_sample"][idx], labels[idx]).calculate_auk()
+        else:
+            auk_score_binary_predictions_single_sample = None
+
+        for key_name,stats_name in zip(["samples_average_prob","single_sample_prob"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"]):
+            if predictions_dict[stats_name] is not None:
+                #fpr, tpr, threshold = roc_curve(y_true=onehot_labels[idx], y_score=predictions_dict[stats_name][idx])
+                micro_roc_auc_ovr = roc_auc_score(
+                    onehot_labels[idx],
+                    predictions_dict[stats_name][idx],
+                    multi_class="ovr",
+                    average="micro",
+                )
+                # Compute ROC curve and ROC area for each class
+                fpr = dict()
+                tpr = dict()
+                roc_auc = dict()
+                onehot_targets = onehot_labels[idx]
+                target_scores = predictions_dict[stats_name][idx]
+                for i in range(args.num_classes):
+                    fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
+                    roc_auc[i] = auc(fpr[i], tpr[i])
+                    #plt.figure()
+                    plt.plot(fpr[i], tpr[i], label='ROC curve (AUC_{}: {})'.format(i,roc_auc[i]),c=colors_dict[i])
+                    plt.legend(loc='lower right', prop={'size': 15})
+                    plt.plot([0, 1], [0, 1], 'r--')
+                    plt.xlim([0, 1])
+                    plt.ylim([0, 1])
+                    plt.ylabel('True Positive Rate', fontsize=20)
+                    plt.xlabel('False Positive Rate', fontsize=20)
+                    plt.legend(loc="lower right")
+                plt.title("ROC curve. AUC_micro_ovr: {}".format(micro_roc_auc_ovr))
+                plt.savefig("{}/{}/ROC_curve_fold{}_{}".format(results_dir,mode, fold, "{}_{}".format(key_name,idx_name)))
+                plt.clf()
+
+                print("---------------- {} ----------------".format(stats_name))
+                print("---------------- {} ----------------".format(stats_name),file=open("{}/AUC_out.txt".format(results_dir), "a"))
+                print("Fold : {}, {} AUC score (logits-argmax sample loop MODE): {}, AUK score {}".format(fold, mode,
+                                                                                                   micro_roc_auc_ovr,
+                                                                                                   auk_score_binary_predictions_single_sample))
+                print("Fold : {}, {} AUC score (logits-argmax sample loop MODE): {}, AUK score {}".format(fold, mode,
+                                                                                                   micro_roc_auc_ovr,
+                                                                                                   auk_score_binary_predictions_single_sample),
+                                                                                                   file=open("{}/AUC_out.txt".format(results_dir), "a"))
+
+        for key_name,stats_name in zip(["samples_mode","single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
+            if predictions_dict[stats_name] is not None:
+                targets = labels[idx]
+                tn, fp, fn, tp = confusion_matrix(y_true=targets, y_pred=predictions_dict[stats_name][idx]).ravel()
+                # confusion_matrix_df = pd.DataFrame([[tn, fp],
+                #                                     [fn, tp]],
+                #                                 columns=["Negative", "Positive"],
+                #                                 index=["Negative\n(True)", "Positive\n(True)"])
+                confusion_matrix_df = pd.DataFrame([[tp, fp],
+                                                    [fn, tn]],
+                                                index=["Negative\n(Pred)", "Positive\n(Pred)"],
+                                                columns=["Negative\n(True)", "Positive\n(True)"])
+                recall = tp/(tp + fn)
+                precision = tp/(tp + fp)
+                f1score = 2*tp/(2*tp + fp + fn)
+                tnr = tn/(tn + fp)
+                accuracy = 100*((predictions_dict[stats_name][idx] == targets).sum()/targets.shape[0])
+                performance_metrics = {"recall/tpr":recall,"precision/ppv":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr,"samples\naverage\naccuracy":predictions_dict["samples_average_accuracy"]}
+                plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold,"{}_{}".format(key_name,idx_name))
+

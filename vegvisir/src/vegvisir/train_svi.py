@@ -93,7 +93,9 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
     logits_predictions_arr = np.concatenate(logits_predictions,axis=0)
     probs_predictions_arr = np.concatenate(probs_predictions,axis=0)
     latent_arr = np.concatenate(latent_spaces,axis=0)
-    target_accuracy= 100 * ((true_labels_arr == binary_predictions_arr).sum()/true_labels_arr.shape[0])
+
+    target_accuracy = 100 * ((true_labels_arr == binary_predictions_arr).sum() / true_labels_arr.shape[0])
+
     reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
     predictions_dict = {"binary":binary_predictions_arr,
@@ -140,6 +142,7 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
 
             binary_class_prediction = sampling_output["predictions"].squeeze(0).detach()
             logits_class_prediction = sampling_output["class_logits"].squeeze(0).detach()
+
             probs_class_prediction = torch.nn.Sigmoid()(logits_class_prediction)
 
             reconstructed_sequences = sampling_output["sequences"].squeeze(0).squeeze(0).squeeze(0).detach()
@@ -371,11 +374,13 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
     true_labels_arr = np.concatenate(true_labels, axis=0)
     latent_arr = np.concatenate(latent_spaces, axis=0)
     target_accuracy = 100 * ((true_labels_arr[:,None] == binary_predictions_arr).astype(float).mean(axis=1).mean(axis=0))
+    print("average accuracy samples: {}".format(target_accuracy))
     reconstruction_accuracies = np.concatenate(reconstruction_accuracies).mean(axis=1) #[N,num_samples,1]
     reconstruction_accuracies_dict = {"mean": reconstruction_accuracies.mean(), "std": reconstruction_accuracies.std()}
     predictions_dict = {"binary": binary_predictions_arr,
                         "logits": logits_predictions_arr,
-                        "probs": probs_predictions_arr}
+                        "probs": probs_predictions_arr,
+                        "accuracy":target_accuracy}
     return sample_loss, target_accuracy, predictions_dict, latent_arr, reconstruction_accuracies_dict
 def save_script(results_dir,output_name,script_name):
     """Saves the python script and its contents"""
@@ -819,9 +824,14 @@ def train_model(dataset_info,additional_info,args):
     train_summary_dict = None
     valid_summary_dict = None
     gradient_norms = defaultdict(list)
+    train_true = train_data_blosum[:, 0, 0, 0].detach().cpu().numpy()
+    train_true_onehot = np.zeros((train_true.shape[0],args.num_classes))
+    train_true_onehot[np.arange(0,train_true.shape[0]),train_true.astype(int)] = 1
+    valid_true = valid_data_blosum[:, 0, 0, 0].detach().cpu().numpy()
+    valid_true_onehot = np.zeros((valid_true.shape[0],args.num_classes))
+    valid_true_onehot[np.arange(0,valid_true.shape[0]),valid_true.astype(int)] = 1
     while epoch <= args.num_epochs:
         start = time.time()
-        #svi,Vegvisir,guide,data_loader, args
         train_epoch_loss,train_accuracy,train_predictions_dict, train_latent_space,train_reconstruction_accuracy_dict = train_loop(svi,Vegvisir,guide, train_loader, args,model_load)
         stop = time.time()
         memory_usage_mib = torch.cuda.max_memory_allocated() * 9.5367 * 1e-7  # convert byte to MiB
@@ -840,24 +850,29 @@ def train_model(dataset_info,additional_info,args):
             valid_accuracies.append(valid_accuracy)
             valid_reconstruction_accuracies_dict["mean"].append(valid_reconstruction_accuracy_dict["mean"])
             valid_reconstruction_accuracies_dict["std"].append(valid_reconstruction_accuracy_dict["std"])
-
-            train_true = train_data_blosum[:,0,0,0]
-            train_true_prob = train_predictions_dict["probs"][np.arange(0, train_true.shape[0]), train_true.long()] #pick the probability of the true target
+            #train_true_prob = train_predictions_dict["probs"][np.arange(0, train_true.shape[0]), train_true.long()] #pick the probability of the true target
             #train_pred_prob = np.argmax(train_predictions_dict["probs"],axis=-1) #return probability of the most likely class predicted by the model
-            train_auc_score = roc_auc_score(y_true=train_true, y_score=train_true_prob)
-            train_auk_score = VegvisirUtils.AUK(probabilities= train_predictions_dict["binary"],labels=train_true.detach().cpu().numpy()).calculate_auk()
+            train_micro_roc_auc_ovr = roc_auc_score(
+                train_true_onehot,
+                train_predictions_dict["probs"],
+                multi_class="ovr",
+                average="micro",
+            )
+            train_auk_score = VegvisirUtils.AUK(probabilities= train_predictions_dict["binary"],labels=train_true).calculate_auk()
             train_auk.append(train_auk_score)
-            train_auc.append(train_auc_score)
+            train_auc.append(train_micro_roc_auc_ovr)
 
-            valid_true = valid_data_blosum[:, 0, 0, 0]
-            valid_true_prob = valid_predictions_dict["probs"][np.arange(0, valid_true.shape[0]), valid_true.long()]  # pick the probability of the true target
+            #valid_true_prob = valid_predictions_dict["probs"][np.arange(0, valid_true.shape[0]), valid_true.long()]  # pick the probability of the true target
             #valid_pred_prob = np.argmax(valid_predictions_dict["probs"],axis=-1)  # return probability of the most likely class predicted by the model
-            valid_auc_score = roc_auc_score(y_true=valid_true, y_score=valid_true_prob)
-            valid_auk_score = VegvisirUtils.AUK(probabilities=valid_predictions_dict["binary"], labels=valid_true.detach().cpu().numpy()).calculate_auk()
+            valid_micro_roc_auc_ovr = roc_auc_score(
+                valid_true_onehot,
+                valid_predictions_dict["probs"],
+                multi_class="ovr",
+                average="micro",
+            )
+            valid_auk_score = VegvisirUtils.AUK(probabilities=valid_predictions_dict["binary"], labels=valid_true).calculate_auk()
             valid_auk.append(valid_auk_score)
-            valid_auc.append(valid_auc_score)
-
-
+            valid_auc.append(valid_micro_roc_auc_ovr)
 
             VegvisirPlots.plot_loss(train_loss,valid_loss,epochs_list,"all",additional_info.results_dir)
             VegvisirPlots.plot_accuracy(train_accuracies,valid_accuracies,epochs_list,"single_sample",additional_info.results_dir)
@@ -882,13 +897,14 @@ def train_model(dataset_info,additional_info,args):
                 train_summary_dict = VegvisirUtils.manage_predictions(train_predictive_samples_dict,args,train_predictions_dict,train_true)
                 valid_summary_dict = VegvisirUtils.manage_predictions(valid_predictive_samples_dict,args,valid_predictions_dict,valid_true)
                 VegvisirPlots.plot_gradients(gradient_norms, results_dir, "all")
-                VegvisirPlots.plot_latent_space(train_latent_space, train_summary_dict, "_single_sample",results_dir, method="Train")
-                VegvisirPlots.plot_latent_space(valid_latent_space,valid_summary_dict, "_single_sample",results_dir, method="Valid")
-                VegvisirPlots.plot_latent_space(train_predictive_samples_latent_space, train_summary_dict, "_samples",results_dir, method="Train")
-                VegvisirPlots.plot_latent_space(valid_predictive_samples_latent_space,valid_summary_dict, "_samples",results_dir, method="Valid")
+                #VegvisirPlots.plot_latent_space(train_latent_space, train_summary_dict, "_single_sample",results_dir, method="Train")
+                #VegvisirPlots.plot_latent_space(valid_latent_space,valid_summary_dict, "_single_sample",results_dir, method="Valid")
+                #VegvisirPlots.plot_latent_space(train_predictive_samples_latent_space, train_summary_dict, "_samples",results_dir, method="Train")
+                #VegvisirPlots.plot_latent_space(valid_predictive_samples_latent_space,valid_summary_dict, "_samples",results_dir, method="Valid")
 
-                VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "_single_sample",results_dir, method="Train")
-                VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "_single_sample",results_dir, method="Valid")
+                #VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "_single_sample",results_dir, method="Train")
+                #VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "_single_sample",results_dir, method="Valid")
+
                 Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer,guide)
                 Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_train.p".format(results_dir),
                                            {"latent_space": train_latent_space,
@@ -901,8 +917,8 @@ def train_model(dataset_info,additional_info,args):
 
         torch.cuda.empty_cache()
         epoch += 1 #TODO: early stop?
-    VegvisirUtils.fold_auc(train_summary_dict,train_data_blosum[:,0,0,0],"all",results_dir,mode="Train")
-    VegvisirUtils.fold_auc(valid_summary_dict,valid_data_blosum[:,0,0,0],"all",results_dir,mode="Valid")
+    VegvisirPlots.plot_classification_metrics(args,train_summary_dict,train_data_blosum,"all",results_dir,mode="Train")
+    VegvisirPlots.plot_classification_metrics(args,valid_summary_dict,valid_data_blosum,"all",results_dir,mode="Valid")
     stop = time.time()
     print('Final timing: {}'.format(str(datetime.timedelta(seconds=stop-start))))
 
