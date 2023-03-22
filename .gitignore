@@ -9,6 +9,6 @@ vegvisir/src/vegvisir/__pycache__
 PLOTS_*
 *.pdf
 
-vegvisir/src/vegvisir/toyexample.py
+vegvisir/src/vegvisir/tests/toyexample.py
 
-vegvisir/src/vegvisir/masking.py
+vegvisir/src/vegvisir/tests/masking.py

@@ -15,7 +15,10 @@ import torch
 import umap
 import vegvisir.utils as VegvisirUtils
 from sklearn.feature_selection import mutual_info_classif,mutual_info_regression
-from sklearn.metrics import auc,roc_auc_score,cohen_kappa_score,roc_curve,confusion_matrix,precision_score
+from sklearn.metrics import auc,roc_auc_score,cohen_kappa_score,roc_curve,confusion_matrix
+from joblib import Parallel, delayed
+import multiprocessing
+MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
 colors_dict = {0: "red", 1: "green"}
 
@@ -795,6 +798,22 @@ def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold,
     plt.savefig("{}/confusion_matrix_fold{}_{}.png".format(results_dir,fold,method),dpi=100)
     plt.clf()
 
+def micro_auc(args,onehot_labels,y_prob,idx):
+    """Calculates the AUC for a multi-class problem"""
+
+    micro_roc_auc_ovr = roc_auc_score(
+        onehot_labels[idx],
+        y_prob[idx],
+        multi_class="ovr",
+        average="micro",
+    )
+    fprs = dict()
+    tprs = dict()
+    roc_aucs = dict()
+    for i in range(2):
+          fprs[i], tprs[i], _ = roc_curve(onehot_labels[:, i], y_prob[:, i])
+          roc_aucs[i] = auc(fprs[i], tprs[i])
+    return [micro_roc_auc_ovr,fprs,tprs,roc_aucs]
 
 def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode="Train"):
     """
@@ -825,7 +844,10 @@ def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode
         except:
             auk_score_binary_predictions_samples_mode = None
         if predictions_dict["class_binary_prediction_single_sample"] is not None:
-            auk_score_binary_predictions_single_sample = VegvisirUtils.AUK(predictions_dict["class_binary_prediction_single_sample"][idx], labels[idx]).calculate_auk()
+            try:
+                auk_score_binary_predictions_single_sample = VegvisirUtils.AUK(predictions_dict["class_binary_prediction_single_sample"][idx], labels[idx]).calculate_auk()
+            except:
+                auk_score_binary_predictions_single_sample = None
         else:
             auk_score_binary_predictions_single_sample = None
 
@@ -847,15 +869,13 @@ def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode
                 for i in range(args.num_classes):
                     fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
                     roc_auc[i] = auc(fpr[i], tpr[i])
-                    #plt.figure()
                     plt.plot(fpr[i], tpr[i], label='ROC curve (AUC_{}: {})'.format(i,roc_auc[i]),c=colors_dict[i])
-                    plt.legend(loc='lower right', prop={'size': 15})
-                    plt.plot([0, 1], [0, 1], 'r--')
-                    plt.xlim([0, 1])
-                    plt.ylim([0, 1])
-                    plt.ylabel('True Positive Rate', fontsize=20)
-                    plt.xlabel('False Positive Rate', fontsize=20)
-                    plt.legend(loc="lower right")
+                plt.legend(loc='lower right', prop={'size': 15})
+                plt.plot([0, 1], [0, 1], 'r--')
+                plt.xlim([0, 1])
+                plt.ylim([0, 1])
+                plt.ylabel('True Positive Rate', fontsize=20)
+                plt.xlabel('False Positive Rate', fontsize=20)
                 plt.title("ROC curve. AUC_micro_ovr: {}".format(micro_roc_auc_ovr))
                 plt.savefig("{}/{}/ROC_curve_fold{}_{}".format(results_dir,mode, fold, "{}_{}".format(key_name,idx_name)))
                 plt.clf()
@@ -880,8 +900,8 @@ def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode
                 #                                 index=["Negative\n(True)", "Positive\n(True)"])
                 confusion_matrix_df = pd.DataFrame([[tp, fp],
                                                     [fn, tn]],
-                                                index=["Negative\n(Pred)", "Positive\n(Pred)"],
-                                                columns=["Negative\n(True)", "Positive\n(True)"])
+                                                index=["Positive\n(Pred)", "Negative\n(Pred)"],
+                                                columns=["Positive\n(True)", "Negative\n(True)"])
                 recall = tp/(tp + fn)
                 precision = tp/(tp + fp)
                 f1score = 2*tp/(2*tp + fp + fn)
@@ -889,4 +909,25 @@ def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode
                 accuracy = 100*((predictions_dict[stats_name][idx] == targets).sum()/targets.shape[0])
                 performance_metrics = {"recall/tpr":recall,"precision/ppv":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr,"samples\naverage\naccuracy":predictions_dict["samples_average_accuracy"]}
                 plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold,"{}_{}".format(key_name,idx_name))
+
+
+        #Calculate metrics for all samples
+        samples_results = Parallel(n_jobs=MAX_WORKERs)(delayed(micro_auc)(args,onehot_labels, sample, idx) for sample in np.transpose(predictions_dict["class_probs_predictions_samples"],(1,0,2)))
+        average_micro_auc = 0
+        fig, [ax1, ax2] = plt.subplots(1, 2,figsize=(17, 12),gridspec_kw={'width_ratios': [6, 2]})
+        for i in range(args.num_samples):
+            micro_roc_auc_ovr, fprs, tprs, roc_aucs = samples_results[i]
+            average_micro_auc += micro_roc_auc_ovr
+            for j in range(args.num_classes):
+                ax1.plot(fprs[j], tprs[j], label='AUC_{}: {} MicroAUC: {}'.format(i, roc_aucs[j],micro_roc_auc_ovr), c=colors_dict[j])
+        ax1.plot([0, 1], [0, 1], 'r--')
+        ax1.set_xlim([0, 1])
+        ax1.set_ylim([0, 1])
+        ax1.set_ylabel('True Positive Rate', fontsize=20)
+        ax1.set_xlabel('False Positive Rate', fontsize=20)
+        ax2.axis("off")
+        ax1.legend(loc='lower right', prop={'size': 8},bbox_to_anchor=(1.3, 0.))
+        fig.suptitle("ROC curve. AUC_micro_ovr_average: {}".format(average_micro_auc/args.num_samples),fontsize=12)
+        plt.savefig("{}/{}/ROC_curve_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
+        plt.clf()
 

@@ -867,7 +867,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         sequences_logits = self.decoder(latent_z_seq,init_h_0_decoder)
         sequences_logits = self.logsoftmax(sequences_logits)
         #with pyro.poutine.mask(mask=batch_mask_true):
-        pyro.sample("sequences",dist.Categorical(logits=sequences_logits).to_event(1),obs=[None if sample else batch_sequences_int][0])
+        pyro.sample("sequences",dist.Categorical(logits=sequences_logits).mask(batch_mask_true).to_event(1),obs=[None if sample else batch_sequences_int][0])
         #pyro.sample("sequences",dist.Delta(batch_sequences_int).to_event(2),obs=[None if sample else batch_sequences_int][0])
         #init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
         class_logits = self.classifier_model(latent_space,None) #TODO: Is it better with latent_z_seq or latent_space?
@@ -894,7 +894,6 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         """
         """
         return Trace_ELBO(strict_enumeration_warning=False)
-
 
 class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
     """
@@ -969,10 +968,9 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
         sequences_logits = self.decoder(latent_z_seq,init_h_0_decoder)
         sequences_logits = self.logsoftmax(sequences_logits)
         #with pyro.poutine.mask(mask=batch_mask_true):
-        pyro.sample("sequences",dist.Categorical(logits=sequences_logits).mask(batch_mask_true).to_event(2),obs=[None if sample else batch_sequences_int][0])
+        pyro.sample("sequences",dist.Categorical(logits=sequences_logits).mask(batch_mask).to_event(2),obs=[None if sample else batch_sequences_int][0])
 
         return {"class_logits":class_logits}
-
 
     def sample(self,batch_data,batch_mask,guide_estimates,argmax=False):
         """"""
@@ -986,7 +984,6 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
         """
         """
         return Trace_ELBO(strict_enumeration_warning=False)
-
 
 class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
     """
@@ -1075,9 +1072,6 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
         """
 
         return Trace_ELBO(strict_enumeration_warning=False)
-
-
-
 
 class VegvisirModel5b(VEGVISIRModelClass,PyroModule):
     """
