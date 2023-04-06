@@ -728,6 +728,7 @@ def manage_predictions(samples_dict,args,predictions_dict,true_labels):
     binary_predictions_samples = samples_dict["binary"]
     logits_predictions_samples = samples_dict["logits"]
     probs_predictions_samples = samples_dict["probs"]
+
     n_data = true_labels.shape[0]
     #probs_predictions_samples_true = probs_predictions_samples[np.arange(0, n_data),:, true_labels.long()]  # pick the probability of the true target for every sample
     #probs_positive_class = probs_predictions_samples[:,:, 1]  # pick the probability of the positive class for every sample

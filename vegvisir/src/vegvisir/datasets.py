@@ -417,7 +417,7 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
         data.replace({"allele_encoded": allele_dict},inplace=True)
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
-
+    #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,filters_dict["filter_kmers"][2])
 
     return data_info
@@ -545,7 +545,6 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     :param args: Commmand line arguments
     :param storage_folder: Data location path
     """
-
     epitopes_list = data[[sequence_column]].values.tolist()
     epitopes_list = functools.reduce(operator.iconcat, epitopes_list, [])  # flatten list of lists
     seq_max_len = len(max(epitopes_list, key=len))

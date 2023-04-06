@@ -60,8 +60,8 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
         # latent_space = sampling_output.latent_space
         # reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
         sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=1, return_sites=(), parallel=False)(batch_data,batch_mask,sample=True)
-        binary_class_prediction = sampling_output["predictions"].squeeze(0).detach()
-        logits_class_prediction = sampling_output["class_logits"].squeeze(0).detach()
+        binary_class_prediction = sampling_output["predictions"].squeeze(0).squeeze(0).detach()
+        logits_class_prediction = sampling_output["class_logits"].squeeze(0).squeeze(0).squeeze(0).detach()
         probs_class_prediction = torch.nn.Sigmoid()(logits_class_prediction)
 
         reconstructed_sequences = sampling_output["sequences"].squeeze(0).squeeze(0).squeeze(0).detach()
@@ -76,7 +76,11 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
             [true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score, latent_space])
 
         mask_seq = batch_mask[:, 1:,:,0].squeeze(1)
-        equal_aa = torch.Tensor((batch_data_int[:,1,:model_load.seq_max_len] == reconstructed_sequences)*mask_seq)
+        # print("----------------------------------")
+        # print(reconstructed_sequences[:4].long())
+        # print(batch_data_int[:4,1,:model_load.seq_max_len])
+        # print("----------------------------------")
+        equal_aa = torch.Tensor((batch_data_int[:,1,:model_load.seq_max_len] == reconstructed_sequences.long())*mask_seq)
         reconstruction_accuracy = (equal_aa.sum(dim=1))/mask_seq.sum(dim=1)
         reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
         latent_spaces.append(latent_space.detach().cpu().numpy())
@@ -140,8 +144,8 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
 
             sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=1, return_sites=(), parallel=False)(batch_data, batch_mask,sample=True)
 
-            binary_class_prediction = sampling_output["predictions"].squeeze(0).detach()
-            logits_class_prediction = sampling_output["class_logits"].squeeze(0).detach()
+            binary_class_prediction = sampling_output["predictions"].squeeze(0).squeeze(0).detach()
+            logits_class_prediction = sampling_output["class_logits"].squeeze(0).squeeze(0).squeeze(0).detach()
 
             probs_class_prediction = torch.nn.Sigmoid()(logits_class_prediction)
 
@@ -253,57 +257,6 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load):
                         "logits":logits_predictions_arr,
                         "probs":probs_predictions_arr}
     return test_loss,target_accuracy,predictions_dict,latent_arr, reconstruction_accuracies_dict
-def sample_loop1(svi,Vegvisir,guide,data_loader,args,custom=False):
-    Vegvisir.train(False)
-    print("Collecting {} samples".format(args.num_samples))
-    binary_predictions = []
-    logits_predictions = []
-    probs_predictions = []
-    latent_spaces = []
-    with torch.no_grad():
-        for batch_number, batch_dataset in enumerate(data_loader):
-            batch_data_blosum = batch_dataset["batch_data_blosum"]
-            batch_data_int = batch_dataset["batch_data_int"]
-            batch_data_onehot = batch_dataset["batch_data_onehot"]
-            batch_data_blosum_norm = batch_dataset["batch_data_blosum_norm"]
-            batch_mask = batch_dataset["batch_mask"]
-            if args.use_cuda:
-                batch_data_blosum = batch_data_blosum.cuda()
-                batch_data_int = batch_data_int.cuda()
-                batch_data_onehot = batch_data_onehot.cuda()
-                batch_data_blosum_norm = batch_data_blosum_norm.cuda()
-                batch_mask = batch_mask.cuda()
-            batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
-            loss = svi.step(batch_data, batch_mask, sample=False)
-            sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=args.num_samples,return_sites=(), parallel=False)(batch_data, batch_mask,sample=True)
-            latent_space = sampling_output["latent_z"].squeeze(0).squeeze(0).detach()
-            true_labels_batch = batch_data["blosum"][:, 0, 0, 0]
-            identifiers = batch_data["blosum"][:, 0, 0, 1]
-            partitions = batch_data["blosum"][:, 0, 0, 2]
-            immunodominace_score = batch_data["blosum"][:, 0, 0, 4]
-            confidence_score = batch_data["blosum"][:, 0, 0, 5]
-            latent_space = torch.column_stack(
-                [true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score, latent_space])
-
-            binary_class_predictions = sampling_output["predictions"].detach().T
-            assert binary_class_predictions.shape == (batch_data["blosum"].shape[0],args.num_samples)
-            logits_class_predictions = sampling_output["class_logits"].detach().permute(1,0,2) #N,num_samples,num_classes
-            probs_class_predictions = torch.nn.Sigmoid()(logits_class_predictions) #N,num_samples,num_classes #equivalent to torch.exp(logits_class_predictions) / (1 + torch.exp(logits_class_predictions))
-            binary_predictions.append(binary_class_predictions)
-            logits_predictions.append(logits_class_predictions)
-            probs_predictions.append(probs_class_predictions)
-            latent_spaces.append(latent_space.detach().cpu().numpy())
-
-    total_binary_predictions = torch.cat(binary_predictions,dim=0)
-    total_logits_predictions = torch.cat(logits_predictions,dim=0)
-    total_probs_predictions = torch.cat(probs_predictions,dim=0)
-    latent_arr = np.concatenate(latent_spaces,axis=0)
-
-    samples_dict = {"binary":total_binary_predictions,
-                    "logits":total_logits_predictions,
-                    "probs":total_probs_predictions}
-
-    return samples_dict, latent_arr
 def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
     """
     :param svi: pyro infer engine
@@ -342,8 +295,10 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             # latent_space = sampling_output.latent_space.detach()
 
             sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=args.num_samples, return_sites=(), parallel=False)(batch_data, batch_mask, sample=True)
-
-            binary_class_prediction = sampling_output["predictions"].detach().T
+            if sampling_output["predictions"].shape == (args.num_samples,batch_data["blosum"].shape[0]):
+                binary_class_prediction = sampling_output["predictions"].detach().T
+            else:
+                binary_class_prediction = sampling_output["predictions"].squeeze(1).detach().T
             logits_class_prediction = sampling_output["class_logits"].detach().permute(1,0,2)
             probs_class_prediction = torch.nn.Sigmoid()(logits_class_prediction)
             reconstructed_sequences = sampling_output["sequences"].detach().permute(1,0,2)
@@ -455,7 +410,7 @@ def init_weights(m):
         -https://shiyan.medium.com/xavier-initialization-and-batch-normalization-my-understanding-b5b91268c25c
         -https://medium.com/ml-cheat-sheet/how-to-avoid-the-vanishing-exploding-gradients-problem-f9ccb4446c5a
     """
-    if isinstance(m, nn.Module) and hasattr(m, 'weight') and not isinstance(m,nn.BatchNorm1d):
+    if isinstance(m, nn.Module) and hasattr(m, 'weight') and not (isinstance(m,nn.BatchNorm1d) or isinstance(m,nn.Embedding)):
         nn.init.kaiming_normal_(m.weight,nonlinearity="leaky_relu")
         if m.bias is not None:
             nn.init.zeros_(m.bias)
@@ -743,7 +698,7 @@ def train_model(dataset_info,additional_info,args):
                            n_data = dataset_info.n_data,
                            input_dim = dataset_info.input_dim,
                            aa_types = dataset_info.corrected_aa_types,
-                           blosum = dataset_info.blosum,
+                           blosum = torch.from_numpy(dataset_info.blosum),
                            class_weights=VegvisirLoadUtils.calculate_class_weights(train_data_blosum, args)
                            )
 
@@ -793,7 +748,6 @@ def train_model(dataset_info,additional_info,args):
     data_args_0 = {"blosum":train_data_blosum.to(args.device)[:n],"norm":data_blosum_norm[train_idx].to(args.device)[:n],"int":data_int[train_idx].to(args.device)[:n]}
     data_args_1 = data_array_blosum_encoding_mask[train_idx].to(args.device)[:n]
     trace = pyro.poutine.trace(Vegvisir.model).get_trace(data_args_0,data_args_1)
-
     info_file = open("{}/dataset_info.txt".format(results_dir),"a+")
     info_file.write("\n ---------TRACE SHAPES------------\n {}".format(str(trace.format_shapes())))
     print(trace.format_shapes())
@@ -803,8 +757,8 @@ def train_model(dataset_info,additional_info,args):
     # monte_carlo_elbo = model_tr.log_prob_sum() - guide_tr.log_prob_sum()
 
     #Highlight: Draw the graph model
-    pyro.render_model(Vegvisir.model, model_args=(data_args_0,data_args_1,False), filename="{}/model_graph.png".format(results_dir),render_distributions=True,render_params=True)
-    pyro.render_model(guide, model_args=(data_args_0,data_args_1,False), filename="{}/guide_graph.png".format(results_dir),render_distributions=True,render_params=True)
+    pyro.render_model(Vegvisir.model, model_args=(data_args_0,data_args_1,False), filename="{}/model_graph.png".format(results_dir),render_distributions=True,render_params=False)
+    pyro.render_model(guide, model_args=(data_args_0,data_args_1,False), filename="{}/guide_graph.png".format(results_dir),render_distributions=True,render_params=False)
     svi = SVI(Vegvisir.model, guide, optimizer, loss_func)
 
     #TODO: Dictionary that gathers the results from each fold
@@ -897,13 +851,13 @@ def train_model(dataset_info,additional_info,args):
                 train_summary_dict = VegvisirUtils.manage_predictions(train_predictive_samples_dict,args,train_predictions_dict,train_true)
                 valid_summary_dict = VegvisirUtils.manage_predictions(valid_predictive_samples_dict,args,valid_predictions_dict,valid_true)
                 VegvisirPlots.plot_gradients(gradient_norms, results_dir, "all")
-                VegvisirPlots.plot_latent_space(train_latent_space, train_summary_dict, "_single_sample",results_dir, method="Train")
-                VegvisirPlots.plot_latent_space(valid_latent_space,valid_summary_dict, "_single_sample",results_dir, method="Valid")
-                VegvisirPlots.plot_latent_space(train_predictive_samples_latent_space, train_summary_dict, "_samples",results_dir, method="Train")
-                VegvisirPlots.plot_latent_space(valid_predictive_samples_latent_space,valid_summary_dict, "_samples",results_dir, method="Valid")
-
-                VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "_single_sample",results_dir, method="Train")
-                VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "_single_sample",results_dir, method="Valid")
+                # VegvisirPlots.plot_latent_space(train_latent_space, train_summary_dict, "_single_sample",results_dir, method="Train")
+                # VegvisirPlots.plot_latent_space(valid_latent_space,valid_summary_dict, "_single_sample",results_dir, method="Valid")
+                # VegvisirPlots.plot_latent_space(train_predictive_samples_latent_space, train_summary_dict, "_samples",results_dir, method="Train")
+                # VegvisirPlots.plot_latent_space(valid_predictive_samples_latent_space,valid_summary_dict, "_samples",results_dir, method="Valid")
+                #
+                # VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "_single_sample",results_dir, method="Train")
+                # VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "_single_sample",results_dir, method="Valid")
 
                 Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer,guide)
                 Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_train.p".format(results_dir),

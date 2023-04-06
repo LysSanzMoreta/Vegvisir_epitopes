@@ -4,6 +4,8 @@
 Vegvisir :
 =======================
 """
+import json
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.colors import Normalize
@@ -15,7 +17,7 @@ import torch
 import umap
 import vegvisir.utils as VegvisirUtils
 from sklearn.feature_selection import mutual_info_classif,mutual_info_regression
-from sklearn.metrics import auc,roc_auc_score,cohen_kappa_score,roc_curve,confusion_matrix
+from sklearn.metrics import auc,roc_auc_score,roc_curve,confusion_matrix,matthews_corrcoef,precision_recall_curve,average_precision_score
 from joblib import Parallel, delayed
 import multiprocessing
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
@@ -34,7 +36,7 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
 
     ############LABELS #############
     freq, bins, patches = ax[0][0].hist(data["target"].to_numpy(), bins=2, density=True, edgecolor='white')
-    ax[0][0].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][0].set_xlabel('Target/Label (0: Non-binder, \n 1: Binder)')
     ax[0][0].set_title('Histogram of targets/labels \n',fontsize=10)
     ax[0][0].xaxis.set_ticks([0.25, 0.75])
     ax[0][0].set_xticklabels([0, 1])
@@ -50,7 +52,7 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
 
     ############LABELS CORRECTED #############
     freq, bins, patches = ax[0][1].hist(data["target_corrected"].to_numpy(), bins=2, density=True, edgecolor='white')
-    ax[0][1].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][1].set_xlabel('Target/Label (0: Non-binder, \n 1: Binder)')
     ax[0][1].set_title('Histogram of re-assigned \n targets/labels',fontsize=10)
     ax[0][1].xaxis.set_ticks([0.25, 0.75])
     ax[0][1].set_xticklabels([0, 1])
@@ -236,6 +238,8 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
 
     ax[0][3].axis("off")
     ax[1][3].axis("off")
+    ax[2][2].axis("off")
+    ax[1][2].axis("off")
     ax[2][3].axis("off")
 
     legends = [mpatches.Patch(color=color, label='Class {}'.format(label)) for label, color in colors_dict.items()]
@@ -574,28 +578,28 @@ def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
     colormap_frequency_class1_array =  np.array([colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
     colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
     colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_binary_prediction_samples_frequencies"][:,1])
-
+    alpha = 0.7
     fig, [[ax1, ax2, ax3],[ax4,ax5,ax6],[ax7,ax8,ax9],[ax10,ax11,ax12]] = plt.subplots(4, 3,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [4,4,4,2]})
     fig.suptitle('UMAP projections',fontsize=20)
-    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:,2], alpha=1,s=30)
+    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:,2], alpha=alpha,s=30)
     ax1.set_title("True labels",fontsize=20)
     if method == "_single_sample":
-        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=1,s=30)
+        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha,s=30)
         ax2.set_title("Predicted labels (single sample)",fontsize=20)
     else:
-        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=1,s=30)
+        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha,s=30)
         ax2.set_title("Predicted binary labels (samples mode)",fontsize=20)
 
-    ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=1, s=30)
+    ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=alpha, s=30)
     ax4.set_title("Confidence scores", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence),ax=ax4)
-    ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class0, alpha=1, s=30)
+    ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class0, alpha=alpha, s=30)
     ax5.set_title("Probability class 0 (frequency argmax)", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable( norm = Normalize(0,1),cmap=colormap_frequency_class0),ax=ax5)
-    ax7.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=1, s=30)
+    ax7.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=alpha, s=30)
     ax7.set_title("Probability class 1 (frequency argmax)", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable( cmap=colormap_frequency_class1),ax=ax7)
-    ax8.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=1, s=30)
+    ax8.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=alpha, s=30)
     ax8.set_title("Immunodominance scores", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance),ax=ax8)
 
@@ -815,11 +819,107 @@ def micro_auc(args,onehot_labels,y_prob,idx):
           roc_aucs[i] = auc(fprs[i], tprs[i])
     return [micro_roc_auc_ovr,fprs,tprs,roc_aucs]
 
-def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode="Train"):
+
+def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name):
+    """Following https://scikit-learn.org/stable/auto_examples/model_selection/plot_precision_recall.html#:~:text=The%20precision%2Drecall%20curve%20shows,a%20low%20false%20negative%20rate."""
+    onehot_targets = onehot_labels[idx]
+    target_scores = predictions_dict[stats_name][idx]
+    # For each class
+    precision = dict()
+    recall = dict()
+    average_precision = dict()
+    for i in range(args.num_classes):
+        precision[i], recall[i], _ = precision_recall_curve(onehot_targets[:, i], target_scores[:, i])
+        average_precision[i] = average_precision_score(onehot_targets[:, i], target_scores[:, i])
+
+    # A "micro-average": quantifying score on all classes jointly
+    precision["micro"], recall["micro"], _ = precision_recall_curve(
+        onehot_targets.ravel(), target_scores.ravel()
+    )
+    average_precision["micro"] = average_precision_score(onehot_targets, target_scores, average="micro")
+    plt.plot(recall["micro"],precision["micro"], label="Average Precision (AP): {}".format(average_precision["micro"]))
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    plt.ylabel('Precision', fontsize=20)
+    plt.xlabel('Recall', fontsize=20)
+    plt.legend(loc='lower right', prop={'size': 15})
+    plt.title("ROC curves")
+    plt.savefig("{}/{}/PrecisionRecall_curves_fold{}_{}".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
+    plt.clf()
+
+    # display = PrecisionRecallDisplay(
+    #     recall=recall["micro"],
+    #     precision=precision["micro"],
+    #     average_precision=average_precision["micro"],
+    # )
+    # display.plot()
+    # _ = display.ax_.set_title("Micro-averaged over all classes")
+
+
+def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name):
+    # Compute ROC curve and ROC area for each class
+    fpr = dict()
+    tpr = dict()
+    roc_auc = dict()
+    labels = labels[idx]
+    onehot_targets = onehot_labels[idx]
+    target_scores = predictions_dict[stats_name][idx]
+    # ROC AUC per class
+    for i in range(args.num_classes):
+        fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
+        roc_auc[i] = auc(fpr[i], tpr[i])
+        plt.plot(fpr[i], tpr[i], label='ROC curve (AUC_{}: {})'.format(i, roc_auc[i]), c=colors_dict[i])
+    # Micro ROC AUC
+    fpr["micro"], tpr["micro"], _ = roc_curve(onehot_targets.ravel(), target_scores.ravel())
+    roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
+    plt.plot(fpr["micro"], tpr["micro"], label="micro-average ROC curve (area : {})".format(roc_auc["micro"]),
+             linestyle="-.", color="magenta")
+    # Macro ROC AUC #TODO: this is weird, remove
+    all_fpr = np.unique(np.concatenate([fpr[i] for i in range(args.num_classes)]))
+    fpr["macro"] = all_fpr
+    mean_tpr = np.zeros_like(all_fpr)
+    for i in range(args.num_classes):
+        mean_tpr += np.interp(all_fpr, fpr[i], tpr[i])
+    tpr["macro"] = mean_tpr
+    roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
+    plt.plot(fpr["macro"], tpr["macro"], label="macro-average ROC curve (area : {})".format(roc_auc["macro"]),
+             linestyle="-.", color="blue")
+    ##Pick prob of target ROC AUC
+    print(labels.shape)
+    print(target_scores[np.arange(0, labels.shape[0]), labels.astype(int)].shape)
+
+    fpr["target_prob"], tpr["target_prob"], _ = roc_curve(labels, target_scores[np.arange(0, labels.shape[0]), labels.astype(int)])
+
+    print(fpr["target_prob"].shape)
+    print(tpr["target_prob"].shape)
+
+    roc_auc["target_prob"] = auc(fpr["target_prob"], tpr["target_prob"])
+
+    plt.plot(fpr["target_prob"], tpr["target_prob"],
+             label="target prob ROC curve (area : {})".format(roc_auc["target_prob"]), linestyle="-.",
+             color="turquoise")
+
+    plt.legend(loc='lower right', prop={'size': 15})
+    plt.plot([0, 1], [0, 1], 'r--')
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    plt.ylabel('True Positive Rate', fontsize=20)
+    plt.xlabel('False Positive Rate', fontsize=20)
+    plt.title("ROC curves")
+    plt.savefig("{}/{}/ROC_curves_fold{}_{}".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
+    plt.clf()
+
+
+
+def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode="Train",per_sample=False):
     """
-    http://www.med.mcgill.ca/epidemiology/hanley/software/Hanley_McNeil_Radiology_82.pdf
-    https://jorgetendeiro.github.io/SHARE-UMCG-14-Nov-2019/Part2
-    Avoid AUC: https://onlinelibrary.wiley.com/doi/10.1111/j.1466-8238.2007.00358.x
+    Notes:
+        -http://www.med.mcgill.ca/epidemiology/hanley/software/Hanley_McNeil_Radiology_82.pdf
+        -https://jorgetendeiro.github.io/SHARE-UMCG-14-Nov-2019/Part2
+        -Avoid AUC: https://onlinelibrary.wiley.com/doi/10.1111/j.1466-8238.2007.00358.x
+        - "Can Micro-Average ROC AUC score be larger than Class ROC AUC scores
+        - https://arxiv.org/pdf/2107.13171.pdf
+        - Find optimal treshold: https://machinelearningmastery.com/threshold-moving-for-imbalanced-classification/
     :param predictions_dict: {"mode": tensor of (N,), "frequencies": tensor of (N, num_classes)}
     :param labels:
     :param fold:
@@ -837,8 +937,8 @@ def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode
     idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
 
     for idx,idx_name in zip([idx_all,idx_highconfidence],["ALL","HIGH_CONFIDENCE"]):
-        print("---------------- {} data points ----------------".format(idx_name))
-        print("---------------- {} data points ----------------".format(idx_name),file=open("{}/AUC_out.txt".format(results_dir), "a"))
+        print("---------------- {} data points ----------------\n ".format(idx_name))
+        print("---------------- {} data points ----------------\n ".format(idx_name),file=open("{}/AUC_out.txt".format(results_dir), "a"))
         try:
             auk_score_binary_predictions_samples_mode = VegvisirUtils.AUK(predictions_dict["class_binary_predictions_samples_mode"][idx], labels[idx]).calculate_auk()
         except:
@@ -860,39 +960,67 @@ def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode
                     multi_class="ovr",
                     average="micro",
                 )
-                # Compute ROC curve and ROC area for each class
-                fpr = dict()
-                tpr = dict()
-                roc_auc = dict()
-                onehot_targets = onehot_labels[idx]
-                target_scores = predictions_dict[stats_name][idx]
-                for i in range(args.num_classes):
-                    fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
-                    roc_auc[i] = auc(fpr[i], tpr[i])
-                    plt.plot(fpr[i], tpr[i], label='ROC curve (AUC_{}: {})'.format(i,roc_auc[i]),c=colors_dict[i])
-                plt.legend(loc='lower right', prop={'size': 15})
-                plt.plot([0, 1], [0, 1], 'r--')
-                plt.xlim([0, 1])
-                plt.ylim([0, 1])
-                plt.ylabel('True Positive Rate', fontsize=20)
-                plt.xlabel('False Positive Rate', fontsize=20)
-                plt.title("ROC curve. AUC_micro_ovr: {}".format(micro_roc_auc_ovr))
-                plt.savefig("{}/{}/ROC_curve_fold{}_{}".format(results_dir,mode, fold, "{}_{}".format(key_name,idx_name)))
-                plt.clf()
+                micro_roc_auc_ovo = roc_auc_score(
+                    onehot_labels[idx],
+                    predictions_dict[stats_name][idx],
+                    multi_class="ov0",
+                    average="micro",
+                )
+                try:
+                    macro_roc_auc_ovr = roc_auc_score(
+                        onehot_labels[idx],
+                        predictions_dict[stats_name][idx],
+                        multi_class="ovr",
+                        average="macro",
+                    )
+                except:
+                    macro_roc_auc_ovr = None
+                try:
+                    macro_roc_auc_ovo = roc_auc_score(
+                        onehot_labels[idx],
+                        predictions_dict[stats_name][idx],
+                        multi_class="ovo",
+                        average="macro",
+                    )
+                except:
+                    macro_roc_auc_ovo = None
+                try:
+                    weighted_roc_auc_ovr = roc_auc_score(
+                        onehot_labels[idx],
+                        predictions_dict[stats_name][idx],
+                        multi_class="ovr",
+                        average="weighted",
+                    )
+                except:
+                    weighted_roc_auc_ovr = None
+                try:
+                    weighted_roc_auc_ovo = roc_auc_score(
+                        onehot_labels[idx],
+                        predictions_dict[stats_name][idx],
+                        multi_class="ovo",
+                        average="weighted",
+                    )
+                except:
+                    weighted_roc_auc_ovo = None
+                plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name)
+                plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name)
 
-                print("---------------- {} ----------------".format(stats_name))
-                print("---------------- {} ----------------".format(stats_name),file=open("{}/AUC_out.txt".format(results_dir), "a"))
-                print("Fold : {}, {} AUC score (logits-argmax sample loop MODE): {}, AUK score {}".format(fold, mode,
-                                                                                                   micro_roc_auc_ovr,
-                                                                                                   auk_score_binary_predictions_single_sample))
-                print("Fold : {}, {} AUC score (logits-argmax sample loop MODE): {}, AUK score {}".format(fold, mode,
-                                                                                                   micro_roc_auc_ovr,
-                                                                                                   auk_score_binary_predictions_single_sample),
-                                                                                                   file=open("{}/AUC_out.txt".format(results_dir), "a"))
+                print("---------------- {} ----------------\n".format(stats_name))
+                print("---------------- {} ----------------\n ".format(stats_name),file=open("{}/AUC_out.txt".format(results_dir), "a"))
+                scores_dict = {"micro_roc_auc_ovr":micro_roc_auc_ovr,
+                               "micro_roc_auc_ovo": micro_roc_auc_ovo,
+                               "macro_roc_auc_ovr": macro_roc_auc_ovr,
+                               "macro_roc_auc_ovo": macro_roc_auc_ovo,
+                               "weighted_roc_auc_ovr": weighted_roc_auc_ovr,
+                               "weighted_roc_auc_ovo": weighted_roc_auc_ovo,
+                               "auk_score_binary_predictions_single_sample": auk_score_binary_predictions_single_sample}
+
+                json.dump(scores_dict, open("{}/AUC_out.txt".format(results_dir), "a"), indent=2)
 
         for key_name,stats_name in zip(["samples_mode","single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
             if predictions_dict[stats_name] is not None:
                 targets = labels[idx]
+                #TODO: Change to https://scikit-learn.org/stable/modules/generated/sklearn.metrics.multilabel_confusion_matrix.html
                 tn, fp, fn, tp = confusion_matrix(y_true=targets, y_pred=predictions_dict[stats_name][idx]).ravel()
                 # confusion_matrix_df = pd.DataFrame([[tn, fp],
                 #                                     [fn, tp]],
@@ -906,28 +1034,31 @@ def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode
                 precision = tp/(tp + fp)
                 f1score = 2*tp/(2*tp + fp + fn)
                 tnr = tn/(tn + fp)
+                mcc_custom = (tp*tn - fp*fn)/np.sqrt([(tp + tp)*(tp + fn)*(tn + fp)*(tn + fn)])[0]
+                mcc = matthews_corrcoef(targets,predictions_dict[stats_name][idx])
                 accuracy = 100*((predictions_dict[stats_name][idx] == targets).sum()/targets.shape[0])
-                performance_metrics = {"recall/tpr":recall,"precision/ppv":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr,"samples\naverage\naccuracy":predictions_dict["samples_average_accuracy"]}
+                performance_metrics = {"recall/tpr":recall,"precision/ppv":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr,"samples\naverage\naccuracy":predictions_dict["samples_average_accuracy"],
+                                       "Matthew CC":mcc}
                 plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold,"{}_{}".format(key_name,idx_name))
 
-
-        #Calculate metrics for all samples
-        samples_results = Parallel(n_jobs=MAX_WORKERs)(delayed(micro_auc)(args,onehot_labels, sample, idx) for sample in np.transpose(predictions_dict["class_probs_predictions_samples"],(1,0,2)))
-        average_micro_auc = 0
-        fig, [ax1, ax2] = plt.subplots(1, 2,figsize=(17, 12),gridspec_kw={'width_ratios': [6, 2]})
-        for i in range(args.num_samples):
-            micro_roc_auc_ovr, fprs, tprs, roc_aucs = samples_results[i]
-            average_micro_auc += micro_roc_auc_ovr
-            for j in range(args.num_classes):
-                ax1.plot(fprs[j], tprs[j], label='AUC_{}: {} MicroAUC: {}'.format(i, roc_aucs[j],micro_roc_auc_ovr), c=colors_dict[j])
-        ax1.plot([0, 1], [0, 1], 'r--')
-        ax1.set_xlim([0, 1])
-        ax1.set_ylim([0, 1])
-        ax1.set_ylabel('True Positive Rate', fontsize=20)
-        ax1.set_xlabel('False Positive Rate', fontsize=20)
-        ax2.axis("off")
-        ax1.legend(loc='lower right', prop={'size': 8},bbox_to_anchor=(1.3, 0.))
-        fig.suptitle("ROC curve. AUC_micro_ovr_average: {}".format(average_micro_auc/args.num_samples),fontsize=12)
-        plt.savefig("{}/{}/ROC_curve_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
-        plt.clf()
+        if per_sample:
+            #Calculate metrics for every individual samples
+            samples_results = Parallel(n_jobs=MAX_WORKERs)(delayed(micro_auc)(args,onehot_labels, sample, idx) for sample in np.transpose(predictions_dict["class_probs_predictions_samples"],(1,0,2)))
+            average_micro_auc = 0
+            fig, [ax1, ax2] = plt.subplots(1, 2,figsize=(17, 12),gridspec_kw={'width_ratios': [6, 2]})
+            for i in range(args.num_samples):
+                micro_roc_auc_ovr, fprs, tprs, roc_aucs = samples_results[i]
+                average_micro_auc += micro_roc_auc_ovr
+                for j in range(args.num_classes):
+                    ax1.plot(fprs[j], tprs[j], label='AUC_{}: {} MicroAUC: {}'.format(i, roc_aucs[j],micro_roc_auc_ovr), c=colors_dict[j])
+            ax1.plot([0, 1], [0, 1], 'r--')
+            ax1.set_xlim([0, 1])
+            ax1.set_ylim([0, 1])
+            ax1.set_ylabel('True Positive Rate', fontsize=20)
+            ax1.set_xlabel('False Positive Rate', fontsize=20)
+            ax2.axis("off")
+            ax1.legend(loc='lower right', prop={'size': 8},bbox_to_anchor=(1.3, 0.))
+            fig.suptitle("ROC curve. AUC_micro_ovr_average: {}".format(average_micro_auc/args.num_samples),fontsize=12)
+            plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
+            plt.clf()
 

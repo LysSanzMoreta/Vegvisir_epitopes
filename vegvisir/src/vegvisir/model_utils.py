@@ -7,14 +7,27 @@ from vegvisir.utils import extract_windows_vectorized
 class ScaledDotProductAttention(nn.Module):
     ''' Scaled Dot-Product Attention as in Attention is all You need
     Notes:
-        ''https://storrs.io/attention/ '''
+        ''https://storrs.io/attention/
+         https://sebastianraschka.com/blog/2023/self-attention-from-scratch.html'''
 
-    def __init__(self, temperature, attn_dropout=0.1):
+    def __init__(self,aa_types,hidden_dim,embedding_dim ,device, attn_dropout=0.1):
         super().__init__()
-        self.temperature = temperature
+        self.temperature = self.hidden_size ** 0.5 #d_k**0.5, where d_k == hidden_size
         self.dropout = nn.Dropout(attn_dropout)
+        self.aa_types = aa_types
+        self.hidden_dim = hidden_dim
+        self.embedding_dim = embedding_dim
+        self.embedding = nn.Embedding(self.aa_types,self.embedding_dim)
+        self.weight_q = nn.Parameter(torch.DoubleTensor(self.embedding_dim,self.hidden_dim),requires_grad=True).to(device)
+        self.weight_k = nn.Parameter(torch.DoubleTensor(self.embedding_dim,self.hidden_dim),requires_grad=True).to(device)
+        self.weight_v = nn.Parameter(torch.DoubleTensor(self.embedding_dim,self.hidden_dim),requires_grad=True).to(device)
 
-    def forward(self, q, k, v, mask=None):
+    def forward(self, input, mask=None):
+
+        input = self.embedding(input)
+        q = torch.matmul(input,self.weight_q)
+        k = torch.matmul(input,self.weight_k)
+        v = torch.matmul(input,self.weight_v)
 
         attn = torch.matmul(q / self.temperature, k.transpose(2, 3))
 
@@ -22,7 +35,7 @@ class ScaledDotProductAttention(nn.Module):
             attn = attn.masked_fill(mask == 0, -1e9)
 
         attn = self.dropout(torch.nn.softmax(attn, dim=-1)) #attention weights!!!!
-        output = torch.matmul(attn, v)
+        output = torch.matmul(attn, v) #context vector: attention-weighted version of our original query input
 
         return output, attn
 
@@ -30,26 +43,33 @@ def glorot_init(input_dim, output_dim):
     init_range = torch.sqrt(torch.tensor(6/(input_dim + output_dim)))
     initial = torch.rand(input_dim, output_dim)*2*init_range - init_range
     return initial
-class Embedder(nn.Module):
-    def __init__(self,aa_types,embedding_dim,device):
-        super(Embedder, self).__init__()
-        self.aa_types = aa_types
-        self.embedding_dim = embedding_dim
-        self.logsoftmax = nn.LogSoftmax(dim=-1)
-        self.fc1 = nn.Linear(self.aa_types,self.embedding_dim)
-        #self.weight1 = nn.Parameter(glorot_init(self.aa_types, self.embedding_dim), requires_grad=True).to(device)
-        self.fc2 = nn.Linear(self.embedding_dim,self.aa_types)
-        #self.weight2 = nn.Parameter(glorot_init(self._dim,self.aa_types), requires_grad=True).to(device)
 
+class Init_Hidden(nn.Module):
+    def __init__(self,z_dim,max_len,hidden_dim,device):
+        super(Init_Hidden, self).__init__()
+        self.z_dim = z_dim
+        self.device = device
+        self.fc1 = nn.Linear(self.z_dim,self.z_dim)
+        self.leakyrelu = nn.LeakyReLU()
+    def forward(self,input):
+        output = self.fc1(input)
+        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        output = self.leakyrelu(output)
+        return output
+
+class Embed(nn.Module):
+    def __init__(self,blosum,embedding_dim,aa_types,device):
+        super(Embed, self).__init__()
+        self.blosum = blosum
+        self.blosum_unique = torch.unique(self.blosum[1:,1:])
+        self.embedding_dim = embedding_dim
+        self.aa_types = aa_types
+        self.logsoftmax = nn.LogSoftmax(dim=-1)
+
+        self.embed = torch.nn.Embedding(num_embeddings=self.aa_types,embedding_dim=self.aa_types) #TODO: cannot embedd vector to vector
 
     def forward(self,input,mask):
-        #output = torch.matmul(input,self.weight1) #.type(torch.cuda.IntTensor)
-        #output = torch.matmul(output,self.weight2)
-        output = self.fc2(self.fc1(input))
-        output = self.logsoftmax(output)
-        #output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
-        if mask is not None:
-            output = output.masked_fill(mask == 0, 1e10) #Highlight: This one does not seem crucial
+        output = self.embed(input.long())
         return output
 
 class MLP(nn.Module):
@@ -441,9 +461,9 @@ class RNN_layers(nn.Module):
         output = self.leakyrelu(self.fc3(output))
         return output
 
-class RNN_model(nn.Module):
+class RNN_model1(nn.Module):
     def __init__(self,input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device):
-        super(RNN_model, self).__init__()
+        super(RNN_model1, self).__init__()
         self.device = device
         self.input_dim = input_dim
         self.z_dim = z_dim
@@ -451,7 +471,7 @@ class RNN_model(nn.Module):
         self.max_len = max_len
         self.aa_types = aa_types
         self.num_layers = 1
-        self.rnn = nn.GRU(input_size=self.z_dim,
+        self.rnn = nn.GRU(input_size=self.input_dim,
                           hidden_size=gru_hidden_dim,
                           batch_first=True,
                           num_layers=self.num_layers,
@@ -465,7 +485,7 @@ class RNN_model(nn.Module):
         self.fc2 = nn.Linear(int(self.h/2),int(self.h/4),bias=False)
         self.fc3 = nn.Linear(int(self.h/4),self.aa_types,bias=False)
 
-    def forward(self,input,init_h_0):
+    def forward(self,input,input_lens,init_h_0):
         "For GRU with reversed sequences"
         #seq_lens = input.bool().sum(1)
         input_reverse = torch.flip(input,(1,))
@@ -473,18 +493,60 @@ class RNN_model(nn.Module):
         output, out_hidden = self.rnn(input_reverse,init_h_0)
         output = self.softplus(output)
         output = self.bnn(output)
-        forward_out_r,backward_out_r = output[:,:,:self.gru_hidden_dim],output[:,:,:self.gru_hidden_dim]
-        output = forward_out_r + backward_out_r
-        # output_r = output_r[:,-1]
-        # output = output_r
+        forward_out,backward_out = output[:,:,:self.gru_hidden_dim],output[:,:,:self.gru_hidden_dim]
+        output = forward_out + backward_out
+
         output = self.softplus(self.fc1(output))
         output = self.softplus(self.fc2(output))
         output = self.softplus(self.fc3(output))
         return output
 
-class RNN_guide(nn.Module):
+class RNN_model2(nn.Module):
+    def __init__(self,input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device):
+        super(RNN_model2, self).__init__()
+        self.device = device
+        self.input_dim = input_dim
+        self.z_dim = z_dim
+        self.gru_hidden_dim = gru_hidden_dim
+        self.max_len = max_len
+        self.aa_types = aa_types
+        self.num_layers = 1
+        self.rnn = nn.GRU(input_size=self.input_dim,
+                          hidden_size=gru_hidden_dim,
+                          batch_first=True,
+                          num_layers=self.num_layers,
+                          dropout=0.,
+                          bidirectional=True
+                          )
+        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
+        self.softplus = nn.Softplus()
+        self.h = self.gru_hidden_dim
+        self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
+        self.fc2 = nn.Linear(int(self.h/2),int(self.h/4),bias=False)
+        self.fc3 = nn.Linear(int(self.h/4),self.aa_types,bias=False)
+
+    def forward(self,input,input_lens,init_h_0):
+        "For GRU with reversed sequences"
+        #seq_lens = input.bool().sum(1)
+        #input_reverse = torch.flip(input,(1,))
+        #Highlight: Results on reversing the sequences
+        input_packed = torch.nn.utils.rnn.pack_padded_sequence(input,input_lens.cpu(),batch_first=True,enforce_sorted=False)
+        packed_output, out_hidden = self.rnn(input_packed,init_h_0)
+        output, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
+        output = self.softplus(output)
+        output = self.bnn(output)
+        forward_out,backward_out = output[:,:,:self.gru_hidden_dim],output[:,:,:self.gru_hidden_dim]
+        output = forward_out + backward_out
+
+        output = self.softplus(self.fc1(output))
+        output = self.softplus(self.fc2(output))
+        output = self.softplus(self.fc3(output))
+        return output
+
+
+class RNN_guide1(nn.Module):
     def __init__(self,input_dim,max_len,gru_hidden_dim,z_dim,device):
-        super(RNN_guide, self).__init__()
+        super(RNN_guide1, self).__init__()
         self.device = device
         self.input_dim = input_dim
         self.z_dim = z_dim
@@ -498,7 +560,7 @@ class RNN_guide(nn.Module):
                           dropout=0.,
                           bidirectional=True
                           )
-        self.bnn2 = nn.BatchNorm1d(self.max_len).to(self.device)
+        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
         self.softplus = nn.Softplus()
         self.h = self.gru_hidden_dim
         self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
@@ -506,21 +568,62 @@ class RNN_guide(nn.Module):
         self.fc2b = nn.Linear(int(self.h/2),self.z_dim,bias=False)
 
 
-    def forward(self,input,init_h_0):
+    def forward(self,input,input_lens,init_h_0):
         "For GRU with reversed sequences"
-        #seq_lens = input.bool().sum(1)
         input_reverse = torch.flip(input,(1,))
         #Highlight: Results on reversing the sequences
-        output_r, out_hidden = self.rnn1(input_reverse,init_h_0)
-        output_r = self.softplus(output_r)
-        output_r = self.bnn2(output_r)
-        forward_out_r,backward_out_r = output_r[:,:,:self.gru_hidden_dim],output_r[:,:,:self.gru_hidden_dim]
+        output, out_hidden = self.rnn1(input_reverse,init_h_0)
+        output = self.softplus(output)
+        output = self.bnn(output)
+        forward_out_r,backward_out_r = output[:,:,:self.gru_hidden_dim],output[:,:,:self.gru_hidden_dim]
         output_r = forward_out_r + backward_out_r
         output_r = output_r[:,-1]
         output = output_r
         output = self.softplus(self.fc1(output))
         z_mean = self.fc2a(output)
-        z_scale = self.softplus(torch.exp((self.fc2b(output))))
+        z_scale = self.softplus(torch.exp(0.5*self.fc2b(output)))
+        return z_mean,z_scale
+
+class RNN_guide2(nn.Module):
+    def __init__(self,input_dim,max_len,gru_hidden_dim,z_dim,device):
+        super(RNN_guide2, self).__init__()
+        self.device = device
+        self.input_dim = input_dim
+        self.z_dim = z_dim
+        self.gru_hidden_dim = gru_hidden_dim
+        self.max_len = max_len
+        self.num_layers = 1
+        self.rnn1 = nn.GRU(input_size=int(input_dim),
+                          hidden_size=gru_hidden_dim,
+                          batch_first=True,
+                          num_layers=self.num_layers,
+                          dropout=0.,
+                          bidirectional=True
+                          )
+        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
+        self.softplus = nn.Softplus()
+        self.h = self.gru_hidden_dim
+        self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
+        self.fc2a = nn.Linear(int(self.h/2),self.z_dim,bias=False)
+        self.fc2b = nn.Linear(int(self.h/2),self.z_dim,bias=False)
+
+
+    def forward(self,input,input_lens,init_h_0):
+        "For GRU with reversed sequences"
+        #input_reverse = torch.flip(input,(1,))
+        #Highlight: Results on reversing the sequences
+        input_packed = torch.nn.utils.rnn.pack_padded_sequence(input,input_lens.cpu(),batch_first=True,enforce_sorted=False)
+        packed_output, out_hidden = self.rnn1(input_packed,init_h_0)
+        output, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
+        output = self.softplus(output)
+        output = self.bnn(output)
+        forward_out_r,backward_out_r = output[:,:,:self.gru_hidden_dim],output[:,:,:self.gru_hidden_dim]
+        output_r = forward_out_r + backward_out_r
+        output_r = output_r[:,-1]
+        output = output_r
+        output = self.softplus(self.fc1(output))
+        z_mean = self.fc2a(output)
+        z_scale = self.softplus(torch.exp(0.5*self.fc2b(output)))
         return z_mean,z_scale
 
 class RNN_classifier(nn.Module):
