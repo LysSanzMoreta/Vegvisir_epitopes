@@ -618,7 +618,7 @@ def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
     plt.savefig("{}/{}/umap_fold{}".format(results_dir,method,fold))
     plt.clf()
 
-def plot_gradients(gradient_norms,results_dir,fold):
+def plot_gradients(gradient_norms,results_dir,mode):
     print("Plotting gradients")
     #fig = plt.figure(figsize=(13, 6), dpi=100).set_facecolor('white')
     fig, (ax1,ax2)= plt.subplots(1, 2, figsize=(15, 12),dpi=100,gridspec_kw={'width_ratios': [3.7, 1]})
@@ -632,7 +632,7 @@ def plot_gradients(gradient_norms,results_dir,fold):
     ax1.legend(loc= 'center right',bbox_to_anchor=(1.5,0.5),fontsize=11, borderaxespad=0.)
     ax1.set_title('Gradient norms of model parameters')
 
-    plt.savefig("{}/gradients_fold{}".format(results_dir,fold))
+    plt.savefig("{}/gradients_{}".format(results_dir,mode))
     plt.clf()
 
 def plot_ROC_curve(fpr,tpr,roc_auc,auk_score,results_dir,fold,method):
@@ -819,7 +819,6 @@ def micro_auc(args,onehot_labels,y_prob,idx):
           roc_aucs[i] = auc(fprs[i], tprs[i])
     return [micro_roc_auc_ovr,fprs,tprs,roc_aucs]
 
-
 def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name):
     """Following https://scikit-learn.org/stable/auto_examples/model_selection/plot_precision_recall.html#:~:text=The%20precision%2Drecall%20curve%20shows,a%20low%20false%20negative%20rate."""
     onehot_targets = onehot_labels[idx]
@@ -854,7 +853,6 @@ def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,resul
     # )
     # display.plot()
     # _ = display.ax_.set_title("Micro-averaged over all classes")
-
 
 def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name):
     # Compute ROC curve and ROC area for each class
@@ -902,8 +900,6 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     plt.title("ROC curves")
     plt.savefig("{}/{}/ROC_curves_fold{}_{}".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
     plt.clf()
-
-
 
 def plot_classification_metrics_old(args,predictions_dict,data,fold,results_dir,mode="Train",per_sample=False):
     """
@@ -1051,7 +1047,6 @@ def plot_classification_metrics_old(args,predictions_dict,data,fold,results_dir,
             fig.suptitle("ROC curve. AUC_micro_ovr_average: {}".format(average_micro_auc/args.num_samples),fontsize=12)
             plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
             plt.clf()
-
 
 def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode="Train",per_sample=False):
     """

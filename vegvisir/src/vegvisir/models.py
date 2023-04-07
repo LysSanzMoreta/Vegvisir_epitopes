@@ -972,7 +972,8 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
             #init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
 
             init_h_0_decoder = self.init_hidden(latent_space).expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
-
+            print(batch_sequences_blosum)
+            exit()
             sequences_logits = self.decoder(batch_sequences_blosum,batch_sequences_lens,init_h_0_decoder)
             sequences_logits = self.logsoftmax(sequences_logits)
             with pyro.plate("plate_len", dim=-2, device=self.device):
