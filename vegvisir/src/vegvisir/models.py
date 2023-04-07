@@ -967,8 +967,8 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
             #     pyro.sample("predictions", dist.Categorical(logits=class_logits))
             class_logits = torch.rand((batch_size,self.num_classes))
             class_logits = self.logsoftmax(class_logits)
-            pyro.deterministic("class_logits",class_logits,event_dim=1)
-            pyro.deterministic("predictions",true_labels,event_dim=1)
+            pyro.deterministic("class_logits",class_logits,event_dim=0)
+            pyro.deterministic("predictions",true_labels,event_dim=0)
             #init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
 
             init_h_0_decoder = self.init_hidden(latent_space).expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
@@ -976,7 +976,7 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
             sequences_logits = self.decoder(batch_sequences_blosum,batch_sequences_lens,init_h_0_decoder)
             sequences_logits = self.logsoftmax(sequences_logits)
             with pyro.plate("plate_len", dim=-2, device=self.device):
-                with pyro.poutine.mask(mask=batch_mask_len_true):
+                with pyro.poutine.mask(mask=batch_mask_len_true): #Highlight: Scaling up the likelihood
                     pyro.sample("sequences",dist.Categorical(logits=sequences_logits),obs=[None if sample else batch_sequences_int][0])
 
         return {"class_logits":class_logits}

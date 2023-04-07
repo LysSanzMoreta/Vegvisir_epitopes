@@ -95,9 +95,9 @@ if __name__ == "__main__":
                                                                                         '<supervised> Supervised model. All target observations are used to compute the likelihood of the class given the latent representation')
     parser.add_argument('-num_classes', type=int, nargs='?', default=2, help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')
     parser.add_argument('-num_samples', type=int, nargs='?', default=30, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
-    parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="None", help='Load the checkpoints (state_dict and optimizer) from a previous run'
-                                                                                                                                                                                                'None: Trains model'
-                                                                                                                                                                                                'str: Loads pre-trained model from given path')
+    parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="None", help='Load the checkpoints (state_dict and optimizer) from a previous run \n'
+                                                                                                '<None>: Trains model \n'
+                                                                                                '<str path>: Loads pre-trained model from given path \n')
 
     args = parser.parse_args()
     if args.use_cuda:

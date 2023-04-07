@@ -39,6 +39,7 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
     probs_predictions = []
     latent_spaces = []
     true_labels = []
+    confidence_scores = []
     for batch_number, batch_dataset in enumerate(data_loader):
         batch_data_blosum = batch_dataset["batch_data_blosum"]
         batch_data_int = batch_dataset["batch_data_int"]
@@ -54,37 +55,32 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
         batch_data = {"blosum":batch_data_blosum,"int":batch_data_int,"onehot":batch_data_onehot,"norm":batch_data_blosum_norm}
         #Forward & Backward pass
         loss = svi.step(batch_data,batch_mask,sample=False)
-        #guide_estimates = guide(batch_data,batch_mask)
-        # sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
-        # predicted_labels = sampling_output.predicted_labels.detach().cpu()
-        # latent_space = sampling_output.latent_space
-        # reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
+
         sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=1, return_sites=(), parallel=False)(batch_data,batch_mask,sample=True)
+
         binary_class_prediction = sampling_output["predictions"].squeeze(0).squeeze(0).detach()
         logits_class_prediction = sampling_output["class_logits"].squeeze(0).squeeze(0).squeeze(0).detach()
         probs_class_prediction = torch.nn.Sigmoid()(logits_class_prediction)
 
         reconstructed_sequences = sampling_output["sequences"].squeeze(0).squeeze(0).squeeze(0).detach()
         latent_space = sampling_output["latent_z"].squeeze(0).squeeze(0).detach()
-
         true_labels_batch = batch_data["blosum"][:, 0, 0, 0]
+
         identifiers = batch_data["blosum"][:, 0, 0, 1]
         partitions = batch_data["blosum"][:, 0, 0, 2]
         immunodominace_score = batch_data["blosum"][:, 0, 0, 4]
         confidence_score = batch_data["blosum"][:, 0, 0, 5]
         latent_space = torch.column_stack(
             [true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score, latent_space])
-
         mask_seq = batch_mask[:, 1:,:,0].squeeze(1)
-        # print("----------------------------------")
-        # print(reconstructed_sequences[:4].long())
-        # print(batch_data_int[:4,1,:model_load.seq_max_len])
-        # print("----------------------------------")
+
         equal_aa = torch.Tensor((batch_data_int[:,1,:model_load.seq_max_len] == reconstructed_sequences.long())*mask_seq)
         reconstruction_accuracy = (equal_aa.sum(dim=1))/mask_seq.sum(dim=1)
         reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
         latent_spaces.append(latent_space.detach().cpu().numpy())
         true_labels.append(true_labels_batch.detach().cpu().numpy())
+        confidence_scores.append(confidence_score.detach().cpu().numpy())
+
         binary_predictions.append(binary_class_prediction.detach().cpu().numpy())
         logits_predictions.append(logits_class_prediction.detach().cpu().numpy())
         probs_predictions.append(probs_class_prediction.detach().cpu().numpy())
@@ -97,14 +93,20 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
     logits_predictions_arr = np.concatenate(logits_predictions,axis=0)
     probs_predictions_arr = np.concatenate(probs_predictions,axis=0)
     latent_arr = np.concatenate(latent_spaces,axis=0)
+    confidence_scores_arr = np.concatenate(confidence_scores, axis=0)
 
     target_accuracy = 100 * ((true_labels_arr == binary_predictions_arr).sum() / true_labels_arr.shape[0])
 
     reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
+    true_onehot = np.zeros((true_labels_arr.shape[0],args.num_classes))
+    true_onehot[np.arange(0,true_labels_arr.shape[0]),true_labels_arr.astype(int)] = 1
     predictions_dict = {"binary":binary_predictions_arr,
                         "logits":logits_predictions_arr,
-                        "probs":probs_predictions_arr}
+                        "probs":probs_predictions_arr,
+                        "true":true_labels_arr,
+                        "true_onehot":true_onehot,
+                        "confidence_scores":confidence_scores_arr}
     return train_loss,target_accuracy,predictions_dict,latent_arr, reconstruction_accuracies_dict
 def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
     """
@@ -121,6 +123,7 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
     latent_spaces = []
     reconstruction_accuracies = []
     true_labels = []
+    confidence_scores = []
     with torch.no_grad(): #do not update parameters with the evaluation data
         for batch_number, batch_dataset in enumerate(data_loader):
             batch_data_blosum = batch_dataset["batch_data_blosum"]
@@ -166,6 +169,8 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
             reconstruction_accuracies.append(reconstruction_accuracy.detach().cpu().numpy())
             latent_spaces.append(latent_space.cpu().detach().numpy())
             true_labels.append(true_labels_batch.cpu().detach().numpy())
+            confidence_scores.append(confidence_score.detach().cpu().numpy())
+
             binary_predictions.append(binary_class_prediction.detach().cpu().numpy())
             logits_predictions.append(logits_class_prediction.detach().cpu().numpy())
             probs_predictions.append(probs_class_prediction.detach().cpu().numpy())
@@ -175,13 +180,19 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
     logits_predictions_arr = np.concatenate(logits_predictions, axis=0)
     probs_predictions_arr = np.concatenate(probs_predictions, axis=0)
     true_labels_arr = np.concatenate(true_labels,axis=0)
+    confidence_scores_arr = np.concatenate(confidence_scores, axis=0)
     latent_arr = np.concatenate(latent_spaces,axis=0)
     target_accuracy= 100 * ((true_labels_arr == binary_predictions_arr).sum()/true_labels_arr.shape[0])
     reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
+    true_onehot = np.zeros((true_labels_arr.shape[0],args.num_classes))
+    true_onehot[np.arange(0,true_labels_arr.shape[0]),true_labels_arr.astype(int)] = 1
     predictions_dict = {"binary":binary_predictions_arr,
                         "logits":logits_predictions_arr,
-                        "probs":probs_predictions_arr}
+                        "probs":probs_predictions_arr,
+                        "true": true_labels_arr,
+                        "true_onehot": true_onehot,
+                        "confidence_scores":confidence_scores_arr}
     return valid_loss,target_accuracy,predictions_dict,latent_arr, reconstruction_accuracies_dict
 def test_loop(svi,Vegvisir,guide,data_loader,args,model_load):
     Vegvisir.train(False)
@@ -193,6 +204,7 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load):
     probs_predictions = []
     reconstruction_accuracies = []
     true_labels = []
+    confidence_scores = []
     # since we're not training, we don't need to calculate the gradients for our outputs
     with torch.no_grad():
         for batch_number, batch_dataset in enumerate(data_loader):
@@ -241,6 +253,7 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load):
             logits_predictions.append(logits_class_prediction.detach().cpu().numpy())
             probs_predictions.append(probs_class_prediction.detach().cpu().numpy())
             true_labels.append(true_labels_batch.detach().cpu().numpy())
+            confidence_scores.append(confidence_score.detach().cpu().numpy())
             test_loss += loss
 
     test_loss /= len(data_loader)
@@ -249,13 +262,19 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load):
     logits_predictions_arr = np.concatenate(logits_predictions, axis=0)
     probs_predictions_arr = np.concatenate(probs_predictions, axis=0)
     true_labels_arr = np.concatenate(true_labels,axis=0)
+    confidence_scores_arr = np.concatenate(confidence_scores, axis=0)
     latent_arr = np.concatenate(latent_spaces,axis=0)
     target_accuracy = 100 * ((true_labels_arr == binary_predictions_arr).sum() / true_labels_arr.shape[0])
     reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
+    true_onehot = np.zeros((true_labels_arr.shape[0],args.num_classes))
+    true_onehot[np.arange(0,true_labels_arr.shape[0]),true_labels_arr.astype(int)] = 1
     predictions_dict = {"binary":binary_predictions_arr,
                         "logits":logits_predictions_arr,
-                        "probs":probs_predictions_arr}
+                        "probs":probs_predictions_arr,
+                        "true": true_labels_arr,
+                        "true_onehot": true_onehot,
+                        "confidence_scores":confidence_scores_arr}
     return test_loss,target_accuracy,predictions_dict,latent_arr, reconstruction_accuracies_dict
 def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
     """
@@ -272,6 +291,7 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
     latent_spaces = []
     reconstruction_accuracies = []
     true_labels = []
+    confidence_scores = []
     with torch.no_grad():  # do not update parameters with the evaluation data
         for batch_number, batch_dataset in enumerate(data_loader):
             batch_data_blosum = batch_dataset["batch_data_blosum"]
@@ -293,8 +313,8 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             # predicted_labels = sampling_output.predicted_labels.detach()
             # reconstructed_sequences = sampling_output.reconstructed_sequences.detach()
             # latent_space = sampling_output.latent_space.detach()
-
             sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=args.num_samples, return_sites=(), parallel=False)(batch_data, batch_mask, sample=True)
+
             if sampling_output["predictions"].shape == (args.num_samples,batch_data["blosum"].shape[0]):
                 binary_class_prediction = sampling_output["predictions"].detach().T
             else:
@@ -302,7 +322,10 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             logits_class_prediction = sampling_output["class_logits"].detach().permute(1,0,2)
             probs_class_prediction = torch.nn.Sigmoid()(logits_class_prediction)
             reconstructed_sequences = sampling_output["sequences"].detach().permute(1,0,2)
-            latent_space = sampling_output["latent_z"].detach().permute(1,0,2)[:,0,:]
+            if sampling_output["latent_z"].ndim == 4:
+                latent_space = sampling_output["latent_z"].squeeze(1).detach().permute(1,0,2)[:,0,:]
+            else:
+                latent_space = sampling_output["latent_z"].detach().permute(1,0,2)[:,0,:]
             true_labels_batch = batch_data["blosum"][:, 0, 0, 0]
             identifiers = batch_data["blosum"][:, 0, 0, 1]
             partitions = batch_data["blosum"][:, 0, 0, 2]
@@ -318,6 +341,8 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             reconstruction_accuracies.append(reconstruction_accuracy.detach().cpu().numpy())
             latent_spaces.append(latent_space.cpu().detach().numpy())
             true_labels.append(true_labels_batch.cpu().detach().numpy())
+            confidence_scores.append(confidence_score.detach().cpu().numpy())
+
             binary_predictions.append(binary_class_prediction.detach().cpu().numpy())
             logits_predictions.append(logits_class_prediction.detach().cpu().numpy())
             probs_predictions.append(probs_class_prediction.detach().cpu().numpy())
@@ -327,15 +352,20 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
     logits_predictions_arr = np.concatenate(logits_predictions, axis=0)
     probs_predictions_arr = np.concatenate(probs_predictions, axis=0)
     true_labels_arr = np.concatenate(true_labels, axis=0)
+    confidence_scores_arr = np.concatenate(confidence_scores, axis=0)
     latent_arr = np.concatenate(latent_spaces, axis=0)
     target_accuracy = 100 * ((true_labels_arr[:,None] == binary_predictions_arr).astype(float).mean(axis=1).mean(axis=0))
-    print("average accuracy samples: {}".format(target_accuracy))
     reconstruction_accuracies = np.concatenate(reconstruction_accuracies).mean(axis=1) #[N,num_samples,1]
     reconstruction_accuracies_dict = {"mean": reconstruction_accuracies.mean(), "std": reconstruction_accuracies.std()}
+    true_onehot = np.zeros((true_labels_arr.shape[0],args.num_classes))
+    true_onehot[np.arange(0,true_labels_arr.shape[0]),true_labels_arr.astype(int)] = 1
     predictions_dict = {"binary": binary_predictions_arr,
                         "logits": logits_predictions_arr,
                         "probs": probs_predictions_arr,
-                        "accuracy":target_accuracy}
+                        "true":true_labels_arr,
+                        "true_onehot": true_onehot,
+                        "accuracy":target_accuracy,
+                        "confidence_scores":confidence_scores_arr}
     return sample_loss, target_accuracy, predictions_dict, latent_arr, reconstruction_accuracies_dict
 def save_script(results_dir,output_name,script_name):
     """Saves the python script and its contents"""
@@ -778,12 +808,6 @@ def train_model(dataset_info,additional_info,args):
     train_summary_dict = None
     valid_summary_dict = None
     gradient_norms = defaultdict(list)
-    train_true = train_data_blosum[:, 0, 0, 0].detach().cpu().numpy()
-    train_true_onehot = np.zeros((train_true.shape[0],args.num_classes))
-    train_true_onehot[np.arange(0,train_true.shape[0]),train_true.astype(int)] = 1
-    valid_true = valid_data_blosum[:, 0, 0, 0].detach().cpu().numpy()
-    valid_true_onehot = np.zeros((valid_true.shape[0],args.num_classes))
-    valid_true_onehot[np.arange(0,valid_true.shape[0]),valid_true.astype(int)] = 1
     while epoch <= args.num_epochs:
         start = time.time()
         train_epoch_loss,train_accuracy,train_predictions_dict, train_latent_space,train_reconstruction_accuracy_dict = train_loop(svi,Vegvisir,guide, train_loader, args,model_load)
@@ -807,24 +831,24 @@ def train_model(dataset_info,additional_info,args):
             #train_true_prob = train_predictions_dict["probs"][np.arange(0, train_true.shape[0]), train_true.long()] #pick the probability of the true target
             #train_pred_prob = np.argmax(train_predictions_dict["probs"],axis=-1) #return probability of the most likely class predicted by the model
             train_micro_roc_auc_ovr = roc_auc_score(
-                train_true_onehot,
+                train_predictions_dict["true_onehot"],
                 train_predictions_dict["probs"],
                 multi_class="ovr",
                 average="micro",
             )
-            train_auk_score = VegvisirUtils.AUK(probabilities= train_predictions_dict["binary"],labels=train_true).calculate_auk()
+            train_auk_score = VegvisirUtils.AUK(probabilities= train_predictions_dict["binary"],labels=train_predictions_dict["true"]).calculate_auk()
             train_auk.append(train_auk_score)
             train_auc.append(train_micro_roc_auc_ovr)
 
             #valid_true_prob = valid_predictions_dict["probs"][np.arange(0, valid_true.shape[0]), valid_true.long()]  # pick the probability of the true target
             #valid_pred_prob = np.argmax(valid_predictions_dict["probs"],axis=-1)  # return probability of the most likely class predicted by the model
             valid_micro_roc_auc_ovr = roc_auc_score(
-                valid_true_onehot,
+                valid_predictions_dict["true_onehot"],
                 valid_predictions_dict["probs"],
                 multi_class="ovr",
                 average="micro",
             )
-            valid_auk_score = VegvisirUtils.AUK(probabilities=valid_predictions_dict["binary"], labels=valid_true).calculate_auk()
+            valid_auk_score = VegvisirUtils.AUK(probabilities=valid_predictions_dict["binary"], labels=valid_predictions_dict["true"]).calculate_auk()
             valid_auk.append(valid_auk_score)
             valid_auc.append(valid_micro_roc_auc_ovr)
 
@@ -848,8 +872,8 @@ def train_model(dataset_info,additional_info,args):
                 valid_predictive_samples_loss, valid_predictive_samples_accuracy, valid_predictive_samples_dict, valid_predictive_samples_latent_space, \
                     valid_predictive_samples_reconstruction_accuracy_dict = sample_loop(
                     svi, Vegvisir, guide, valid_loader, args, model_load)
-                train_summary_dict = VegvisirUtils.manage_predictions(train_predictive_samples_dict,args,train_predictions_dict,train_true)
-                valid_summary_dict = VegvisirUtils.manage_predictions(valid_predictive_samples_dict,args,valid_predictions_dict,valid_true)
+                train_summary_dict = VegvisirUtils.manage_predictions(train_predictive_samples_dict,args,train_predictions_dict)
+                valid_summary_dict = VegvisirUtils.manage_predictions(valid_predictive_samples_dict,args,valid_predictions_dict)
                 VegvisirPlots.plot_gradients(gradient_norms, results_dir, "all")
                 # VegvisirPlots.plot_latent_space(train_latent_space, train_summary_dict, "_single_sample",results_dir, method="Train")
                 # VegvisirPlots.plot_latent_space(valid_latent_space,valid_summary_dict, "_single_sample",results_dir, method="Valid")

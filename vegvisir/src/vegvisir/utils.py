@@ -717,7 +717,7 @@ def euclidean_2d_norm(A,B,squared=True):
         return distance.clip(min=0)
 
 
-def manage_predictions(samples_dict,args,predictions_dict,true_labels):
+def manage_predictions(samples_dict,args,predictions_dict):
     """
 
     :param samples_dict: Collects the binary, logits and probabilities predicted for args.num_samples  from the posterior predictive after training
@@ -726,10 +726,12 @@ def manage_predictions(samples_dict,args,predictions_dict,true_labels):
     :return:
     """
     binary_predictions_samples = samples_dict["binary"]
+    true_labels_samples = samples_dict["true"]
+    #assert  ((true_labels == true_labels_samples).sum())/true_labels.shape[0] == 1., "Review, the labels are off"
     logits_predictions_samples = samples_dict["logits"]
     probs_predictions_samples = samples_dict["probs"]
 
-    n_data = true_labels.shape[0]
+    n_data = true_labels_samples.shape[0]
     #probs_predictions_samples_true = probs_predictions_samples[np.arange(0, n_data),:, true_labels.long()]  # pick the probability of the true target for every sample
     #probs_positive_class = probs_predictions_samples[:,:, 1]  # pick the probability of the positive class for every sample
 
@@ -761,9 +763,15 @@ def manage_predictions(samples_dict,args,predictions_dict,true_labels):
                           "class_binary_prediction_single_sample": predictions_dict["binary"],
                           "class_logits_prediction_single_sample": predictions_dict["logits"],
                           "class_logits_prediction_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
-                          "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),true_labels.astype(int)],
+                          "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),predictions_dict["true"].astype(int)],
                           "class_probs_prediction_single_sample": predictions_dict["probs"],
-                          "samples_average_accuracy":samples_dict["accuracy"]
+                          "samples_average_accuracy":samples_dict["accuracy"],
+                          "true_samples": true_labels_samples,
+                          "true_samples_onehot": samples_dict["true_onehot"],
+                          "true_single_sample": predictions_dict["true"],
+                          "true_onehot_single_sample": predictions_dict["true_onehot"],
+                          "confidence_scores_samples": samples_dict["confidence_scores"],
+                          "confidence_scores_single_sample": predictions_dict["confidence_scores"]
                           }
     else:
         summary_dict = {"class_binary_predictions_samples": binary_predictions_samples,
@@ -780,7 +788,13 @@ def manage_predictions(samples_dict,args,predictions_dict,true_labels):
                         "class_logits_prediction_single_sample_argmax": None,
                         "class_probs_prediction_single_sample_true": None,
                         "class_probs_prediction_single_sample": None,
-                        "samples_average_accuracy": samples_dict["accuracy"]
+                        "samples_average_accuracy": samples_dict["accuracy"],
+                        "true_samples": true_labels_samples,
+                        "true_samples_onehot": samples_dict["true_onehot"],
+                        "true_single_sample": None,
+                        "true_onehot_single_sample": None,
+                        "confidence_scores_samples": samples_dict["confidence_scores"],
+                        "confidence_scores_single_sample": None
                         }
 
     return summary_dict
