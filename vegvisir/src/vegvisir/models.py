@@ -913,7 +913,7 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
         self.num_params = 2 #number of parameters of the beta distribution
         #self.encoder = RNN_guide(self.aa_types,self.max_len,self.gru_hidden_dim,self.z_dim,self.device)
         self.gru_hidden_dim = self.z_dim
-        self.decoder = RNN_model2(self.aa_types,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
+        self.decoder = RNN_model2(1,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
         #self.classifier_model = FCL4(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
         #self.classifier_model = CNN_layers(1,self.z_dim,self.hidden_dim,self.num_classes,self.device) #input_dim,max_len,hidden_dim,num_classes,device,loss_type
         #self.classifier_model = RNN_classifier(self.aa_types,self.max_len,self.gru_hidden_dim,self.num_classes,self.z_dim,self.device) #input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device
@@ -942,8 +942,11 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
         batch_sequences_int = batch_data["int"][:,1].squeeze(1)
         batch_sequences_norm = batch_data["norm"][:,1]
         batch_size = batch_sequences_blosum.shape[0]
+        print(batch_sequences_int[0:2])
         batch_mask_len = batch_mask[:, 1:].squeeze(1)
         batch_mask_len = batch_mask_len[:, :, 0]
+        print(batch_mask_len[0:2])
+        exit()
         batch_sequences_lens = batch_mask_len.sum(dim=1)
         batch_mask_len_true = torch.ones_like(batch_mask_len).bool()
         true_labels = batch_data["blosum"][:,0,0,0]
@@ -957,7 +960,7 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
         z_mean,z_scale = torch.zeros((batch_size,self.z_dim)), torch.ones((batch_size,self.z_dim))
         with pyro.plate("plate_batch",dim=-1,device=self.device):
             latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale).to_event(1))  # [n,z_dim]
-            #latent_z_seq = latent_space.repeat(1, self.seq_max_len).reshape(batch_size, self.seq_max_len, self.z_dim)
+            latent_z_seq = latent_space.repeat(1, self.seq_max_len).reshape(batch_size, self.seq_max_len, self.z_dim)
             #init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.encoder.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
             # class_logits = self.classifier_model(batch_sequences_blosum,init_h_0_classifier) #TODO: Is it better with latent_z_seq or latent_space?
             # class_logits = self.logsoftmax(class_logits)
@@ -970,15 +973,15 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
             pyro.deterministic("class_logits",class_logits,event_dim=0)
             pyro.deterministic("predictions",true_labels,event_dim=0)
             #init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
-
             init_h_0_decoder = self.init_hidden(latent_space).expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
-            print(batch_sequences_blosum)
-            exit()
-            sequences_logits = self.decoder(batch_sequences_blosum,batch_sequences_lens,init_h_0_decoder)
+            sequences_logits = self.decoder(batch_sequences_norm[:,:,None],batch_sequences_lens,init_h_0_decoder)
+
+            #sequences_logits = self.decoder(batch_sequences_blosum,batch_sequences_lens,init_h_0_decoder)
             sequences_logits = self.logsoftmax(sequences_logits)
-            with pyro.plate("plate_len", dim=-2, device=self.device):
-                with pyro.poutine.mask(mask=batch_mask_len_true): #Highlight: Scaling up the likelihood
-                    pyro.sample("sequences",dist.Categorical(logits=sequences_logits),obs=[None if sample else batch_sequences_int][0])
+            #with pyro.plate("plate_len", dim=-2, device=self.device):
+            #with pyro.poutine.mask(mask=batch_mask_len):
+            #Highlight: Scaling up the log likelihood of the reconstruction loss of the non padded positions
+            pyro.sample("sequences",dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=[None if sample else batch_sequences_int][0])
 
         return {"class_logits":class_logits}
 

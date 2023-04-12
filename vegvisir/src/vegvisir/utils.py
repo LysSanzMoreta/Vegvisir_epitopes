@@ -716,7 +716,6 @@ def euclidean_2d_norm(A,B,squared=True):
     else:
         return distance.clip(min=0)
 
-
 def manage_predictions(samples_dict,args,predictions_dict):
     """
 

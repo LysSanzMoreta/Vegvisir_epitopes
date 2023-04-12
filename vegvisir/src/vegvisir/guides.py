@@ -45,17 +45,16 @@ class VEGVISIRGUIDES(EasyGuide):
         self.iafs = [dist.transforms.affine_autoregressive(self.z_dim, hidden_dims=[self.iaf_dim]) for _ in range(self.num_iafs)]
         self.iafs_modules = nn.ModuleList(self.iafs)
 
-
-        if self.learning_type in ["semisupervised","unsupervised"]:
-            self.encoder_guide = RNN_guide2(self.aa_types, self.max_len, self.gru_hidden_dim, self.z_dim, self.device)
+        if self.learning_type in ["supervised"]:
+            self.encoder_guide = RNN_guide1(self.aa_types, self.max_len, self.gru_hidden_dim, self.z_dim, self.device)
             #self.classifier_guide = FCL4(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
             #self.h_0_GUIDE_classifier = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
             #self.classifier_guide = RNN_classifier(self.aa_types,self.max_len,self.gru_hidden_dim,self.num_classes,self.z_dim,self.device) #input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device
 
         else:
-            self.encoder_guide = RNN_guide1(self.aa_types, self.max_len, self.gru_hidden_dim, self.z_dim, self.device)
+            self.encoder_guide = RNN_guide2(self.aa_types, self.max_len, self.gru_hidden_dim, self.z_dim, self.device)
 
-    def guide_a_supervised(self, batch_data, batch_mask,sample=False):
+    def guide_supervised(self, batch_data, batch_mask,sample=False):
         """
         Amortized inference with only sequences, all sites and sequences dependent
         Notes:
@@ -90,7 +89,7 @@ class VEGVISIRGUIDES(EasyGuide):
                 "z_scale": z_scale,
                 "class_predictions":None}
 
-    def guide_a_unsupervised(self, batch_data, batch_mask,sample=False):
+    def guide_unsupervised(self, batch_data, batch_mask,sample=False):
         """
         Amortized inference with only sequences, all sites and sequences dependent
         Notes:
@@ -134,7 +133,7 @@ class VEGVISIRGUIDES(EasyGuide):
                 "z_scale": z_scale,
                 "class_predictions":None}
 
-    def guide_a_semisupervised(self, batch_data, batch_mask,sample=False):
+    def guide_semisupervised(self, batch_data, batch_mask,sample=False):
         """
         Amortized inference with only sequences, all sites and sequences dependent
         Notes:
@@ -174,15 +173,14 @@ class VEGVISIRGUIDES(EasyGuide):
                 "class_predictions":None}
 
 
-
     def guide(self,batch_data,batch_mask,sample):
         if self.seq_max_len == self.max_len:
             if self.learning_type == "supervised":
-                return self.guide_a_supervised(batch_data,batch_mask,sample)
+                return self.guide_supervised(batch_data,batch_mask,sample)
             elif self.learning_type == "unsupervised":
-                return self.guide_a_unsupervised(batch_data, batch_mask, sample)
+                return self.guide_unsupervised(batch_data, batch_mask, sample)
             elif self.learning_type == "semisupervised":
-                return self.guide_a_semisupervised(batch_data, batch_mask, sample)
+                return self.guide_semisupervised(batch_data, batch_mask, sample)
         else:
             raise ValueError("guide not implemented for features, re-do")
             return self.guide_b(batch_data,batch_mask,sample)

@@ -1175,7 +1175,7 @@ def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode
                                            "Matthew CC":mcc, "AUK":auk_score_binary}
                     plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold,"{}_{}".format(key_name_2,idx_name))
                 except:
-                    print("Only one class found")
+                    print("Only one class found, not plotting confusion matrix")
 
             if per_sample:
                 #Calculate metrics for every individual samples
