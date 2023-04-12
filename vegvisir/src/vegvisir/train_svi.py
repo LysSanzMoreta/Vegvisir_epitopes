@@ -907,7 +907,12 @@ def train_model(dataset_info,additional_info,args):
     seq_max_len = dataset_info.seq_max_len
     results_dir = additional_info.results_dir
     #Highlight: Train- Test split and kfold generator
-    train_data_blosum,valid_data_blosum,test_data_blosum = VegvisirLoadUtils.trainevaltest_split(data_blosum,args,results_dir,seq_max_len,dataset_info.max_len,dataset_info.features_names,None,method="predefined_partitions_discard_test")
+    partitioning_method = ["predefined_partitions" if args.test else"predefined_partitions_discard_test"][0]
+    train_data_blosum,valid_data_blosum,test_data_blosum = VegvisirLoadUtils.trainevaltest_split(data_blosum,
+                                                                                                 args,results_dir,
+                                                                                                 seq_max_len,dataset_info.max_len,
+                                                                                                 dataset_info.features_names,
+                                                                                                 None,method=partitioning_method)
 
     #Highlight:Also split the rest of arrays
     train_idx = (data_blosum[:,0,0,1][..., None] == train_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
@@ -923,7 +928,6 @@ def train_model(dataset_info,additional_info,args):
     else:
         print("Only testing...")
         train_idx = (train_idx.int() + valid_idx.int()).bool()
-
 
         epoch_loop(train_idx, test_idx, dataset_info, args, additional_info,mode="Test")
 

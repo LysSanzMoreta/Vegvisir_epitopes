@@ -160,6 +160,18 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
         dataset_proportions(test_data, results_dir, type="Test")
         info_file.write("\n -------------------------------------------------")
         info_file.write("\n Using as test partition: {}".format(partition_idx))
+    elif method == "predefined_partitions":
+        """Use the test data"""
+
+        traineval_data = data[data[:, 0, 0, 3] == 1]
+        test_data = data[data[:, 0, 0, 3] == 0] #data[data[:, 0, 0, 3] == 1.]
+        traineval_labels = traineval_data[:,0,0,0]
+        train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
+        dataset_proportions(train_data, results_dir, type="Train")
+        dataset_proportions(valid_data, results_dir, type="Valid")
+        dataset_proportions(test_data, results_dir, type="Test")
+        info_file.write("\n -------------------------------------------------")
+        info_file.write("\n Using as predefined test")
     else:
         raise ValueError("train test split method not available")
 
@@ -230,7 +242,7 @@ class SequencePadding(object):
         if pad != 0:
             half_pad = pad / 2
             even_pad = [True if pad % 2 == 0 else False][0]
-            if even_pad:#same amount of paddng added at the beginning and the end of the sequence
+            if even_pad:#same amount of padding added at the beginning and the end of the sequence
                 idx_pads = np.concatenate(
                     [np.arange(0, int(half_pad)), np.arange(max_len - int(half_pad), max_len)])
             else:

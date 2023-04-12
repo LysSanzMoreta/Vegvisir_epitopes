@@ -1,3 +1,5 @@
+import time
+
 import torch.nn as nn
 import torch
 from pyro.nn import PyroModule
@@ -48,8 +50,9 @@ class Init_Hidden(nn.Module):
     def __init__(self,z_dim,max_len,hidden_dim,device):
         super(Init_Hidden, self).__init__()
         self.z_dim = z_dim
+        self.hidden_dim = hidden_dim
         self.device = device
-        self.fc1 = nn.Linear(self.z_dim,self.z_dim)
+        self.fc1 = nn.Linear(self.z_dim,self.hidden_dim)
         self.leakyrelu = nn.LeakyReLU()
     def forward(self,input):
         output = self.fc1(input)
@@ -461,6 +464,25 @@ class RNN_layers(nn.Module):
         output = self.leakyrelu(self.fc3(output))
         return output
 
+class ReverseSequence(object):
+    """Reverses sequence prior to feeding them to torch.nn.utils.rnn.pack_padded_sequence
+    [A,T,R,0,0] -> [R,T,A,0,0] """
+    def __init__(self,sequences,seqs_lens):
+        """
+        :param sequences: [N,L,feat_dim]
+        :param seqs_lens: [N,]
+        """
+        self.sequences = sequences
+        self.seqs_lens = seqs_lens.int()
+    def run(self):
+        reversed_list = list(map(lambda seq,seq_len: self.reverse(seq, seq_len), self.sequences,self.seqs_lens))
+        return torch.concatenate(reversed_list,dim=0)
+
+    def reverse(self,seq, seq_len):
+        seq_reversed = seq.clone()
+        seq_reversed[:seq_len] = seq[:seq_len].flip(dims=[0])
+        return seq_reversed[None,:]
+
 class RNN_model1(nn.Module):
     def __init__(self,input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device):
         super(RNN_model1, self).__init__()
@@ -529,8 +551,12 @@ class RNN_model2(nn.Module):
         "For GRU with reversed sequences"
         #seq_lens = input.bool().sum(1)
         #input_reverse = torch.flip(input,(1,))
+        input_reverse = ReverseSequence(input,input_lens).run()
+
         #Highlight: Results on reversing the sequences
-        input_packed = torch.nn.utils.rnn.pack_padded_sequence(input,input_lens.cpu(),batch_first=True,enforce_sorted=False)
+        input_packed = torch.nn.utils.rnn.pack_padded_sequence(input_reverse,input_lens.cpu(),batch_first=True,enforce_sorted=False)
+
+
         packed_output, out_hidden = self.rnn(input_packed,init_h_0)
         output, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
         output = self.softplus(output)
@@ -542,7 +568,6 @@ class RNN_model2(nn.Module):
         output = self.softplus(self.fc2(output))
         output = self.softplus(self.fc3(output))
         return output
-
 
 class RNN_guide1(nn.Module):
     def __init__(self,input_dim,max_len,gru_hidden_dim,z_dim,device):
@@ -610,9 +635,8 @@ class RNN_guide2(nn.Module):
 
     def forward(self,input,input_lens,init_h_0):
         "For GRU with reversed sequences"
-        #input_reverse = torch.flip(input,(1,))
-        #Highlight: Results on reversing the sequences
-        input_packed = torch.nn.utils.rnn.pack_padded_sequence(input,input_lens.cpu(),batch_first=True,enforce_sorted=False)
+        input_reverse = ReverseSequence(input,input_lens).run()
+        input_packed = torch.nn.utils.rnn.pack_padded_sequence(input_reverse,input_lens.cpu(),batch_first=True,enforce_sorted=False)
         packed_output, out_hidden = self.rnn1(input_packed,init_h_0)
         output, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
         output = self.softplus(output)

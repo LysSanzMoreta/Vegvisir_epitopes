@@ -820,8 +820,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         VEGVISIRModelClass.__init__(self, ModelLoad)
         self.gru_hidden_dim = self.hidden_dim*2
         self.num_params = 2 #number of parameters of the beta distribution
-        #self.encoder = RNN_guide(self.aa_types,self.max_len,self.gru_hidden_dim,self.z_dim,self.device)
-        self.decoder = RNN_model1(self.z_dim,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
+        self.decoder = RNN_model1(1,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
 
         self.classifier_model = FCL4(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
         #self.classifier_model = CNN_layers(1,self.z_dim,self.hidden_dim,self.num_classes,self.device) #input_dim,max_len,hidden_dim,num_classes,device,loss_type
@@ -831,6 +830,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         self.h_0_MODEL_classifier = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
+        self.init_hidden = Init_Hidden(self.z_dim, self.max_len, self.gru_hidden_dim, self.device)
 
     def model(self,batch_data,batch_mask,sample=False):
         """
@@ -865,19 +865,22 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         with pyro.plate("plate_batch",dim=-1,device=self.device):
             latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale).to_event(1))  # [n,z_dim]
             latent_z_seq = latent_space.repeat(1, self.seq_max_len).reshape(batch_size, self.max_len, self.z_dim) #[N,L,z_dim]
-            init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
-            sequences_logits = self.decoder(latent_z_seq,batch_sequences_lens,init_h_0_decoder)
+            #init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
+            init_h_0_decoder = self.init_hidden(latent_space).expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
+            sequences_logits = self.decoder(batch_sequences_norm[:,:,None],batch_sequences_lens,init_h_0_decoder)
+            #sequences_logits = self.decoder(latent_z_seq,batch_sequences_lens,init_h_0_decoder)
             sequences_logits = self.logsoftmax(sequences_logits)
             #with pyro.plate("plate_len", dim=-2, device=self.device):
             #with pyro.poutine.mask(mask=batch_mask_len_true):
             pyro.sample("sequences",dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=[None if sample else batch_sequences_int][0])
             #init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             class_logits = self.classifier_model(latent_space,None)
-            #class_logits = self.classifier_model(batch_sequences_blosum,init_h_0_classifier)
             class_logits = self.logsoftmax(class_logits) #[N,num_classes]
             pyro.deterministic("class_logits", class_logits,event_dim=1)
+            # with pyro.poutine.mask(mask=confidence_mask_true):
+            #     pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=[None if sample else true_labels][0]) #[N,]
             with pyro.poutine.mask(mask=confidence_mask_true):
-                pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=[None if sample else true_labels][0]) #[N,]
+                pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=[None if sample else true_labels][0])  # [N,]
 
         return {"sequences_logits":None}
 
@@ -942,11 +945,8 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
         batch_sequences_int = batch_data["int"][:,1].squeeze(1)
         batch_sequences_norm = batch_data["norm"][:,1]
         batch_size = batch_sequences_blosum.shape[0]
-        print(batch_sequences_int[0:2])
         batch_mask_len = batch_mask[:, 1:].squeeze(1)
         batch_mask_len = batch_mask_len[:, :, 0]
-        print(batch_mask_len[0:2])
-        exit()
         batch_sequences_lens = batch_mask_len.sum(dim=1)
         batch_mask_len_true = torch.ones_like(batch_mask_len).bool()
         true_labels = batch_data["blosum"][:,0,0,0]
