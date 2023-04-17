@@ -311,7 +311,7 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
     return data_info
 
 def select_filters():
-    filters_dict = {"filter_kmers":[False,9,"Icore"], #Icore_non_anchor
+    filters_dict = {"filter_kmers":[False,9,"Icore_non_anchor"], #Icore_non_anchor
                     "group_alleles":[True],
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],

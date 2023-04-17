@@ -54,7 +54,7 @@ class VEGVISIRGUIDES(EasyGuide):
         else:
             self.encoder_guide = RNN_guide2(self.aa_types, self.max_len, self.gru_hidden_dim, self.z_dim, self.device)
 
-    def guide_supervised(self, batch_data, batch_mask,sample=False):
+    def guide_supervised(self, batch_data, batch_mask,guide_estimates,sample=False):
         """
         Amortized inference with only sequences, all sites and sequences dependent
         Notes:
@@ -80,16 +80,16 @@ class VEGVISIRGUIDES(EasyGuide):
         init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
 
         with pyro.plate("plate_batch",dim= -1,device=self.device):
-            z_mean, z_scale = self.encoder_guide(batch_sequences_blosum, batch_sequences_lens,init_h_0)
+            z_mean, z_scale,encoder_hidden = self.encoder_guide(batch_sequences_blosum, batch_sequences_lens,init_h_0)
             assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
             assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
             latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(1))
         return {"latent_z": latent_space,
                 "z_mean": z_mean,
                 "z_scale": z_scale,
-                "class_predictions":None}
+                "encoder_hidden":encoder_hidden}
 
-    def guide_unsupervised(self, batch_data, batch_mask,sample=False):
+    def guide_unsupervised(self, batch_data, batch_mask,guide_estimates,sample=False):
         """
         Amortized inference with only sequences, all sites and sequences dependent
         Notes:
@@ -113,10 +113,18 @@ class VEGVISIRGUIDES(EasyGuide):
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
         init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
         with pyro.plate("plate_batch",dim= -1,device=self.device):
-            z_mean, z_scale = self.encoder_guide(batch_sequences_blosum,batch_sequences_lens, init_h_0)
+            z_mean, z_scale,encoder_hidden = self.encoder_guide(batch_sequences_blosum,batch_sequences_lens, init_h_0)
+            pyro.sample("encoder_hidden",dist.Delta(encoder_hidden))
+            assert torch.isnan(encoder_hidden).sum().item() == 0, "found nan in e"
+            assert not torch.isnan(encoder_hidden).any(), "found nan in e"
+
+            # print("guide")
+            # print(e[0,0,0:10])
+            # print("---------------------")
             assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
             assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
             latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(1))  # ,infer=dict(baseline={'nn_baseline': self.guide_rnn,'nn_baseline_input': batch_sequences_blosum}))  # [z_dim,n]
+            assert not torch.isnan(latent_space).any(), "found nan in latent-space"
             # Highlight: We only need to specify a variational distribution over the class/class if class/label is unobserved
             #class_logits = self.classifier_guide(latent_space, None)
             # init_h_0_classifier = self.h_0_GUIDE_classifier.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
@@ -131,9 +139,9 @@ class VEGVISIRGUIDES(EasyGuide):
         return {"latent_z": latent_space,
                 "z_mean": z_mean,
                 "z_scale": z_scale,
-                "class_predictions":None}
+                "encoder_hidden":encoder_hidden}
 
-    def guide_semisupervised(self, batch_data, batch_mask,sample=False):
+    def guide_semisupervised(self, batch_data, batch_mask,guide_estimates,sample=False):
         """
         Amortized inference with only sequences, all sites and sequences dependent
         Notes:
@@ -157,7 +165,7 @@ class VEGVISIRGUIDES(EasyGuide):
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
         init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
         #with pyro.plate("plate_batch",dim= -1,device=self.device):
-        z_mean, z_scale = self.encoder_guide(batch_sequences_blosum, init_h_0)
+        z_mean, z_scale,encoder_hidden = self.encoder_guide(batch_sequences_blosum, init_h_0)
         assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
         assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
         latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(2))  # ,infer=dict(baseline={'nn_baseline': self.guide_rnn,'nn_baseline_input': batch_sequences_blosum}))  # [z_dim,n]
@@ -170,10 +178,10 @@ class VEGVISIRGUIDES(EasyGuide):
         return {"latent_z": latent_space,
                 "z_mean": z_mean,
                 "z_scale": z_scale,
-                "class_predictions":None}
+                "encoder_hidden":encoder_hidden}
 
 
-    def guide(self,batch_data,batch_mask,sample):
+    def guide(self,batch_data,batch_mask,guide_estimates,sample):
         if self.seq_max_len == self.max_len:
             if self.learning_type == "supervised":
                 return self.guide_supervised(batch_data,batch_mask,sample)

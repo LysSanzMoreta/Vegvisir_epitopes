@@ -770,7 +770,10 @@ def manage_predictions(samples_dict,args,predictions_dict):
                           "true_single_sample": predictions_dict["true"],
                           "true_onehot_single_sample": predictions_dict["true_onehot"],
                           "confidence_scores_samples": samples_dict["confidence_scores"],
-                          "confidence_scores_single_sample": predictions_dict["confidence_scores"]
+                          "confidence_scores_single_sample": predictions_dict["confidence_scores"],
+                          "attention_weights_single_sample":predictions_dict["attention_weights"],
+                          "attention_weights_samples": samples_dict["attention_weights"]
+
                           }
     else:
         summary_dict = {"class_binary_predictions_samples": binary_predictions_samples,
@@ -793,7 +796,9 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         "true_single_sample": None,
                         "true_onehot_single_sample": None,
                         "confidence_scores_samples": samples_dict["confidence_scores"],
-                        "confidence_scores_single_sample": None
+                        "confidence_scores_single_sample": None,
+                        "attention_weights_single_sample": None,
+                        "attention_weights_samples": samples_dict["attention_weights"]
                         }
 
     return summary_dict

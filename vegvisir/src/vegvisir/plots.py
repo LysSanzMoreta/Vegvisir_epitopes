@@ -667,57 +667,6 @@ def plot_blosum_cosine(blosum_array,storage_folder,args):
     plt.savefig('{}/{}/blosum_cosine.png'.format(storage_folder, args.dataset_name), dpi=600)
     plt.clf()
 
-def plot_feature_importance_old(feature_dict:dict,max_len:int,features_names:list,results_dir:str) -> None:
-    """
-    :rtype: object
-    :param feature_dict:
-    :param max_len:
-    :param features_names:
-    :param results_dir:
-
-    """
-    colors_list = ["plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange", "yellow",
-                   "green",
-                   "dodgerblue", "blue", "purple", "magenta", "grey", "maroon", "lightcoral", "olive", "teal",
-                   "goldenrod",
-                   "black", "chocolate", "cornflowerblue", "pink", "darkgrey", "indianred", "mediumspringgreen",
-                   "cadetblue", "sienna",
-                   "crimson", "deepbluesky", "wheat", "silver"]
-    # plot
-    ncols = int(len(feature_dict.keys())/2)
-    nrows = [int(len(feature_dict.keys())/ncols) + 1 if len(feature_dict.keys())/ncols % 2 != 0 else int(len(feature_dict.keys())/ncols)][0]
-    row = 0
-    col = 0
-
-
-    if len(feature_dict["Fold_0"]) == max_len:
-        labels = ["Pos.{}".format(pos) for pos in list(range(max_len))]
-    else:
-        labels = ["Pos.{}".format(pos) for pos in list(range(max_len))] + features_names
-    colors_dict = dict(zip(labels,colors_list))
-
-    fig,ax = plt.subplots(nrows=nrows,ncols=ncols,squeeze=False) #check this: https://stackoverflow.com/questions/9834452/how-do-i-make-a-single-legend-for-many-subplots
-    for fold,features in feature_dict.items(): #ax = fig.add_subplot(2,2,a+1)
-        ax[int(row)][int(col)].bar(range(len(features)),features,color=colors_dict.values())
-        #ax[int(row)][int(col)].set_xticks(np.arange(len(labels)),labels,rotation=45,fontsize=8)
-        ax[int(row)][int(col)].set_title("{}".format(fold))
-        col += 1
-        if col >= ncols:
-            row += 1
-            col = 0
-            if row >= nrows:
-                # if col <= ncols and not len(feature_dict) % 2 == 0:
-                #     ax[int(row) -1 ][int(col)].axis("off")
-                break
-
-    fig.add_subplot(111) #added to fit the legend
-    patches = [mpatches.Patch(color='{}'.format(val), label='{}'.format(key)) for key,val in colors_dict.items()]
-    fig.legend(handles=patches, prop={'size': 10},loc= 'center right',bbox_to_anchor=(1.37,0.5))
-
-    fig.tight_layout(pad=3.0)
-    fig.suptitle("Feature importance")
-    plt.savefig("{}/feature_importance_xgboost".format(results_dir))
-
 def plot_feature_importance(feature_dict:dict,max_len:int,features_names:list,results_dir:str) -> None:
     """
     :rtype: object
@@ -1173,7 +1122,7 @@ def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode
                     accuracy = 100*((scores == targets).sum()/targets.shape[0])
                     performance_metrics = {"recall/tpr":recall,"precision/ppv":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr,"samples\naverage\naccuracy":predictions_dict["samples_average_accuracy"],
                                            "Matthew CC":mcc, "AUK":auk_score_binary}
-                    plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold,"{}_{}".format(key_name_2,idx_name))
+                    plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold,"{}_{}".format(sample_mode,idx_name))
                 except:
                     print("Only one class found, not plotting confusion matrix")
 
@@ -1198,3 +1147,21 @@ def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode
                 plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
                 plt.clf()
 
+def plot_attention_weights(predictions_dict,results_dir,method="Train"):
+    """
+
+    :param predictions_dict:
+    :param results_dir:
+    :param method:
+    :return:
+    Notes:
+        https://github.com/jeonsworld/ViT-pytorch/blob/main/visualize_attention_map.ipynb
+    """
+    #attention_weights_single_sample
+    for sample_mode in ["single_sample","samples"]:
+        confidence_scores = predictions_dict["confidence_scores_{}".format(sample_mode)]
+        idx_all = np.ones_like(confidence_scores).astype(bool)
+        idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
+        attention_weights = predictions_dict["attention_weights_{}".format(sample_mode)][idx_all]
+        print(attention_weights[:10])
+        exit()
