@@ -850,153 +850,6 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     plt.savefig("{}/{}/ROC_curves_fold{}_{}".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
     plt.clf()
 
-def plot_classification_metrics_old(args,predictions_dict,data,fold,results_dir,mode="Train",per_sample=False):
-    """
-    Notes:
-        -http://www.med.mcgill.ca/epidemiology/hanley/software/Hanley_McNeil_Radiology_82.pdf
-        -https://jorgetendeiro.github.io/SHARE-UMCG-14-Nov-2019/Part2
-        -Avoid AUC: https://onlinelibrary.wiley.com/doi/10.1111/j.1466-8238.2007.00358.x
-        - "Can Micro-Average ROC AUC score be larger than Class ROC AUC scores
-        - https://arxiv.org/pdf/2107.13171.pdf
-        - Find optimal treshold: https://machinelearningmastery.com/threshold-moving-for-imbalanced-classification/
-        - Interpretation: https://glassboxmedicine.com/2020/07/14/the-complete-guide-to-auc-and-average-precision-simulations-and-visualizations/#:~:text=the%20PR%20curve.-,Average%20precision%20indicates%20whether%20your%20model%20can%20correctly%20identify%20all,to%201.0%20(perfect%20model).
-    :param predictions_dict: {"mode": tensor of (N,), "frequencies": tensor of (N, num_classes)}
-    :param labels:
-    :param fold:
-    :param results_dir:
-    :param mode:
-    :return:
-    """
-    labels = predictions_dict["true_samples"]
-
-    onehot_labels = np.zeros((labels.shape[0],args.num_classes))
-    onehot_labels[np.arange(0,labels.shape[0]),labels.astype(int)] = 1
-    confidence_scores = predictions_dict["confidence_scores_samples"]
-    idx_all = np.ones_like(labels).astype(bool)
-    idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
-
-    for idx,idx_name in zip([idx_all,idx_highconfidence],["ALL","HIGH_CONFIDENCE"]):
-        print("---------------- {} data points ----------------\n ".format(idx_name))
-        print("---------------- {} data points ----------------\n ".format(idx_name),file=open("{}/AUC_out.txt".format(results_dir), "a"))
-
-
-        for key_name_1,stats_name_1 in zip(["samples_average_prob","single_sample_prob"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"]):
-            if predictions_dict[stats_name_1] is not None:
-                #fpr, tpr, threshold = roc_curve(y_true=onehot_labels[idx], y_score=predictions_dict[stats_name][idx])
-                micro_roc_auc_ovr = roc_auc_score(
-                    onehot_labels[idx],
-                    predictions_dict[stats_name_1][idx],
-                    multi_class="ovr",
-                    average="micro",
-                )
-                micro_roc_auc_ovo = roc_auc_score(
-                    onehot_labels[idx],
-                    predictions_dict[stats_name_1][idx],
-                    multi_class="ov0",
-                    average="micro",
-                )
-                try:
-                    macro_roc_auc_ovr = roc_auc_score(
-                        onehot_labels[idx],
-                        predictions_dict[stats_name_1][idx],
-                        multi_class="ovr",
-                        average="macro",
-                    )
-                except:
-                    macro_roc_auc_ovr = None
-                try:
-                    macro_roc_auc_ovo = roc_auc_score(
-                        onehot_labels[idx],
-                        predictions_dict[stats_name_1][idx],
-                        multi_class="ovo",
-                        average="macro",
-                    )
-                except:
-                    macro_roc_auc_ovo = None
-                try:
-                    weighted_roc_auc_ovr = roc_auc_score(
-                        onehot_labels[idx],
-                        predictions_dict[stats_name_1][idx],
-                        multi_class="ovr",
-                        average="weighted",
-                    )
-                except:
-                    weighted_roc_auc_ovr = None
-                try:
-                    weighted_roc_auc_ovo = roc_auc_score(
-                        onehot_labels[idx],
-                        predictions_dict[stats_name_1][idx],
-                        multi_class="ovo",
-                        average="weighted",
-                    )
-                except:
-                    weighted_roc_auc_ovo = None
-                plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name_1,stats_name_1,idx,idx_name)
-                plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name_1,stats_name_1,idx,idx_name)
-
-                print("---------------- {} ----------------\n".format(stats_name_1))
-                print("---------------- {} ----------------\n ".format(stats_name_1),file=open("{}/AUC_out.txt".format(results_dir), "a"))
-                scores_dict = {"micro_roc_auc_ovr":micro_roc_auc_ovr,
-                               "micro_roc_auc_ovo": micro_roc_auc_ovo,
-                               "macro_roc_auc_ovr": macro_roc_auc_ovr,
-                               "macro_roc_auc_ovo": macro_roc_auc_ovo,
-                               "weighted_roc_auc_ovr": weighted_roc_auc_ovr,
-                               "weighted_roc_auc_ovo": weighted_roc_auc_ovo}
-
-                json.dump(scores_dict, open("{}/AUC_out.txt".format(results_dir), "a"), indent=2)
-
-        for key_name_2,stats_name_2 in zip(["samples_mode","single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
-            if predictions_dict[stats_name_2] is not None:
-                targets = labels[idx]
-                scores = predictions_dict[stats_name_2][idx]
-                if predictions_dict[stats_name_2] is not None:
-                    try:
-                        auk_score_binary = VegvisirUtils.AUK(predictions_dict[stats_name_2][idx], labels[idx]).calculate_auk()
-                    except:
-                        auk_score_binary = None
-                else:
-                    auk_score_binary = None
-                try:
-                    #TODO: Change to https://scikit-learn.org/stable/modules/generated/sklearn.metrics.multilabel_confusion_matrix.html
-                    tn, fp, fn, tp = confusion_matrix(y_true=targets, y_pred=scores).ravel()
-                    confusion_matrix_df = pd.DataFrame([[tp, fp],
-                                                        [fn, tn]],
-                                                    index=["Positive\n(Pred)", "Negative\n(Pred)"],
-                                                    columns=["Positive\n(True)", "Negative\n(True)"])
-                    recall = tp/(tp + fn)
-                    precision = tp/(tp + fp)
-                    f1score = 2*tp/(2*tp + fp + fn)
-                    tnr = tn/(tn + fp)
-                    mcc_custom = (tp*tn - fp*fn)/np.sqrt([(tp + tp)*(tp + fn)*(tn + fp)*(tn + fn)])[0]
-                    mcc = matthews_corrcoef(targets,scores)
-                    accuracy = 100*((scores == targets).sum()/targets.shape[0])
-                    performance_metrics = {"recall/tpr":recall,"precision/ppv":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr,"samples\naverage\naccuracy":predictions_dict["samples_average_accuracy"],
-                                           "Matthew CC":mcc, "AUK":auk_score_binary}
-                    plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold,"{}_{}".format(key_name_2,idx_name))
-                except:
-                    print("Only one class found")
-
-        if per_sample:
-            #Calculate metrics for every individual samples
-            samples_results = Parallel(n_jobs=MAX_WORKERs)(delayed(micro_auc)(args,onehot_labels, sample, idx) for sample in np.transpose(predictions_dict["class_probs_predictions_samples"],(1,0,2)))
-            average_micro_auc = 0
-            fig, [ax1, ax2] = plt.subplots(1, 2,figsize=(17, 12),gridspec_kw={'width_ratios': [6, 2]})
-            for i in range(args.num_samples):
-                micro_roc_auc_ovr, fprs, tprs, roc_aucs = samples_results[i]
-                average_micro_auc += micro_roc_auc_ovr
-                for j in range(args.num_classes):
-                    ax1.plot(fprs[j], tprs[j], label='AUC_{}: {} MicroAUC: {}'.format(i, roc_aucs[j],micro_roc_auc_ovr), c=colors_dict[j])
-            ax1.plot([0, 1], [0, 1], 'r--')
-            ax1.set_xlim([0, 1])
-            ax1.set_ylim([0, 1])
-            ax1.set_ylabel('True Positive Rate', fontsize=20)
-            ax1.set_xlabel('False Positive Rate', fontsize=20)
-            ax2.axis("off")
-            ax1.legend(loc='lower right', prop={'size': 8},bbox_to_anchor=(1.3, 0.))
-            fig.suptitle("ROC curve. AUC_micro_ovr_average: {}".format(average_micro_auc/args.num_samples),fontsize=12)
-            plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
-            plt.clf()
-
 def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode="Train",per_sample=False):
     """
     Notes:
@@ -1147,7 +1000,7 @@ def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode
                 plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
                 plt.clf()
 
-def plot_attention_weights(predictions_dict,results_dir,method="Train"):
+def plot_attention_weights(predictions_dict,dataset_info,results_dir,method="Train"):
     """
 
     :param predictions_dict:
@@ -1157,11 +1010,77 @@ def plot_attention_weights(predictions_dict,results_dir,method="Train"):
     Notes:
         https://github.com/jeonsworld/ViT-pytorch/blob/main/visualize_attention_map.ipynb
     """
-    #attention_weights_single_sample
+
+    aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types,zero_characters=["#"])
+    aa_colors_groups_dict,groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aminoacids_dict)
+    aa_groups_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("aa_cm", list(aa_colors_groups_dict.values()))
+
+    colors_list = ["black","plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange", "yellow","green",
+                   "dodgerblue", "blue", "purple", "magenta", "grey", "maroon", "lightcoral", "olive", "teal",
+                   "goldenrod", "chocolate", "cornflowerblue", "pink", "darkgrey", "indianred",
+                   "mediumspringgreen"]
+    aa_colors_dict = {i:colors_list[i] for aa,i in aminoacids_dict.items()}
+    aa_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("aa_cm", list(aa_colors_dict.values()))
+    aa_patches = [mpatches.Patch(color=colors_list[i], label='{}'.format(aa)) for aa,i in aminoacids_dict.items()]
+    aa_groups_patches = [mpatches.Patch(color=color, label='{}'.format(group)) for group,color in groups_names_colors_dict.items()]
+
     for sample_mode in ["single_sample","samples"]:
+        data_int = predictions_dict["data_int_{}".format(sample_mode)]
         confidence_scores = predictions_dict["confidence_scores_{}".format(sample_mode)]
         idx_all = np.ones_like(confidence_scores).astype(bool)
         idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
-        attention_weights = predictions_dict["attention_weights_{}".format(sample_mode)][idx_all]
-        print(attention_weights[:10])
-        exit()
+        for data_points,idx in zip(["all","high_confidence"],[idx_all,idx_highconfidence]):
+            true_labels = predictions_dict["true_{}".format(sample_mode)][idx]
+            positives_idx = (true_labels == 1)
+            for class_type,idx_class in zip(["positives","negatives"],[positives_idx,~positives_idx]):
+                attention_weights = predictions_dict["attention_weights_{}".format(sample_mode)][idx][idx_class]
+                aminoacids = data_int[idx][idx_class]
+                if sample_mode == "single_sample":
+                    attention_weights = attention_weights[:,:,0]
+                else:
+                    attention_weights = attention_weights[:,:,:,0].mean(axis=1)
+                #try:
+
+                fig,[[ax1,ax2,ax3],[ax4,ax5,ax6]] = plt.subplots(nrows=2,ncols=3,figsize=(9, 6),gridspec_kw={'width_ratios': [4.5, 4.5,1],'height_ratios': [4.5, 4.5]})
+                #Highlight: Attention weights
+                sns.heatmap(attention_weights,ax=ax1)
+                ax1.set_xticks(np.arange(attention_weights.shape[1]) + 0.5,labels=["{}".format(i) for i in range(attention_weights.shape[1] + 1)])
+                ax1.spines['left'].set_visible(False)
+                ax1.yaxis.set_ticklabels([])
+                ax1.set_title("Attention by weight")
+                #Highlight: Aminoacids coloured by name
+                aminoacids_masked = (aminoacids[:,1])*np.rint(attention_weights)
+                sns.heatmap(aminoacids_masked,ax=ax2,cbar=False,cmap=aa_colormap)
+                ax2.set_xticks(np.arange(attention_weights.shape[1]) + 0.5,labels=["{}".format(i) for i in range(attention_weights.shape[1] + 1)])
+                ax2.spines['left'].set_visible(False)
+                ax2.yaxis.set_ticklabels([])
+                ax2.set_title("Attention by Aa type")
+                #Highlight: Aminoacids coloured by functional group (i.e positive, negative ...)
+                sns.heatmap(aminoacids_masked,ax=ax4,cbar=False,cmap=aa_groups_colormap)
+                ax4.set_xticks(np.arange(attention_weights.shape[1]) + 0.5,labels=["{}".format(i) for i in range(attention_weights.shape[1] + 1)])
+                ax4.spines['left'].set_visible(False)
+                ax4.yaxis.set_ticklabels([])
+                ax4.set_title("Attention by Aa group")
+
+                ax3.axis("off")
+                ax5.axis("off")
+                ax6.axis("off")
+
+                legend1 = plt.legend(handles=aa_patches, prop={'size': 8}, loc='center right',
+                           bbox_to_anchor=(0.9, 0.7), ncol=1)
+                plt.legend(handles=aa_groups_patches, prop={'size': 8}, loc='center right',
+                           bbox_to_anchor=(0.4, 0.5), ncol=1)
+                plt.gca().add_artist(legend1)
+
+                fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
+                fig.suptitle("Attention weights")
+                plt.savefig("{}/{}/Attention_plots_{}_{}_{}.png".format(results_dir,method,sample_mode,data_points,class_type))
+                plt.clf()
+
+                #except:
+                    #print("could not plot attention weights")
+                    #pass
+
+
+
+

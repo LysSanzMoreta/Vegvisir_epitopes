@@ -23,9 +23,9 @@ class Attention1(nn.Module):
         self.hidden_dim = hidden_dim
         self.embedding_dim = embedding_dim
         self.embedding = nn.Embedding(self.aa_types,self.embedding_dim)
-        self.weight_q = nn.Parameter(torch.DoubleTensor(self.embedding_dim,self.hidden_dim),requires_grad=True).to(device)
-        self.weight_k = nn.Parameter(torch.DoubleTensor(self.embedding_dim,self.hidden_dim),requires_grad=True).to(device)
-        self.weight_v = nn.Parameter(torch.DoubleTensor(self.embedding_dim,self.hidden_dim),requires_grad=True).to(device)
+        self.weight_q = nn.Parameter(torch.randn((self.embedding_dim,self.hidden_dim)),requires_grad=True).to(device)
+        self.weight_k = nn.Parameter(torch.randn((self.embedding_dim,self.hidden_dim)),requires_grad=True).to(device)
+        self.weight_v = nn.Parameter(torch.randn((self.embedding_dim,self.hidden_dim)),requires_grad=True).to(device)
 
     def forward(self, input, mask=None):
 
@@ -62,9 +62,9 @@ class Attention2(nn.Module):
         self.temperature = self.hidden_dim ** 0.5
         self.dropout = nn.Dropout(attn_dropout)
         #self.attention = nn.Linear(3 * self.hidden_dim, self.hidden_dim)
-        self.weight_q = nn.Parameter(torch.DoubleTensor(self.hidden_dim + self.z_dim, self.hidden_dim), requires_grad=True).to(self.device)
-        self.weight_k = nn.Parameter(torch.DoubleTensor(self.hidden_dim + self.z_dim, self.hidden_dim), requires_grad=True).to(self.device)
-        self.weight_v = nn.Parameter(torch.DoubleTensor(self.hidden_dim + self.z_dim, self.hidden_dim), requires_grad=True).to(self.device)
+        self.weight_q = nn.Parameter(torch.randn((self.hidden_dim + self.z_dim, self.hidden_dim)), requires_grad=True).to(self.device)
+        self.weight_k = nn.Parameter(torch.randn((self.hidden_dim + self.z_dim, self.hidden_dim)), requires_grad=True).to(self.device)
+        self.weight_v = nn.Parameter(torch.randn((self.hidden_dim + self.z_dim, self.hidden_dim)), requires_grad=True).to(self.device)
         self.v = nn.Linear(hidden_dim, 1, bias=False)
 
     def forward(self, encoder_hidden_state,decoder_hidden_state, latent_z_seq, mask=None):
@@ -108,30 +108,17 @@ class Attention3(nn.Module):
         self.temperature = self.hidden_dim ** 0.5
         self.dropout = nn.Dropout(attn_dropout)
         #self.attention = nn.Linear(3 * self.hidden_dim, self.hidden_dim)
-        self.weight_q = nn.Parameter(torch.DoubleTensor(self.hidden_dim, self.hidden_dim), requires_grad=True).to(self.device)
-        self.weight_k = nn.Parameter(torch.DoubleTensor(self.hidden_dim, self.hidden_dim), requires_grad=True).to(self.device)
-        self.weight_v = nn.Parameter(torch.DoubleTensor(self.z_dim, self.z_dim), requires_grad=True).to(self.device)
+        self.weight_q = nn.Parameter(torch.randn((self.hidden_dim, self.hidden_dim)), requires_grad=True).to(self.device)
+        self.weight_k = nn.Parameter(torch.randn((self.hidden_dim, self.hidden_dim)), requires_grad=True).to(self.device)
+        self.weight_v = nn.Parameter(torch.randn((self.z_dim, self.z_dim)), requires_grad=True).to(self.device)
         #self.v = nn.Linear(hidden_dim, 1, bias=False)
 
-    def forward(self, encoder_hidden_state,decoder_hidden_state, latent_z_seq, mask=None):
-        #batch_size = encoder_outputs.shape[0]
-        src_len = latent_z_seq.shape[1]
-        encoder_hidden_state = torch.sum(encoder_hidden_state,dim=0) #because it is bidirectional
-        decoder_hidden_state = torch.sum(decoder_hidden_state,dim=0) #because it is bidirectional
+    def forward(self, encoder_rnn_out,decoder_rnn_out, latent_z_seq, mask=None):
 
-        # repeat encoder/decoder hidden state src_len times
-        encoder_hidden_state = encoder_hidden_state.unsqueeze(1).repeat(1, src_len, 1)
-        decoder_hidden_state = decoder_hidden_state.unsqueeze(1).repeat(1, src_len, 1)
-        #attn_input = torch.cat((encoder_hidden_state, decoder_hidden_state),dim=2)
-        # print("encoder shape: {}".format(encoder_hidden_state.shape))
-        # print("decoder shape: {}".format(decoder_hidden_state.shape))
-        # print("latent z shape: {}".format(latent_z_seq.shape))
-
-        q = torch.matmul(encoder_hidden_state,self.weight_q)
-        k = torch.matmul(decoder_hidden_state,self.weight_k)
+        q = torch.matmul(encoder_rnn_out,self.weight_q)
+        k = torch.matmul(decoder_rnn_out,self.weight_k)
         v = torch.matmul(latent_z_seq,self.weight_v)
-        # print("q shape: {}".format(q.shape))
-        # print("k shape: {}".format(k.shape))
+
         attn = torch.matmul(q, k.transpose(1, 2))/ self.temperature
 
         # apply the mask so that the model don't pay the attention to paddings.
@@ -140,7 +127,53 @@ class Attention3(nn.Module):
         if mask is not None:
             mask=mask[:,:,None].tile(1,1,attn.shape[2])
             attn = attn.masked_fill(mask == 0, -1e9)
-        attn =torch.nn.functional.softmax(attn, dim=-1)  # attention weights!!!!
+
+        attn =torch.nn.functional.softmax(attn, dim=-2)  # attention weights!!!!
+        output = torch.matmul(attn, v)  # context vector: attention-weighted version of our original value input
+        return output, attn
+
+class Attention4(nn.Module):
+    """
+    Self-attention (scaled dot product) product attention: matrix Q comes from the previous decoder layer, while the key and value matrices K and V come from the encoder
+
+    Notes:
+            -https://theaisummer.com/self-attention/
+            TODO: https://betterprogramming.pub/a-guide-on-the-encoder-decoder-model-and-the-attention-mechanism-401c836e2cdb
+                    https://blog.floydhub.com/attention-mechanism/
+    """
+    def __init__(self, hidden_dim,z_dim,device,attn_dropout=0.1):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.z_dim = z_dim
+        self.device = device
+        self.temperature = self.hidden_dim ** 0.5
+        self.dropout = nn.Dropout(attn_dropout)
+        #self.attention = nn.Linear(3 * self.hidden_dim, self.hidden_dim)
+        self.weight_q = nn.Parameter(torch.randn((self.hidden_dim, self.hidden_dim)), requires_grad=True).to(self.device)
+        self.weight_k = nn.Parameter(torch.randn((self.hidden_dim, self.hidden_dim)), requires_grad=True).to(self.device)
+        self.weight_v = nn.Parameter(torch.randn((self.z_dim, self.z_dim)), requires_grad=True).to(self.device)
+        #self.v = nn.Linear(hidden_dim, 1, bias=False)
+
+    def forward(self, encoder_rnn_out,encoder_rnn_hidden, latent_z_seq, mask=None):
+        src_len = latent_z_seq.shape[1]
+        encoder_rnn_hidden = torch.sum(encoder_rnn_hidden,dim=0) #because it is bidirectional
+        encoder_rnn_hidden = encoder_rnn_hidden.unsqueeze(1).repeat(1, src_len, 1)         # repeat encoder/decoder hidden state src_len times
+
+        q = torch.matmul(encoder_rnn_out,self.weight_q)
+        k = torch.matmul(encoder_rnn_hidden,self.weight_k)
+        v = torch.matmul(latent_z_seq,self.weight_v)
+
+        attn = torch.matmul(q, k.transpose(1, 2))/ self.temperature
+
+        # apply the mask so that the model don't pay the attention to paddings.
+        # it's applied before softmax so that the masked values which are very
+        # small will be zero'ed out after softmax
+        if mask is not None:
+            mask=mask[:,:,None].tile(1,1,attn.shape[2])
+            attn = attn.masked_fill(mask == 0, -1e9)
+
+        attn =torch.nn.functional.softmax(attn, dim=-2)  # attention weights!!!!
+        #print(attn)
         output = torch.matmul(attn, v)  # context vector: attention-weighted version of our original value input
         return output, attn
 
@@ -756,27 +789,103 @@ class RNN_model4(nn.Module):
         self.dropout = nn.Dropout(0.2)
         self.init_hidden = Init_Hidden(self.z_dim,max_len,self.gru_hidden_dim,device)
 
-    def forward(self,x,x_lens,init_h_0,z=None,mask=None,encoder_hidden=None,guide_estimates=None):
-        "Attention GRU with reversed sequences"
+    def forward(self,x,x_lens,init_h_0_decoder,z=None,mask=None,guide_estimates=None):
+        """Attention GRU with reversed sequences
+        TODO: http://www.adeveloperdiary.com/data-science/deep-learning/nlp/machine-translation-using-attention-with-pytorch/
+        https://github.com/adeveloperdiary/DeepLearning_MiniProjects/blob/master/Neural_Machine_Translation/NMT_RNN_with_Attention_train.py
+        """
+
+        if isinstance(guide_estimates, dict):
+            encoder_rnn_hidden = guide_estimates["rnn_hidden"]
+            encoder_rnn_output = guide_estimates["rnn_out"]
+        else:
+            encoder_rnn_hidden = torch.ones_like(init_h_0_decoder)
+            encoder_rnn_output = torch.ones((x.shape[0],x.shape[1],self.gru_hidden_dim))
         x_reverse = ReverseSequence(x,x_lens).run()
         #x_embedded = self.dropout(self.embedding(x_reverse))
-        assert not torch.isnan(encoder_hidden).any(), "found nan in init_h_0"
+        assert not torch.isnan(encoder_rnn_hidden).any(), "found nan in init_h_0"
         assert not torch.isnan(x_reverse).any(), "found nan in x_reverse"
         rnn_input = z
         input_packed = torch.nn.utils.rnn.pack_padded_sequence(rnn_input,x_lens.cpu(),batch_first=True,enforce_sorted=False)
         #init_z = self.init_hidden(z[:,0]).expand(self.num_layers * 2, x.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
-        packed_output, decoder_hidden = self.rnn(input_packed,encoder_hidden)
-        output, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
-
-        z_attn_weighted, attn_weights = self.attention(encoder_hidden,decoder_hidden, z, mask)
-        assert not torch.isnan(z_attn_weighted).any(), "found nan in z_attn_weighted"
+        packed_output, decoder_hidden = self.rnn(input_packed,encoder_rnn_hidden)
+        decoder_rnn_output, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
         #rnn_input = torch.cat((x_attn_weighted, x_embedded), dim=2)
-        output = self.softplus(output)
-        output = self.bnn(output)
-        forward_out,backward_out = output[:,:,:self.gru_hidden_dim],output[:,:,self.gru_hidden_dim:]
-        output = forward_out + backward_out
+        decoder_rnn_output = self.softplus(decoder_rnn_output)
+        decoder_rnn_output = self.bnn(decoder_rnn_output)
+        forward_out,backward_out = decoder_rnn_output[:,:,:self.gru_hidden_dim],decoder_rnn_output[:,:,self.gru_hidden_dim:]
+        decoder_rnn_output = forward_out + backward_out
+        z_attn_weighted, attn_weights = self.attention(encoder_rnn_output,decoder_rnn_output, z, mask)
+        assert not torch.isnan(z_attn_weighted).any(), "found nan in z_attn_weighted"
 
-        output = self.softplus(self.fc1(output))
+        output = self.softplus(self.fc1(decoder_rnn_output))
+        output = self.softplus(self.fc2(output))
+        output = self.softplus(self.fc3(output))
+        return output,attn_weights
+
+class RNN_model5(nn.Module):
+    """
+    Attention-RNN following Attention is all you need "Self attention mechanism"
+    Notes:
+        -Encoder vector:  Final hidden state produced from the encoder part of the model.It might act as the initial hidden state of the decoder part of the model
+        -https://www.kaggle.com/code/kaushal2896/packed-padding-masking-with-attention-rnn-gru"""
+    def __init__(self,input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device):
+        super(RNN_model5, self).__init__()
+        self.device = device
+        self.input_dim = input_dim
+        self.z_dim = z_dim
+        self.gru_hidden_dim = gru_hidden_dim
+        self.max_len = max_len
+        self.aa_types = aa_types
+        #self.embedding = nn.Linear(self.aa_types,self.aa_types)
+        self.attention = Attention4(self.gru_hidden_dim,self.z_dim,self.device)
+        self.num_layers = 1
+        self.rnn = nn.GRU(input_size=self.input_dim,
+                          hidden_size=self.gru_hidden_dim,
+                          batch_first=True,
+                          num_layers=self.num_layers,
+                          dropout=0.,
+                          bidirectional=True
+                          )
+        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
+        self.softplus = nn.Softplus()
+        self.h = self.gru_hidden_dim
+        self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
+        self.fc2 = nn.Linear(int(self.h/2),int(self.h/4),bias=False)
+        self.fc3 = nn.Linear(int(self.h/4),self.aa_types,bias=False)
+        self.dropout = nn.Dropout(0.2)
+        self.init_hidden = Init_Hidden(self.z_dim,max_len,self.gru_hidden_dim,device)
+
+    def forward(self,x,x_lens,init_h_0_decoder,z=None,mask=None,guide_estimates=None):
+        """Attention GRU with reversed sequences
+        TODO: http://www.adeveloperdiary.com/data-science/deep-learning/nlp/machine-translation-using-attention-with-pytorch/
+        https://github.com/adeveloperdiary/DeepLearning_MiniProjects/blob/master/Neural_Machine_Translation/NMT_RNN_with_Attention_train.py
+        """
+
+        if isinstance(guide_estimates, dict):
+            encoder_rnn_hidden = guide_estimates["rnn_hidden"]
+            encoder_rnn_output = guide_estimates["rnn_out"]
+        else:
+            encoder_rnn_hidden = torch.ones_like(init_h_0_decoder)
+            encoder_rnn_output = torch.ones((x.shape[0],x.shape[1],self.gru_hidden_dim))
+        x_reverse = ReverseSequence(x,x_lens).run()
+        #x_embedded = self.dropout(self.embedding(x_reverse))
+        assert not torch.isnan(encoder_rnn_hidden).any(), "found nan in init_h_0"
+        assert not torch.isnan(x_reverse).any(), "found nan in x_reverse"
+        z_attn_weighted, attn_weights = self.attention(encoder_rnn_output,encoder_rnn_hidden, z, mask)
+        assert not torch.isnan(z_attn_weighted).any(), "found nan in z_attn_weighted"
+        rnn_input = z_attn_weighted
+        rnn_input_packed = torch.nn.utils.rnn.pack_padded_sequence(rnn_input,x_lens.cpu(),batch_first=True,enforce_sorted=False)
+        #init_z = self.init_hidden(z[:,0]).expand(self.num_layers * 2, x.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
+        packed_output, decoder_hidden = self.rnn(rnn_input_packed,encoder_rnn_hidden)
+        decoder_rnn_output, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
+        #rnn_input = torch.cat((x_attn_weighted, x_embedded), dim=2)
+        decoder_rnn_output = self.softplus(decoder_rnn_output)
+        decoder_rnn_output = self.bnn(decoder_rnn_output)
+        forward_out,backward_out = decoder_rnn_output[:,:,:self.gru_hidden_dim],decoder_rnn_output[:,:,self.gru_hidden_dim:]
+        decoder_rnn_output = forward_out + backward_out
+
+        output = self.softplus(self.fc1(decoder_rnn_output))
         output = self.softplus(self.fc2(output))
         output = self.softplus(self.fc3(output))
         return output,attn_weights
@@ -791,7 +900,7 @@ class RNN_guide1(nn.Module):
         self.max_len = max_len
         self.num_layers = 1
         self.rnn1 = nn.GRU(input_size=int(input_dim),
-                          hidden_size=gru_hidden_dim,
+                          hidden_size=self.gru_hidden_dim,
                           batch_first=True,
                           num_layers=self.num_layers,
                           dropout=0.,
@@ -807,18 +916,18 @@ class RNN_guide1(nn.Module):
 
     def forward(self,input,input_lens,init_h_0):
         "For GRU with reversed sequences"
-        input_reverse = torch.flip(input,(1,))
+        #input = torch.flip(input,(1,))
         #Highlight: Results on reversing the sequences
-        output, out_hidden = self.rnn1(input_reverse,init_h_0)
-        output = self.softplus(output)
-        output = self.bnn(output)
-        forward_out_r,backward_out_r = output[:,:,:self.gru_hidden_dim],output[:,:,self.gru_hidden_dim:] #TODO: switched here
-        output_r = forward_out_r + backward_out_r
-        output = output_r[:,-1]
+        rnn_output, rnn_hidden = self.rnn1(input,init_h_0)
+        rnn_output = self.softplus(rnn_output)
+        rnn_output = self.bnn(rnn_output)
+        forward_out_r,backward_out_r = rnn_output[:,:,:self.gru_hidden_dim],rnn_output[:,:,self.gru_hidden_dim:] #TODO: switched here
+        rnn_output = forward_out_r + backward_out_r
+        output = rnn_output[:,-1]
         output = self.softplus(self.fc1(output))
         z_mean = self.fc2a(output)
         z_scale = self.softplus(torch.exp(0.5*self.fc2b(output)))
-        return z_mean,z_scale,out_hidden
+        return z_mean,z_scale,rnn_hidden,rnn_output
 
 class RNN_guide2(nn.Module):
     def __init__(self,input_dim,max_len,gru_hidden_dim,z_dim,device):
@@ -830,7 +939,7 @@ class RNN_guide2(nn.Module):
         self.max_len = max_len
         self.num_layers = 1
         self.rnn1 = nn.GRU(input_size=int(input_dim),
-                          hidden_size=gru_hidden_dim,
+                          hidden_size=self.gru_hidden_dim,
                           batch_first=True,
                           num_layers=self.num_layers,
                           dropout=0.,
@@ -846,20 +955,19 @@ class RNN_guide2(nn.Module):
 
     def forward(self,input,input_lens,init_h_0):
         "For GRU with reversed sequences"
-        input_reverse = ReverseSequence(input,input_lens).run()
-        input_packed = torch.nn.utils.rnn.pack_padded_sequence(input_reverse,input_lens.cpu(),batch_first=True,enforce_sorted=False)
-        packed_output, hidden = self.rnn1(input_packed,init_h_0)
-        output, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
-
-        output = self.softplus(output)
-        output = self.bnn(output)
-        forward_out_r,backward_out_r = output[:,:,:self.gru_hidden_dim],output[:,:,:self.gru_hidden_dim]
-        output_r = forward_out_r + backward_out_r
-        output = output_r[:,-1]
+        #input = ReverseSequence(input,input_lens).run()
+        input_packed = torch.nn.utils.rnn.pack_padded_sequence(input,input_lens.cpu(),batch_first=True,enforce_sorted=False)
+        packed_output, rnn_hidden = self.rnn1(input_packed,init_h_0)
+        rnn_output, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
+        rnn_output = self.softplus(rnn_output)
+        rnn_output = self.bnn(rnn_output)
+        forward_out_r,backward_out_r = rnn_output[:,:,:self.gru_hidden_dim],rnn_output[:,:,:self.gru_hidden_dim]
+        rnn_output = forward_out_r + backward_out_r
+        output = rnn_output[:,-1]
         output = self.softplus(self.fc1(output))
         z_mean = self.fc2a(output)
         z_scale = self.softplus(torch.exp(0.5*self.fc2b(output)))
-        return z_mean,z_scale,hidden
+        return z_mean,z_scale,rnn_hidden, rnn_output
 
 class RNN_classifier(nn.Module):
     def __init__(self,input_dim,max_len,gru_hidden_dim,num_classes,z_dim,device):

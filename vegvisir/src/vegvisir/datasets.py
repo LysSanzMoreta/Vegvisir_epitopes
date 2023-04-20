@@ -310,8 +310,8 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data_info = process_data(data_a,args,storage_folder,script_dir,"Icore")
     return data_info
 
-def select_filters():
-    filters_dict = {"filter_kmers":[False,9,"Icore_non_anchor"], #Icore_non_anchor
+def select_filters(args):
+    filters_dict = {"filter_kmers":[False,9,args.sequence_type], #Icore_non_anchor
                     "group_alleles":[True],
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
@@ -401,7 +401,7 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
     data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
     data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
-    filters_dict = select_filters()
+    filters_dict = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
 
     if filters_dict["group_alleles"][0]:
@@ -458,7 +458,7 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     data = data.dropna(subset=["Icore_non_anchor","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training","Pred_netstab"]).reset_index(drop=True)
 
-    filters_dict = select_filters()
+    filters_dict = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
 
     if filters_dict["group_alleles"][0]:
@@ -514,8 +514,7 @@ def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data.loc[:,'training'] = data.loc[:,'training'].replace({1: True, 0: False})
     data = data.dropna(subset=["Icore_non_anchor","training"]).reset_index(drop=True)
 
-    filters_dict = select_filters()
-    filters_dict = select_filters()
+    filters_dict = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
 
     if filters_dict["group_alleles"][0]:

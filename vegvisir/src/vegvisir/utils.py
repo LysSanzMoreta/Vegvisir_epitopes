@@ -84,6 +84,31 @@ def aminoacid_names_dict(aa_types,zero_characters = []):
     aminoacid_names = {k: v for k, v in sorted(aminoacid_names.items(), key=lambda item: item[1])} #sort dict by values (for dicts it is an overkill, but I like ordered stuff)
     return aminoacid_names
 
+def aminoacids_groups(aa_dict):
+    positive_charged = (["R","H","L"],"red")
+    negative_charged = (["D","E"],"lawngreen")
+    uncharged = (["S","T","N","Q"],"aqua")
+    special = (["C","U","G","P"],"yellow")
+    hydrophobic = (["A","V","I","L","M","F","Y","W"],"orange")
+    groups_names_colors_dict = {"positive":positive_charged[1],"negative":negative_charged[1],"uncharged":uncharged[1],"special":special[1],"hydrophobic":hydrophobic[1]}
+    aa_groups_dict = defaultdict()
+
+    for aa,i in aa_dict.items():
+        if aa in positive_charged[0]:
+            aa_groups_dict[i] = positive_charged[1]
+        elif aa in negative_charged[0]:
+            aa_groups_dict[i] = negative_charged[1]
+        elif aa in uncharged[0]:
+            aa_groups_dict[i] = uncharged[1]
+        elif aa in special[0]:
+            aa_groups_dict[i] = special[1]
+        elif aa in hydrophobic[0]:
+            aa_groups_dict[i] = hydrophobic[1]
+        else:
+            aa_groups_dict[i] = "black"
+    return aa_groups_dict,groups_names_colors_dict
+
+
 def convert_to_onehot(a,dimensions):
     #ncols = a.max() + 1
     out = np.zeros((a.size, dimensions), dtype=np.uint8)
@@ -721,7 +746,7 @@ def manage_predictions(samples_dict,args,predictions_dict):
 
     :param samples_dict: Collects the binary, logits and probabilities predicted for args.num_samples  from the posterior predictive after training
     :param args:
-    :param predictions_dict: Collects the binary, logits and probabilities predicted for 1 sample from the posterior predictive during training
+    :param predictions_dict: Collects the binary, logits and probabilities predicted for 1 sample ("single sample") from the posterior predictive during training
     :return:
     """
     binary_predictions_samples = samples_dict["binary"]
@@ -750,33 +775,35 @@ def manage_predictions(samples_dict,args,predictions_dict):
     argmax_frequencies = argmax_frequencies / args.num_samples
 
     if predictions_dict is not None:
-        summary_dict = {  "class_binary_predictions_samples": binary_predictions_samples,
-                          "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
-                          "class_binary_prediction_samples_frequencies": binary_frequencies,
-                          "class_logits_predictions_samples": logits_predictions_samples,
-                          "class_logits_predictions_samples_argmax": class_logits_predictions_samples_argmax,
-                          "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
-                          "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
-                          "class_probs_predictions_samples": probs_predictions_samples,
-                          "class_probs_predictions_samples_average": np.mean(probs_predictions_samples,axis=1),
-                          "class_binary_prediction_single_sample": predictions_dict["binary"],
-                          "class_logits_prediction_single_sample": predictions_dict["logits"],
-                          "class_logits_prediction_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
-                          "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),predictions_dict["true"].astype(int)],
-                          "class_probs_prediction_single_sample": predictions_dict["probs"],
-                          "samples_average_accuracy":samples_dict["accuracy"],
-                          "true_samples": true_labels_samples,
-                          "true_samples_onehot": samples_dict["true_onehot"],
-                          "true_single_sample": predictions_dict["true"],
-                          "true_onehot_single_sample": predictions_dict["true_onehot"],
-                          "confidence_scores_samples": samples_dict["confidence_scores"],
-                          "confidence_scores_single_sample": predictions_dict["confidence_scores"],
-                          "attention_weights_single_sample":predictions_dict["attention_weights"],
-                          "attention_weights_samples": samples_dict["attention_weights"]
-
-                          }
+        summary_dict = {"data_int_single_sample":predictions_dict["data_int"],
+                        "data_int_samples": samples_dict["data_int"],
+                        "class_binary_predictions_samples": binary_predictions_samples,
+                        "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
+                        "class_binary_prediction_samples_frequencies": binary_frequencies,
+                        "class_logits_predictions_samples": logits_predictions_samples,
+                        "class_logits_predictions_samples_argmax": class_logits_predictions_samples_argmax,
+                        "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
+                        "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
+                        "class_probs_predictions_samples": probs_predictions_samples,
+                        "class_probs_predictions_samples_average": np.mean(probs_predictions_samples,axis=1),
+                        "class_binary_prediction_single_sample": predictions_dict["binary"],
+                        "class_logits_prediction_single_sample": predictions_dict["logits"],
+                        "class_logits_prediction_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
+                        "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),predictions_dict["true"].astype(int)],
+                        "class_probs_prediction_single_sample": predictions_dict["probs"],
+                        "samples_average_accuracy":samples_dict["accuracy"],
+                        "true_samples": true_labels_samples,
+                        "true_onehot_samples": samples_dict["true_onehot"],
+                        "true_single_sample": predictions_dict["true"],
+                        "true_onehot_single_sample": predictions_dict["true_onehot"],
+                        "confidence_scores_samples": samples_dict["confidence_scores"],
+                        "confidence_scores_single_sample": predictions_dict["confidence_scores"],
+                        "attention_weights_single_sample":predictions_dict["attention_weights"],
+                        "attention_weights_samples": samples_dict["attention_weights"]}
     else:
-        summary_dict = {"class_binary_predictions_samples": binary_predictions_samples,
+        summary_dict = {"data_int_single_sample":None,
+                        "data_int_samples": samples_dict["data_int"],
+                        "class_binary_predictions_samples": binary_predictions_samples,
                         "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
                         "class_binary_prediction_samples_frequencies": binary_frequencies,
                         "class_logits_predictions_samples": logits_predictions_samples,
@@ -792,7 +819,7 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         "class_probs_prediction_single_sample": None,
                         "samples_average_accuracy": samples_dict["accuracy"],
                         "true_samples": true_labels_samples,
-                        "true_samples_onehot": samples_dict["true_onehot"],
+                        "true_onehot_samples": samples_dict["true_onehot"],
                         "true_single_sample": None,
                         "true_onehot_single_sample": None,
                         "confidence_scores_samples": samples_dict["confidence_scores"],

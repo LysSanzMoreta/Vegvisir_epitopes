@@ -50,7 +50,6 @@ class VEGVISIRGUIDES(EasyGuide):
             #self.classifier_guide = FCL4(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
             #self.h_0_GUIDE_classifier = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
             #self.classifier_guide = RNN_classifier(self.aa_types,self.max_len,self.gru_hidden_dim,self.num_classes,self.z_dim,self.device) #input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device
-
         else:
             self.encoder_guide = RNN_guide2(self.aa_types, self.max_len, self.gru_hidden_dim, self.z_dim, self.device)
 
@@ -80,14 +79,15 @@ class VEGVISIRGUIDES(EasyGuide):
         init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
 
         with pyro.plate("plate_batch",dim= -1,device=self.device):
-            z_mean, z_scale,encoder_hidden = self.encoder_guide(batch_sequences_blosum, batch_sequences_lens,init_h_0)
+            z_mean, z_scale,rnn_hidden,rnn_out = self.encoder_guide(batch_sequences_blosum, batch_sequences_lens,init_h_0)
             assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
             assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
             latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(1))
         return {"latent_z": latent_space,
                 "z_mean": z_mean,
                 "z_scale": z_scale,
-                "encoder_hidden":encoder_hidden}
+                "rnn_hidden":rnn_hidden,
+                "rnn_out":rnn_out}
 
     def guide_unsupervised(self, batch_data, batch_mask,guide_estimates,sample=False):
         """
@@ -113,14 +113,9 @@ class VEGVISIRGUIDES(EasyGuide):
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
         init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
         with pyro.plate("plate_batch",dim= -1,device=self.device):
-            z_mean, z_scale,encoder_hidden = self.encoder_guide(batch_sequences_blosum,batch_sequences_lens, init_h_0)
-            pyro.sample("encoder_hidden",dist.Delta(encoder_hidden))
-            assert torch.isnan(encoder_hidden).sum().item() == 0, "found nan in e"
-            assert not torch.isnan(encoder_hidden).any(), "found nan in e"
-
-            # print("guide")
-            # print(e[0,0,0:10])
-            # print("---------------------")
+            z_mean, z_scale,rnn_hidden,rnn_out= self.encoder_guide(batch_sequences_blosum,batch_sequences_lens, init_h_0)
+            assert torch.isnan(rnn_hidden).sum().item() == 0, "found nan in e"
+            assert not torch.isnan(rnn_hidden).any(), "found nan in e"
             assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
             assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
             latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(1))  # ,infer=dict(baseline={'nn_baseline': self.guide_rnn,'nn_baseline_input': batch_sequences_blosum}))  # [z_dim,n]
@@ -139,7 +134,8 @@ class VEGVISIRGUIDES(EasyGuide):
         return {"latent_z": latent_space,
                 "z_mean": z_mean,
                 "z_scale": z_scale,
-                "encoder_hidden":encoder_hidden}
+                "rnn_hidden":rnn_hidden,
+                "rnn_out":rnn_out}
 
     def guide_semisupervised(self, batch_data, batch_mask,guide_estimates,sample=False):
         """
@@ -165,7 +161,7 @@ class VEGVISIRGUIDES(EasyGuide):
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
         init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
         #with pyro.plate("plate_batch",dim= -1,device=self.device):
-        z_mean, z_scale,encoder_hidden = self.encoder_guide(batch_sequences_blosum, init_h_0)
+        z_mean, z_scale,rnn_hidden,rnn_out = self.encoder_guide(batch_sequences_blosum, init_h_0)
         assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
         assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
         latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(2))  # ,infer=dict(baseline={'nn_baseline': self.guide_rnn,'nn_baseline_input': batch_sequences_blosum}))  # [z_dim,n]
@@ -178,7 +174,8 @@ class VEGVISIRGUIDES(EasyGuide):
         return {"latent_z": latent_space,
                 "z_mean": z_mean,
                 "z_scale": z_scale,
-                "encoder_hidden":encoder_hidden}
+                "rnn_hidden": rnn_hidden,
+                "rnn_out": rnn_out}
 
 
     def guide(self,batch_data,batch_mask,guide_estimates,sample):
@@ -191,7 +188,6 @@ class VEGVISIRGUIDES(EasyGuide):
                 return self.guide_semisupervised(batch_data, batch_mask, sample)
         else:
             raise ValueError("guide not implemented for features, re-do")
-            return self.guide_b(batch_data,batch_mask,sample)
 
 
 

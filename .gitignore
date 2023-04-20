@@ -11,4 +11,4 @@ PLOTS_*
 
 vegvisir/src/vegvisir/tests/toyexample.py
 
-vegvisir/src/vegvisir/tests/masking.py
+vegvisir/src/vegvisir/tests/test_masking.py

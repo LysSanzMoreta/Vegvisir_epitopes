@@ -731,7 +731,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         self.gru_hidden_dim = self.hidden_dim*2
         self.num_params = 2 #number of parameters of the beta distribution
         #self.decoder = RNN_model3(1,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
-        self.decoder = RNN_model4(self.z_dim,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
+        self.decoder = RNN_model5(self.z_dim,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
         self.classifier_model = FCL4(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
         #self.classifier_model = CNN_layers(1,self.z_dim,self.hidden_dim,self.num_classes,self.device) #input_dim,max_len,hidden_dim,num_classes,device,loss_type
         #self.classifier_model = RNN_classifier(self.aa_types,self.max_len,self.gru_hidden_dim,self.num_classes,self.z_dim,self.device) #input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device
@@ -757,6 +757,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
 
         pyro.module("vae_model", self)
         batch_sequences_blosum = batch_data["blosum"][:,1].squeeze(1)
+
         batch_sequences_int = batch_data["int"][:,1].squeeze(1)
         batch_sequences_norm = batch_data["norm"][:,1]
         batch_size = batch_sequences_blosum.shape[0]
@@ -778,11 +779,8 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
             init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             #init_h_0_decoder = self.init_hidden(latent_space).expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             #sequences_logits = self.decoder(batch_sequences_norm[:,:,None],batch_sequences_lens,init_h_0_decoder)
-            if isinstance(guide_estimates, dict):
-                encoder_hidden = guide_estimates["encoder_hidden"]
-            else:
-                encoder_hidden = torch.zeros_like(init_h_0_decoder)
-            sequences_logits,attn_weights = self.decoder(batch_sequences_blosum, batch_sequences_lens, init_h_0_decoder,z=latent_z_seq, mask=batch_mask_len, encoder_hidden=encoder_hidden)
+
+            sequences_logits,attn_weights = self.decoder(batch_sequences_blosum, batch_sequences_lens, init_h_0_decoder,z=latent_z_seq, mask=batch_mask_len, guide_estimates=guide_estimates)
             pyro.deterministic("attn_weights",attn_weights,event_dim=0)
             sequences_logits = self.logsoftmax(sequences_logits)
             #with pyro.plate("plate_len", dim=-2, device=self.device):
@@ -829,7 +827,7 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
         self.gru_hidden_dim = self.hidden_dim*2
         self.num_params = 2 #number of parameters of the beta distribution
         #self.decoder = RNN_model3(self.gru_hidden_dim + self.aa_types,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
-        self.decoder = RNN_model4(self.z_dim,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
+        self.decoder = RNN_model5(self.z_dim,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
         self.h_0_MODEL_decoder = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
@@ -850,7 +848,7 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
 
         pyro.module("vae_model", self)
         batch_sequences_blosum = batch_data["blosum"][:,1].squeeze(1)
-        batch_sequences_int = batch_data["int"][:,1].squeeze(1)
+        batch_sequences_int = batch_data["int"][:,1].squeeze(1) #the squeeze is not necessary
         batch_sequences_norm = batch_data["norm"][:,1]
         batch_size = batch_sequences_blosum.shape[0]
         batch_mask_len = batch_mask[:, 1:].squeeze(1)
@@ -884,14 +882,8 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
             #print(encoder_hidden[0,0])
             init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             assert torch.isnan(init_h_0_decoder).int().sum().item() == 0, "found nan in init_h_0_decoder"
-
-            if isinstance(guide_estimates,dict):
-                encoder_hidden = guide_estimates["encoder_hidden"]
-            else:
-                encoder_hidden =  torch.zeros_like(init_h_0_decoder)
-
             # #decoder_input = torch.concatenate([batch_sequences_norm[:,:,None],latent_z_seq],dim=2)
-            sequences_logits,attn_weights = self.decoder(batch_sequences_blosum,batch_sequences_lens,init_h_0_decoder,z=latent_z_seq,mask=batch_mask_len,encoder_hidden=encoder_hidden,guide_estimates=guide_estimates)
+            sequences_logits,attn_weights = self.decoder(batch_sequences_blosum,batch_sequences_lens,init_h_0_decoder,z=latent_z_seq,mask=batch_mask_len,guide_estimates=guide_estimates)
             assert not torch.isnan(sequences_logits).any(), "found nan in sequences_logits"
 
             pyro.deterministic("attn_weights",attn_weights,event_dim=0)

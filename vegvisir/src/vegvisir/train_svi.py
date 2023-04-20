@@ -41,6 +41,7 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
     true_labels = []
     confidence_scores = []
     attention_weights = []
+    data_int = []
     for batch_number, batch_dataset in enumerate(data_loader):
         batch_data_blosum = batch_dataset["batch_data_blosum"]
         batch_data_int = batch_dataset["batch_data_int"]
@@ -54,6 +55,7 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
             batch_data_blosum_norm = batch_data_blosum_norm.cuda()
             batch_mask = batch_mask.cuda()
         batch_data = {"blosum":batch_data_blosum,"int":batch_data_int,"onehot":batch_data_onehot,"norm":batch_data_blosum_norm}
+        data_int.append(batch_data_int.detach().cpu().numpy())
         #Forward & Backward pass
         guide_estimates = guide(batch_data,batch_mask,None,sample=False)
         loss = svi.step(batch_data,batch_mask,guide_estimates,sample=False)
@@ -91,6 +93,7 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
         train_loss += loss
     #Normalize train loss
     train_loss /= len(data_loader)
+    data_int_arr = np.concatenate(data_int,axis=0)
     true_labels_arr = np.concatenate(true_labels,axis=0)
     binary_predictions_arr = np.concatenate(binary_predictions,axis=0)
     logits_predictions_arr = np.concatenate(logits_predictions,axis=0)
@@ -104,7 +107,8 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
     true_onehot = np.zeros((true_labels_arr.shape[0],args.num_classes))
     true_onehot[np.arange(0,true_labels_arr.shape[0]),true_labels_arr.astype(int)] = 1
-    predictions_dict = {"binary":binary_predictions_arr,
+    predictions_dict = {"data_int":data_int_arr,
+                        "binary":binary_predictions_arr,
                         "logits":logits_predictions_arr,
                         "probs":probs_predictions_arr,
                         "true":true_labels_arr,
@@ -129,6 +133,7 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
     attention_weights=[]
     true_labels = []
     confidence_scores = []
+    data_int=[]
     with torch.no_grad(): #do not update parameters with the evaluation data
         for batch_number, batch_dataset in enumerate(data_loader):
             batch_data_blosum = batch_dataset["batch_data_blosum"]
@@ -143,6 +148,7 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
                 batch_data_blosum_norm = batch_data_blosum_norm.cuda()
                 batch_mask = batch_mask.cuda()
             batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
+            data_int.append(batch_data_int.detach().cpu().numpy())
             guide_estimates = guide(batch_data, batch_mask, None, sample=False)
             loss = svi.step(batch_data, batch_mask, guide_estimates, sample=False)
             # guide_estimates = guide(batch_data,batch_mask)
@@ -183,6 +189,7 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
             probs_predictions.append(probs_class_prediction.detach().cpu().numpy())
             valid_loss += loss #TODO: Multiply by the data size?
     valid_loss /= len(data_loader)
+    data_int_arr = np.concatenate(data_int,axis=0)
     binary_predictions_arr = np.concatenate(binary_predictions, axis=0)
     logits_predictions_arr = np.concatenate(logits_predictions, axis=0)
     probs_predictions_arr = np.concatenate(probs_predictions, axis=0)
@@ -196,7 +203,8 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
     true_onehot = np.zeros((true_labels_arr.shape[0],args.num_classes))
     true_onehot[np.arange(0,true_labels_arr.shape[0]),true_labels_arr.astype(int)] = 1
-    predictions_dict = {"binary":binary_predictions_arr,
+    predictions_dict = {"data_int": data_int_arr ,
+                        "binary":binary_predictions_arr,
                         "logits":logits_predictions_arr,
                         "probs":probs_predictions_arr,
                         "true": true_labels_arr,
@@ -216,6 +224,7 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load): #TODO: remove
     true_labels = []
     confidence_scores = []
     attention_weights = []
+    data_int=[]
     # since we're not training, we don't need to calculate the gradients for our outputs
     with torch.no_grad():
         for batch_number, batch_dataset in enumerate(data_loader):
@@ -231,6 +240,7 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load): #TODO: remove
                 batch_data_blosum_norm = batch_data_blosum_norm.cuda()
                 batch_mask = batch_mask.cuda()
             batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
+            data_int.append(batch_data_int.detach().cpu().numpy())
             guide_estimates = guide(batch_data, batch_mask, None, sample=False)
             loss = svi.step(batch_data, batch_mask, guide_estimates, sample=False)
             # guide_estimates = guide(batch_data,batch_mask)
@@ -271,7 +281,7 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load): #TODO: remove
             test_loss += loss
 
     test_loss /= len(data_loader)
-
+    data_int_arr = np.concatenate(data_int,axis=0)
     binary_predictions_arr = np.concatenate(binary_predictions, axis=0)
     logits_predictions_arr = np.concatenate(logits_predictions, axis=0)
     probs_predictions_arr = np.concatenate(probs_predictions, axis=0)
@@ -284,7 +294,8 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load): #TODO: remove
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
     true_onehot = np.zeros((true_labels_arr.shape[0],args.num_classes))
     true_onehot[np.arange(0,true_labels_arr.shape[0]),true_labels_arr.astype(int)] = 1
-    predictions_dict = {"binary":binary_predictions_arr,
+    predictions_dict = {"data_int":data_int_arr,
+                        "binary":binary_predictions_arr,
                         "logits":logits_predictions_arr,
                         "probs":probs_predictions_arr,
                         "true": true_labels_arr,
@@ -309,6 +320,7 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
     attention_weights = []
     true_labels = []
     confidence_scores = []
+    data_int=[]
     with torch.no_grad():  # do not update parameters with the evaluation data
         for batch_number, batch_dataset in enumerate(data_loader):
             batch_data_blosum = batch_dataset["batch_data_blosum"]
@@ -324,6 +336,8 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
                 batch_mask = batch_mask.cuda()
             batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,
                           "norm": batch_data_blosum_norm}
+            data_int.append(batch_data_int.detach().cpu().numpy())
+
             guide_estimates = guide(batch_data, batch_mask, None, sample=False)
             sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=args.num_samples, return_sites=(), parallel=False)(batch_data, batch_mask,guide_estimates=guide_estimates, sample=True)
 
@@ -362,6 +376,7 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             probs_predictions.append(probs_class_prediction.detach().cpu().numpy())
             #sample_loss += loss
     sample_loss /= len(data_loader)
+    data_int_arr = np.concatenate(data_int,axis=0)
     binary_predictions_arr = np.concatenate(binary_predictions, axis=0)
     logits_predictions_arr = np.concatenate(logits_predictions, axis=0)
     probs_predictions_arr = np.concatenate(probs_predictions, axis=0)
@@ -374,7 +389,8 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
     reconstruction_accuracies_dict = {"mean": reconstruction_accuracies.mean(), "std": reconstruction_accuracies.std()}
     true_onehot = np.zeros((true_labels_arr.shape[0],args.num_classes))
     true_onehot[np.arange(0,true_labels_arr.shape[0]),true_labels_arr.astype(int)] = 1
-    predictions_dict = {"binary": binary_predictions_arr,
+    predictions_dict = {"data_int":data_int_arr,
+                        "binary": binary_predictions_arr,
                         "logits": logits_predictions_arr,
                         "probs": probs_predictions_arr,
                         "true":true_labels_arr,
@@ -712,8 +728,6 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         predictions = test_loop(Vegvisir,guide,test_loader,args,model_load)
         score = roc_auc_score(y_true=test_data_blosum[:, 0, 0, 0].numpy(), y_score=predictions)
         print("Final AUC score : {}".format( score))
-
-
 def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid"):
     #Split the rest of the data (train_data) for train and validation
     data_blosum = dataset_info.data_array_blosum_encoding
@@ -888,16 +902,16 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                 train_summary_dict = VegvisirUtils.manage_predictions(train_predictive_samples_dict,args,train_predictions_dict)
                 valid_summary_dict = VegvisirUtils.manage_predictions(valid_predictive_samples_dict,args,valid_predictions_dict)
                 VegvisirPlots.plot_gradients(gradient_norms, results_dir, "Train_{}".format(mode))
-                # VegvisirPlots.plot_latent_space(train_latent_space, train_summary_dict, "_single_sample",results_dir, method="Train")
-                # VegvisirPlots.plot_latent_space(valid_latent_space,valid_summary_dict, "_single_sample",results_dir, method=mode)
-                # VegvisirPlots.plot_latent_space(train_predictive_samples_latent_space, train_summary_dict, "_samples",results_dir, method="Train")
-                # VegvisirPlots.plot_latent_space(valid_predictive_samples_latent_space,valid_summary_dict, "_samples",results_dir, method=mode)
-                #
-                # VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "_single_sample",results_dir, method="Train")
-                # VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "_single_sample",results_dir, method=mode)
+                VegvisirPlots.plot_latent_space(train_latent_space, train_summary_dict, "_single_sample",results_dir, method="Train")
+                VegvisirPlots.plot_latent_space(valid_latent_space,valid_summary_dict, "_single_sample",results_dir, method=mode)
+                VegvisirPlots.plot_latent_space(train_predictive_samples_latent_space, train_summary_dict, "_samples",results_dir, method="Train")
+                VegvisirPlots.plot_latent_space(valid_predictive_samples_latent_space,valid_summary_dict, "_samples",results_dir, method=mode)
 
-                VegvisirPlots.plot_attention_weights(train_summary_dict,results_dir,method="Train")
-                VegvisirPlots.plot_attention_weights(valid_summary_dict,results_dir,method=mode)
+                VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "_single_sample",results_dir, method="Train")
+                VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "_single_sample",results_dir, method=mode)
+
+                VegvisirPlots.plot_attention_weights(train_summary_dict,dataset_info,results_dir,method="Train")
+                VegvisirPlots.plot_attention_weights(valid_summary_dict,dataset_info,results_dir,method=mode)
 
                 Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer,guide)
                 Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_train.p".format(results_dir),
@@ -921,13 +935,12 @@ def train_model(dataset_info,additional_info,args):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
     data_blosum = dataset_info.data_array_blosum_encoding
-    data_int = dataset_info.data_array_int
-    data_onehot = dataset_info.data_array_onehot_encoding
-    data_blosum_norm = dataset_info.data_array_blosum_norm
     seq_max_len = dataset_info.seq_max_len
     results_dir = additional_info.results_dir
     #Highlight: Train- Test split and kfold generator
-    partitioning_method = ["predefined_partitions" if args.test else"predefined_partitions_discard_test"][0]
+    #partitioning_method = ["predefined_partitions" if args.test else"predefined_partitions_discard_test"][0]
+    partitioning_method = ["predefined_partitions" if args.test else"predefined_partitions"][0]
+
     train_data_blosum,valid_data_blosum,test_data_blosum = VegvisirLoadUtils.trainevaltest_split(data_blosum,
                                                                                                  args,results_dir,
                                                                                                  seq_max_len,dataset_info.max_len,
