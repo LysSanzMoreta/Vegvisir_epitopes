@@ -4,12 +4,10 @@
 Vegvisir :
 =======================
 """
-import itertools
 import json
-import os
+import os,random
 import time,datetime
 import warnings
-
 import dill
 import pandas as pd
 import operator,functools
@@ -331,6 +329,7 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file):
 
 
     data["immunodominance_score"] = data["Assay_number_of_subjects_responded"] / data["Assay_number_of_subjects_tested"]
+
     data = data.fillna({"immunodominance_score":0})
 
     if filters_dict["corrected_immunodominance_score"][0]:
@@ -486,7 +485,7 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
 def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,update):
     """
-    Contains "artificial" or fake negative epitopes solely in the test dataset
+    Contains "artificial" or fake negative epitopes solely in the test dataset. The artificial negatives can be identified by having a inmmunodominance score of
     HEADER descriptions:
     allele: MHC allele
     Icore: Interaction peptide core
@@ -530,9 +529,16 @@ def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,updat
         data.replace({"allele_encoded": allele_dict},inplace=True)
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
+
+    mask2 = data["Assay_number_of_subjects_tested"] == 0
+
     warnings.warn("Setting low confidence score to the artificial negatives in the test dataset")
-    data.loc[mask,"confidence_score"] = 0.6
+    data.loc[mask2,"confidence_score"] = 0.6
+    data.loc[mask2,"immunodominance_score"] = np.nan
+
     data_info = process_data(data,args,storage_folder,script_dir,filters_dict["filter_kmers"][2])
+
+
 
     return data_info
 
@@ -553,7 +559,9 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
     if len(unique_lens) > 1: # Highlight: Pad the sequences (relevant when they differ in length)
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types , zero_characters=["#"])
-        epitopes_pad_result = VegvisirLoadUtils.SequencePadding(epitopes_list,seq_max_len,args.seq_padding).run()
+        if args.shuffle_sequence:
+            warnings.warn("shuffling the sequence for testing purposes")
+        epitopes_pad_result = VegvisirLoadUtils.SequencePadding(epitopes_list,seq_max_len,args.seq_padding,args.shuffle_sequence).run()
         epitopes_padded, epitopes_padded_mask = zip(*epitopes_pad_result) #unpack list of tuples onto 2 lists
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types , args.subs_matrix,
                                                                                    zero_characters= ["#"],
@@ -561,11 +569,14 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
     else:
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types)
-        epitopes_padded = epitopes_padded_mask = list(map(lambda seq: list(seq),epitopes_list))
+        if args.shuffle_sequence:
+            warnings.warn("shuffling the sequence for testing purposes")
+
+        epitopes_pad_result = VegvisirLoadUtils.SequencePadding(epitopes_list, seq_max_len, "no_padding",args.shuffle_sequence).run()
+        epitopes_padded, epitopes_padded_mask = zip(*epitopes_pad_result)  # unpack list of tuples onto 2 lists
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, args.subs_matrix,
                                                                                    zero_characters=["#"],
                                                                                    include_zero_characters=False)
-
     epitopes_array = np.array(epitopes_padded)
     if args.seq_padding == "replicated_borders":  # I keep it separately to avoid doing the np vectorized loop twice
         epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
@@ -736,15 +747,28 @@ def prepare_nnalign_no_test(args,storage_folder,data,column_names):
     data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name), sep="\t",index=False,header=None) #TODO: Header None?
     VegvisirNNalign.run_nnalign(args,storage_folder)
 
-def prepare_nnalign(args,storage_folder,data,column_names):
-    data_train = data[data["training"] == True][column_names]
-    data_valid = data[data["training"] == False][column_names]
-    data_train = data_train.astype({'partition': 'int'})
-    data_valid.drop("partition",axis=1,inplace=True)
-    data_train["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
+def prepare_nnalign(args,storage_folder,data,column_names,no_test=True):
 
-    data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
-    data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name), sep="\t",index=False,header=None) #TODO: Header None?
+    if no_test:
+        warnings.warn("Creating only training dataset for NNAlign (otherwise please set <no_test> to False")
+        column_names.remove("partition")
+        data_train = data[column_names]
+        #data["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder, args.dataset_name), sep="\t",index=False, header=None)
+
+        data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder, args.dataset_name), sep="\t",
+                          index=False, header=None)
+
+    else:
+        data_train = data[data["training"] == True][column_names]
+        data_valid = data[data["training"] == False][column_names]
+        data_train = data_train.astype({'partition': 'int'})
+        data_valid.drop("partition",axis=1,inplace=True)
+        data_train["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
+
+        data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
+        data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name), sep="\t",index=False,header=None) #TODO: Header None?
+
+    exit()
     VegvisirNNalign.run_nnalign(args,storage_folder)
 
 def set_confidence_score(data):

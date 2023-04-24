@@ -141,26 +141,23 @@ class Attention4(nn.Module):
             TODO: https://betterprogramming.pub/a-guide-on-the-encoder-decoder-model-and-the-attention-mechanism-401c836e2cdb
                     https://blog.floydhub.com/attention-mechanism/
     """
-    def __init__(self, hidden_dim,z_dim,device,attn_dropout=0.1):
+    def __init__(self, gru_hidden_dim,z_dim,device,attn_dropout=0.1):
         super().__init__()
-        self.hidden_dim = hidden_dim
+        self.gru_hidden_dim = gru_hidden_dim
         self.z_dim = z_dim
         self.device = device
-        self.temperature = self.hidden_dim ** 0.5
+        self.temperature = self.gru_hidden_dim ** 0.5
         self.dropout = nn.Dropout(attn_dropout)
         #self.attention = nn.Linear(3 * self.hidden_dim, self.hidden_dim)
-        self.weight_q = nn.Parameter(torch.randn((self.hidden_dim, self.hidden_dim)), requires_grad=True).to(self.device)
-        self.weight_k = nn.Parameter(torch.randn((self.hidden_dim, self.hidden_dim)), requires_grad=True).to(self.device)
+        self.weight_q = nn.Parameter(torch.randn((self.gru_hidden_dim, self.gru_hidden_dim)), requires_grad=True).to(self.device)
+        self.weight_k = nn.Parameter(torch.randn((self.gru_hidden_dim, self.gru_hidden_dim)), requires_grad=True).to(self.device)
         self.weight_v = nn.Parameter(torch.randn((self.z_dim, self.z_dim)), requires_grad=True).to(self.device)
-        #self.v = nn.Linear(hidden_dim, 1, bias=False)
 
-    def forward(self, encoder_rnn_out,encoder_rnn_hidden, latent_z_seq, mask=None):
+    def forward(self, encoder_rnn_hidden_states,encoder_final_hidden_state, latent_z_seq, mask=None,guide_estimates=None):
         src_len = latent_z_seq.shape[1]
-        encoder_rnn_hidden = torch.sum(encoder_rnn_hidden,dim=0) #because it is bidirectional
-        encoder_rnn_hidden = encoder_rnn_hidden.unsqueeze(1).repeat(1, src_len, 1)         # repeat encoder/decoder hidden state src_len times
-
-        q = torch.matmul(encoder_rnn_out,self.weight_q)
-        k = torch.matmul(encoder_rnn_hidden,self.weight_k)
+        encoder_final_hidden_state = encoder_final_hidden_state.unsqueeze(1).repeat(1, src_len, 1)         # repeat encoder/decoder hidden state src_len times
+        q = torch.matmul(encoder_rnn_hidden_states,self.weight_q)
+        k = torch.matmul(encoder_final_hidden_state,self.weight_k)
         v = torch.matmul(latent_z_seq,self.weight_v)
 
         attn = torch.matmul(q, k.transpose(1, 2))/ self.temperature
@@ -173,7 +170,6 @@ class Attention4(nn.Module):
             attn = attn.masked_fill(mask == 0, -1e9)
 
         attn =torch.nn.functional.softmax(attn, dim=-2)  # attention weights!!!!
-        #print(attn)
         output = torch.matmul(attn, v)  # context vector: attention-weighted version of our original value input
         return output, attn
 
@@ -837,15 +833,15 @@ class RNN_model5(nn.Module):
         self.gru_hidden_dim = gru_hidden_dim
         self.max_len = max_len
         self.aa_types = aa_types
-        #self.embedding = nn.Linear(self.aa_types,self.aa_types)
         self.attention = Attention4(self.gru_hidden_dim,self.z_dim,self.device)
         self.num_layers = 1
+        self.bidirectional = True
         self.rnn = nn.GRU(input_size=self.input_dim,
                           hidden_size=self.gru_hidden_dim,
                           batch_first=True,
                           num_layers=self.num_layers,
                           dropout=0.,
-                          bidirectional=True
+                          bidirectional=self.bidirectional
                           )
         self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
         self.softplus = nn.Softplus()
@@ -863,48 +859,52 @@ class RNN_model5(nn.Module):
         """
 
         if isinstance(guide_estimates, dict):
+            encoder_final_hidden = guide_estimates["rnn_final_hidden"]
+            #encoder_final_hidden_bidirectional = guide_estimates["rnn_final_hidden_bidirectional"]
+            encoder_hidden_states = guide_estimates["rnn_hidden_states"]
             encoder_rnn_hidden = guide_estimates["rnn_hidden"]
-            encoder_rnn_output = guide_estimates["rnn_out"]
         else:
             encoder_rnn_hidden = torch.ones_like(init_h_0_decoder)
-            encoder_rnn_output = torch.ones((x.shape[0],x.shape[1],self.gru_hidden_dim))
-        x_reverse = ReverseSequence(x,x_lens).run()
+            encoder_final_hidden =torch.ones((x.shape[0],self.gru_hidden_dim))
+            encoder_hidden_states = torch.ones((x.shape[0],x.shape[1],self.gru_hidden_dim))
+        #x_reverse = ReverseSequence(x,x_lens).run()
         #x_embedded = self.dropout(self.embedding(x_reverse))
         assert not torch.isnan(encoder_rnn_hidden).any(), "found nan in init_h_0"
-        assert not torch.isnan(x_reverse).any(), "found nan in x_reverse"
-        z_attn_weighted, attn_weights = self.attention(encoder_rnn_output,encoder_rnn_hidden, z, mask)
+        assert not torch.isnan(x).any(), "found nan in x_reverse"
+        z_attn_weighted, attn_weights = self.attention(encoder_hidden_states,encoder_final_hidden, z, mask,guide_estimates)
         assert not torch.isnan(z_attn_weighted).any(), "found nan in z_attn_weighted"
         rnn_input = z_attn_weighted
         rnn_input_packed = torch.nn.utils.rnn.pack_padded_sequence(rnn_input,x_lens.cpu(),batch_first=True,enforce_sorted=False)
         #init_z = self.init_hidden(z[:,0]).expand(self.num_layers * 2, x.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
-        packed_output, decoder_hidden = self.rnn(rnn_input_packed,encoder_rnn_hidden)
-        decoder_rnn_output, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
+        packed_decoder_hidden_states, decoder_final_hidden = self.rnn(rnn_input_packed,encoder_rnn_hidden)
+        decoder_hidden_states, seq_sizes = torch.nn.utils.rnn.pad_packed_sequence(packed_decoder_hidden_states, batch_first=True,total_length=self.max_len)
         #rnn_input = torch.cat((x_attn_weighted, x_embedded), dim=2)
-        decoder_rnn_output = self.softplus(decoder_rnn_output)
-        decoder_rnn_output = self.bnn(decoder_rnn_output)
-        forward_out,backward_out = decoder_rnn_output[:,:,:self.gru_hidden_dim],decoder_rnn_output[:,:,self.gru_hidden_dim:]
-        decoder_rnn_output = forward_out + backward_out
+        decoder_hidden_states = self.softplus(decoder_hidden_states)
+        decoder_hidden_states = self.bnn(decoder_hidden_states)
+        forward_hidden_states,backward_hidden_states = decoder_hidden_states[:,:,:self.gru_hidden_dim],decoder_hidden_states[:,:,self.gru_hidden_dim:]
+        decoder_hidden_states = forward_hidden_states + backward_hidden_states
 
-        output = self.softplus(self.fc1(decoder_rnn_output))
+        output = self.softplus(self.fc1(decoder_hidden_states))
         output = self.softplus(self.fc2(output))
         output = self.softplus(self.fc3(output))
         return output,attn_weights
 
-class RNN_guide1(nn.Module):
+class RNN_guide1a(nn.Module):
     def __init__(self,input_dim,max_len,gru_hidden_dim,z_dim,device):
-        super(RNN_guide1, self).__init__()
+        super(RNN_guide1a, self).__init__()
         self.device = device
         self.input_dim = input_dim
         self.z_dim = z_dim
         self.gru_hidden_dim = gru_hidden_dim
         self.max_len = max_len
         self.num_layers = 1
-        self.rnn1 = nn.GRU(input_size=int(input_dim),
+        self.bidirectional = True
+        self.rnn = nn.GRU(input_size=int(input_dim),
                           hidden_size=self.gru_hidden_dim,
                           batch_first=True,
                           num_layers=self.num_layers,
                           dropout=0.,
-                          bidirectional=True
+                          bidirectional=self.bidirectional
                           )
         self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
         self.softplus = nn.Softplus()
@@ -915,19 +915,58 @@ class RNN_guide1(nn.Module):
 
 
     def forward(self,input,input_lens,init_h_0):
-        "For GRU with reversed sequences"
+        "Bidirectional GRU"
         #input = torch.flip(input,(1,))
-        #Highlight: Results on reversing the sequences
-        rnn_output, rnn_hidden = self.rnn1(input,init_h_0)
-        rnn_output = self.softplus(rnn_output)
-        rnn_output = self.bnn(rnn_output)
-        forward_out_r,backward_out_r = rnn_output[:,:,:self.gru_hidden_dim],rnn_output[:,:,self.gru_hidden_dim:] #TODO: switched here
-        rnn_output = forward_out_r + backward_out_r
-        output = rnn_output[:,-1]
-        output = self.softplus(self.fc1(output))
+        rnn_hidden_states, rnn_hidden = self.rnn(input,init_h_0)# Highlight: warning : for biRNN the "final" hidden state only contains the final hidden state of the forward network and the first state of the reverse network
+        rnn_hidden_states = self.softplus(rnn_hidden_states)
+        rnn_hidden_states = self.bnn(rnn_hidden_states)
+        rnn_final_hidden_state_bidirectional = rnn_hidden_states[:,-1]
+        forward_out_r,backward_out_r = rnn_hidden_states[:,:,:self.gru_hidden_dim],rnn_hidden_states[:,:,self.gru_hidden_dim:]
+        rnn_hidden_states = forward_out_r + backward_out_r
+        rnn_final_hidden_state = rnn_hidden_states[:,-1] #final hidden states of both backward and forward networks
+        output = self.softplus(self.fc1(rnn_final_hidden_state))
         z_mean = self.fc2a(output)
         z_scale = self.softplus(torch.exp(0.5*self.fc2b(output)))
-        return z_mean,z_scale,rnn_hidden,rnn_output
+        return z_mean,z_scale,rnn_hidden_states,rnn_hidden,rnn_final_hidden_state,rnn_final_hidden_state_bidirectional
+
+class RNN_guide1b(nn.Module):
+    def __init__(self,input_dim,max_len,gru_hidden_dim,z_dim,device):
+        super(RNN_guide1b, self).__init__()
+        self.device = device
+        self.input_dim = input_dim
+        self.z_dim = z_dim
+        self.gru_hidden_dim = gru_hidden_dim
+        self.max_len = max_len
+        self.num_layers = 1
+        self.bidirectional = False
+        self.rnn = nn.GRU(input_size=int(input_dim),
+                          hidden_size=self.gru_hidden_dim,
+                          batch_first=True,
+                          num_layers=self.num_layers,
+                          dropout=0.,
+                          bidirectional=self.bidirectional
+                          )
+        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
+        self.softplus = nn.Softplus()
+        self.h = self.gru_hidden_dim
+        self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
+        self.fc2a = nn.Linear(int(self.h/2),self.z_dim,bias=False)
+        self.fc2b = nn.Linear(int(self.h/2),self.z_dim,bias=False)
+
+
+    def forward(self,input,input_lens,init_h_0):
+        "Unidirectional GRU with reversed sequences" #TODO: more layers
+        raise Warning("Not fixed because it would require too many structural changes")
+        input = torch.flip(input,(1,))
+        rnn_hidden_states, rnn_hidden = self.rnn(input,init_h_0)# Highlight: warning : for biRNN the "final" hidden state only contains the final hidden state of the forward network and the first state of the reverse network
+        rnn_hidden_states = self.softplus(rnn_hidden_states)
+        rnn_hidden_states = self.bnn(rnn_hidden_states)
+        rnn_final_hidden_state = rnn_hidden_states[:,-1] #final hidden state
+        output = self.softplus(self.fc1(rnn_final_hidden_state))
+        z_mean = self.fc2a(output)
+        z_scale = self.softplus(torch.exp(0.5*self.fc2b(output)))
+
+        return z_mean,z_scale,rnn_hidden_states,rnn_hidden,rnn_final_hidden_state,None
 
 class RNN_guide2(nn.Module):
     def __init__(self,input_dim,max_len,gru_hidden_dim,z_dim,device):
@@ -938,12 +977,13 @@ class RNN_guide2(nn.Module):
         self.gru_hidden_dim = gru_hidden_dim
         self.max_len = max_len
         self.num_layers = 1
+        self.bidirectional = True
         self.rnn1 = nn.GRU(input_size=int(input_dim),
                           hidden_size=self.gru_hidden_dim,
                           batch_first=True,
                           num_layers=self.num_layers,
                           dropout=0.,
-                          bidirectional=True
+                          bidirectional=self.bidirectional
                           )
         self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
         self.softplus = nn.Softplus()
@@ -954,20 +994,24 @@ class RNN_guide2(nn.Module):
 
 
     def forward(self,input,input_lens,init_h_0):
-        "For GRU with reversed sequences"
+        "Bidirectional GRU with pack and padded sequences"
         #input = ReverseSequence(input,input_lens).run()
         input_packed = torch.nn.utils.rnn.pack_padded_sequence(input,input_lens.cpu(),batch_first=True,enforce_sorted=False)
         packed_output, rnn_hidden = self.rnn1(input_packed,init_h_0)
-        rnn_output, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
-        rnn_output = self.softplus(rnn_output)
-        rnn_output = self.bnn(rnn_output)
-        forward_out_r,backward_out_r = rnn_output[:,:,:self.gru_hidden_dim],rnn_output[:,:,:self.gru_hidden_dim]
-        rnn_output = forward_out_r + backward_out_r
-        output = rnn_output[:,-1]
-        output = self.softplus(self.fc1(output))
+        rnn_hidden_states, seq_sizes = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
+        rnn_hidden_states = self.softplus(rnn_hidden_states)
+        rnn_hidden_states = self.bnn(rnn_hidden_states)
+        seq_idx = torch.arange(seq_sizes.shape[0])
+        rnn_final_hidden_state_bidirectional = rnn_hidden_states[seq_idx,seq_sizes-1] #TODO: Remove? not needed?
+        forward_out_r,backward_out_r = rnn_hidden_states[:,:,:self.gru_hidden_dim],rnn_hidden_states[:,:,self.gru_hidden_dim:]
+        rnn_hidden_states = forward_out_r + backward_out_r
+        rnn_final_hidden_state = rnn_hidden_states[seq_idx,seq_sizes-1]
+        #rnn_final_hidden_state = rnn_output[:,-1] #Highlight: Do not do this with packed and padded output, not correct
+        output = self.softplus(self.fc1(rnn_final_hidden_state))
         z_mean = self.fc2a(output)
         z_scale = self.softplus(torch.exp(0.5*self.fc2b(output)))
-        return z_mean,z_scale,rnn_hidden, rnn_output
+
+        return z_mean,z_scale,rnn_hidden_states,rnn_hidden,rnn_final_hidden_state,rnn_final_hidden_state_bidirectional
 
 class RNN_classifier(nn.Module):
     def __init__(self,input_dim,max_len,gru_hidden_dim,num_classes,z_dim,device):

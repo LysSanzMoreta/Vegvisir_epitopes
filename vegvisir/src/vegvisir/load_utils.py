@@ -202,25 +202,44 @@ def calculate_class_weights(data,args):
 
 class SequencePadding(object):
     """Performs padding of a list of given sequences to a given len"""
-    def __init__(self,sequences,seq_max_len,method):
+    def __init__(self,sequences,seq_max_len,method,shuffle):
         self.sequences = sequences
         self.seq_max_len = seq_max_len
         self.method = method
+        self.shuffle = shuffle
+        self.random_seeds = list(range(len(sequences)))
 
     def run(self):
 
-        padded_sequences = {"ends":list(map(lambda seq: (list(seq.ljust(self.seq_max_len, "#")),list(seq.ljust(self.seq_max_len, "#"))),self.sequences)) ,
-                            "random":list(map(lambda seq: self.random_padding(seq, self.seq_max_len), self.sequences)),
-                            "borders":list(map(lambda seq: self.border_padding(seq, self.seq_max_len), self.sequences)),
-                            "replicated_borders":list(map(lambda seq: self.replicated_border_padding(seq, self.seq_max_len), self.sequences))}
+        padded_sequences = {"no_padding": list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds)),
+                            #"ends":list(map(lambda seq: (list(seq.ljust(self.seq_max_len, "#")),list(seq.ljust(self.seq_max_len, "#"))),self.sequences)) ,
+                            "ends": list(map(lambda seq,seed: self.ends_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds)),
+                            "random":list(map(lambda seq,seed: self.random_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds)),
+                            "borders":list(map(lambda seq,seed: self.border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds)),
+                            "replicated_borders":list(map(lambda seq,seed: self.replicated_border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds))}
 
         if self.method not in padded_sequences.keys():
             raise ValueError("Padding method <{}> not implemented, please choose among <{}>".format(self.method,padded_sequences.keys()))
         else:
             return padded_sequences[self.method]
 
-    def random_padding(self,seq, max_len):
+    def no_padding(self,seq,seed,max_len,shuffle):
+        if shuffle:
+            random.seed(seed)
+            seq = "".join(random.sample(list(seq), len(seq)))
+        return (random.sample(seq, len(seq)),random.sample(seq, len(seq)))
+
+    def ends_padding(self,seq,seed,max_len,shuffle):
+        if shuffle:
+            random.seed(seed)
+            seq = "".join(random.sample(list(seq), len(seq)))
+        return (list(seq.ljust(max_len, "#")),list(seq.ljust(max_len, "#")))
+
+    def random_padding(self,seq,seed, max_len,shuffle):
         """Randomly pad sequence. Introduces <n pads> in random places until max_len"""
+        if shuffle:
+            random.seed(seed)
+            seq = "".join(random.sample(list(seq), len(seq)))
         pad = max_len - len(seq)
         seq = list(seq)
         if pad != 0:
@@ -233,10 +252,13 @@ class SequencePadding(object):
         else:
             return (seq,seq)
 
-    def border_padding(self,seq, max_len):
+    def border_padding(self,seq,seed, max_len,shuffle):
         """For sequences shorter than seq_max_len introduced padding in the beginning and the ends of the sequences.
         If the amount of padding needed is divisible by 2 then the padding is shared evenly at the bginning and the end of the sequence.
         Otherwise randomly, the beginning or the end of the sequence will receive more padding"""
+        if shuffle:
+            random.seed(seed)
+            seq = "".join(random.sample(list(seq), len(seq)))
         pad = max_len - len(seq)
         seq = list(seq)
         if pad != 0:
@@ -259,13 +281,16 @@ class SequencePadding(object):
         else:
             return (seq,seq)
 
-    def replicated_border_padding(self, seq, max_len):
+    def replicated_border_padding(self, seq,seed, max_len,shuffle):
         """
         Inspired by "replicated" padding in Convolutional NN https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
         For sequences shorter than seq_max_len introduced padding in the beginning and the ends of the sequences.
         If the amount of padding needed is divisible by 2 then the padding is shared evenly at the bginning and the end of the sequence.
         Otherwise randomly, the beginning or the end of the sequence will receive more padding"""
-        random.seed(91)
+        if shuffle:
+            random.seed(seed)
+            seq = "".join(random.sample(list(seq), len(seq)))
+        #random.seed(91)
         pad = max_len - len(seq)
         seq = list(seq)
         if pad != 0:

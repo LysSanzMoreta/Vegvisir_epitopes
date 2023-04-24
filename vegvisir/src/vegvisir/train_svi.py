@@ -938,8 +938,7 @@ def train_model(dataset_info,additional_info,args):
     seq_max_len = dataset_info.seq_max_len
     results_dir = additional_info.results_dir
     #Highlight: Train- Test split and kfold generator
-    #partitioning_method = ["predefined_partitions" if args.test else"predefined_partitions_discard_test"][0]
-    partitioning_method = ["predefined_partitions" if args.test else"predefined_partitions"][0]
+    partitioning_method = ["predefined_partitions" if args.test else"predefined_partitions_discard_test"][0]
 
     train_data_blosum,valid_data_blosum,test_data_blosum = VegvisirLoadUtils.trainevaltest_split(data_blosum,
                                                                                                  args,results_dir,
@@ -959,7 +958,7 @@ def train_model(dataset_info,additional_info,args):
         print("Only Training & Validation")
         epoch_loop( train_idx, valid_idx, dataset_info, args, additional_info)
     else:
-        print("Only testing...")
+        print("Training & testing...")
         train_idx = (train_idx.int() + valid_idx.int()).bool()
 
         epoch_loop(train_idx, test_idx, dataset_info, args, additional_info,mode="Test")

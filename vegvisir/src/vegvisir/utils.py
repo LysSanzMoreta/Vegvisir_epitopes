@@ -63,6 +63,19 @@ def folders(folder_name,basepath):
         shutil.rmtree(newpath)  # removes all the subdirectories!
         os.makedirs(newpath,0o777)
 
+def replace_nan(x,x_unique,replace_val=0.0):
+    """Detects nan values and replaces them with a given values
+    :param x numpy array
+    :param: x_unique numpy array of unique values from x
+    """
+    if np.isnan(x_unique).any():
+        x = np.nan_to_num(replace_val)
+        x_unique = x_unique[~np.isnan(x_unique)]
+        if not np.any(x_unique == replace_val):
+            np.append(x_unique,[0])
+    return x,x_unique
+
+
 def aminoacid_names_dict(aa_types,zero_characters = []):
     """ Returns an aminoacid associated to a integer value
     All of these values are mapped to 0:
@@ -89,8 +102,9 @@ def aminoacids_groups(aa_dict):
     negative_charged = (["D","E"],"lawngreen")
     uncharged = (["S","T","N","Q"],"aqua")
     special = (["C","U","G","P"],"yellow")
-    hydrophobic = (["A","V","I","L","M","F","Y","W"],"orange")
-    groups_names_colors_dict = {"positive":positive_charged[1],"negative":negative_charged[1],"uncharged":uncharged[1],"special":special[1],"hydrophobic":hydrophobic[1]}
+    hydrophobic = (["A","V","I","L","M"],"orange")
+    aromatic = (["F","Y","W"],"magenta")
+    groups_names_colors_dict = {"positive":positive_charged[1],"negative":negative_charged[1],"uncharged":uncharged[1],"special":special[1],"hydrophobic":hydrophobic[1],"aromatic":aromatic[1]}
     aa_groups_dict = defaultdict()
 
     for aa,i in aa_dict.items():
@@ -104,6 +118,8 @@ def aminoacids_groups(aa_dict):
             aa_groups_dict[i] = special[1]
         elif aa in hydrophobic[0]:
             aa_groups_dict[i] = hydrophobic[1]
+        elif aa in aromatic[0]:
+            aa_groups_dict[i] = aromatic[1]
         else:
             aa_groups_dict[i] = "black"
     return aa_groups_dict,groups_names_colors_dict
