@@ -247,7 +247,7 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     fig.tight_layout(pad=0.1)
     plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder, args.dataset_name, name_suffix), dpi=500)
     plt.clf()
-    plt.close()
+    plt.close(fig)
 
 
 def plot_features_histogram(data, features_names, results_dir, name_suffix):
@@ -311,7 +311,7 @@ def plot_features_histogram(data, features_names, results_dir, name_suffix):
         plt.savefig("{}/Viruses_features_histograms_{}".format(results_dir, name_suffix),
                     dpi=300)
         plt.clf()
-        plt.close()
+        plt.close(fig)
 
     else:
         print("Data type not implemented, not plotting features histograms")
@@ -362,7 +362,7 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
                bbox_to_anchor=(0.6, 0.5), ncol=1)
     plt.savefig("{}/{}/umap_data_norm".format(script_dir,dataset_name))
     plt.clf()
-    plt.close()
+    plt.close(fig)
 
 
     if seq_max_len != max_len:
@@ -388,15 +388,15 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
                    bbox_to_anchor=(0.7, 0.5), ncol=1)
         plt.savefig("{}/{}/umap_data_features".format(script_dir, dataset_name))
         plt.clf()
-        plt.close()
+        plt.close(fig)
 
 def plot_heatmap(array, title,file_name):
-    plt.figure(figsize=(20, 20))
+    fig = plt.figure(figsize=(20, 20))
     sns.heatmap(array, cmap='RdYlGn_r',yticklabels=False,xticklabels=False)
     plt.title(title)
     plt.savefig(file_name)
     plt.clf()
-    plt.close()
+    plt.close(fig)
 
 def plot_umap1(array,labels,storage_folder,args,title_name,file_name):
     from matplotlib.colors import ListedColormap
@@ -423,7 +423,7 @@ def plot_umap1(array,labels,storage_folder,args,title_name,file_name):
     plt.title("UMAP dimensionality reduction of {}".format(title_name),fontsize=20)
     plt.savefig("{}/{}/similarities/{}.png".format(storage_folder,args.dataset_name,file_name))
     plt.clf()
-    plt.close()
+    plt.close(fig)
 
 def plot_loss(train_loss,valid_loss,epochs_list,fold,results_dir):
     """Plots the model's error loss
@@ -436,10 +436,12 @@ def plot_loss(train_loss,valid_loss,epochs_list,fold,results_dir):
     valid_loss = np.array(valid_loss)
     epochs_idx = np.array(epochs_list)
     train_loss = train_loss[epochs_idx.astype(int)] #select the same epochs as the vaidation
+
     if np.isnan(train_loss).any():
         print("Error loss contains nan")
         pass
     else:
+        fig = plt.figure()
         plt.plot(epochs_idx,train_loss, color="dodgerblue",label="train")
         if valid_loss is not None:
             plt.plot(epochs_idx,valid_loss, color="darkorange", label="validation")
@@ -449,9 +451,9 @@ def plot_loss(train_loss,valid_loss,epochs_list,fold,results_dir):
         plt.title("Error loss (Train/valid)")
         plt.legend()
         plt.savefig("{}/error_loss_{}fold.png".format(results_dir,fold))
-        plt.close()
-    plt.clf()
-    plt.close()
+        plt.close(fig)
+        plt.clf()
+
 
 def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir):
     """Plots the model's accuracies, both for target label and for sequence reconstruction loss
@@ -465,7 +467,7 @@ def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir
         train_accuracies_std = np.array(train_accuracies["std"])[epochs_idx.astype(int)]
         valid_accuracies_std = np.array(valid_accuracies["std"])
         epochs_idx = np.array(epochs_list)
-
+        fig = plt.figure()
         plt.plot(epochs_idx, train_accuracies_mean, color="deepskyblue", label="train")
         plt.fill_between(epochs_idx,train_accuracies_mean-train_accuracies_std,train_accuracies_mean+train_accuracies_std,color="cyan",alpha=0.2)
         if valid_accuracies is not None:
@@ -478,7 +480,7 @@ def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir
         plt.legend()
         plt.savefig("{}/reconstruction_accuracies_{}fold.png".format(results_dir, fold))
         plt.clf()
-        plt.close()
+        plt.close(fig)
 
 
     else:
@@ -486,7 +488,7 @@ def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir
         valid_accuracies = np.array(valid_accuracies)
         epochs_idx = np.array(epochs_list)
         train_accuracies = train_accuracies[epochs_idx.astype(int)] #select the same epochs as the vaidation
-    
+        fig = plt.figure()
         plt.plot(epochs_idx,train_accuracies, color="deepskyblue",label="train")
         if valid_accuracies is not None:
             plt.plot(epochs_idx,valid_accuracies, color="salmon", label="validation")
@@ -496,7 +498,7 @@ def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir
         plt.legend()
         plt.savefig("{}/accuracies_{}fold.png".format(results_dir,fold))
         plt.clf()
-        plt.close()
+        plt.close(fig)
 
 def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,method):
     """Plots the AUC/AUK scores while training
@@ -506,6 +508,7 @@ def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,m
     :param str method: AUC or AUK
     """
     epochs_idx = np.array(epochs_list)
+    fig = plt.figure()
     plt.plot(epochs_idx,train_auc, color="deepskyblue",label="train")
     if valid_auc is not None:
         plt.plot(epochs_idx,valid_auc, color="salmon", label="validation")
@@ -515,11 +518,11 @@ def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,m
     plt.legend()
     plt.savefig("{}/{}_{}fold.png".format(results_dir,method,fold))
     plt.clf()
-    plt.close()
+    plt.close(fig)
 
 def plot_latent_vector(latent_space,predictions_dict,fold,results_dir,method):
 
-    print("Plotting Latent Vector...")
+    print("Plotting latent vector...")
     latent_vectors = latent_space[:,5:]
     colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,0])
@@ -554,11 +557,11 @@ def plot_latent_vector(latent_space,predictions_dict,fold,results_dir,method):
     plt.legend(handles=[negative_patch,positive_patch], prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5),ncol=1)
     plt.savefig("{}/{}/zvector_fold{}".format(results_dir,method,fold))
     plt.clf()
-    plt.close()
+    plt.close(fig)
 
-def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
+def plot_latent_space(latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z"):
 
-    print("Plotting UMAP...")
+    print("Plotting UMAP of {}...".format(vector_name))
     reducer = umap.UMAP()
     umap_proj = reducer.fit_transform(latent_space[:, 5:])
     colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
@@ -625,14 +628,15 @@ def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
     ax11.axis("off")
     ax12.axis("off")
 
+    fig.suptitle("UMAP of {}".format(vector_name))
 
     negative_patch = mpatches.Patch(color=colors_dict_labels[0], label='Class 0')
     positive_patch = mpatches.Patch(color=colors_dict_labels[1], label='Class 1')
     fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
     plt.legend(handles=[negative_patch,positive_patch], prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5),ncol=1)
-    plt.savefig("{}/{}/umap_fold{}".format(results_dir,method,fold))
+    plt.savefig("{}/{}/umap_{}_{}".format(results_dir,method,vector_name,sample_mode))
     plt.clf()
-    plt.close()
+    plt.close(fig)
 
 def plot_gradients(gradient_norms,results_dir,mode):
     print("Plotting gradients")
@@ -645,13 +649,15 @@ def plot_gradients(gradient_norms,results_dir,mode):
     plt.ylabel('gradient norm')
     plt.yscale('log')
     ax2.axis('off')
-    ax1.legend(loc= 'center right',bbox_to_anchor=(1.5,0.5),fontsize=11, borderaxespad=0.)
-    ax1.set_title('Gradient norms of model parameters')
+    plt.legend(loc= 'center right',bbox_to_anchor=(1.5,0.5),fontsize=11, borderaxespad=0.)
+    fig.suptitle('Gradient norms of model parameters')
 
     plt.savefig("{}/gradients_{}".format(results_dir,mode))
     plt.clf()
+    plt.close(fig)
 
 def plot_ROC_curve(fpr,tpr,roc_auc,auk_score,results_dir,fold,method):
+    fig = plt.figure()
     plt.title('Receiver Operating Characteristic',fontdict={"size":20})
     plt.plot(fpr, tpr, 'b', label='AUC = %0.2f \n '
                                   'AUK = %0.2f' % (roc_auc,auk_score))
@@ -663,7 +669,7 @@ def plot_ROC_curve(fpr,tpr,roc_auc,auk_score,results_dir,fold,method):
     plt.xlabel('False Positive Rate',fontsize=20)
     plt.savefig("{}/ROC_curve_fold{}_{}".format(results_dir,fold,method))
     plt.clf()
-    plt.close()
+    plt.close(fig)
 
 def plot_blosum_cosine(blosum_array,storage_folder,args):
     """
@@ -672,7 +678,7 @@ def plot_blosum_cosine(blosum_array,storage_folder,args):
     :param storage_folder:
     :param args:
     """
-    plt.subplots(figsize=(10, 10))
+    fig,_=plt.subplots(figsize=(10, 10))
     blosum_cosine = VegvisirUtils.cosine_similarity(blosum_array[1:, 1:], blosum_array[1:, 1:])
     aa_dict = VegvisirUtils.aminoacid_names_dict(21, zero_characters=["#"])
     aa_list = [key for key, val in aa_dict.items() if val in list(blosum_array[:, 0])]
@@ -683,7 +689,7 @@ def plot_blosum_cosine(blosum_array,storage_folder,args):
     plt.title("Amino acids blosum vector cosine similarity", fontsize=10)
     plt.savefig('{}/{}/blosum_cosine.png'.format(storage_folder, args.dataset_name), dpi=600)
     plt.clf()
-    plt.close()
+    plt.close(fig)
 
 def plot_feature_importance(feature_dict:dict,max_len:int,features_names:list,results_dir:str) -> None:
     """
@@ -721,6 +727,7 @@ def plot_feature_importance(feature_dict:dict,max_len:int,features_names:list,re
     fig.tight_layout(pad=3.0,w_pad=1.5, h_pad=2.0)
     fig.suptitle("Feature importance")
     plt.savefig("{}/feature_importance_xgboost".format(results_dir))
+    plt.close(fig)
 
 def plot_mutual_information(full_data,full_labels,feature_names,results_dir):
     """
@@ -739,6 +746,7 @@ def plot_mutual_information(full_data,full_labels,feature_names,results_dir):
     colors_dict = dict(zip(feature_names,colors_list))
 
     mutual_information = mutual_info_regression(full_data[:,1], full_labels, discrete_features=False, n_neighbors=3, copy=True,random_state=None)
+    fig = plt.figure()
     plt.bar(range(len(feature_names)), feature_names,color=colors_dict.values())
     plt.xticks(np.arange(len(feature_names)), feature_names, rotation=45, fontsize=8)
     plt.title("Mutual Information feature importance")
@@ -748,7 +756,9 @@ def plot_mutual_information(full_data,full_labels,feature_names,results_dir):
     plt.legend(handles=patches, prop={'size': 10},loc= 'center right',bbox_to_anchor=(1.37,0.5))
     plt.savefig("{}/mi_feature_importance".format(results_dir),dpi=600)
     plt.clf()
-    plt.close()
+    plt.close(fig)
+
+
 
 def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold,method):
     """Plot confusion matrix
@@ -769,7 +779,7 @@ def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold,
     ax[0].legend(handles=patches, prop={'size': 10}, loc='right',bbox_to_anchor=(1.5, 0.5), ncol=1)
     plt.savefig("{}/confusion_matrix_fold{}_{}.png".format(results_dir,fold,method),dpi=100)
     plt.clf()
-    plt.close()
+    plt.close(fig)
 
 def micro_auc(args,onehot_labels,y_prob,idx):
     """Calculates the AUC for a multi-class problem"""
@@ -805,6 +815,7 @@ def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,resul
         onehot_targets.ravel(), target_scores.ravel()
     )
     average_precision["micro"] = average_precision_score(onehot_targets, target_scores, average="micro")
+    fig = plt.figure()
     plt.plot(recall["micro"],precision["micro"], label="Average Precision (AP): {}".format(average_precision["micro"]))
     plt.xlim([0, 1])
     plt.ylim([0, 1])
@@ -814,7 +825,8 @@ def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,resul
     plt.title("Average Precision curves")
     plt.savefig("{}/{}/PrecisionRecall_curves_fold{}_{}".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
     plt.clf()
-    plt.close()
+    plt.close(fig)
+
 
 
     # display = PrecisionRecallDisplay(
@@ -833,6 +845,7 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     labels = labels[idx]
     onehot_targets = onehot_labels[idx]
     target_scores = predictions_dict[stats_name][idx]
+    fig = plt.figure()
     # ROC AUC per class
     for i in range(args.num_classes):
         fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
@@ -863,7 +876,8 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     plt.title("ROC curves")
     plt.savefig("{}/{}/ROC_curves_fold{}_{}".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
     plt.clf()
-    plt.close()
+    plt.close(fig)
+
 
 def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode="Train",per_sample=False):
     """
@@ -1014,12 +1028,14 @@ def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode
                 fig.suptitle("ROC curve. AUC_micro_ovr_average: {}".format(average_micro_auc/args.num_samples),fontsize=12)
                 plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
                 plt.clf()
-                plt.close()
+                plt.close(fig)
 
-def plot_attention_weights(predictions_dict,dataset_info,results_dir,method="Train"):
+
+
+def plot_attention_weights(summary_dict,dataset_info,results_dir,method="Train"):
     """
 
-    :param predictions_dict:
+    :param summary_dict:
     :param results_dir:
     :param method:
     :return:
@@ -1041,15 +1057,15 @@ def plot_attention_weights(predictions_dict,dataset_info,results_dir,method="Tra
     aa_groups_patches = [mpatches.Patch(color=color, label='{}'.format(group)) for group,color in groups_names_colors_dict.items()]
 
     for sample_mode in ["single_sample","samples"]:
-        data_int = predictions_dict["data_int_{}".format(sample_mode)]
-        confidence_scores = predictions_dict["confidence_scores_{}".format(sample_mode)]
+        data_int = summary_dict["data_int_{}".format(sample_mode)]
+        confidence_scores = summary_dict["confidence_scores_{}".format(sample_mode)]
         idx_all = np.ones_like(confidence_scores).astype(bool)
         idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
         for data_points,idx in zip(["all","high_confidence"],[idx_all,idx_highconfidence]):
-            true_labels = predictions_dict["true_{}".format(sample_mode)][idx]
+            true_labels = summary_dict["true_{}".format(sample_mode)][idx]
             positives_idx = (true_labels == 1)
             for class_type,idx_class in zip(["positives","negatives"],[positives_idx,~positives_idx]):
-                attention_weights = predictions_dict["attention_weights_{}".format(sample_mode)][idx][idx_class]
+                attention_weights = summary_dict["attention_weights_{}".format(sample_mode)][idx][idx_class]
                 aminoacids = data_int[idx][idx_class]
                 if sample_mode == "single_sample":
                     attention_weights = attention_weights[:,:,0]
@@ -1058,46 +1074,134 @@ def plot_attention_weights(predictions_dict,dataset_info,results_dir,method="Tra
                 #try:
 
                 fig,[[ax1,ax2,ax3],[ax4,ax5,ax6]] = plt.subplots(nrows=2,ncols=3,figsize=(9, 6),gridspec_kw={'width_ratios': [4.5, 4.5,1],'height_ratios': [4.5, 4.5]})
-                #Highlight: Attention weights
-                sns.heatmap(attention_weights,ax=ax1)
-                ax1.set_xticks(np.arange(attention_weights.shape[1]) + 0.5,labels=["{}".format(i) for i in range(attention_weights.shape[1])])
-                ax1.spines['left'].set_visible(False)
-                ax1.yaxis.set_ticklabels([])
-                ax1.set_title("Attention by weight")
-                #Highlight: Aminoacids coloured by name
-                aminoacids_masked = (aminoacids[:,1])*np.rint(attention_weights)
-                sns.heatmap(aminoacids_masked,ax=ax2,cbar=False,cmap=aa_colormap)
-                ax2.set_xticks(np.arange(attention_weights.shape[1] +1 ) + 0.5,labels=["{}".format(i) for i in range(attention_weights.shape[1] + 1)])
-                ax2.spines['left'].set_visible(False)
-                ax2.yaxis.set_ticklabels([])
-                ax2.set_title("Attention by Aa type")
-                #Highlight: Aminoacids coloured by functional group (i.e positive, negative ...)
-                sns.heatmap(aminoacids_masked,ax=ax4,cbar=False,cmap=aa_groups_colormap)
-                ax4.set_xticks(np.arange(attention_weights.shape[1] +1) + 0.5,labels=["{}".format(i) for i in range(attention_weights.shape[1] + 1)])
-                ax4.spines['left'].set_visible(False)
-                ax4.yaxis.set_ticklabels([])
-                ax4.set_title("Attention by Aa group")
+                print("{}/{}".format(sample_mode,data_points))
+                if np.prod(attention_weights.shape) == 0.:
+                    print("No data points, no attention plots")
+                    pass
+                else:
+                    #Highlight: Attention weights
+                    sns.heatmap(attention_weights,ax=ax1)
+                    ax1.set_xticks(np.arange(attention_weights.shape[1]) + 0.5,labels=["{}".format(i) for i in range(attention_weights.shape[1])])
+                    ax1.spines['left'].set_visible(False)
+                    ax1.yaxis.set_ticklabels([])
+                    ax1.set_title("Attention by weight")
+                    #Highlight: Aminoacids coloured by name
+                    if np.rint(attention_weights).max() != 1:
+                        aminoacids_masked = (aminoacids[:,1])*attention_weights.bool().int()
+                    else:
+                        aminoacids_masked = (aminoacids[:,1])*np.rint(attention_weights)
+                    sns.heatmap(aminoacids_masked,ax=ax2,cbar=False,cmap=aa_colormap)
+                    ax2.set_xticks(np.arange(attention_weights.shape[1] +1 ) + 0.5,labels=["{}".format(i) for i in range(attention_weights.shape[1] + 1)])
+                    ax2.spines['left'].set_visible(False)
+                    ax2.yaxis.set_ticklabels([])
+                    ax2.set_title("Attention by Aa type")
+                    #Highlight: Aminoacids coloured by functional group (i.e positive, negative ...)
+                    sns.heatmap(aminoacids_masked,ax=ax4,cbar=False,cmap=aa_groups_colormap)
+                    ax4.set_xticks(np.arange(attention_weights.shape[1] +1) + 0.5,labels=["{}".format(i) for i in range(attention_weights.shape[1] + 1)])
+                    ax4.spines['left'].set_visible(False)
+                    ax4.yaxis.set_ticklabels([])
+                    ax4.set_title("Attention by Aa group")
 
-                ax3.axis("off")
-                ax5.axis("off")
-                ax6.axis("off")
+                    ax3.axis("off")
+                    ax5.axis("off")
+                    ax6.axis("off")
 
-                legend1 = plt.legend(handles=aa_patches, prop={'size': 8}, loc='center right',
-                           bbox_to_anchor=(0.9, 0.7), ncol=1)
-                plt.legend(handles=aa_groups_patches, prop={'size': 8}, loc='center right',
-                           bbox_to_anchor=(0.1, 0.5), ncol=1)
-                plt.gca().add_artist(legend1)
+                    legend1 = plt.legend(handles=aa_patches, prop={'size': 8}, loc='center right',
+                               bbox_to_anchor=(0.9, 0.7), ncol=1)
+                    plt.legend(handles=aa_groups_patches, prop={'size': 8}, loc='center right',
+                               bbox_to_anchor=(0.1, 0.5), ncol=1)
+                    plt.gca().add_artist(legend1)
 
-                fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
-                fig.suptitle("Attention weights: {}, {}, {}".format(sample_mode,data_points,class_type))
-                plt.savefig("{}/{}/Attention_plots_{}_{}_{}.png".format(results_dir,method,sample_mode,data_points,class_type))
-                plt.clf()
-                plt.close()
-
-                #except:
-                    #print("could not plot attention weights")
-                    #pass
+                    fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
+                    fig.suptitle("Attention weights: {}, {}, {}".format(sample_mode,data_points,class_type))
+                    plt.savefig("{}/{}/Attention_plots_{}_{}_{}.png".format(results_dir,method,sample_mode,data_points,class_type))
+                    plt.clf()
+                    plt.close(fig)
 
 
 
 
+
+
+def plot_hidden_dimensions(summary_dict, dataset_info, results_dir, method="Train"):
+    """"""
+    diag_idx_maxlen = np.diag_indices(dataset_info.seq_max_len)
+    for sample_mode in ["single_sample","samples"]:
+        data_int = summary_dict["data_int_{}".format(sample_mode)]
+        data_mask = summary_dict["data_mask_{}".format(sample_mode)]
+        data_mask_seq = data_mask[:, 1:,:,0].squeeze(1)
+
+        confidence_scores = summary_dict["confidence_scores_{}".format(sample_mode)]
+        idx_all = np.ones_like(confidence_scores).astype(bool)
+        idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
+        encoder_final_hidden_state = summary_dict["encoder_final_hidden_state_{}".format(sample_mode)]
+        decoder_final_hidden_state = summary_dict["decoder_final_hidden_state_{}".format(sample_mode)] #TODO: Review the values
+        encoder_hidden_states = summary_dict["encoder_hidden_states_{}".format(sample_mode)]
+        decoder_hidden_states = summary_dict["decoder_hidden_states_{}".format(sample_mode)] #TODO: Review the values
+
+        #Highlight: Compute the cosine similarity measure (distance = 1 - similarity) among the hidden states of the sequence
+        encoder_information_gain_weights = Parallel(n_jobs=MAX_WORKERs)(
+            delayed(VegvisirUtils.information_gain)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
+            zip(encoder_hidden_states,data_mask_seq))
+        encoder_information_gain_weights = np.concatenate(encoder_information_gain_weights,axis=0)
+
+        fig, [[ax1, ax2, ax3], [ax4, ax5, ax6]] = plt.subplots(nrows=2, ncols=3, figsize=(9, 6),
+                                                               gridspec_kw={'width_ratios': [4.5, 4.5, 1],
+                                                                            'height_ratios': [4.5, 4.5]})
+        print("{}/{}".format(sample_mode, data_points))
+        if np.prod(attention_weights.shape) == 0.:
+            print("No data points, no attention plots")
+            pass
+        else:
+            # Highlight: Attention weights
+            sns.heatmap(attention_weights, ax=ax1)
+            ax1.set_xticks(np.arange(attention_weights.shape[1]) + 0.5,
+                           labels=["{}".format(i) for i in range(attention_weights.shape[1])])
+            ax1.spines['left'].set_visible(False)
+            ax1.yaxis.set_ticklabels([])
+            ax1.set_title("Attention by weight")
+            # Highlight: Aminoacids coloured by name
+            if np.rint(attention_weights).max() != 1:
+                aminoacids_masked = (aminoacids[:, 1]) * attention_weights.bool().int()
+            else:
+                aminoacids_masked = (aminoacids[:, 1]) * np.rint(attention_weights)
+            sns.heatmap(aminoacids_masked, ax=ax2, cbar=False, cmap=aa_colormap)
+            ax2.set_xticks(np.arange(attention_weights.shape[1] + 1) + 0.5,
+                           labels=["{}".format(i) for i in range(attention_weights.shape[1] + 1)])
+            ax2.spines['left'].set_visible(False)
+            ax2.yaxis.set_ticklabels([])
+            ax2.set_title("Attention by Aa type")
+            # Highlight: Aminoacids coloured by functional group (i.e positive, negative ...)
+            sns.heatmap(aminoacids_masked, ax=ax4, cbar=False, cmap=aa_groups_colormap)
+            ax4.set_xticks(np.arange(attention_weights.shape[1] + 1) + 0.5,
+                           labels=["{}".format(i) for i in range(attention_weights.shape[1] + 1)])
+            ax4.spines['left'].set_visible(False)
+            ax4.yaxis.set_ticklabels([])
+            ax4.set_title("Attention by Aa group")
+
+            ax3.axis("off")
+            ax5.axis("off")
+            ax6.axis("off")
+
+            legend1 = plt.legend(handles=aa_patches, prop={'size': 8}, loc='center right',
+                                 bbox_to_anchor=(0.9, 0.7), ncol=1)
+            plt.legend(handles=aa_groups_patches, prop={'size': 8}, loc='center right',
+                       bbox_to_anchor=(0.1, 0.5), ncol=1)
+            plt.gca().add_artist(legend1)
+
+            fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
+            fig.suptitle("Attention weights: {}, {}, {}".format(sample_mode, data_points, class_type))
+            plt.savefig(
+                "{}/{}/Attention_plots_{}_{}_{}.png".format(results_dir, method, sample_mode, data_points, class_type))
+            plt.clf()
+            plt.close(fig)
+
+        plot_latent_space(encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden state")
+        plot_latent_space(decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden state")
+
+
+        # for data_points,idx in zip(["all","high_confidence"],[idx_all,idx_highconfidence]):
+        #     true_labels = summary_dict["true_{}".format(sample_mode)][idx]
+        #     positives_idx = (true_labels == 1)
+        #     for class_type,idx_class in zip(["positives","negatives"],[positives_idx,~positives_idx]):
+        #         pass

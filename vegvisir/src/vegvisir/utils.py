@@ -75,7 +75,6 @@ def replace_nan(x,x_unique,replace_val=0.0):
             np.append(x_unique,[0])
     return x,x_unique
 
-
 def aminoacid_names_dict(aa_types,zero_characters = []):
     """ Returns an aminoacid associated to a integer value
     All of these values are mapped to 0:
@@ -123,7 +122,6 @@ def aminoacids_groups(aa_dict):
         else:
             aa_groups_dict[i] = "black"
     return aa_groups_dict,groups_names_colors_dict
-
 
 def convert_to_onehot(a,dimensions):
     #ncols = a.max() + 1
@@ -288,7 +286,7 @@ class AUK:
             curve.insert(0, 0)
         return curve  # Add zero to appropriate position in list
 
-def cosine_similarity(a,b,correlation_matrix=False):
+def cosine_similarity(a,b,correlation_matrix=False,parallel=False):
     """Calculates the cosine similarity between matrices of k-mers.
     :param numpy array a: (max_len,aa_types) or (num_seq,max_len, aa_types)
     :param numpy array b: (max_len,aa_types) or (num_seq,max_len, aa_types)
@@ -322,7 +320,10 @@ def cosine_similarity(a,b,correlation_matrix=False):
         p2 = np.sqrt(np.sum(b ** 2, axis=1))[None, :] #[1,seq_len]
         #print(p1*p2)
         cosine_sim = num / (p1 * p2)
-        return cosine_sim
+        if parallel:
+            return cosine_sim[None,:]
+        else:
+            return cosine_sim
     else: #TODO: use elipsis for general approach?
         if correlation_matrix:
             b = b - b.mean(axis=2)[:, :, None]
@@ -793,6 +794,8 @@ def manage_predictions(samples_dict,args,predictions_dict):
     if predictions_dict is not None:
         summary_dict = {"data_int_single_sample":predictions_dict["data_int"],
                         "data_int_samples": samples_dict["data_int"],
+                        "data_mask_single_sample": predictions_dict["data_mask"],
+                        "data_mask_samples": samples_dict["data_mask"],
                         "class_binary_predictions_samples": binary_predictions_samples,
                         "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
                         "class_binary_prediction_samples_frequencies": binary_frequencies,
@@ -815,10 +818,21 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         "confidence_scores_samples": samples_dict["confidence_scores"],
                         "confidence_scores_single_sample": predictions_dict["confidence_scores"],
                         "attention_weights_single_sample":predictions_dict["attention_weights"],
-                        "attention_weights_samples": samples_dict["attention_weights"]}
+                        "attention_weights_samples": samples_dict["attention_weights"],
+                        "encoder_hidden_states_single_sample":predictions_dict["encoder_hidden_states"],
+                        "encoder_hidden_states_samples":samples_dict["encoder_hidden_states"],
+                        "decoder_hidden_states_single_sample": predictions_dict["decoder_hidden_states"],
+                        "decoder_hidden_states_samples": samples_dict["decoder_hidden_states"],
+                        "encoder_final_hidden_state_single_sample": predictions_dict["encoder_final_hidden_state"],
+                        "encoder_final_hidden_state_samples": samples_dict["encoder_final_hidden_state"],
+                        "decoder_final_hidden_state_single_sample": predictions_dict["decoder_final_hidden_state"],
+                        "decoder_final_hidden_state_samples": samples_dict["decoder_final_hidden_state"],
+                        }
     else:
         summary_dict = {"data_int_single_sample":None,
                         "data_int_samples": samples_dict["data_int"],
+                        "data_mask_single_sample": None,
+                        "data_mask_samples": samples_dict["data_mask"],
                         "class_binary_predictions_samples": binary_predictions_samples,
                         "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
                         "class_binary_prediction_samples_frequencies": binary_frequencies,
@@ -841,8 +855,80 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         "confidence_scores_samples": samples_dict["confidence_scores"],
                         "confidence_scores_single_sample": None,
                         "attention_weights_single_sample": None,
-                        "attention_weights_samples": samples_dict["attention_weights"]
+                        "attention_weights_samples": samples_dict["attention_weights"],
+                        "encoder_hidden_states_single_sample": None,
+                        "encoder_hidden_states_samples": samples_dict["encoder_hidden_states"],
+                        "decoder_hidden_states_single_sample": None,
+                        "decoder_hidden_states_samples": samples_dict["decoder_hidden_states"],
+                        "encoder_final_hidden_state_single_sample": None,
+                        "encoder_final_hidden_state_samples": samples_dict["encoder_final_hidden_state"],
+                        "decoder_final_hidden_state_single_sample": None,
+                        "decoder_final_hidden_state_samples": samples_dict["decoder_final_hidden_state"],
                         }
 
     return summary_dict
+
+def information_gain(arr,arr_mask,diag_idx_maxlen,max_len):
+    """
+    Assuming https://github.com/pytorch/pytorch/issues/3587
+    Calculates the amount of vector similarity/distance change between the hidden representations of the positions in the sequence for both backward and forward RNN hidden states.
+    1) For a given sequence with 2 sequences of hidden states [2,L,Hidden_dim]
+
+        A) Calculate cosine similarities for each of the forward and backward hidden states of an RNN
+        Cos_sim([L,Hidden_dim],[L,Hidden_dim]]
+
+
+
+        b) Retrieve from the cosine similarity matrix the offset +1 diagonal which contains the following information about contigous states
+
+        Forward states:        [0->1][1->2][2->3][3->4]
+        Backward states: [0<-1][1<-2][2<-3][3<-4]
+        ------------------------------------
+
+    2) Make the average among the information gains of the forward and backward states (overlapping)
+        Pos 0 : [0<-1]
+        Pos 1 : ([0->1] + [1<-2])/2
+        Pos 2 : ([1->2] + [2<-3])/2
+        Pos 3 : ([2->3] + [3<-4])/2
+        Pos 4 : [3->4]
+
+
+    :param arr:
+    :param arr_mask:
+    :param diag_idx_maxlen:
+    :param max_len:
+    :return:
+    """
+    forward = None
+    backward = None
+    for idx in [0,1]:
+        cos_sim_arr = cosine_similarity(arr[idx],arr[idx],correlation_matrix=False)
+        cos_sim_diag = cos_sim_arr[diag_idx_maxlen[0][:-1],diag_idx_maxlen[1][1:]] #k=1 offset diagonal
+        #Highlight: ignore the positions that have paddings
+        n_paddings = (arr_mask.shape[0] - arr_mask.sum())
+        keep = cos_sim_diag.shape[0] - n_paddings #number of elements in the offset diagonal - number of "False" or paddings along the sequence
+        if keep <= 0: #when all the sequence is paddings or only one position is not a padding, every position gets value 0
+            if idx == 0:
+                forward = np.zeros((max_len-1))
+            else:
+                backward = np.zeros((max_len-1))
+        else:
+            information_gain = 1-cos_sim_diag[:keep] #or cosine distance
+            #information_gain = np.abs(cos_sim_diag[:-1] -cos_sim_diag[1:])
+            #Highlight: Set to 0 the information gain in the padding positions
+            information_gain = np.concatenate([information_gain,np.zeros((n_paddings,))])
+            if idx == 0:
+                forward = information_gain
+            else:
+                backward = information_gain
+
+            assert information_gain.shape[0] == max_len-1
+
+    forward = np.insert(forward,obj=0,values=0,axis=0)
+    backward = np.append(backward,np.zeros((1,)),axis=0)
+    weights = (forward + backward)/2
+    #weights = np.exp(weights - np.max(weights)) / np.exp(weights - np.max(weights)).sum() #softmax
+    weights = (weights - weights.min()) / (weights - weights.min()).sum()
+    weights*= arr_mask
+    return weights[None,:]
 

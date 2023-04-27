@@ -28,7 +28,7 @@ def main():
     1) Select the train/validation/test dataset
     2) Execute Vegvisir"""
 
-    results_dir = "{}/PLOTS_Vegvisir_{}_{}_{}epochs".format(script_dir, args.dataset_name, now.strftime("%Y_%m_%d_%Hh%Mmin%Ss%fms"),args.num_epochs)
+    results_dir = "{}/PLOTS_Vegvisir_{}_{}_{}epochs_{}".format(script_dir, args.dataset_name, now.strftime("%Y_%m_%d_%Hh%Mmin%Ss%fms"),args.num_epochs,args.learning_type)
     VegvisirUtils.folders(ntpath.basename(results_dir), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Train"), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Valid"), script_dir)
@@ -58,7 +58,7 @@ if __name__ == "__main__":
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=2, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=1, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=False, help='True: Use GPU; False: Use CPU')
 
     #TODO: include more blosum matrix types?

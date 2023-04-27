@@ -15,6 +15,9 @@ import pyro
 import pyro.distributions as dist
 from pyro.nn import PyroModule
 from pyro.distributions import constraints
+from collections import namedtuple
+OutputNN = namedtuple("OutputNN",[])
+
 class VEGVISIRGUIDES(EasyGuide):
     def __init__(self,vegvisir_model,model_load, Vegvisir):
         """The guide provides a valid joint probability density over all the latent random variables in the model or variational distribution."""
@@ -78,7 +81,7 @@ class VEGVISIRGUIDES(EasyGuide):
         init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
 
         with pyro.plate("plate_batch",dim= -1,device=self.device):
-            z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state, rnn_final_hidden_state_bidirectional = self.encoder_guide(batch_sequences_blosum, batch_sequences_lens,init_h_0)
+            z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state, rnn_hidden_states_bidirectional = self.encoder_guide(batch_sequences_blosum, batch_sequences_lens,init_h_0)
             assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
             assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
             latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(1))
@@ -87,7 +90,7 @@ class VEGVISIRGUIDES(EasyGuide):
                 "z_scale": z_scale,
                 "rnn_hidden":rnn_hidden,
                 "rnn_final_hidden":rnn_final_hidden_state,
-                "rnn_final_hidden_bidirectional": rnn_final_hidden_state_bidirectional,
+                "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
                 "rnn_hidden_states":rnn_hidden_states}
 
     def guide_unsupervised(self, batch_data, batch_mask,guide_estimates,sample=False):
@@ -114,7 +117,7 @@ class VEGVISIRGUIDES(EasyGuide):
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
         init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
         with pyro.plate("plate_batch",dim= -1,device=self.device):
-            z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state, rnn_final_hidden_state_bidirectional= self.encoder_guide(batch_sequences_blosum,batch_sequences_lens, init_h_0)
+            z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state, rnn_hidden_states_bidirectional= self.encoder_guide(batch_sequences_blosum,batch_sequences_lens, init_h_0)
             assert torch.isnan(rnn_hidden_states).sum().item() == 0, "found nan in rnn hidden states"
             assert not torch.isnan(rnn_final_hidden_state).any(), "found nan in rnn final state"
             assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
@@ -131,13 +134,12 @@ class VEGVISIRGUIDES(EasyGuide):
             # with pyro.poutine.mask(mask=confidence_mask_true):
             #     pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1))
 
-
         return {"latent_z": latent_space,
                 "z_mean": z_mean,
                 "z_scale": z_scale,
                 "rnn_hidden":rnn_hidden,
                 "rnn_final_hidden":rnn_final_hidden_state,
-                "rnn_final_hidden_bidirectional": rnn_final_hidden_state_bidirectional,
+                "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
                 "rnn_hidden_states":rnn_hidden_states}
 
     def guide_semisupervised(self, batch_data, batch_mask,guide_estimates,sample=False):
