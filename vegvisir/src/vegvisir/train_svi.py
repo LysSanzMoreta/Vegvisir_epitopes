@@ -20,6 +20,7 @@ import vegvisir.load_utils as VegvisirLoadUtils
 import vegvisir.plots as VegvisirPlots
 import vegvisir.models as VegvisirModels
 import vegvisir.guides as VegvisirGuides
+
 ModelLoad = namedtuple("ModelLoad",["args","max_len","seq_max_len","n_data","input_dim","aa_types","blosum","class_weights"])
 
 def batch_loop():
@@ -454,13 +455,13 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             attn_weights = sampling_output["attn_weights"].squeeze(0).detach().cpu().permute(1,0,2,3).numpy()
             attention_weights.append(attn_weights)
             encoder_hidden = sampling_output["encoder_hidden_states"].squeeze(0).detach().cpu().permute(1,0,2,3,4).numpy()
-            encoder_hidden = encoder_hidden.mean(axis=1)
+            #encoder_hidden = encoder_hidden.mean(axis=1)
             encoder_hidden_states.append(encoder_hidden)
             decoder_hidden = sampling_output["decoder_hidden_states"].squeeze(0).detach().cpu().permute(1,0,2,3,4).numpy()
-            decoder_hidden = decoder_hidden.mean(axis=1)
+            #decoder_hidden = decoder_hidden.mean(axis=1)
             decoder_hidden_states.append(decoder_hidden)
             encoder_final_hidden = sampling_output["encoder_final_hidden"].squeeze(0).detach().cpu().permute(1,0,2)
-            encoder_final_hidden = encoder_final_hidden.mean(dim=1)
+            encoder_final_hidden = encoder_final_hidden.mean(dim=1) #TODO: this is not correct, think about it
             decoder_final_hidden = sampling_output["decoder_final_hidden"].squeeze(0).detach().cpu().permute(1,0,2)
             decoder_final_hidden = decoder_final_hidden.mean(dim=1)
 
@@ -1048,8 +1049,8 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                 #VegvisirPlots.plot_attention_weights(train_summary_dict,dataset_info,results_dir,method="Train")
                 #VegvisirPlots.plot_attention_weights(valid_summary_dict,dataset_info,results_dir,method=mode)
 
-                VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir, method="Train")
-                VegvisirPlots.plot_hidden_dimensions(valid_summary_dict, dataset_info, results_dir, method=mode)
+                VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir,args, method="Train")
+                VegvisirPlots.plot_hidden_dimensions(valid_summary_dict, dataset_info, results_dir,args, method=mode)
 
                 Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer,guide)
                 Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_train.p".format(results_dir),

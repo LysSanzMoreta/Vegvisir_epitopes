@@ -1123,7 +1123,7 @@ def plot_attention_weights(summary_dict,dataset_info,results_dir,method="Train")
 
 
 
-def plot_hidden_dimensions(summary_dict, dataset_info, results_dir, method="Train"):
+def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method="Train"):
     """"""
     print("Analyzing hidden dimensions ...")
     aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types,zero_characters=["#"])
@@ -1149,27 +1149,46 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir, method="Trai
         confidence_scores = summary_dict["confidence_scores_{}".format(sample_mode)]
         idx_all = np.ones_like(confidence_scores).astype(bool)
         idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
+        encoder_final_hidden_state = summary_dict["encoder_final_hidden_state_{}".format(sample_mode)]
+        decoder_final_hidden_state = summary_dict["decoder_final_hidden_state_{}".format(sample_mode)]
+        plot_latent_space(encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden state")
+        plot_latent_space(decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden state")
 
         for data_points,idx in zip(["all","high_confidence"],[idx_all,idx_highconfidence]):
             true_labels = summary_dict["true_{}".format(sample_mode)][idx]
             positives_idx = (true_labels == 1)
             for class_type,idx_class in zip(["positives","negatives"],[positives_idx,~positives_idx]):
-                encoder_final_hidden_state = summary_dict["encoder_final_hidden_state_{}".format(sample_mode)][idx][idx_class]
-                decoder_final_hidden_state = summary_dict["decoder_final_hidden_state_{}".format(sample_mode)][idx][idx_class]
+
                 encoder_hidden_states = summary_dict["encoder_hidden_states_{}".format(sample_mode)][idx][idx_class]
                 decoder_hidden_states = summary_dict["decoder_hidden_states_{}".format(sample_mode)][idx][idx_class] #TODO: Review the values
 
                 #Highlight: Compute the cosine similarity measure (distance = 1 - similarity) among the hidden states of the sequence
-                #Highlight: Encoder
-                encoder_information_gain_weights = Parallel(n_jobs=MAX_WORKERs)(
-                    delayed(VegvisirUtils.information_gain)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
-                    zip(encoder_hidden_states,data_mask_seq))
-                encoder_information_gain_weights = np.concatenate(encoder_information_gain_weights,axis=0)
-                #Highlight: Decoder
-                decoder_information_gain_weights = Parallel(n_jobs=MAX_WORKERs)(
-                    delayed(VegvisirUtils.information_gain)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
-                    zip(decoder_hidden_states,data_mask_seq))
-                decoder_information_gain_weights = np.concatenate(decoder_information_gain_weights,axis=0)
+                if sample_mode == "single_sample":
+                    # Highlight: Encoder
+                    encoder_information_gain_weights = Parallel(n_jobs=MAX_WORKERs)(
+                        delayed(VegvisirUtils.information_gain)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
+                        zip(encoder_hidden_states,data_mask_seq))
+                    encoder_information_gain_weights = np.concatenate(encoder_information_gain_weights,axis=0)
+                    #Highlight: Decoder
+                    decoder_information_gain_weights = Parallel(n_jobs=MAX_WORKERs)(
+                        delayed(VegvisirUtils.information_gain)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
+                        zip(decoder_hidden_states,data_mask_seq))
+                    decoder_information_gain_weights = np.concatenate(decoder_information_gain_weights,axis=0)
+                else:
+                    encoder_information_gain_weights = Parallel(n_jobs=MAX_WORKERs)(
+                        delayed(VegvisirUtils.information_gain_samples)(encoder_hidden_states[:, sample_idx],
+                                                                        data_mask_seq, diag_idx_maxlen,dataset_info.seq_max_len) for sample_idx in range(args.num_samples))
+
+                    decoder_information_gain_weights = Parallel(n_jobs=MAX_WORKERs)(
+                        delayed(VegvisirUtils.information_gain_samples)(decoder_hidden_states[:, sample_idx],
+                                                                        data_mask_seq, diag_idx_maxlen,
+                                                                        dataset_info.seq_max_len) for sample_idx in range(args.num_samples))
+
+                    encoder_information_gain_weights = np.concatenate(encoder_information_gain_weights,axis=1) #N,samples, L
+                    encoder_information_gain_weights = encoder_information_gain_weights.mean(axis=1)
+                    decoder_information_gain_weights = np.concatenate(decoder_information_gain_weights,axis=1) #N,samples, L
+                    decoder_information_gain_weights = decoder_information_gain_weights.mean(axis=1)
+
                 aminoacids = data_int[idx][idx_class]
                 for nn_name,weights in zip(["Encoder","Decoder"],[encoder_information_gain_weights,decoder_information_gain_weights]):
                     #Highlight: Start figure
@@ -1191,7 +1210,6 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir, method="Trai
                         # Highlight: Aminoacids coloured by name
                         if np.rint(weights).max() != 1:
                             weights_adjusted = np.array((weights > weights.mean()))
-                            print(weights_adjusted.shape)
                             aminoacids_masked = (aminoacids[:, 1]) * weights_adjusted.astype(int)
                         else:
                             aminoacids_masked = (aminoacids[:, 1]) * np.rint(weights)
@@ -1225,7 +1243,5 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir, method="Trai
                         plt.clf()
                         plt.close(fig)
 
-                #plot_latent_space(encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden state")
-                #plot_latent_space(decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden state")
 
 

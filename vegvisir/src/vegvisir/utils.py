@@ -17,6 +17,9 @@ import pandas as pd
 import torch
 import vegvisir.plots as VegvisirPlots
 from scipy import stats
+from joblib import Parallel, delayed
+import multiprocessing
+MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 def str2bool(v):
     """Converts a string into a boolean, useful for boolean arguments
     :param str v"""
@@ -932,3 +935,12 @@ def information_gain(arr,arr_mask,diag_idx_maxlen,max_len):
     weights*= arr_mask
     return weights[None,:]
 
+def information_gain_samples(hidden_states,data_mask_seq,diag_idx_maxlen,seq_max_len):
+    # Highlight: Encoder
+    encoder_information_gain_weights_seq = Parallel(n_jobs=MAX_WORKERs)(
+        delayed(information_gain)(seq, seq_mask, diag_idx_maxlen,
+                                                seq_max_len) for seq, seq_mask in
+        zip(hidden_states, data_mask_seq))
+    encoder_information_gain_weights_sample = np.concatenate(encoder_information_gain_weights_seq, axis=0)
+
+    return encoder_information_gain_weights_sample[:, None]
