@@ -88,6 +88,7 @@ def aminoacid_names_dict(aa_types,zero_characters = []):
     :param list zero_characters: character(s) to be set to 0
     """
     if aa_types == 20 :
+        assert len(zero_characters) == 0, "No zero characters allowed, please set zero_characters to empty list"
         aminoacid_names = {"R":0,"H":1,"K":2,"D":3,"E":4,"S":5,"T":6,"N":7,"Q":8,"C":9,"G":10,"P":11,"A":12,"V":13,"I":14,"L":15,"M":16,"F":17,"Y":18,"W":19}
     elif aa_types == 21:
         aminoacid_names = {"R":1,"H":2,"K":3,"D":4,"E":5,"S":6,"T":7,"N":8,"Q":9,"C":10,"G":11,"P":12,"A":13,"V":14,"I":15,"L":16,"M":17,"F":18,"Y":19,"W":20}
@@ -144,6 +145,8 @@ def create_blosum(aa_types,subs_matrix_name,zero_characters=[],include_zero_char
     if aa_types > 21 and not subs_matrix_name.startswith("PAM"):
         warnings.warn("Your dataset contains special amino acids. Switching your substitution matrix to PAM70")
         subs_matrix_name = "PAM70"
+    elif aa_types == 20 and len(zero_characters) !=0:
+        raise ValueError("No zero characters allowed, please set zero_characters to empty list")
 
     subs_matrix = Bio.Align.substitution_matrices.load(subs_matrix_name)
     aa_list = list(aminoacid_names_dict(aa_types,zero_characters=zero_characters).keys())
@@ -578,7 +581,7 @@ def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksiz
         cosine_similarity_mean_i = np.zeros((n_data_curr, n_data))
         kmers_pid_similarity_i = np.zeros((n_data_curr, n_data))
         kmers_cosine_similarity_i = np.zeros((n_data_curr, n_data))
-        start_store_point_i = 0 + store_point_helper
+        start_store_point_i = 0 + store_point_helper #TODO: Why the + 0? Typo?
         end_store_point_i = rest_splits[0].shape[0] + store_point_helper # initialize
         start_i = time.time()
         for j, r_j in enumerate(rest_splits):  # calculate distance among all kmers per sequence in the block (n, n_kmers,n_kmers)
@@ -605,7 +608,7 @@ def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksiz
             kmers_matrix_cosine_ij = cosine_sim_j[:, :, :, overlapping_kmers][:, :, overlapping_kmers].transpose(0, 1, 4, 2,3, 5)
             # Highlight: Apply masks to calculate the similarities. NOTE: To get the data with the filled value use k = np.ma.getdata(kmers_matrix_diag_masked)
             ##PERCENT IDENTITY (binary pairwise comparison) ###############
-            percent_identity_mean_ij = np.ma.masked_array(pairwise_sim_j, mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
+            percent_identity_mean_ij = np.ma.masked_array(pairwise_sim_j, mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!! #TODO: does it?
             percent_identity_mean_i[:,start_store_point_i:end_store_point_i] = percent_identity_mean_ij #TODO: Probably no need to store this either
             ##COSINE SIMILARITY (pairwise comparison of cosine similarities)########################
             cosine_similarity_mean_ij = np.ma.masked_array(cosine_sim_j[:, :, diag_idx_maxlen[0], diag_idx_maxlen[1]],mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
@@ -689,6 +692,7 @@ def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksiz
 
     return np.ma.getdata(percent_identity_mean), np.ma.getdata(cosine_similarity_mean), np.ma.getdata(
         kmers_pid_similarity), np.ma.getdata(kmers_cosine_similarity)
+
 
 def minmax_scale(array,suffix=None,column_name=None,low=0.,high=1.):
     """Following https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.minmax_scale.html#sklearn.preprocessing.minmax_scale

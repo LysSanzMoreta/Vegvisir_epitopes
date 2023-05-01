@@ -454,7 +454,6 @@ def plot_loss(train_loss,valid_loss,epochs_list,fold,results_dir):
         plt.close(fig)
         plt.clf()
 
-
 def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir):
     """Plots the model's accuracies, both for target label and for sequence reconstruction loss
     :param list train_elbo: list of accumulated error losses during training
@@ -758,8 +757,6 @@ def plot_mutual_information(full_data,full_labels,feature_names,results_dir):
     plt.clf()
     plt.close(fig)
 
-
-
 def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold,method):
     """Plot confusion matrix
     :param pandas dataframe confusion_matrix
@@ -877,7 +874,6 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     plt.savefig("{}/{}/ROC_curves_fold{}_{}".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
     plt.clf()
     plt.close(fig)
-
 
 def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode="Train",per_sample=False):
     """
@@ -1030,8 +1026,6 @@ def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode
                 plt.clf()
                 plt.close(fig)
 
-
-
 def plot_attention_weights(summary_dict,dataset_info,results_dir,method="Train"):
     """
 
@@ -1117,11 +1111,6 @@ def plot_attention_weights(summary_dict,dataset_info,results_dir,method="Train")
                     plt.savefig("{}/{}/Attention_plots_{}_{}_{}.png".format(results_dir,method,sample_mode,data_points,class_type))
                     plt.clf()
                     plt.close(fig)
-
-
-
-
-
 
 def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method="Train"):
     """"""

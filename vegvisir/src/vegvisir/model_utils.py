@@ -888,7 +888,6 @@ class RNN_model6(nn.Module):
                             decoder_final_hidden=decoder_final_hidden)
         return outputnn
 
-
 class RNN_guide1a(nn.Module):
     def __init__(self,input_dim,max_len,gru_hidden_dim,z_dim,device):
         super(RNN_guide1a, self).__init__()

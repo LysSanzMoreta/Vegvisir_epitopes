@@ -21,6 +21,7 @@ from sklearn.cluster import DBSCAN
 import matplotlib.patches as mpatches
 import vegvisir.nnalign as VegvisirNNalign
 import vegvisir.utils as VegvisirUtils
+import vegvisir.similarities as VegvisirSimilarities
 import vegvisir.load_utils as VegvisirLoadUtils
 import vegvisir.plots as VegvisirPlots
 plt.style.use('ggplot')
@@ -601,6 +602,10 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
     n_data = epitopes_array.shape[0]
     ksize = 3 #TODO: manage in args
+
+    VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
+    exit()
+
     if not os.path.exists("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
         print("Epitopes similarity matrices not existing, calculating (approx 2-3 min) ....")
         VegvisirUtils.folders("{}/similarities".format(args.dataset_name), storage_folder)

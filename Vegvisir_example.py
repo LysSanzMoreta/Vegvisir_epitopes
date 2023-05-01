@@ -28,7 +28,7 @@ def main():
     1) Select the train/validation/test dataset
     2) Execute Vegvisir"""
 
-    results_dir = "{}/PLOTS_Vegvisir_{}_{}_{}epochs_{}".format(script_dir, args.dataset_name, now.strftime("%Y_%m_%d_%Hh%Mmin%Ss%fms"),args.num_epochs,args.learning_type)
+    results_dir = "{}/PLOTS_Vegvisir_{}_{}_{}epochs_{}_{}".format(script_dir, args.dataset_name, now.strftime("%Y_%m_%d_%Hh%Mmin%Ss%fms"),args.num_epochs,args.learning_type,args.sequence_type)
     VegvisirUtils.folders(ntpath.basename(results_dir), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Train"), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Valid"), script_dir)
@@ -84,7 +84,7 @@ if __name__ == "__main__":
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
     parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
 
-    parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. ')
+    parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. If the sequence contains gaps, the script will use 20 aa + 1 gap character ')
     parser.add_argument('-st','--sequence-type', type=str, nargs='?', default="Icore", help='Define the type of peptide sequence to use:\n'
                                                                                 'Icore: Full peptide '
                                                                                 'Icore_non_anchor: Peptide without the anchoring points ')
