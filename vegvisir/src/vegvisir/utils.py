@@ -693,7 +693,6 @@ def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksiz
     return np.ma.getdata(percent_identity_mean), np.ma.getdata(cosine_similarity_mean), np.ma.getdata(
         kmers_pid_similarity), np.ma.getdata(kmers_cosine_similarity)
 
-
 def minmax_scale(array,suffix=None,column_name=None,low=0.,high=1.):
     """Following https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.minmax_scale.html#sklearn.preprocessing.minmax_scale
     WARNING USE SEPARATELY FOR TRAIN AND TEST DATASETS, OTHERWISE INFORMATION FROM THE TEST GETS TRANSFERRED TO THE TRAIN

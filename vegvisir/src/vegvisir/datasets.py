@@ -602,7 +602,6 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
     n_data = epitopes_array.shape[0]
     ksize = 3 #TODO: manage in args
-
     VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
     exit()
 
