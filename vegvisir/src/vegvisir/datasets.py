@@ -14,9 +14,12 @@ import operator,functools
 import matplotlib.pyplot as plt
 import numpy as np
 from collections import defaultdict,namedtuple
+
+import scipy
 import seaborn as sns
 import dataframe_image as dfi
 import torch
+import zarr
 from sklearn.cluster import DBSCAN
 import matplotlib.patches as mpatches
 import vegvisir.nnalign as VegvisirNNalign
@@ -602,29 +605,39 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
     n_data = epitopes_array.shape[0]
     ksize = 3 #TODO: manage in args
-    VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
-    exit()
+    epitopes_array_blosum = epitopes_array_blosum
+    epitopes_mask = epitopes_mask
 
     if not os.path.exists("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
-        print("Epitopes similarity matrices not existing, calculating (approx 2-3 min) ....")
+        print("Epitopes similarity matrices not existing, calculating (this might take a while, 10 minutes for 10000 sequences) ....")
         VegvisirUtils.folders("{}/similarities".format(args.dataset_name), storage_folder)
-        percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirUtils.calculate_similarity_matrix(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
+        #percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirUtils.calculate_similarity_matrix(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
+        positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
+        #zarr.save("{}/{}/similarities/pid_pairwise_matrix.npz".format(storage_folder,args.dataset_name), pid_pairwise_matrix)
+        np.save("{}/{}/similarities/positional_weights.npy".format(storage_folder,args.dataset_name), positional_weights)
         np.save("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name), percent_identity_mean)
         np.save("{}/{}/similarities/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name), cosine_similarity_mean)
         np.save("{}/{}/similarities/kmers_pid_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_pid_similarity)
         np.save("{}/{}/similarities/kmers_cosine_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_cosine_similarity)
     else:
-        print("Loading pre-calculated epitopes similarity matrices located at {}".format("{}/{}/similarities/".format(storage_folder,args.dataset_name)))
+        print("Loading pre-calculated epitopes similarity/weights matrices (warning big matrices) located at {}".format("{}/{}/similarities/".format(storage_folder,args.dataset_name)))
+        positional_weights = np.load("{}/{}/similarities/positional_weights.npy".format(storage_folder,args.dataset_name))
+        #cosine_sim_pairwise_matrix = zarr.load("{}/{}/similarities/cosine_sim_pairwise_matrix.npz".format(storage_folder,args.dataset_name))
         percent_identity_mean = np.load("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name))
         cosine_similarity_mean = np.load("{}/{}/similarities/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name))
         kmers_pid_similarity = np.load("{}/{}/similarities/kmers_pid_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,ksize))
         kmers_cosine_similarity = np.load("{}/{}/similarities/kmers_cosine_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,ksize))
 
     if not os.path.exists("{}/{}/similarities/HEATMAP_percent_identity_mean.png".format(storage_folder,args.dataset_name)):
+        VegvisirPlots.plot_heatmap(positional_weights, "Positional Weights","{}/{}/similarities/HEATMAP_positional_weights.png".format(storage_folder,args.dataset_name))
         VegvisirPlots.plot_heatmap(percent_identity_mean, "Percent Identity","{}/{}/similarities/HEATMAP_percent_identity_mean.png".format(storage_folder,args.dataset_name))
         VegvisirPlots.plot_heatmap(cosine_similarity_mean, "Cosine similarity","{}/{}/similarities/HEATMAP_cosine_similarity_mean.png".format(storage_folder,args.dataset_name))
         VegvisirPlots.plot_heatmap(kmers_pid_similarity, "Kmers ({}) percent identity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_pid_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
         VegvisirPlots.plot_heatmap(kmers_cosine_similarity, "Kmers ({}) cosine similarity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_cosine_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
+
+
+    print(positional_weights)
+    exit()
 
     calculate_partitions = False
     if calculate_partitions: #TODO: move elsewhere

@@ -62,7 +62,7 @@ def information_gain(arr,arr_mask,diag_idx_maxlen):
     Calculates the amount of vector similarity/distance change between the hidden representations of the positions in the sequence for both backward and forward RNN hidden states.
     1) For a given sequence with 2 sequences of hidden states [2,L,Hidden_dim]
         []
-        A) Calculate cosine similarities for each of the forward and backward hidden states of an RNN
+        A) Calculate cosine similarities_old for each of the forward and backward hidden states of an RNN
         Cos_sim([L,Hidden_dim],[L,Hidden_dim]]
 
         b) Compute the average information gain as follows

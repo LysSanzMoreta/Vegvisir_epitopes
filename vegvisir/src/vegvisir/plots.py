@@ -421,7 +421,7 @@ def plot_umap1(array,labels,storage_folder,args,title_name,file_name):
     else:
         fig.colorbar(plt.cm.ScalarMappable(cmap=colormap),ax=ax) #cax= fig.add_axes([0.9, 0.5, 0.01, 0.09])
     plt.title("UMAP dimensionality reduction of {}".format(title_name),fontsize=20)
-    plt.savefig("{}/{}/similarities/{}.png".format(storage_folder,args.dataset_name,file_name))
+    plt.savefig("{}/{}/similarities_old/{}.png".format(storage_folder,args.dataset_name,file_name))
     plt.clf()
     plt.close(fig)
 

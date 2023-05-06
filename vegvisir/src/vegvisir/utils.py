@@ -451,11 +451,11 @@ def calculate_similarity_matrix_slow(array, max_len, array_mask, batch_size=200,
             #  [m,n,kmers,nkmers,ksize,ksize], where the diagonal contains the pairwise values between the kmers
             kmers_matrix_pid_ij = pairwise_matrix_j[:, :, :, overlapping_kmers][:, :, overlapping_kmers].transpose(0, 1, 4, 2,3, 5)
             kmers_matrix_cosine_ij = cosine_sim_j[:, :, :, overlapping_kmers][:, :, overlapping_kmers].transpose(0, 1, 4, 2,3, 5)
-            # Highlight: Apply masks to calculate the similarities. NOTE: To get the data with the filled value use k = np.ma.getdata(kmers_matrix_diag_masked)
+            # Highlight: Apply masks to calculate the similarities_old. NOTE: To get the data with the filled value use k = np.ma.getdata(kmers_matrix_diag_masked)
             ##PERCENT IDENTITY (binary pairwise comparison) ###############
             percent_identity_mean_ij = np.ma.masked_array(pairwise_sim_j, mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
             percent_identity_mean_i[:,start_store_point_i:end_store_point_i] = percent_identity_mean_ij #TODO: Probably no need to store this either
-            ##COSINE SIMILARITY (pairwise comparison of cosine similarities)########################
+            ##COSINE SIMILARITY (pairwise comparison of cosine similarities_old)########################
             cosine_similarity_mean_ij = np.ma.masked_array(cosine_sim_j[:, :, diag_idx_maxlen[0], diag_idx_maxlen[1]],mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
             cosine_similarity_mean_i[:,start_store_point_i:end_store_point_i] = cosine_similarity_mean_ij
             # KMERS PERCENT IDENTITY ############
@@ -606,11 +606,11 @@ def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksiz
             #  [m,n,kmers,nkmers,ksize,ksize], where the diagonal contains the pairwise values between the kmers
             kmers_matrix_pid_ij = pairwise_matrix_j[:, :, :, overlapping_kmers][:, :, overlapping_kmers].transpose(0, 1, 4, 2,3, 5)
             kmers_matrix_cosine_ij = cosine_sim_j[:, :, :, overlapping_kmers][:, :, overlapping_kmers].transpose(0, 1, 4, 2,3, 5)
-            # Highlight: Apply masks to calculate the similarities. NOTE: To get the data with the filled value use k = np.ma.getdata(kmers_matrix_diag_masked)
+            # Highlight: Apply masks to calculate the similarities_old. NOTE: To get the data with the filled value use k = np.ma.getdata(kmers_matrix_diag_masked)
             ##PERCENT IDENTITY (binary pairwise comparison) ###############
             percent_identity_mean_ij = np.ma.masked_array(pairwise_sim_j, mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!! #TODO: does it?
             percent_identity_mean_i[:,start_store_point_i:end_store_point_i] = percent_identity_mean_ij #TODO: Probably no need to store this either
-            ##COSINE SIMILARITY (pairwise comparison of cosine similarities)########################
+            ##COSINE SIMILARITY (pairwise comparison of cosine similarities_old)########################
             cosine_similarity_mean_ij = np.ma.masked_array(cosine_sim_j[:, :, diag_idx_maxlen[0], diag_idx_maxlen[1]],mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
             cosine_similarity_mean_i[:,start_store_point_i:end_store_point_i] = cosine_similarity_mean_ij
             # KMERS PERCENT IDENTITY ############
@@ -880,7 +880,7 @@ def information_gain(arr,arr_mask,diag_idx_maxlen,max_len):
     Calculates the amount of vector similarity/distance change between the hidden representations of the positions in the sequence for both backward and forward RNN hidden states.
     1) For a given sequence with 2 sequences of hidden states [2,L,Hidden_dim]
 
-        A) Calculate cosine similarities for each of the forward and backward hidden states of an RNN
+        A) Calculate cosine similarities_old for each of the forward and backward hidden states of an RNN
         Cos_sim([L,Hidden_dim],[L,Hidden_dim]]
 
 
