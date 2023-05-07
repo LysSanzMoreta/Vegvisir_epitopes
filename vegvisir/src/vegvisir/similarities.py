@@ -127,8 +127,8 @@ def masked_mean_loop(params):
 
 def calculate_masked_mean(iterables_args,fixed_args):
     """Calculates the average cosine similarity of each sequence to the 3 neighbouring kmers of every other sequence & ignoring paddings """
-    nkmers,kmers_mask= fixed_args
-    hotspots,kmer_idx,diag_idx_1 = iterables_args
+    nkmers,kmers_mask= fixed_args #kmers_mask = [N,nkmers,ksize]
+    hotspots,kmer_idx,diag_idx_1 = iterables_args #hotspots = [batch_size,N,nkmers,nkmers,ksize)
     print("--------------{}-------------".format(kmer_idx))
     diag_idx_0 = np.arange(0,hotspots.shape[0]) #in case there are uneven splits
     hotspots[diag_idx_0,diag_idx_1] = 0 #ignore self cosine similarity
@@ -145,13 +145,27 @@ def calculate_masked_mean(iterables_args,fixed_args):
     #Highlight: refine the mask to ignore also the paddings
     #TODO: REVIEW AGAIN!!! Investigate: #neighbour_kmers_idx = np.array(kmer_idx)
 
-    kmers_mask_0 = kmers_mask[diag_idx_1] #o  0 and 1 are switched on purpose, it is not an accident
-    kmers_mask_0 = np.repeat(kmers_mask_0[:, :, None], nkmers, axis=2)
+    kmers_mask_0 = kmers_mask[diag_idx_1] #(0 and 1 are switched on purpose, it is not an accident), select the mask of the sequences in the batch [batch_size, nkmers,,ksize]
+    kmers_mask_0 = np.repeat(kmers_mask_0[:, :,None], nkmers, axis=2)
+    kmers_mask_0 = kmers_mask_0.transpose((0,2,1,3))
+    #print(kmers_mask_0.shape)
     kmers_mask = np.repeat(kmers_mask[:, :, None], nkmers, axis=2)
-
+    # print("kmers_mask 0 ")
+    # print(kmers_mask_0[0][8])
+    # print("kmers_mask")
+    # print(kmers_mask.shape)
+    # print(kmers_mask[0][8])
+    # # exit()
+    # print("hotspots mask before")
+    # print(hotspots_mask[0][8])
     kmers_mask_split = (kmers_mask_0[:, None] * kmers_mask[None, :]).astype(bool)
-    kmers_mask_split[kmers_mask_split != 1.] = 0.
+    #kmers_mask_split[kmers_mask_split != 1.] = 0.
+    # print("kmers mask split")
+    # print(kmers_mask_split[0][8])
     hotspots_mask *= kmers_mask_split
+    # print("hotspots mask after")
+    # print(hotspots_mask[0][8])
+    # exit()
     hotspots_masked_mean = np.ma.masked_array(hotspots, mask=~hotspots_mask, fill_value=0.).mean(1).mean(2)  # Highlight: In the mask if True means to mask and ignore!!!!
 
     return np.ma.getdata(hotspots_masked_mean) #[batch_size,nkmers,ksize]
@@ -180,8 +194,9 @@ def importance_weight(hotspots,nkmers,ksize,max_len,positional_mask,overlapping_
     #diag_idx_0 = diag_idx[0][:batch_size]
     diag_idx_1 = [[i]*nkmers for i in np.array_split(diag_idx[1],split_size)]
     diag_idx_1 = functools.reduce(operator.iconcat, diag_idx_1, [])
-    # fixed_args = nkmers,kmers_mask
+    fixed_args = nkmers,kmers_mask
     # for s,k_i,diag_1 in zip(splits,kmers_idx,diag_idx_1):
+    #     k_i = 8
     #     iterables_args = s,k_i,diag_1
     #     r = calculate_masked_mean(iterables_args,fixed_args)
     # exit()
@@ -452,7 +467,7 @@ def calculate_similarity_matrix_parallel(array, max_len, array_mask, batch_size=
     print("Overall calculation time {}".format(str(datetime.timedelta(seconds=end - start))))
     #Highlight: Mirror values across the diagonal
     #pid_pairwise_matrix = np.maximum(pid_pairwise_matrix, pid_pairwise_matrix.transpose(1,0,2,3))
-    print("Transposing")
+    print("Transposing TODO: Transform inside loop")
     kmers_cosine_similarity_matrix_diag = np.maximum(kmers_cosine_similarity_matrix_diag, kmers_cosine_similarity_matrix_diag.transpose(1,0,2,3,4))
     positional_weights = importance_weight(kmers_cosine_similarity_matrix_diag,nkmers,ksize,max_len,array_mask,overlapping_kmers,batch_size)
     percent_identity_mean = np.maximum(percent_identity_mean, percent_identity_mean.transpose())

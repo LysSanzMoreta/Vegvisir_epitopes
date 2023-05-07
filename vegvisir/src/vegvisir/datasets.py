@@ -605,8 +605,8 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
     n_data = epitopes_array.shape[0]
     ksize = 3 #TODO: manage in args
-    epitopes_array_blosum = epitopes_array_blosum
-    epitopes_mask = epitopes_mask
+    epitopes_array_blosum = epitopes_array_blosum[:1000]
+    epitopes_mask = epitopes_mask[:1000]
 
     if not os.path.exists("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
         print("Epitopes similarity matrices not existing, calculating (this might take a while, 10 minutes for 10000 sequences) ....")
