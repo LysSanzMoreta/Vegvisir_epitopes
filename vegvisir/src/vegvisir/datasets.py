@@ -313,7 +313,7 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
     return data_info
 
 def select_filters(args):
-    filters_dict = {"filter_kmers":[True,9,args.sequence_type], #Icore_non_anchor
+    filters_dict = {"filter_kmers":[False,9,args.sequence_type], #Icore_non_anchor
                     "group_alleles":[True],
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
@@ -546,7 +546,7 @@ def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     return data_info
 
-def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",features_names=None,plot_blosum=False,plot_umap=False):
+def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",features_names=None,plot_blosum=False,plot_umap=False,plot_frequencies=False):
     """
     Notes:
       - Mid-padding : https://www.nature.com/articles/s41598-020-71450-8
@@ -600,16 +600,16 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     epitopes_array_blosum_norm = np.vectorize(blosum_norm_dict.get)(epitopes_array_int)
     if plot_blosum:
         VegvisirPlots.plot_blosum_cosine(blosum_array, storage_folder, args)
-    epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
 
+
+    epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
+
 
     n_data = epitopes_array.shape[0]
     ksize = 3 #TODO: manage in args
     labels_arr = np.array(data[["target_corrected"]].values.tolist()).squeeze()
     training = data[["training"]].values.tolist()
-    epitopes_array_blosum = epitopes_array_blosum[:10000]
-    epitopes_mask = epitopes_mask[:10000]
     training = np.array(training).squeeze(-1)
     training_labels_arr = labels_arr[training]
     training_epitopes = epitopes_array_blosum[training]
@@ -618,14 +618,19 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     positives_arr_mask = training_mask[training_labels_arr == 1]
     negatives_arr = training_epitopes[training_labels_arr == 0]
     negatives_arr_mask = training_mask[training_labels_arr == 0]
+    confidence_scores = np.array(data["confidence_score"].values.tolist())[training]
+    high_conf_negatives_arr = training_epitopes[(confidence_scores > 0.6)&(training_labels_arr == 0)]
+    if plot_frequencies:
+        VegvisirPlots.plot_aa_frequencies(high_conf_negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args)
+
 
     if not os.path.exists("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
         print("Epitopes similarity matrices not existing, calculating (this might take a while, 10 minutes for 10000 sequences) ....")
         #VegvisirUtils.folders("{}/similarities".format(args.dataset_name), storage_folder)
-        #percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirUtils.calculate_similarity_matrix(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
         #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
-        #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(positives_arr,seq_max_len,positives_arr_mask,ksize=ksize)
-        positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(negatives_arr,seq_max_len,negatives_arr_mask,ksize=ksize)
+        #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(training_epitopes,seq_max_len,training_mask,ksize=ksize)
+        positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(high_conf_negatives_arr,seq_max_len,positives_arr_mask,ksize=ksize)
+        #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(negatives_arr,seq_max_len,negatives_arr_mask,ksize=ksize)
 
         #zarr.save("{}/{}/similarities/pid_pairwise_matrix.npz".format(storage_folder,args.dataset_name), pid_pairwise_matrix)
         np.save("{}/{}/similarities/positional_weights.npy".format(storage_folder,args.dataset_name), positional_weights)

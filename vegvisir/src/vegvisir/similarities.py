@@ -260,18 +260,21 @@ def calculate_masked_mean(iterables_args,fixed_args):
     #hotspots = hotspots[seq_idx]
     hotspots_mask = np.zeros_like(hotspots)
     if positional_idx -1 < 0:
-        #neighbour_positions_idx = np.array([positional_idx,positional_idx +1,positional_idx+2])
-        neighbour_positions_idx = np.array([positional_idx])
-        divisor = 1
+        neighbour_positions_idx = np.array([positional_idx,positional_idx +1,positional_idx+2])
+        divisor = 3
+        # neighbour_positions_idx = np.array([positional_idx])
+        # divisor = 1
     elif positional_idx + 1 == max_len or positional_idx == 8 or positional_idx == 9:
-        # neighbour_positions_idx = np.array([positional_idx-2,positional_idx-1,positional_idx])
-        # divisor = 3
-        neighbour_positions_idx = np.array([positional_idx])
-        divisor = 1
+        neighbour_positions_idx = np.array([positional_idx-2,positional_idx-1,positional_idx])
+        divisor = 3
+        # neighbour_positions_idx = np.array([positional_idx])
+        # divisor = 1
     else:
-        #neighbour_positions_idx = np.array([positional_idx-1,positional_idx,positional_idx +1])
-        neighbour_positions_idx = np.array([positional_idx])
-        divisor = 1
+        neighbour_positions_idx = np.array([positional_idx-1,positional_idx,positional_idx +1])
+        divisor = 3
+        # neighbour_positions_idx = np.array([positional_idx])
+        # divisor = 1
+
 
     hotspots_mask[:,:,positional_idx][:,:,neighbour_positions_idx] = 1 #True (use for calculation)
     hotspots_mask = hotspots_mask.astype(bool)
@@ -308,7 +311,7 @@ def importance_weight(hotspots,nkmers,ksize,max_len,positional_mask,overlapping_
     diag_idx = np.diag_indices(n_seqs)
     diag_idx_1 = [[i]*max_len for i in np.array_split(diag_idx[1],split_size)]
     diag_idx_1 = functools.reduce(operator.iconcat, diag_idx_1, [])
-    #
+
     # fixed_args = max_len,positional_mask
     # for s,p_i,diag_1 in zip(splits,positional_idxs,diag_idx_1):
     #     iterables_args = s,p_i,diag_1

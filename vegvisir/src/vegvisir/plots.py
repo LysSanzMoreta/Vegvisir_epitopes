@@ -5,7 +5,7 @@ Vegvisir :
 =======================
 """
 import json
-
+from collections import defaultdict
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.colors import Normalize
@@ -23,7 +23,11 @@ import multiprocessing
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
 colors_dict = {0: "red", 1: "green"}
-
+colors_list_aa = ["black", "plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange",
+               "yellow", "green",
+               "dodgerblue", "blue", "purple", "magenta", "grey", "maroon", "lightcoral", "olive", "teal",
+               "goldenrod", "chocolate", "cornflowerblue", "pink", "darkgrey", "indianred",
+               "mediumspringgreen"]
 
 
 def plot_data_information(data, filters_dict, storage_folder, args, name_suffix):
@@ -249,7 +253,6 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     plt.clf()
     plt.close(fig)
 
-
 def plot_features_histogram(data, features_names, results_dir, name_suffix):
     """Plots the histogram densities featues of all data points
     Notes: If feeling fancy try: https://stackoverflow.com/questions/38830250/how-to-fill-matplotlib-bars-with-a-gradient"""
@@ -389,6 +392,49 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
         plt.savefig("{}/{}/umap_data_features".format(script_dir, dataset_name))
         plt.clf()
         plt.close(fig)
+
+def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args):
+
+    aa_groups_dict,groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aa_dict)
+
+    frequencies_per_position = VegvisirUtils.calculate_aa_frequencies(data_array,aa_types)
+    aa_patches = [mpatches.Patch(color=colors_list_aa[i], label='{}'.format(aa)) for aa,i in aa_dict.items()]
+    aa_groups_patches = [mpatches.Patch(color=color, label='{}'.format(group)) for group,color in groups_names_colors_dict.items()]
+    aa_colors_dict = {i: colors_list_aa[i] for aa, i in aa_dict.items()}
+    aa_int = np.array(list(aa_dict.values()))
+    fig, axs = plt.subplots(nrows=1, ncols=3,figsize=(12, 6),gridspec_kw={'width_ratios': [4.5, 4.5,1]})  # check this: https://stackoverflow.com/questions/9834452/how-do-i-make-a-single-legend-for-many-subplots
+
+    x_pos = 0
+    x_pos_labels = []
+    for p_idx, frequencies_position in enumerate(frequencies_per_position):
+        x_pos_labels.append(x_pos)
+        sorted_idx = np.argsort(frequencies_position)[::-1]
+        frequencies_position_sorted = frequencies_position[sorted_idx]
+        sorted_aa = aa_int[sorted_idx]
+        group_frequencies_dict = {freq:aa_groups_dict[aa] for freq,aa in zip(frequencies_position_sorted,sorted_aa)}
+        group_frequencies_inverted_dict = defaultdict(float)#dict(zip(aa_groups_dict.values(),[0]*len(aa_groups_dict)))
+        for freq,group_color in group_frequencies_dict.items():
+            group_frequencies_inverted_dict[group_color] += freq
+        for group_color,group_frequency in sorted(group_frequencies_inverted_dict.items(), key=lambda x: x[1],reverse=True):
+            axs[1].bar(x_pos, group_frequency,color=group_color,width = 0.2)
+        for aa_idx, aa_frequency in zip(sorted_aa,frequencies_position_sorted):
+            axs[0].bar(x_pos, aa_frequency,color=aa_colors_dict[aa_idx],width = 0.2)
+        x_pos += 0.5
+    axs[0].set_xticks(x_pos_labels)
+    axs[0].set_xticklabels(labels=list(range(max_len)))
+    axs[1].set_xticks(x_pos_labels)
+    axs[1].set_xticklabels(labels=list(range(max_len)))
+    axs[2].axis("off")
+    legend1 = plt.legend(handles=aa_patches, prop={'size': 8}, loc='center right',
+                         bbox_to_anchor=(1.4, 0.5), ncol=1)
+    plt.legend(handles=aa_groups_patches, prop={'size': 8}, loc='center right',
+               bbox_to_anchor=(0.7, 0.45), ncol=1)
+    plt.gca().add_artist(legend1)
+    plt.suptitle("Amino acid/Group counts per position")
+    plt.savefig("{}/{}/Aminoacids_frequency_counts".format(storage_folder, args.dataset_name), dpi=500)
+    plt.clf()
+    plt.close(fig)
+
 
 def plot_heatmap(array, title,file_name):
     fig = plt.figure(figsize=(20, 20))

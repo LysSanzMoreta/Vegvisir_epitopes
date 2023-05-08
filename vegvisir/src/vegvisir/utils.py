@@ -101,7 +101,7 @@ def aminoacid_names_dict(aa_types,zero_characters = []):
     return aminoacid_names
 
 def aminoacids_groups(aa_dict):
-    positive_charged = (["R","H","L"],"red")
+    positive_charged = (["R","H","K"],"red")
     negative_charged = (["D","E"],"lawngreen")
     uncharged = (["S","T","N","Q"],"aqua")
     special = (["C","U","G","P"],"yellow")
@@ -184,6 +184,16 @@ def create_blosum(aa_types,subs_matrix_name,zero_characters=[],include_zero_char
     #blosum_array_dict[0] = np.full((aa_types),0)  #np.nan == np.nan is False ...
 
     return subs_array, subs_dict, blosum_array_dict
+
+
+def calculate_aa_frequencies(dataset,freq_bins):
+    """Calculates a frequency for each of the aa & gap at each position.The number of bins (of size 1) is one larger than the largest value in x. This is done for numpy arrays
+    :param tensor dataset
+    :param int freq_bins
+    """
+    freqs = np.apply_along_axis(lambda x: np.bincount(x, minlength=freq_bins), axis=0, arr=dataset.astype("int64")).T
+    #freqs = freqs/dataset.shape[0]
+    return freqs
 
 class AUK:
     """Slighlty re-adapted implementation from https://towardsdatascience.com/auk-a-simple-alternative-to-auc-800e61945be5
