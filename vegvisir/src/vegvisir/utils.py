@@ -139,7 +139,7 @@ def create_blosum(aa_types,subs_matrix_name,zero_characters=[],include_zero_char
     Builds an array containing the blosum scores per character
     :param aa_types: amino acid probabilities, determines the choice of BLOSUM matrix
     :param str subs_matrix_name: name of the substitution matrix, check availability at /home/lys/anaconda3/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data
-    :param bool include_zero_characters : If True the score for the zero characters is kept in the blosum encoding, so the vector will have size 21 instead of just 20
+    :param bool include_zero_characters : If True the score for the zero characters is kept in the blosum encoding for each amino acid, so the vector will have size 21 instead of just 20
     """
 
     if aa_types > 21 and not subs_matrix_name.startswith("PAM"):
@@ -150,8 +150,10 @@ def create_blosum(aa_types,subs_matrix_name,zero_characters=[],include_zero_char
 
     subs_matrix = Bio.Align.substitution_matrices.load(subs_matrix_name)
     aa_list = list(aminoacid_names_dict(aa_types,zero_characters=zero_characters).keys())
-    index_gap = aa_list.index("#")
-    aa_list[index_gap] = "*" #in the blosum matrix gaps are represanted as *
+
+    if zero_characters:
+        index_gap = aa_list.index("#")
+        aa_list[index_gap] = "*" #in the blosum matrix gaps are represanted as *
 
     subs_dict = defaultdict()
     subs_array = np.zeros((len(aa_list) , len(aa_list) ))
@@ -169,14 +171,16 @@ def create_blosum(aa_types,subs_matrix_name,zero_characters=[],include_zero_char
     names = np.concatenate((np.array([float("-inf")]), np.arange(0,len(aa_list))))
     subs_array = np.c_[ np.arange(0,len(aa_list)), subs_array ]
     subs_array = np.concatenate((names[None,:],subs_array),axis=0)
+
     #subs_array[1] = np.zeros(aa_types+1)  #replace the gap scores for zeroes , instead of [-4,-4,-4...]
     #subs_array[:,1] = np.zeros(aa_types+1)  #replace the gap scores for zeroes , instead of [-4,-4,-4...]
 
     #blosum_array_dict = dict(enumerate(subs_array[1:,2:])) # Highlight: Changed to [1:,2:] instead of [1:,1:] to skip the scores for non-aa elements
-    if include_zero_characters:
+    if include_zero_characters or not zero_characters:
         blosum_array_dict = dict(enumerate(subs_array[1:,1:]))
     else:
         blosum_array_dict = dict(enumerate(subs_array[1:, 2:])) # Highlight: Changed to [1:,2:] instead of [1:,1:] to skip the scores for non-aa elements
+
     #blosum_array_dict[0] = np.full((aa_types),0)  #np.nan == np.nan is False ...
 
     return subs_array, subs_dict, blosum_array_dict
