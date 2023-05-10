@@ -191,6 +191,7 @@ def calculate_aa_frequencies(dataset,freq_bins):
     :param tensor dataset
     :param int freq_bins
     """
+
     freqs = np.apply_along_axis(lambda x: np.bincount(x, minlength=freq_bins), axis=0, arr=dataset.astype("int64")).T
     #freqs = freqs/dataset.shape[0]
     return freqs
@@ -890,14 +891,13 @@ def manage_predictions(samples_dict,args,predictions_dict):
 
 def information_gain(arr,arr_mask,diag_idx_maxlen,max_len):
     """
-    Assuming https://github.com/pytorch/pytorch/issues/3587
+    Assuming that the RNN hidden states are obtained as stated here: https://github.com/pytorch/pytorch/issues/3587
     Calculates the amount of vector similarity/distance change between the hidden representations of the positions in the sequence for both backward and forward RNN hidden states.
     1) For a given sequence with 2 sequences of hidden states [2,L,Hidden_dim]
 
         A) Calculate cosine similarities_old for each of the forward and backward hidden states of an RNN
-        Cos_sim([L,Hidden_dim],[L,Hidden_dim]]
-
-
+        Forward = Cos_sim([Hidden_states[0],Hidden_states[0]]
+        Backward = Cos_sim([Hidden_states[1],Hidden_states[1]]
 
         b) Retrieve from the cosine similarity matrix the offset +1 diagonal which contains the following information about contigous states
 
@@ -925,7 +925,7 @@ def information_gain(arr,arr_mask,diag_idx_maxlen,max_len):
         cos_sim_arr = cosine_similarity(arr[idx],arr[idx],correlation_matrix=False)
         cos_sim_diag = cos_sim_arr[diag_idx_maxlen[0][:-1],diag_idx_maxlen[1][1:]] #k=1 offset diagonal
         #Highlight: ignore the positions that have paddings
-        n_paddings = (arr_mask.shape[0] - arr_mask.sum())
+        n_paddings = (arr_mask.shape[0] - arr_mask.sum()) # max_len - true_len
         keep = cos_sim_diag.shape[0] - n_paddings #number of elements in the offset diagonal - number of "False" or paddings along the sequence
         if keep <= 0: #when all the sequence is paddings or only one position is not a padding, every position gets value 0
             if idx == 0:
@@ -941,9 +941,9 @@ def information_gain(arr,arr_mask,diag_idx_maxlen,max_len):
                 forward = information_gain
             else:
                 backward = information_gain
-
             assert information_gain.shape[0] == max_len-1
 
+    #Highlight: Make the arrays overlap
     forward = np.insert(forward,obj=0,values=0,axis=0)
     backward = np.append(backward,np.zeros((1,)),axis=0)
     weights = (forward + backward)/2

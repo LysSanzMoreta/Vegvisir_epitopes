@@ -86,7 +86,6 @@ def extract_windows_vectorized(array, clearing_time_index, max_time, sub_window_
     else:
         return array[:,sub_windows]
 
-
 class KmersFilling(object):
     """Fills in the cosine similarities of the overlapping kmers (N,nkmers,ksize) onto (N,max_len)"""
     def __init__(self,rows_idx_a,rows_idx_b,cols_idx_a,cols_idx_b):
@@ -109,7 +108,6 @@ class KmersFilling(object):
         a[row_a, col_a[0]:col_a[1]] += b[row_b,col_b]
         return a
 
-
 class MaskedMeanParallel:
    def __init__(self,iterables,fixed_args,kmers =False):
         self.fixed = fixed_args
@@ -128,6 +126,7 @@ class MaskedMeanParallel:
             return list(pool.map(masked_mean_loop_kmers, list(zip(zip(*self.iterables), itertools.repeat(self.fixed)))))
         else:
             return list(pool.map(masked_mean_loop, list(zip(zip(*self.iterables), itertools.repeat(self.fixed)))))
+
 def masked_mean_loop_kmers(params):
     iterables, fixed = params
     return calculate_masked_mean_kmers(iterables,fixed_args=fixed)
@@ -135,7 +134,6 @@ def masked_mean_loop_kmers(params):
 def masked_mean_loop(params):
     iterables, fixed = params
     return calculate_masked_mean(iterables,fixed_args=fixed)
-
 
 def calculate_masked_mean_kmers(iterables_args,fixed_args):
     """Calculates the average cosine similarity of each sequence to the 3 neighbouring kmers of every other sequence & ignoring paddings """
@@ -170,6 +168,7 @@ def calculate_masked_mean_kmers(iterables_args,fixed_args):
     # print("hotspots mask before")
     # print(hotspots_mask[0][8])
     kmers_mask_split = (kmers_mask_0[:, None] * kmers_mask[None, :]).astype(bool)
+
     #kmers_mask_split[kmers_mask_split != 1.] = 0.
     # print("kmers mask split")
     # print(kmers_mask_split[0][8])
@@ -212,6 +211,7 @@ def importance_weight_kmers(hotspots,nkmers,ksize,max_len,positional_mask,overla
     #     k_i = 8
     #     iterables_args = s,k_i,diag_1
     #     r = calculate_masked_mean(iterables_args,fixed_args)
+    #     exit()
     # exit()
 
     args_iterables = {"splits":splits,
@@ -259,22 +259,30 @@ def calculate_masked_mean(iterables_args,fixed_args):
     positional_weights = np.zeros((hotspots.shape[0],max_len))
     #hotspots = hotspots[seq_idx]
     hotspots_mask = np.zeros_like(hotspots)
+    neighbours = 1
     if positional_idx -1 < 0:
-        neighbour_positions_idx = np.array([positional_idx,positional_idx +1,positional_idx+2])
-        divisor = 3
-        # neighbour_positions_idx = np.array([positional_idx])
-        # divisor = 1
-    elif positional_idx + 1 == max_len or positional_idx == 8 or positional_idx == 9:
-        neighbour_positions_idx = np.array([positional_idx-2,positional_idx-1,positional_idx])
-        divisor = 3
-        # neighbour_positions_idx = np.array([positional_idx])
-        # divisor = 1
-    else:
-        neighbour_positions_idx = np.array([positional_idx-1,positional_idx,positional_idx +1])
-        divisor = 3
-        # neighbour_positions_idx = np.array([positional_idx])
-        # divisor = 1
+        if neighbours == 1:
+            neighbour_positions_idx = np.array([positional_idx])
+            divisor = 1
+        else:
+            neighbour_positions_idx = np.array([positional_idx,positional_idx +1,positional_idx+2])
+            divisor = 3
 
+    elif positional_idx + 1 == max_len or positional_idx == 8 or positional_idx == 9:
+        if neighbours == 1:
+            neighbour_positions_idx = np.array([positional_idx])
+            divisor = 1
+        else:
+            neighbour_positions_idx = np.array([positional_idx-2,positional_idx-1,positional_idx])
+            divisor = 3
+
+    else:
+        if neighbours == 1:
+            neighbour_positions_idx = np.array([positional_idx])
+            divisor = 1
+        else:
+            neighbour_positions_idx = np.array([positional_idx-1,positional_idx,positional_idx +1])
+            divisor = 3
 
     hotspots_mask[:,:,positional_idx][:,:,neighbour_positions_idx] = 1 #True (use for calculation)
     hotspots_mask = hotspots_mask.astype(bool)
@@ -286,17 +294,17 @@ def calculate_masked_mean(iterables_args,fixed_args):
     positional_mask_expanded = positional_mask_expanded * batch_mask_expanded.transpose((0, 1, 3, 2)) #TODO: this can be calculated outside
     hotspots_mask *= positional_mask_expanded
     hotspots_masked_mean = ((hotspots*hotspots_mask.astype(int)).sum(-1))/divisor
-    hotspots_masked_mean = hotspots_masked_mean.mean(1).mean(1)
+    hotspots_masked_mean = hotspots_masked_mean.sum(-1).mean(1) #sum first, then mean accross all sequences, because the other positions are 0
     positional_weights[:,positional_idx] = hotspots_masked_mean
     #print(positional_weights)
     return positional_weights #[batch_size,max_len]
 
 def importance_weight(hotspots,nkmers,ksize,max_len,positional_mask,overlapping_kmers,batch_size):
-    """Weighting cosine similarities across kmers to find which positions in the sequence are more conserved
+    """Weighting cosine similarities across neighbouring aminoacids to find which positions in the sequence are more conserved
     :param hotspots  = kmers_matrix_cosine_diag_ij : [N,N,nkmers,nkmers,ksize]
     """
     print("Calculating positional importance weights based on neighbouring-aminoacids cosine similarity")
-    # Highlight: Finding most popular positions for conserved kmers
+
     n_seqs = hotspots.shape[0]
     #hotspots[diag_idx_i[0], diag_idx_i[1]] = 0
     #Highlight: Masked mean only over neighbouring kmers
@@ -314,6 +322,7 @@ def importance_weight(hotspots,nkmers,ksize,max_len,positional_mask,overlapping_
 
     # fixed_args = max_len,positional_mask
     # for s,p_i,diag_1 in zip(splits,positional_idxs,diag_idx_1):
+    #     p_i=1
     #     iterables_args = s,p_i,diag_1
     #     r = calculate_masked_mean(iterables_args,fixed_args)
     # exit()
@@ -459,6 +468,7 @@ def calculate_similarity_matrix_parallel(array, max_len, array_mask, batch_size=
                             """
 
     n_data = array.shape[0]
+    assert array.size != 0, "Empty input array"
     array_mask = array_mask[:n_data]
     assert array_mask.shape == (n_data,max_len)
     split_size = [int(array.shape[0] / batch_size) if not batch_size > array.shape[0] else 1][0]

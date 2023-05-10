@@ -14,7 +14,10 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 import torch
-import umap
+try:
+    import umap # numpy < 1.23
+except:
+    pass
 import vegvisir.utils as VegvisirUtils
 from sklearn.feature_selection import mutual_info_classif,mutual_info_regression
 from sklearn.metrics import auc,roc_auc_score,roc_curve,confusion_matrix,matthews_corrcoef,precision_recall_curve,average_precision_score
@@ -393,10 +396,9 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
         plt.clf()
         plt.close(fig)
 
-def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args):
+def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,mode):
 
     aa_groups_dict,groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aa_dict)
-
     frequencies_per_position = VegvisirUtils.calculate_aa_frequencies(data_array,aa_types)
     aa_patches = [mpatches.Patch(color=colors_list_aa[i], label='{}'.format(aa)) for aa,i in aa_dict.items()]
     aa_groups_patches = [mpatches.Patch(color=color, label='{}'.format(group)) for group,color in groups_names_colors_dict.items()]
@@ -430,8 +432,8 @@ def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args)
     plt.legend(handles=aa_groups_patches, prop={'size': 8}, loc='center right',
                bbox_to_anchor=(0.7, 0.45), ncol=1)
     plt.gca().add_artist(legend1)
-    plt.suptitle("Amino acid/Group counts per position")
-    plt.savefig("{}/{}/Aminoacids_frequency_counts".format(storage_folder, args.dataset_name), dpi=500)
+    plt.suptitle("Amino acid/Group counts per position ()".format(mode))
+    plt.savefig("{}/{}/Aminoacids_frequency_counts_{}".format(storage_folder, args.dataset_name,mode), dpi=500)
     plt.clf()
     plt.close(fig)
 
