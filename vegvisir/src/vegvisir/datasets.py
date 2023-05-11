@@ -296,7 +296,7 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
     return data_info
 
 def select_filters(args):
-    filters_dict = {"filter_kmers":[True,9,args.sequence_type], #Icore_non_anchor
+    filters_dict = {"filter_kmers":[False,9,args.sequence_type], #Icore_non_anchor
                     "group_alleles":[True],
                     "filter_alleles":[False], #if True keeps the most common allele
                     "filter_ntested":[False,10],
@@ -605,7 +605,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     training = data[["training"]].values.tolist()
     training = np.array(training).squeeze(-1)
     training_labels_arr = labels_arr[training]
-    training_epitopes = epitopes_array_blosum[training] #Highlight: Change this, depending on plot
+    training_epitopes = epitopes_array_int[training] #Highlight: Change this, depending on plot
     training_mask = epitopes_mask[training]
     positives_arr = training_epitopes[training_labels_arr == 1]
     positives_arr_mask = training_mask[training_labels_arr == 1]
@@ -613,30 +613,44 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     negatives_arr_mask = training_mask[training_labels_arr == 0]
     confidence_scores = np.array(data["confidence_score"].values.tolist())[training]
     high_conf_negatives_arr = training_epitopes[(confidence_scores > 0.6)&(training_labels_arr == 0)]
+    #Highlight: test
+    test_labels_arr = labels_arr[~training]
+    test_epitopes = epitopes_array_int[~training] #Highlight: Change this, depending on plot
+    test_mask = epitopes_mask[~training]
+    test_positives_arr = test_epitopes[test_labels_arr == 1]
+    test_positives_arr_mask = test_mask[test_labels_arr == 1]
+    test_negatives_arr = test_epitopes[test_labels_arr == 0]
+    test_negatives_arr_mask = test_mask[test_labels_arr == 0]
+    test_confidence_scores = np.array(data["confidence_score"].values.tolist())[~training]
+    test_high_conf_negatives_arr = test_epitopes[(test_confidence_scores > 0.6)&(test_labels_arr == 0)]
     if plot_mi:
         identifiers = data.index.values.tolist()  # TODO: reset index in process data function?
         VegvisirMI.calculate_mutual_information(positives_arr.tolist(),identifiers,seq_max_len,"TrainPositives",storage_folder,args.dataset_name)
         VegvisirMI.calculate_mutual_information(negatives_arr.tolist(),identifiers,seq_max_len,"TrainNegatives",storage_folder,args.dataset_name)
         VegvisirMI.calculate_mutual_information(high_conf_negatives_arr.tolist(),identifiers,seq_max_len,"TrainHighlyConfidentNegatives",storage_folder,args.dataset_name)
-    plot_frequencies=False
+    plot_frequencies=True
     if plot_frequencies:#Highlight: remember to use "int"!!!!!!!!
-        VegvisirPlots.plot_aa_frequencies(training_epitopes,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainAll")
+        #VegvisirPlots.plot_aa_frequencies(training_epitopes,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestAll")
         #VegvisirPlots.plot_aa_frequencies(epitopes_array_int,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainTestAll")
-        # VegvisirPlots.plot_aa_frequencies(negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestNegatives")
-        # VegvisirPlots.plot_aa_frequencies(positives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestPositives")
 
-        # VegvisirPlots.plot_aa_frequencies(high_conf_negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainHighConfidenceNegatives")
-        # VegvisirPlots.plot_aa_frequencies(negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainNegatives")
-        #VegvisirPlots.plot_aa_frequencies(positives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainPositives")
+        VegvisirPlots.plot_aa_frequencies(test_negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestNegatives")
+        VegvisirPlots.plot_aa_frequencies(test_positives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestPositives")
+        VegvisirPlots.plot_aa_frequencies(test_high_conf_negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestHighConfidenceNegatives")
 
+
+        VegvisirPlots.plot_aa_frequencies(high_conf_negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainHighConfidenceNegatives")
+        VegvisirPlots.plot_aa_frequencies(negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainNegatives")
+        VegvisirPlots.plot_aa_frequencies(positives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainPositives")
+
+    exit()
     if not os.path.exists("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
         print("Epitopes similarity matrices not existing, calculating (this might take a while, 10 minutes for 10000 sequences) ....")
         #VegvisirUtils.folders("{}/similarities".format(args.dataset_name), storage_folder)
         #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
         #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(training_epitopes,seq_max_len,training_mask,ksize=ksize)
-        positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(positives_arr,seq_max_len,positives_arr_mask,ksize=ksize)
+        #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(positives_arr,seq_max_len,positives_arr_mask,ksize=ksize)
         #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(negatives_arr,seq_max_len,negatives_arr_mask,ksize=ksize)
-        #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(high_conf_negatives_arr,seq_max_len,negatives_arr_mask,ksize=ksize)
+        positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(high_conf_negatives_arr,seq_max_len,negatives_arr_mask,ksize=ksize)
 
         #zarr.save("{}/{}/similarities/pid_pairwise_matrix.npz".format(storage_folder,args.dataset_name), pid_pairwise_matrix)
         np.save("{}/{}/similarities/positional_weights.npy".format(storage_folder,args.dataset_name), positional_weights)

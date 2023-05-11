@@ -107,7 +107,8 @@ def aminoacids_groups(aa_dict):
     special = (["C","U","G","P"],"yellow")
     hydrophobic = (["A","V","I","L","M"],"orange")
     aromatic = (["F","Y","W"],"magenta")
-    groups_names_colors_dict = {"positive":positive_charged[1],"negative":negative_charged[1],"uncharged":uncharged[1],"special":special[1],"hydrophobic":hydrophobic[1],"aromatic":aromatic[1]}
+    others = ([],"black")
+    groups_names_colors_dict = {"positive":positive_charged[1],"negative":negative_charged[1],"uncharged":uncharged[1],"special":special[1],"hydrophobic":hydrophobic[1],"aromatic":aromatic[1],"others":others[1]}
     aa_groups_dict = defaultdict()
 
     for aa,i in aa_dict.items():

@@ -399,6 +399,7 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
 def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,mode):
 
     aa_groups_dict,groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aa_dict)
+    reverse_aa_dict = {val:key for key,val in aa_dict.items()}
     frequencies_per_position = VegvisirUtils.calculate_aa_frequencies(data_array,aa_types)
     aa_patches = [mpatches.Patch(color=colors_list_aa[i], label='{}'.format(aa)) for aa,i in aa_dict.items()]
     aa_groups_patches = [mpatches.Patch(color=color, label='{}'.format(group)) for group,color in groups_names_colors_dict.items()]
@@ -413,15 +414,35 @@ def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,
         sorted_idx = np.argsort(frequencies_position)[::-1]
         frequencies_position_sorted = frequencies_position[sorted_idx]
         sorted_aa = aa_int[sorted_idx]
-        group_frequencies_dict = {freq:aa_groups_dict[aa] for freq,aa in zip(frequencies_position_sorted,sorted_aa)}
-        group_frequencies_inverted_dict = defaultdict(float)#dict(zip(aa_groups_dict.values(),[0]*len(aa_groups_dict)))
-        for freq,group_color in group_frequencies_dict.items():
-            group_frequencies_inverted_dict[group_color] += freq
+        group_frequencies_inverted_dict = dict.fromkeys(list(groups_names_colors_dict.values()))
+        #group_frequencies_inverted_dict = defaultdict(float)
+        print("-------POSITION : {} -----------------------------".format(p_idx))
+        for freq,aa in zip(frequencies_position_sorted,sorted_aa):
+            group_color_aa = aa_groups_dict[aa]
+            #print("aa idx {}, aa name {},freq {},group color {}".format(aa,reverse_aa_dict[aa],freq,group_color_aa))
+            if group_frequencies_inverted_dict[group_color_aa] is not None:
+                group_frequencies_inverted_dict[group_color_aa] += freq
+            else:
+                group_frequencies_inverted_dict[group_color_aa] = freq
+        group_frequencies_inverted_dict = {k: v for k, v in group_frequencies_inverted_dict.items() if v is not None}
+        assert np.sum(frequencies_position_sorted) == sum(list(group_frequencies_inverted_dict.values()))
+
+        prev_group_freq = 0
         for group_color,group_frequency in sorted(group_frequencies_inverted_dict.items(), key=lambda x: x[1],reverse=True):
-            axs[1].bar(x_pos, group_frequency,color=group_color,width = 0.2)
+            if group_frequency != 0:
+                if group_frequency == prev_group_freq: # avoids overlapping frequencies with equal values
+                    x_pos += 0.3
+                axs[1].bar(x_pos, group_frequency,color=group_color,width = 0.2)
+                prev_group_freq = group_frequency
+        prev_aa_freq = 0
         for aa_idx, aa_frequency in zip(sorted_aa,frequencies_position_sorted):
-            axs[0].bar(x_pos, aa_frequency,color=aa_colors_dict[aa_idx],width = 0.2)
-        x_pos += 0.5
+            if aa_frequency != 0:
+                if aa_frequency == prev_aa_freq: # avoids overlapping frequencies with equal values
+                    x_pos += 0.3
+                axs[0].bar(x_pos, aa_frequency,color=aa_colors_dict[aa_idx],width = 0.2)
+                prev_aa_freq = aa_frequency
+        x_pos += 1
+
     axs[0].set_xticks(x_pos_labels)
     axs[0].set_xticklabels(labels=list(range(max_len)))
     axs[1].set_xticks(x_pos_labels)
