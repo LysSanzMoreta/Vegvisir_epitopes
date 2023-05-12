@@ -6,7 +6,7 @@ import datetime
 import numpy as np
 import multiprocessing
 
-def cosine_similarity(a,b,correlation_matrix=False,parallel=False):
+def cosine_similarity(a,b,correlation_matrix=False,parallel=False): #TODO: import from utils
     """Calculates the cosine similarity between matrices of k-mers.
     :param numpy array a: (max_len,aa_types) or (num_seq,max_len, aa_types)
     :param numpy array b: (max_len,aa_types) or (num_seq,max_len, aa_types)
@@ -62,7 +62,7 @@ def cosine_similarity(a,b,correlation_matrix=False,parallel=False):
 
         return cosine_sim
 
-def extract_windows_vectorized(array, clearing_time_index, max_time, sub_window_size,only_windows=True):
+def extract_windows_vectorized(array, clearing_time_index, max_time, sub_window_size,only_windows=True): #TODO: import from utils
     """
     Creates indexes to extract kmers from a sequence, such as:
          seq =  [A,T,R,P,V,L]
@@ -341,7 +341,6 @@ def importance_weight(hotspots,nkmers,ksize,max_len,positional_mask,overlapping_
     positional_weights*= positional_mask
     print("Finished positional weights")
     return positional_weights
-
 
 def process_value(iterables_args,fixed_args):
 

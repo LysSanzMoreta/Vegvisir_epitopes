@@ -298,7 +298,7 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
 def select_filters(args):
     filters_dict = {"filter_kmers":[False,9,args.sequence_type], #Icore_non_anchor
                     "group_alleles":[True],
-                    "filter_alleles":[False], #if True keeps the most common allele
+                    "filter_alleles":[True], #if True keeps the most common allele
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}
@@ -390,10 +390,11 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
     filters_dict = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
-    most_common_allele = data.value_counts("allele").index[0]
+    most_common_allele = data.value_counts("allele").index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
 
     if filters_dict["filter_alleles"][0]:
         data = data[data["allele"] == most_common_allele]
+
 
     if filters_dict["group_alleles"][0]:
         # Group data by Icore, therefore the alleles are grouped
@@ -588,6 +589,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
         epitopes_array = epitopes_array[:args.subset_data]
         epitopes_mask = epitopes_mask[:args.subset_data]
     blosum_norm = np.linalg.norm(blosum_array[1:, 1:], axis=0)
+
     aa_list = [val for key, val in aa_dict.items() if val in list(blosum_array[:, 0])]
     blosum_norm_dict = dict(zip(aa_list,blosum_norm.tolist()))
     epitopes_array_blosum_norm = np.vectorize(blosum_norm_dict.get)(epitopes_array_int)
@@ -597,6 +599,23 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
+    #Highlight: Encode amino acid by chemical group
+    aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict = VegvisirUtils.aminoacids_groups(
+        aa_dict)  # TODO: Gropus by blosum cosine similarity (group aas with similar blosum vectors)
+    aa_groups = len(groups_names_colors_dict.keys())
+    epitopes_array_int_group = np.vectorize(aa_groups_dict.get)(epitopes_array_int)
+    #Highlight: Encode amino acid by blosum norm group
+    blosum_norm_sorted_idx = np.argsort(blosum_norm)
+    blosum_norm_sorted = blosum_norm[blosum_norm_sorted_idx]
+    amino_acids_sorted = np.array(aa_list)[blosum_norm_sorted_idx]
+    blosum_norm_sorted = np.concatenate([amino_acids_sorted[:,None],blosum_norm_sorted[:,None]],axis=1)
+    blosum_norm_groups = np.array_split(blosum_norm_sorted,6)
+    blosum_norm_groups_dict = dict.fromkeys(aa_list)
+    for group_idx,group_array in enumerate(blosum_norm_groups):
+        aa_group = group_array[:,0]
+        for aa in aa_group:
+            blosum_norm_groups_dict[aa] = group_idx
+    epitopes_array_blosum_norm_group = np.vectorize(blosum_norm_groups_dict.get)(epitopes_array_int)
 
 
     n_data = epitopes_array.shape[0]
@@ -605,7 +624,7 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     training = data[["training"]].values.tolist()
     training = np.array(training).squeeze(-1)
     training_labels_arr = labels_arr[training]
-    training_epitopes = epitopes_array_int[training] #Highlight: Change this, depending on plot
+    training_epitopes = epitopes_array_blosum_norm_group[training] #Highlight: Change this, depending on plot
     training_mask = epitopes_mask[training]
     positives_arr = training_epitopes[training_labels_arr == 1]
     positives_arr_mask = training_mask[training_labels_arr == 1]
@@ -613,9 +632,11 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     negatives_arr_mask = training_mask[training_labels_arr == 0]
     confidence_scores = np.array(data["confidence_score"].values.tolist())[training]
     high_conf_negatives_arr = training_epitopes[(confidence_scores > 0.6)&(training_labels_arr == 0)]
+    high_conf_negatives_arr_mask = training_mask[(confidence_scores > 0.6)&(training_labels_arr == 0)]
+
     #Highlight: test
     test_labels_arr = labels_arr[~training]
-    test_epitopes = epitopes_array_int[~training] #Highlight: Change this, depending on plot
+    test_epitopes = epitopes_array_blosum_norm_group[~training] #Highlight: Change this, depending on plot
     test_mask = epitopes_mask[~training]
     test_positives_arr = test_epitopes[test_labels_arr == 1]
     test_positives_arr_mask = test_mask[test_labels_arr == 1]
@@ -623,12 +644,25 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     test_negatives_arr_mask = test_mask[test_labels_arr == 0]
     test_confidence_scores = np.array(data["confidence_score"].values.tolist())[~training]
     test_high_conf_negatives_arr = test_epitopes[(test_confidence_scores > 0.6)&(test_labels_arr == 0)]
+    test_high_conf_negatives_arr_mask = test_mask[(test_confidence_scores > 0.6)&(test_labels_arr == 0)]
+
+    plot_mi = True
     if plot_mi:
-        identifiers = data.index.values.tolist()  # TODO: reset index in process data function?
-        VegvisirMI.calculate_mutual_information(positives_arr.tolist(),identifiers,seq_max_len,"TrainPositives",storage_folder,args.dataset_name)
-        VegvisirMI.calculate_mutual_information(negatives_arr.tolist(),identifiers,seq_max_len,"TrainNegatives",storage_folder,args.dataset_name)
-        VegvisirMI.calculate_mutual_information(high_conf_negatives_arr.tolist(),identifiers,seq_max_len,"TrainHighlyConfidentNegatives",storage_folder,args.dataset_name)
-    plot_frequencies=True
+        VegvisirMI.calculate_mi(positives_arr,positives_arr_mask,aa_groups,seq_max_len,"TrainPositives",storage_folder,args.dataset_name)
+        VegvisirMI.calculate_mi(negatives_arr,negatives_arr_mask,aa_groups,seq_max_len,"TrainNegatives",storage_folder,args.dataset_name)
+        VegvisirMI.calculate_mi(high_conf_negatives_arr,high_conf_negatives_arr_mask,aa_groups,seq_max_len,"TrainHighlyConfidentNegatives",storage_folder,args.dataset_name)
+
+        VegvisirMI.calculate_mi(test_positives_arr,test_positives_arr_mask,aa_groups,seq_max_len,"TestPositives",storage_folder,args.dataset_name)
+        VegvisirMI.calculate_mi(test_negatives_arr,test_negatives_arr_mask,aa_groups,seq_max_len,"TestNegatives",storage_folder,args.dataset_name)
+        VegvisirMI.calculate_mi(test_high_conf_negatives_arr,test_high_conf_negatives_arr_mask,aa_groups,seq_max_len,"TestHighlyConfidentNegatives",storage_folder,args.dataset_name)
+
+
+        # identifiers = data.index.values.tolist()  # TODO: reset index in process data function?
+        # VegvisirMI.calculate_mutual_information(positives_arr.tolist(),identifiers,seq_max_len,"TrainPositives",storage_folder,args.dataset_name)
+        # VegvisirMI.calculate_mutual_information(negatives_arr.tolist(),identifiers,seq_max_len,"TrainNegatives",storage_folder,args.dataset_name)
+        # VegvisirMI.calculate_mutual_information(high_conf_negatives_arr.tolist(),identifiers,seq_max_len,"TrainHighlyConfidentNegatives",storage_folder,args.dataset_name)
+    exit()
+    #plot_frequencies=True
     if plot_frequencies:#Highlight: remember to use "int"!!!!!!!!
         #VegvisirPlots.plot_aa_frequencies(training_epitopes,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestAll")
         #VegvisirPlots.plot_aa_frequencies(epitopes_array_int,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainTestAll")
@@ -642,15 +676,14 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
         VegvisirPlots.plot_aa_frequencies(negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainNegatives")
         VegvisirPlots.plot_aa_frequencies(positives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainPositives")
 
-    exit()
     if not os.path.exists("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
         print("Epitopes similarity matrices not existing, calculating (this might take a while, 10 minutes for 10000 sequences) ....")
         #VegvisirUtils.folders("{}/similarities".format(args.dataset_name), storage_folder)
         #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
         #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(training_epitopes,seq_max_len,training_mask,ksize=ksize)
-        #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(positives_arr,seq_max_len,positives_arr_mask,ksize=ksize)
+        positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(positives_arr,seq_max_len,positives_arr_mask,ksize=ksize)
         #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(negatives_arr,seq_max_len,negatives_arr_mask,ksize=ksize)
-        positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(high_conf_negatives_arr,seq_max_len,negatives_arr_mask,ksize=ksize)
+        #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(high_conf_negatives_arr,seq_max_len,high_conf_negatives_arr_mask,ksize=ksize)
 
         #zarr.save("{}/{}/similarities/pid_pairwise_matrix.npz".format(storage_folder,args.dataset_name), pid_pairwise_matrix)
         np.save("{}/{}/similarities/positional_weights.npy".format(storage_folder,args.dataset_name), positional_weights)

@@ -101,32 +101,43 @@ def aminoacid_names_dict(aa_types,zero_characters = []):
     return aminoacid_names
 
 def aminoacids_groups(aa_dict):
-    positive_charged = (["R","H","K"],"red")
-    negative_charged = (["D","E"],"lawngreen")
-    uncharged = (["S","T","N","Q"],"aqua")
-    special = (["C","U","G","P"],"yellow")
-    hydrophobic = (["A","V","I","L","M"],"orange")
-    aromatic = (["F","Y","W"],"magenta")
-    others = ([],"black")
+    others = ([],"black",0)
+    positive_charged = (["R","H","K"],"red",1)
+    negative_charged = (["D","E"],"lawngreen",2)
+    uncharged = (["S","T","N","Q"],"aqua",3)
+    special = (["C","U","G","P"],"yellow",4)
+    hydrophobic = (["A","V","I","L","M"],"orange",5)
+    aromatic = (["F","Y","W"],"magenta",6)
     groups_names_colors_dict = {"positive":positive_charged[1],"negative":negative_charged[1],"uncharged":uncharged[1],"special":special[1],"hydrophobic":hydrophobic[1],"aromatic":aromatic[1],"others":others[1]}
-    aa_groups_dict = defaultdict()
-
+    aa_groups_colors_dict = defaultdict()
+    aa_groups_dict =defaultdict()
     for aa,i in aa_dict.items():
         if aa in positive_charged[0]:
-            aa_groups_dict[i] = positive_charged[1]
+            aa_groups_colors_dict[i] = positive_charged[1]
+            aa_groups_dict[i] = positive_charged[2]
         elif aa in negative_charged[0]:
-            aa_groups_dict[i] = negative_charged[1]
+            aa_groups_colors_dict[i] = negative_charged[1]
+            aa_groups_dict[i] = negative_charged[2]
+
         elif aa in uncharged[0]:
-            aa_groups_dict[i] = uncharged[1]
+            aa_groups_colors_dict[i] = uncharged[1]
+            aa_groups_dict[i] = uncharged[2]
+
         elif aa in special[0]:
-            aa_groups_dict[i] = special[1]
+            aa_groups_colors_dict[i] = special[1]
+            aa_groups_dict[i] = special[2]
         elif aa in hydrophobic[0]:
-            aa_groups_dict[i] = hydrophobic[1]
+            aa_groups_colors_dict[i] = hydrophobic[1]
+            aa_groups_dict[i] = hydrophobic[2]
         elif aa in aromatic[0]:
-            aa_groups_dict[i] = aromatic[1]
+            aa_groups_colors_dict[i] = aromatic[1]
+            aa_groups_dict[i] = aromatic[2]
         else:
-            aa_groups_dict[i] = "black"
-    return aa_groups_dict,groups_names_colors_dict
+            aa_groups_colors_dict[i] = others[1]
+            aa_groups_dict[i] = others[2]
+
+    #return {"aa_groups_colors_dict":aa_groups_colors_dict,"aa_groups_dict":aa_groups_dict,"groups_names_colors_dict":groups_names_colors_dict}
+    return  aa_groups_colors_dict,aa_groups_dict,groups_names_colors_dict
 
 def convert_to_onehot(a,dimensions):
     #ncols = a.max() + 1
@@ -890,7 +901,7 @@ def manage_predictions(samples_dict,args,predictions_dict):
 
     return summary_dict
 
-def information_gain(arr,arr_mask,diag_idx_maxlen,max_len):
+def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
     """
     Assuming that the RNN hidden states are obtained as stated here: https://github.com/pytorch/pytorch/issues/3587
     Calculates the amount of vector similarity/distance change between the hidden representations of the positions in the sequence for both backward and forward RNN hidden states.
@@ -934,15 +945,15 @@ def information_gain(arr,arr_mask,diag_idx_maxlen,max_len):
             else:
                 backward = np.zeros((max_len-1))
         else:
-            information_gain = 1-cos_sim_diag[:keep] #or cosine distance
-            #information_gain = np.abs(cos_sim_diag[:-1] -cos_sim_diag[1:])
+            information_shift = 1-cos_sim_diag[:keep] #or cosine distance
+            #information_shift = np.abs(cos_sim_diag[:-1] -cos_sim_diag[1:])
             #Highlight: Set to 0 the information gain in the padding positions
-            information_gain = np.concatenate([information_gain,np.zeros((n_paddings,))])
+            information_shift = np.concatenate([information_shift,np.zeros((n_paddings,))])
             if idx == 0:
-                forward = information_gain
+                forward = information_shift
             else:
-                backward = information_gain
-            assert information_gain.shape[0] == max_len-1
+                backward = information_shift
+            assert information_shift.shape[0] == max_len-1
 
     #Highlight: Make the arrays overlap
     forward = np.insert(forward,obj=0,values=0,axis=0)
@@ -953,12 +964,12 @@ def information_gain(arr,arr_mask,diag_idx_maxlen,max_len):
     weights*= arr_mask
     return weights[None,:]
 
-def information_gain_samples(hidden_states,data_mask_seq,diag_idx_maxlen,seq_max_len):
+def information_shift_samples(hidden_states,data_mask_seq,diag_idx_maxlen,seq_max_len):
     # Highlight: Encoder
-    encoder_information_gain_weights_seq = Parallel(n_jobs=MAX_WORKERs)(
-        delayed(information_gain)(seq, seq_mask, diag_idx_maxlen,
+    encoder_information_shift_weights_seq = Parallel(n_jobs=MAX_WORKERs)(
+        delayed(information_shift)(seq, seq_mask, diag_idx_maxlen,
                                                 seq_max_len) for seq, seq_mask in
         zip(hidden_states, data_mask_seq))
-    encoder_information_gain_weights_sample = np.concatenate(encoder_information_gain_weights_seq, axis=0)
+    encoder_information_shift_weights_sample = np.concatenate(encoder_information_shift_weights_seq, axis=0)
 
-    return encoder_information_gain_weights_sample[:, None]
+    return encoder_information_shift_weights_sample[:, None]

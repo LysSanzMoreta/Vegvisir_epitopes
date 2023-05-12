@@ -398,7 +398,7 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
 
 def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,mode):
 
-    aa_groups_dict,groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aa_dict)
+    aa_groups_colors_dict,aa_groups_dict,groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aa_dict)
     reverse_aa_dict = {val:key for key,val in aa_dict.items()}
     frequencies_per_position = VegvisirUtils.calculate_aa_frequencies(data_array,aa_types)
     aa_patches = [mpatches.Patch(color=colors_list_aa[i], label='{}'.format(aa)) for aa,i in aa_dict.items()]
@@ -416,7 +416,6 @@ def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,
         sorted_aa = aa_int[sorted_idx]
         group_frequencies_inverted_dict = dict.fromkeys(list(groups_names_colors_dict.values()))
         #group_frequencies_inverted_dict = defaultdict(float)
-        print("-------POSITION : {} -----------------------------".format(p_idx))
         for freq,aa in zip(frequencies_position_sorted,sorted_aa):
             group_color_aa = aa_groups_dict[aa]
             #print("aa idx {}, aa name {},freq {},group color {}".format(aa,reverse_aa_dict[aa],freq,group_color_aa))
@@ -1107,8 +1106,8 @@ def plot_attention_weights(summary_dict,dataset_info,results_dir,method="Train")
     """
 
     aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types,zero_characters=["#"])
-    aa_colors_groups_dict,groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aminoacids_dict)
-    aa_groups_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("aa_cm", list(aa_colors_groups_dict.values()))
+    aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aminoacids_dict)
+    aa_groups_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("aa_cm", list(aa_groups_colors_dict.values()))
 
     colors_list = ["black","plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange", "yellow","green",
                    "dodgerblue", "blue", "purple", "magenta", "grey", "maroon", "lightcoral", "olive", "teal",
@@ -1185,8 +1184,8 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
     """"""
     print("Analyzing hidden dimensions ...")
     aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types,zero_characters=["#"])
-    aa_colors_groups_dict,groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aminoacids_dict)
-    aa_groups_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("aa_cm", list(aa_colors_groups_dict.values()))
+    aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aminoacids_dict)
+    aa_groups_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("aa_cm", list(aa_groups_colors_dict.values()))
 
     colors_list = ["black","plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange", "yellow","green",
                    "dodgerblue", "blue", "purple", "magenta", "grey", "maroon", "lightcoral", "olive", "teal",
@@ -1223,39 +1222,39 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
                 #Highlight: Compute the cosine similarity measure (distance = 1 - similarity) among the hidden states of the sequence
                 if sample_mode == "single_sample":
                     # Highlight: Encoder
-                    encoder_information_gain_weights = Parallel(n_jobs=MAX_WORKERs)(
-                        delayed(VegvisirUtils.information_gain)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
+                    encoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                        delayed(VegvisirUtils.information_shift)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
                         zip(encoder_hidden_states,data_mask_seq))
-                    encoder_information_gain_weights = np.concatenate(encoder_information_gain_weights,axis=0)
+                    encoder_information_shift_weights = np.concatenate(encoder_information_shift_weights,axis=0)
                     #Highlight: Decoder
-                    decoder_information_gain_weights = Parallel(n_jobs=MAX_WORKERs)(
-                        delayed(VegvisirUtils.information_gain)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
+                    decoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                        delayed(VegvisirUtils.information_shift)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
                         zip(decoder_hidden_states,data_mask_seq))
-                    decoder_information_gain_weights = np.concatenate(decoder_information_gain_weights,axis=0)
+                    decoder_information_shift_weights = np.concatenate(decoder_information_shift_weights,axis=0)
                 else:
-                    encoder_information_gain_weights = Parallel(n_jobs=MAX_WORKERs)(
-                        delayed(VegvisirUtils.information_gain_samples)(encoder_hidden_states[:, sample_idx],
+                    encoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                        delayed(VegvisirUtils.information_shift_samples)(encoder_hidden_states[:, sample_idx],
                                                                         data_mask_seq, diag_idx_maxlen,dataset_info.seq_max_len) for sample_idx in range(args.num_samples))
 
-                    decoder_information_gain_weights = Parallel(n_jobs=MAX_WORKERs)(
-                        delayed(VegvisirUtils.information_gain_samples)(decoder_hidden_states[:, sample_idx],
+                    decoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                        delayed(VegvisirUtils.information_shift_samples)(decoder_hidden_states[:, sample_idx],
                                                                         data_mask_seq, diag_idx_maxlen,
                                                                         dataset_info.seq_max_len) for sample_idx in range(args.num_samples))
 
-                    encoder_information_gain_weights = np.concatenate(encoder_information_gain_weights,axis=1) #N,samples, L
-                    encoder_information_gain_weights = encoder_information_gain_weights.mean(axis=1)
-                    decoder_information_gain_weights = np.concatenate(decoder_information_gain_weights,axis=1) #N,samples, L
-                    decoder_information_gain_weights = decoder_information_gain_weights.mean(axis=1)
+                    encoder_information_shift_weights = np.concatenate(encoder_information_shift_weights,axis=1) #N,samples, L
+                    encoder_information_shift_weights = encoder_information_shift_weights.mean(axis=1)
+                    decoder_information_shift_weights = np.concatenate(decoder_information_shift_weights,axis=1) #N,samples, L
+                    decoder_information_shift_weights = decoder_information_shift_weights.mean(axis=1)
 
                 aminoacids = data_int[idx][idx_class]
-                for nn_name,weights in zip(["Encoder","Decoder"],[encoder_information_gain_weights,decoder_information_gain_weights]):
+                for nn_name,weights in zip(["Encoder","Decoder"],[encoder_information_shift_weights,decoder_information_shift_weights]):
                     #Highlight: Start figure
                     fig, [[ax1, ax2, ax3], [ax4, ax5, ax6]] = plt.subplots(nrows=2, ncols=3, figsize=(9, 6),
                                                                            gridspec_kw={'width_ratios': [4.5, 4.5, 1],
                                                                                         'height_ratios': [4.5, 4.5]})
                     print("{}/{}/{}/{}".format(sample_mode, data_points,class_type,nn_name))
                     if np.prod(weights.shape) == 0.:
-                        print("No data points, no information gain - weights plots")
+                        print("No data points, no information shift - weights plots")
                         pass
                     else:
                         # Highlight: Attention weights
@@ -1264,7 +1263,7 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
                                        labels=["{}".format(i) for i in range(weights.shape[1])])
                         ax1.spines['left'].set_visible(False)
                         ax1.yaxis.set_ticklabels([])
-                        ax1.set_title("Information gain by weight")
+                        ax1.set_title("Information shift by weight")
                         # Highlight: Aminoacids coloured by name
                         if np.rint(weights).max() != 1:
                             weights_adjusted = np.array((weights > weights.mean()))
@@ -1275,14 +1274,14 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
                         ax2.set_xticks(np.arange(weights.shape[1] + 1) + 0.5,labels=["{}".format(i) for i in range(weights.shape[1] + 1)])
                         ax2.spines['left'].set_visible(False)
                         ax2.yaxis.set_ticklabels([])
-                        ax2.set_title("Information gain by Aa type")
+                        ax2.set_title("Information shift by Aa type")
                         # Highlight: Aminoacids coloured by functional group (i.e positive, negative ...)
                         sns.heatmap(aminoacids_masked, ax=ax4, cbar=False, cmap=aa_groups_colormap)
                         ax4.set_xticks(np.arange(max_len + 1) + 0.5,
                                        labels=["{}".format(i) for i in range(max_len + 1)])
                         ax4.spines['left'].set_visible(False)
                         ax4.yaxis.set_ticklabels([])
-                        ax4.set_title("Information gain by Aa group")
+                        ax4.set_title("Information shift by Aa group")
     
                         ax3.axis("off")
                         ax5.axis("off")
@@ -1295,9 +1294,9 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
                         plt.gca().add_artist(legend1)
     
                         fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
-                        fig.suptitle("{}. Information gain weights: {}, {}, {}".format(nn_name,sample_mode, data_points, class_type))
+                        fig.suptitle("{}. Information shift weights: {}, {}, {}".format(nn_name,sample_mode, data_points, class_type))
                         plt.savefig(
-                            "{}/{}/{}_Information_gain_plots_{}_{}_{}.png".format(results_dir, method, nn_name,sample_mode, data_points, class_type))
+                            "{}/{}/{}_information_shift_plots_{}_{}_{}.png".format(results_dir, method, nn_name,sample_mode, data_points, class_type))
                         plt.clf()
                         plt.close(fig)
 
