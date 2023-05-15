@@ -32,7 +32,7 @@ def calculate_mutual_information(seq_list,ids,max_len,mode,results_dir,dataset_n
     plt.savefig("{}/{}/Mutual_Information{}".format(results_dir,dataset_name,mode))
 
 
-def calculate_mi(data,data_mask,aa_groups,max_len,mode,results_dir,dataset_name):
+def calculate_mi(data,data_mask,aa_groups,max_len,mode,results_dir,dataset_name,analysis_mode):
     """
     I(X,Y) = H(X,Y) - H(Y|X) - H(X|Y) where I is the Information theory and H is the entropy
     :param data:
@@ -40,34 +40,37 @@ def calculate_mi(data,data_mask,aa_groups,max_len,mode,results_dir,dataset_name)
     :param aa_groups:
     :return:
     """
+    print("Calculating Mutual information")
     from sklearn.metrics import mutual_info_score
-    n_data = data.shape[0]
+    if data.size != 0:
+        n_data = data.shape[0]
+        data_idx = list(range(max_len))
+        mi_matrix = np.zeros((max_len,max_len))
 
-    data_idx = list(range(max_len))
-    mi_matrix = np.zeros((max_len,max_len))
+        for i in data_idx: #for site in the sequence
+            if i+1 < max_len:
+                for j in data_idx[i+1:]: #for next site in the sequence
 
-    for i in data_idx: #for site in the sequence
-        if i+1 < max_len:
-            for j in data_idx[i+1:]: #for next site in the sequence
+                    #r = computeMI(data[:,i],data[:,j])
+                    r2 = mutual_info_score(data[:,i],data[:,j])
 
-                #r = computeMI(data[:,i],data[:,j])
-                r2 = mutual_info_score(data[:,i],data[:,j])
+                    #mi_matrix[i,j] = r
+                    mi_matrix[i, j] = r2
+                    #nonzeros_i = np.nonzero(data_idx[i])
+                    #nonzeros_j = np.nonzero(data_idx[j])
 
-                #mi_matrix[i,j] = r
-                mi_matrix[i, j] = r2
-                #nonzeros_i = np.nonzero(data_idx[i])
-                #nonzeros_j = np.nonzero(data_idx[j])
+        #print(mi_matrix)
+        fig, ax = plt.subplots(nrows=1,ncols=2,figsize=(9,6))
+        max_mi = np.argmax(mi_matrix)
+        im = ax[0].imshow(mi_matrix)
+        ax[0].set_xticks(np.arange(max_len),labels=list(range(max_len)))
+        ax[1].axis("off")
+        cb_ax = fig.add_axes([0.75, 0.25, 0.02, 0.5])
+        fig.colorbar(im, cax=cb_ax)
+        fig.suptitle("Mutual information {}".format(mode))
+        plt.savefig("{}/{}/{}/Mutual_Information{}".format(results_dir,dataset_name,analysis_mode,mode))
+        plt.close(fig)
 
-    print(mi_matrix)
-    fig, ax = plt.subplots(nrows=1,ncols=2,figsize=(9,6))
-    max_mi = np.argmax(mi_matrix)
-    im = ax[0].imshow(mi_matrix)
-    ax[0].set_xticks(np.arange(max_len),labels=list(range(max_len)))
-    ax[1].axis("off")
-    cb_ax = fig.add_axes([0.75, 0.25, 0.02, 0.5])
-    fig.colorbar(im, cax=cb_ax)
-    fig.suptitle("Mutual information {}".format(mode))
-    plt.savefig("{}/{}/Mutual_Information{}".format(results_dir,dataset_name,mode))
 
 
 

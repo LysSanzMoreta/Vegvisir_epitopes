@@ -396,7 +396,7 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
         plt.clf()
         plt.close(fig)
 
-def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,mode):
+def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,analysis_mode,mode):
 
     aa_groups_colors_dict,aa_groups_dict,groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aa_dict)
     reverse_aa_dict = {val:key for key,val in aa_dict.items()}
@@ -417,7 +417,7 @@ def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,
         group_frequencies_inverted_dict = dict.fromkeys(list(groups_names_colors_dict.values()))
         #group_frequencies_inverted_dict = defaultdict(float)
         for freq,aa in zip(frequencies_position_sorted,sorted_aa):
-            group_color_aa = aa_groups_dict[aa]
+            group_color_aa = aa_groups_colors_dict[aa]
             #print("aa idx {}, aa name {},freq {},group color {}".format(aa,reverse_aa_dict[aa],freq,group_color_aa))
             if group_frequencies_inverted_dict[group_color_aa] is not None:
                 group_frequencies_inverted_dict[group_color_aa] += freq
@@ -453,10 +453,9 @@ def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,
                bbox_to_anchor=(0.7, 0.45), ncol=1)
     plt.gca().add_artist(legend1)
     plt.suptitle("Amino acid/Group counts per position ()".format(mode))
-    plt.savefig("{}/{}/Aminoacids_frequency_counts_{}".format(storage_folder, args.dataset_name,mode), dpi=500)
+    plt.savefig("{}/{}/{}/Aminoacids_frequency_counts_{}".format(storage_folder, args.dataset_name,analysis_mode,mode), dpi=500)
     plt.clf()
     plt.close(fig)
-
 
 def plot_heatmap(array, title,file_name):
     fig = plt.figure(figsize=(20, 20))

@@ -14,6 +14,13 @@ import operator,functools
 import matplotlib.pyplot as plt
 import numpy as np
 from collections import defaultdict,namedtuple
+try:
+    import umap
+except:
+    print("Could not import UMAP because of numpy incompatibility")
+    pass
+import hdbscan
+
 
 import scipy
 import seaborn as sns
@@ -31,6 +38,9 @@ plt.style.use('ggplot')
 DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_array_raw","data_array_int","data_array_int_mask",
                                         "data_array_blosum_encoding","data_array_blosum_encoding_mask","data_array_onehot_encoding","data_array_blosum_norm","blosum",
                                         "n_data","seq_max_len","max_len","corrected_aa_types","input_dim","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity","features_names"])
+DatasetDivision = namedtuple("DatasetDivision",["positives","positives_mask","negatives","negatives_mask","high_confidence_negatives","high_confidence_negatives_mask"])
+SimilarityResults = namedtuple("SimilarityResults",["positional_weights","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity"])
+
 def available_datasets():
     """Prints the available datasets"""
     datasets = {0:"viral_dataset",
@@ -183,6 +193,7 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     sequence_column = ["Core","Icore"][1]
     score_column = ["Rnk_EL","target"][1]
+    filters_dict,analysis_mode = select_filters(args)
     ###### READ THE DATASET CONTAINING THE NUMBER OF SUBJECTS #######################################
 
     data_partitions = pd.read_csv("{}/viral_dataset/Viruses_db_partitions.tsv".format(storage_folder,args.dataset_name),sep="\t")
@@ -292,17 +303,25 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
     fig.tight_layout()
     plt.savefig("{}/{}/Viruses_histograms".format(storage_folder,args.dataset_name), dpi=300)
     plt.clf()
-    data_info = process_data(data_a,args,storage_folder,script_dir,"Icore")
+    data_info = process_data(data_a,args,storage_folder,script_dir,analysis_mode,"Icore")
     return data_info
 
 def select_filters(args):
-    filters_dict = {"filter_kmers":[False,9,args.sequence_type], #Icore_non_anchor
+    filters_dict = {"filter_kmers":[True,9,args.sequence_type], #Icore_non_anchor
                     "group_alleles":[True],
                     "filter_alleles":[True], #if True keeps the most common allele
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}
-    return filters_dict
+
+    allele_selection = {True:"same_allele",False:"diff_allele"}
+    len_selection = {True:"same_len",False:"diff_len"}
+    if filters_dict["filter_kmers"][0]:
+        analysis_mode = "{}/{}/{}mers".format(allele_selection[filters_dict["filter_alleles"][0]],len_selection[filters_dict["filter_kmers"][0]],filters_dict["filter_kmers"][1])
+    else:
+        analysis_mode = "{}/{}".format(allele_selection[filters_dict["filter_alleles"][0]],len_selection[filters_dict["filter_kmers"][0]])
+
+    return filters_dict,analysis_mode
 
 def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file):
     """Filters, groups and prepares the files from the viral_dataset*() functions"""
@@ -388,7 +407,7 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
     data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
     data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
-    filters_dict = select_filters(args)
+    filters_dict,analysis_mode = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
     most_common_allele = data.value_counts("allele").index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
 
@@ -409,7 +428,7 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
         data.replace({"allele_encoded": allele_dict},inplace=True)
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
-    data_info = process_data(data,args,storage_folder,script_dir,filters_dict["filter_kmers"][2])
+    data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict["filter_kmers"][2])
 
     return data_info
 
@@ -449,7 +468,7 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     data = data.dropna(subset=["Icore_non_anchor","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training","Pred_netstab"]).reset_index(drop=True)
 
-    filters_dict = select_filters(args)
+    filters_dict,analysis_mode = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
 
     if filters_dict["group_alleles"][0]:
@@ -471,7 +490,7 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     name_suffix = "__".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
     VegvisirPlots.plot_features_histogram(data,features_names,"{}/{}".format(storage_folder,args.dataset_name),name_suffix)
-    data_info = process_data(data,args,storage_folder,script_dir,sequence_column=filters_dict["filter_kmers"][2],features_names=features_names)
+    data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict["filter_kmers"][2],features_names=features_names)
 
     return data_info
 
@@ -505,7 +524,7 @@ def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data.loc[:,'training'] = data.loc[:,'training'].replace({1: True, 0: False})
     data = data.dropna(subset=["Icore_non_anchor","training"]).reset_index(drop=True)
 
-    filters_dict = select_filters(args)
+    filters_dict,analysis_mode = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
 
     if filters_dict["group_alleles"][0]:
@@ -528,13 +547,278 @@ def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data.loc[mask2,"confidence_score"] = 0.6
     data.loc[mask2,"immunodominance_score"] = np.nan
 
-    data_info = process_data(data,args,storage_folder,script_dir,filters_dict["filter_kmers"][2])
+    data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict["filter_kmers"][2])
 
 
 
     return data_info
 
-def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",features_names=None,plot_blosum=False,plot_umap=False,plot_frequencies=False,plot_mi=False):
+def data_class_division(array,array_mask,idx,labels,confidence_scores):
+    """
+
+    :param array: epitopes_array_int, apitopes_array_blosum, epitopes_array_blosum_norm_group, epitopes_array_aa_group
+    :param idx: training or test idx
+    :return:
+    """
+    labels_ = labels[idx]
+    confidence_scores_ = confidence_scores[idx]
+    array_ = array[idx]
+    mask_ = array_mask[idx]
+    positives_arr = array_[labels_ == 1]
+    positives_arr_mask = mask_[labels_ == 1]
+    negatives_arr = array_[labels_ == 0]
+    negatives_arr_mask = mask_[labels_ == 0]
+    high_conf_negatives_arr = array_[(confidence_scores_ > 0.6)&(labels_ == 0)]
+    high_conf_negatives_arr_mask = mask_[(confidence_scores_ > 0.6)&(labels_ == 0)]
+
+
+    data_subdivision = DatasetDivision(positives=positives_arr,
+                                       positives_mask=positives_arr_mask,
+                                       negatives=negatives_arr,
+                                       negatives_mask=negatives_arr_mask,
+                                       high_confidence_negatives=high_conf_negatives_arr,
+                                       high_confidence_negatives_mask=high_conf_negatives_arr_mask)
+    return data_subdivision
+
+def build_exploration_folders(args,storage_folder):
+    for mode in ["All","Train", "Test"]:
+        VegvisirUtils.folders("all","{}/{}/similarities/{}/diff_allele/same_len/9mers/neighbours1/".format(storage_folder,args.dataset_name, mode))
+        VegvisirUtils.folders("positives","{}/{}/similarities/{}/diff_allele/same_len/9mers/neighbours1".format(storage_folder,args.dataset_name, mode),overwrite=False)
+        VegvisirUtils.folders("negatives","{}/{}/similarities/{}/diff_allele/same_len/9mers/neighbours1".format(storage_folder,args.dataset_name, mode),overwrite=False)
+        VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/diff_allele/same_len/9mers/neighbours1".format(storage_folder,args.dataset_name, mode),overwrite=False)
+
+
+        VegvisirUtils.folders("all","{}/{}/similarities/{}/diff_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name, mode))
+        VegvisirUtils.folders("positives","{}/{}/similarities/{}/diff_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name, mode),overwrite=False)
+        VegvisirUtils.folders("negatives","{}/{}/similarities/{}/diff_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name, mode),overwrite=False)
+        VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/diff_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name, mode),overwrite=False)
+
+
+        VegvisirUtils.folders("all","{}/{}/similarities/{}/same_allele/same_len/9mers/neighbours1".format(storage_folder,args.dataset_name, mode))
+        VegvisirUtils.folders("positives","{}/{}/similarities/{}/same_allele/same_len/9mers/neighbours1".format(storage_folder,args.dataset_name, mode),overwrite=False)
+        VegvisirUtils.folders("negatives","{}/{}/similarities/{}/same_allele/same_len/9mers/neighbours1".format(storage_folder,args.dataset_name, mode),overwrite=False)
+        VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/same_allele/same_len/9mers/neighbours1".format(storage_folder,args.dataset_name, mode),overwrite=False)
+
+        VegvisirUtils.folders("all","{}/{}/similarities/{}/same_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name, mode))
+        VegvisirUtils.folders("positives","{}/{}/similarities/{}/same_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name, mode),overwrite=False)
+        VegvisirUtils.folders("negatives","{}/{}/similarities/{}/same_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name, mode),overwrite=False)
+        VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/same_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name, mode),overwrite=False)
+
+
+def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_array_mask,aa_dict,aa_list,blosum_norm,seq_max_len,storage_folder,args,corrected_aa_types,analysis_mode):
+
+    if not os.path.exists("{}/{}/similarities".format(storage_folder,args.dataset_name)):
+        build_exploration_folders(args, storage_folder)
+        #/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/viral_dataset3/similarities
+    else:
+        print("Folder structure existing")
+    #Highlight: Encode amino acid by chemical group
+    aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aa_dict)
+    aa_groups = len(groups_names_colors_dict.keys())
+    epitopes_array_int_group = np.vectorize(aa_groups_dict.get)(epitopes_array_int)
+    #Highlight: Encode amino acid by blosum norm group
+    blosum_norm_sorted_idx = np.argsort(blosum_norm)
+    blosum_norm_sorted = blosum_norm[blosum_norm_sorted_idx]
+    amino_acids_sorted = np.array(aa_list)[blosum_norm_sorted_idx]
+    blosum_norm_sorted = np.concatenate([amino_acids_sorted[:,None],blosum_norm_sorted[:,None]],axis=1)
+    blosum_norm_groups = np.array_split(blosum_norm_sorted,6)
+    blosum_norm_groups_dict = dict.fromkeys(aa_list)
+    for group_idx,group_array in enumerate(blosum_norm_groups):
+        aa_group = group_array[:,0]
+        for aa in aa_group:
+            blosum_norm_groups_dict[aa] = group_idx
+    epitopes_array_blosum_norm_group = np.vectorize(blosum_norm_groups_dict.get)(epitopes_array_int)
+
+    ksize = 3
+    labels_arr = np.array(data[["target_corrected"]].values.tolist()).squeeze()
+    training = data[["training"]].values.tolist()
+    training = np.array(training).squeeze(-1)
+    confidence_scores = np.array(data["confidence_score"].values.tolist())
+
+    epitopes_array_int_division_train = data_class_division(epitopes_array_int,
+                                                                         epitopes_array_mask, training, labels_arr,
+                                                                         confidence_scores)
+    epitopes_array_int_division_test = data_class_division(epitopes_array_int, epitopes_array_mask,
+                                                                        np.invert(training), labels_arr,
+                                                                        confidence_scores)
+    epitopes_array_blosum_division_train = data_class_division(epitopes_array_blosum,
+                                                           epitopes_array_mask, training, labels_arr,
+                                                           confidence_scores)
+    epitopes_array_blosum_division_test = data_class_division(epitopes_array_blosum, epitopes_array_mask,
+                                                          np.invert(training), labels_arr,
+                                                          confidence_scores)
+
+    epitopes_array_blosum_norm_group_divison_train = data_class_division(epitopes_array_blosum_norm_group,epitopes_array_mask,training,labels_arr,confidence_scores)
+    epitopes_array_blosum_norm_group_divison_test = data_class_division(epitopes_array_blosum_norm_group,epitopes_array_mask,np.invert(training),labels_arr,confidence_scores)
+
+    epitopes_array_int_group_divison_train = data_class_division(epitopes_array_int_group,epitopes_array_mask,training,labels_arr,confidence_scores)
+    epitopes_array_int_group_divison_test = data_class_division(epitopes_array_int_group,epitopes_array_mask,np.invert(training),labels_arr,confidence_scores)
+
+
+    plot_mi = True
+    if plot_mi:
+        #Highlight: Mutual informaton calculated using raw amino acids
+        VegvisirMI.calculate_mi(epitopes_array_int_division_train.positives,epitopes_array_blosum_norm_group_divison_train.positives_mask,
+                                aa_groups,seq_max_len,"TrainPositives_raw_aa",storage_folder,args.dataset_name,"similarities/Train/{}/neighbours1/positives".format(analysis_mode))
+        VegvisirMI.calculate_mi(epitopes_array_int_division_train.negatives,epitopes_array_blosum_norm_group_divison_train.negatives_mask,
+                                aa_groups,seq_max_len,"TrainNegatives_raw_aa",storage_folder,args.dataset_name,"similarities/Train/{}/neighbours1/negatives".format(analysis_mode))
+        VegvisirMI.calculate_mi(epitopes_array_int_division_train.high_confidence_negatives,epitopes_array_blosum_norm_group_divison_train.high_confidence_negatives_mask,
+                                aa_groups,seq_max_len,"TrainHighlyConfidentNegatives_raw_aa",storage_folder,args.dataset_name,"similarities/Train/{}/neighbours1/highconfnegatives".format(analysis_mode))
+
+        VegvisirMI.calculate_mi(epitopes_array_int_division_test.positives,epitopes_array_blosum_norm_group_divison_test.positives_mask,
+                                aa_groups,seq_max_len,"TestPositives_raw_aa",storage_folder,args.dataset_name,"similarities/Test/{}/neighbours1/positives".format(analysis_mode))
+        VegvisirMI.calculate_mi(epitopes_array_int_division_test.negatives,epitopes_array_blosum_norm_group_divison_test.negatives_mask,
+                                aa_groups,seq_max_len,"TestNegatives_raw_aa",storage_folder,args.dataset_name,"similarities/Test/{}/neighbours1/negatives".format(analysis_mode))
+        VegvisirMI.calculate_mi(epitopes_array_int_division_test.high_confidence_negatives,epitopes_array_blosum_norm_group_divison_test.high_confidence_negatives_mask,
+                                aa_groups,seq_max_len,"TestHighlyConfidentNegatives_raw_aa",storage_folder,args.dataset_name,"similarities/Test/{}/neighbours1/highconfnegatives".format(analysis_mode))
+
+        #Highlight: Mutual informaton calculated using custom blosum norm amino acid subdivision
+        VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_train.positives,epitopes_array_blosum_norm_group_divison_train.positives_mask,
+                                aa_groups,seq_max_len,"TrainPositives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/Train/{}/neighbours1/positives".format(analysis_mode))
+        VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_train.negatives,epitopes_array_blosum_norm_group_divison_train.negatives_mask,
+                                aa_groups,seq_max_len,"TrainNegatives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/Train/{}/neighbours1/negatives".format(analysis_mode))
+        VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_train.high_confidence_negatives,epitopes_array_blosum_norm_group_divison_train.high_confidence_negatives_mask,
+                                aa_groups,seq_max_len,"TrainHighlyConfidentNegatives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/Train/{}/neighbours1/highconfnegatives".format(analysis_mode))
+
+        VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_test.positives,epitopes_array_blosum_norm_group_divison_test.positives_mask,
+                                aa_groups,seq_max_len,"TestPositives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/Test/{}/neighbours1/positives".format(analysis_mode))
+        VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_test.negatives,epitopes_array_blosum_norm_group_divison_test.negatives_mask,
+                                aa_groups,seq_max_len,"TestNegatives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/Test/{}/neighbours1/negatives".format(analysis_mode))
+        VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_test.high_confidence_negatives,epitopes_array_blosum_norm_group_divison_test.high_confidence_negatives_mask,
+                                aa_groups,seq_max_len,"TestHighlyConfidentNegatives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/Test/{}/neighbours1/highconfnegatives".format(analysis_mode))
+
+        #Highlight: Mutual Information using the classical amino acids subdivisions
+        VegvisirMI.calculate_mi(epitopes_array_int_group_divison_train.positives,epitopes_array_int_group_divison_train.positives_mask,
+                                aa_groups,seq_max_len,"TrainPositives_int_group_division",storage_folder,args.dataset_name,"similarities/Train/{}/neighbours1/positives".format(analysis_mode))
+        VegvisirMI.calculate_mi(epitopes_array_int_group_divison_train.negatives,epitopes_array_int_group_divison_train.negatives_mask,
+                                aa_groups,seq_max_len,"TrainNegatives_int_group_division",storage_folder,args.dataset_name,"similarities/Train/{}/neighbours1/negatives".format(analysis_mode))
+        VegvisirMI.calculate_mi(epitopes_array_int_group_divison_train.high_confidence_negatives,epitopes_array_int_group_divison_train.high_confidence_negatives_mask,
+                                aa_groups,seq_max_len,"TrainHighlyConfidentNegatives_int_group_division",storage_folder,args.dataset_name,"similarities/Train/{}/neighbours1/highconfnegatives".format(analysis_mode))
+
+        VegvisirMI.calculate_mi(epitopes_array_int_group_divison_test.positives,epitopes_array_int_group_divison_test.positives_mask,
+                                aa_groups,seq_max_len,"TestPositives_int_group_division",storage_folder,args.dataset_name,"similarities/Test/{}/neighbours1/positives".format(analysis_mode))
+        VegvisirMI.calculate_mi(epitopes_array_int_group_divison_test.negatives,epitopes_array_int_group_divison_test.negatives_mask,
+                                aa_groups,seq_max_len,"TestNegatives_int_group_division",storage_folder,args.dataset_name,"similarities/Test/{}/neighbours1/negatives".format(analysis_mode))
+        VegvisirMI.calculate_mi(epitopes_array_int_group_divison_test.high_confidence_negatives,epitopes_array_int_group_divison_test.high_confidence_negatives_mask,
+                                aa_groups,seq_max_len,"TestHighlyConfidentNegatives_int_group_division",storage_folder,args.dataset_name,"similarities/Test/{}/neighbours1/highconfnegatives".format(analysis_mode))
+
+
+
+        # identifiers = data.index.values.tolist()  # TODO: reset index in process data function?
+        # VegvisirMI.calculate_mutual_information(positives_arr.tolist(),identifiers,seq_max_len,"TrainPositives",storage_folder,args.dataset_name)
+        # VegvisirMI.calculate_mutual_information(negatives_arr.tolist(),identifiers,seq_max_len,"TrainNegatives",storage_folder,args.dataset_name)
+        # VegvisirMI.calculate_mutual_information(high_conf_negatives_arr.tolist(),identifiers,seq_max_len,"TrainHighlyConfidentNegatives",storage_folder,args.dataset_name)
+    plot_frequencies=True
+    if plot_frequencies:#Highlight: remember to use "int"!!!!!!!!
+        VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_test.positives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/Test/{}/neighbours1/positives".format(analysis_mode),"TestPositives")
+        VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_test.negatives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/Test/{}/neighbours1/negatives".format(analysis_mode),"TestNegatives")
+        VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_test.high_confidence_negatives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/Test/{}/neighbours1/highconfnegatives".format(analysis_mode),"TestHighConfidenceNegatives")
+
+
+        VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_train.positives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/Train/{}/neighbours1/positives".format(analysis_mode),"TrainPositives")
+        VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_train.negatives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/Train/{}/neighbours1/negatives".format(analysis_mode),"TrainNegatives")
+        VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_train.high_confidence_negatives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/Train/{}/neighbours1/highconfnegatives".format(analysis_mode),"TrainHighConfidenceNegatives")
+    plot_cosine_similarity = True
+    if plot_cosine_similarity:
+        print("Calculating  epitopes similarity matrices (this might take a while, 10 minutes for 10000 sequences) ....")
+        all_sim_results =VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum,
+                                                                      seq_max_len,
+                                                                      epitopes_array_mask,
+                                                                      storage_folder, args,
+                                                                     "All/{}/neighbours1/all".format(analysis_mode),
+                                                                      ksize=ksize)
+        #Highlight: Train dataset
+        train_positives_sim_results =VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum_division_train.positives,
+                                                                      seq_max_len,
+                                                                      epitopes_array_blosum_division_train.positives_mask,
+                                                                      storage_folder, args,
+                                                                     "Train/{}/neighbours1/positives".format(analysis_mode),
+                                                                     ksize=ksize)
+
+        train_negatives_sim_results=VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum_division_train.negatives,
+                                                                      seq_max_len,
+                                                                      epitopes_array_blosum_division_train.negatives_mask,
+                                                                      storage_folder, args,
+                                                                     "Train/{}/neighbours1/negatives".format(analysis_mode),
+                                                                      ksize=ksize)
+        train_high_conf_sim_results=VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum_division_train.high_confidence_negatives,
+                                                                      seq_max_len,
+                                                                      epitopes_array_blosum_division_train.high_confidence_negatives_mask,
+                                                                      storage_folder, args,
+                                                                      "Train/{}/neighbours1/highconfnegatives".format(analysis_mode),
+                                                                      ksize=ksize)
+
+
+        train_sim_results = {"positives":train_positives_sim_results,
+                             "negatives":train_negatives_sim_results,
+                             "high_conf_negatives":train_high_conf_sim_results}
+
+        #Highlight: Test dataset
+
+        test_positives_sim_results = VegvisirSimilarities.calculate_similarity_matrix_parallel(
+            epitopes_array_blosum_division_test.positives,
+            seq_max_len,
+            epitopes_array_blosum_division_test.positives_mask,
+            storage_folder, args,
+            "Test/{}/neighbours1/positives".format(analysis_mode),
+            ksize=ksize)
+
+        test_negatives_sim_results = VegvisirSimilarities.calculate_similarity_matrix_parallel(
+            epitopes_array_blosum_division_test.negatives,
+            seq_max_len,
+            epitopes_array_blosum_division_test.negatives_mask,
+            storage_folder, args,
+            "Test/{}/neighbours1/negatives".format(analysis_mode),
+            ksize=ksize)
+        test_high_conf_sim_results = VegvisirSimilarities.calculate_similarity_matrix_parallel(
+            epitopes_array_blosum_division_test.high_confidence_negatives,
+            seq_max_len,
+            epitopes_array_blosum_division_test.high_confidence_negatives_mask,
+            storage_folder, args,
+            "Test/{}/neighbours1/highconfnegatives".format(analysis_mode),
+            ksize=ksize)
+
+        train_sim_results = {"positives": test_positives_sim_results,
+                             "negatives": test_negatives_sim_results,
+                             "high_conf_negatives": test_high_conf_sim_results}
+
+
+
+    else:
+        print("Loading pre-calculated epitopes similarity/weights matrices (warning big matrices) located at {}".format("{}/{}/similarities/".format(storage_folder,args.dataset_name)))
+
+
+        train_sim_results_positives = SimilarityResults(positional_weights=np.load("{}/{}/similarities/{}/positional_weights.npy".format(storage_folder,args.dataset_name,"Train/{}/neighbours1/positives".format(analysis_mode))),
+                                               percent_identity_mean=None,
+                                               cosine_similarity_mean=None,
+                                               kmers_pid_similarity=None,
+                                               kmers_cosine_similarity=None)
+
+        train_sim_results = {
+            "positives":train_sim_results_positives
+        }
+
+        all_sim_results= SimilarityResults(positional_weights=np.load("{}/{}/similarities/{}/positional_weights.npy".format(storage_folder,args.dataset_name,"All/{}/neighbours1/all".format(analysis_mode))),
+                                               percent_identity_mean=None,
+                                               cosine_similarity_mean=None,
+                                               kmers_pid_similarity=None,
+                                               kmers_cosine_similarity=None)
+
+
+
+
+
+
+    calculate_partitions = False
+    if calculate_partitions: #TODO: move elsewhere
+        cosine_similarity_mean = all_sim_results.cosine_similarity_mean
+        cosine_umap = umap.UMAP(n_components=6).fit_transform(cosine_similarity_mean)
+        clustering = DBSCAN(eps=0.3, min_samples=1,metric="euclidean",algorithm="auto",p=3).fit(cosine_umap) #eps 4
+        #clustering = hdbscan.HDBSCAN(min_cluster_size=1, gen_min_span_tree=True).fit(cosine_similarity_mean)
+        labels = np.unique(clustering.labels_,return_counts=True)
+
+
+def process_data(data,args,storage_folder,script_dir,analysis_mode,sequence_column,features_names=None,plot_blosum=False,plot_umap=False,plot_frequencies=False,plot_mi=False):
     """
     Notes:
       - Mid-padding : https://www.nature.com/articles/s41598-020-71450-8
@@ -599,123 +883,127 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
 
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
-    #Highlight: Encode amino acid by chemical group
-    aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict = VegvisirUtils.aminoacids_groups(
-        aa_dict)  # TODO: Gropus by blosum cosine similarity (group aas with similar blosum vectors)
-    aa_groups = len(groups_names_colors_dict.keys())
-    epitopes_array_int_group = np.vectorize(aa_groups_dict.get)(epitopes_array_int)
-    #Highlight: Encode amino acid by blosum norm group
-    blosum_norm_sorted_idx = np.argsort(blosum_norm)
-    blosum_norm_sorted = blosum_norm[blosum_norm_sorted_idx]
-    amino_acids_sorted = np.array(aa_list)[blosum_norm_sorted_idx]
-    blosum_norm_sorted = np.concatenate([amino_acids_sorted[:,None],blosum_norm_sorted[:,None]],axis=1)
-    blosum_norm_groups = np.array_split(blosum_norm_sorted,6)
-    blosum_norm_groups_dict = dict.fromkeys(aa_list)
-    for group_idx,group_array in enumerate(blosum_norm_groups):
-        aa_group = group_array[:,0]
-        for aa in aa_group:
-            blosum_norm_groups_dict[aa] = group_idx
-    epitopes_array_blosum_norm_group = np.vectorize(blosum_norm_groups_dict.get)(epitopes_array_int)
-
-
     n_data = epitopes_array.shape[0]
-    ksize = 3
-    labels_arr = np.array(data[["target_corrected"]].values.tolist()).squeeze()
-    training = data[["training"]].values.tolist()
-    training = np.array(training).squeeze(-1)
-    training_labels_arr = labels_arr[training]
-    training_epitopes = epitopes_array_blosum_norm_group[training] #Highlight: Change this, depending on plot
-    training_mask = epitopes_mask[training]
-    positives_arr = training_epitopes[training_labels_arr == 1]
-    positives_arr_mask = training_mask[training_labels_arr == 1]
-    negatives_arr = training_epitopes[training_labels_arr == 0]
-    negatives_arr_mask = training_mask[training_labels_arr == 0]
-    confidence_scores = np.array(data["confidence_score"].values.tolist())[training]
-    high_conf_negatives_arr = training_epitopes[(confidence_scores > 0.6)&(training_labels_arr == 0)]
-    high_conf_negatives_arr_mask = training_mask[(confidence_scores > 0.6)&(training_labels_arr == 0)]
-
-    #Highlight: test
-    test_labels_arr = labels_arr[~training]
-    test_epitopes = epitopes_array_blosum_norm_group[~training] #Highlight: Change this, depending on plot
-    test_mask = epitopes_mask[~training]
-    test_positives_arr = test_epitopes[test_labels_arr == 1]
-    test_positives_arr_mask = test_mask[test_labels_arr == 1]
-    test_negatives_arr = test_epitopes[test_labels_arr == 0]
-    test_negatives_arr_mask = test_mask[test_labels_arr == 0]
-    test_confidence_scores = np.array(data["confidence_score"].values.tolist())[~training]
-    test_high_conf_negatives_arr = test_epitopes[(test_confidence_scores > 0.6)&(test_labels_arr == 0)]
-    test_high_conf_negatives_arr_mask = test_mask[(test_confidence_scores > 0.6)&(test_labels_arr == 0)]
-
-    plot_mi = True
-    if plot_mi:
-        VegvisirMI.calculate_mi(positives_arr,positives_arr_mask,aa_groups,seq_max_len,"TrainPositives",storage_folder,args.dataset_name)
-        VegvisirMI.calculate_mi(negatives_arr,negatives_arr_mask,aa_groups,seq_max_len,"TrainNegatives",storage_folder,args.dataset_name)
-        VegvisirMI.calculate_mi(high_conf_negatives_arr,high_conf_negatives_arr_mask,aa_groups,seq_max_len,"TrainHighlyConfidentNegatives",storage_folder,args.dataset_name)
-
-        VegvisirMI.calculate_mi(test_positives_arr,test_positives_arr_mask,aa_groups,seq_max_len,"TestPositives",storage_folder,args.dataset_name)
-        VegvisirMI.calculate_mi(test_negatives_arr,test_negatives_arr_mask,aa_groups,seq_max_len,"TestNegatives",storage_folder,args.dataset_name)
-        VegvisirMI.calculate_mi(test_high_conf_negatives_arr,test_high_conf_negatives_arr_mask,aa_groups,seq_max_len,"TestHighlyConfidentNegatives",storage_folder,args.dataset_name)
-
-
-        # identifiers = data.index.values.tolist()  # TODO: reset index in process data function?
-        # VegvisirMI.calculate_mutual_information(positives_arr.tolist(),identifiers,seq_max_len,"TrainPositives",storage_folder,args.dataset_name)
-        # VegvisirMI.calculate_mutual_information(negatives_arr.tolist(),identifiers,seq_max_len,"TrainNegatives",storage_folder,args.dataset_name)
-        # VegvisirMI.calculate_mutual_information(high_conf_negatives_arr.tolist(),identifiers,seq_max_len,"TrainHighlyConfidentNegatives",storage_folder,args.dataset_name)
-    exit()
-    #plot_frequencies=True
-    if plot_frequencies:#Highlight: remember to use "int"!!!!!!!!
-        #VegvisirPlots.plot_aa_frequencies(training_epitopes,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestAll")
-        #VegvisirPlots.plot_aa_frequencies(epitopes_array_int,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainTestAll")
-
-        VegvisirPlots.plot_aa_frequencies(test_negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestNegatives")
-        VegvisirPlots.plot_aa_frequencies(test_positives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestPositives")
-        VegvisirPlots.plot_aa_frequencies(test_high_conf_negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestHighConfidenceNegatives")
-
-
-        VegvisirPlots.plot_aa_frequencies(high_conf_negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainHighConfidenceNegatives")
-        VegvisirPlots.plot_aa_frequencies(negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainNegatives")
-        VegvisirPlots.plot_aa_frequencies(positives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainPositives")
-
-    if not os.path.exists("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
-        print("Epitopes similarity matrices not existing, calculating (this might take a while, 10 minutes for 10000 sequences) ....")
-        #VegvisirUtils.folders("{}/similarities".format(args.dataset_name), storage_folder)
-        #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
-        #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(training_epitopes,seq_max_len,training_mask,ksize=ksize)
-        positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(positives_arr,seq_max_len,positives_arr_mask,ksize=ksize)
-        #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(negatives_arr,seq_max_len,negatives_arr_mask,ksize=ksize)
-        #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(high_conf_negatives_arr,seq_max_len,high_conf_negatives_arr_mask,ksize=ksize)
-
-        #zarr.save("{}/{}/similarities/pid_pairwise_matrix.npz".format(storage_folder,args.dataset_name), pid_pairwise_matrix)
-        np.save("{}/{}/similarities/positional_weights.npy".format(storage_folder,args.dataset_name), positional_weights)
-        np.save("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name), percent_identity_mean)
-        np.save("{}/{}/similarities/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name), cosine_similarity_mean)
-        np.save("{}/{}/similarities/kmers_pid_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_pid_similarity)
-        np.save("{}/{}/similarities/kmers_cosine_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_cosine_similarity)
-    else:
-        print("Loading pre-calculated epitopes similarity/weights matrices (warning big matrices) located at {}".format("{}/{}/similarities/".format(storage_folder,args.dataset_name)))
-        positional_weights = np.load("{}/{}/similarities/positional_weights.npy".format(storage_folder,args.dataset_name))
-        #cosine_sim_pairwise_matrix = zarr.load("{}/{}/similarities/cosine_sim_pairwise_matrix.npz".format(storage_folder,args.dataset_name))
-        percent_identity_mean = np.load("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name))
-        cosine_similarity_mean = np.load("{}/{}/similarities/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name))
-        kmers_pid_similarity = np.load("{}/{}/similarities/kmers_pid_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,ksize))
-        kmers_cosine_similarity = np.load("{}/{}/similarities/kmers_cosine_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,ksize))
-
-    if not os.path.exists("{}/{}/similarities/HEATMAP_percent_identity_mean.png".format(storage_folder,args.dataset_name)):
-        VegvisirPlots.plot_heatmap(positional_weights, "Positional Weights","{}/{}/similarities/HEATMAP_positional_weights.png".format(storage_folder,args.dataset_name))
-        VegvisirPlots.plot_heatmap(percent_identity_mean, "Percent Identity","{}/{}/similarities/HEATMAP_percent_identity_mean.png".format(storage_folder,args.dataset_name))
-        VegvisirPlots.plot_heatmap(cosine_similarity_mean, "Cosine similarity","{}/{}/similarities/HEATMAP_cosine_similarity_mean.png".format(storage_folder,args.dataset_name))
-        VegvisirPlots.plot_heatmap(kmers_pid_similarity, "Kmers ({}) percent identity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_pid_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
-        VegvisirPlots.plot_heatmap(kmers_cosine_similarity, "Kmers ({}) cosine similarity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_cosine_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
+    data_exploration(data, epitopes_array_blosum, epitopes_array_int, epitopes_mask, aa_dict, aa_list,
+                     blosum_norm, seq_max_len, storage_folder, args, corrected_aa_types,analysis_mode)
 
     exit()
-    calculate_partitions = False
-    if calculate_partitions: #TODO: move elsewhere
-        import umap,hdbscan
-        cosine_umap = umap.UMAP(n_components=6).fit_transform(cosine_similarity_mean)
-        clustering = DBSCAN(eps=0.3, min_samples=1,metric="euclidean",algorithm="auto",p=3).fit(cosine_umap) #eps 4
-        #clustering = hdbscan.HDBSCAN(min_cluster_size=1, gen_min_span_tree=True).fit(cosine_similarity_mean)
-        labels = np.unique(clustering.labels_,return_counts=True)
-        #TODO: Separate the most disimilar sequences onto the test dataset. Select labels with counts lower than 20
+    # #Highlight: Encode amino acid by chemical group
+    # aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict = VegvisirUtils.aminoacids_groups(
+    #     aa_dict)  # TODO: Gropus by blosum cosine similarity (group aas with similar blosum vectors)
+    # aa_groups = len(groups_names_colors_dict.keys())
+    # epitopes_array_int_group = np.vectorize(aa_groups_dict.get)(epitopes_array_int)
+    # #Highlight: Encode amino acid by blosum norm group
+    # blosum_norm_sorted_idx = np.argsort(blosum_norm)
+    # blosum_norm_sorted = blosum_norm[blosum_norm_sorted_idx]
+    # amino_acids_sorted = np.array(aa_list)[blosum_norm_sorted_idx]
+    # blosum_norm_sorted = np.concatenate([amino_acids_sorted[:,None],blosum_norm_sorted[:,None]],axis=1)
+    # blosum_norm_groups = np.array_split(blosum_norm_sorted,6)
+    # blosum_norm_groups_dict = dict.fromkeys(aa_list)
+    # for group_idx,group_array in enumerate(blosum_norm_groups):
+    #     aa_group = group_array[:,0]
+    #     for aa in aa_group:
+    #         blosum_norm_groups_dict[aa] = group_idx
+    # epitopes_array_blosum_norm_group = np.vectorize(blosum_norm_groups_dict.get)(epitopes_array_int)
+    #
+    #
+    # ksize = 3
+    # labels_arr = np.array(data[["target_corrected"]].values.tolist()).squeeze()
+    # training = data[["training"]].values.tolist()
+    # training = np.array(training).squeeze(-1)
+    # training_labels_arr = labels_arr[training]
+    # training_epitopes = epitopes_array_blosum_norm_group[training] #Highlight: Change this, depending on plot
+    # training_mask = epitopes_mask[training]
+    # positives_arr = training_epitopes[training_labels_arr == 1]
+    # positives_arr_mask = training_mask[training_labels_arr == 1]
+    # negatives_arr = training_epitopes[training_labels_arr == 0]
+    # negatives_arr_mask = training_mask[training_labels_arr == 0]
+    # confidence_scores = np.array(data["confidence_score"].values.tolist())[training]
+    # high_conf_negatives_arr = training_epitopes[(confidence_scores > 0.6)&(training_labels_arr == 0)]
+    # high_conf_negatives_arr_mask = training_mask[(confidence_scores > 0.6)&(training_labels_arr == 0)]
+    #
+    # #Highlight: test
+    # test_labels_arr = labels_arr[~training]
+    # test_epitopes = epitopes_array_blosum_norm_group[~training] #Highlight: Change this, depending on plot
+    # test_mask = epitopes_mask[~training]
+    # test_positives_arr = test_epitopes[test_labels_arr == 1]
+    # test_positives_arr_mask = test_mask[test_labels_arr == 1]
+    # test_negatives_arr = test_epitopes[test_labels_arr == 0]
+    # test_negatives_arr_mask = test_mask[test_labels_arr == 0]
+    # test_confidence_scores = np.array(data["confidence_score"].values.tolist())[~training]
+    # test_high_conf_negatives_arr = test_epitopes[(test_confidence_scores > 0.6)&(test_labels_arr == 0)]
+    # test_high_conf_negatives_arr_mask = test_mask[(test_confidence_scores > 0.6)&(test_labels_arr == 0)]
+    #
+    # plot_mi = True
+    # if plot_mi:
+    #     VegvisirMI.calculate_mi(positives_arr,positives_arr_mask,aa_groups,seq_max_len,"TrainPositives",storage_folder,args.dataset_name)
+    #     VegvisirMI.calculate_mi(negatives_arr,negatives_arr_mask,aa_groups,seq_max_len,"TrainNegatives",storage_folder,args.dataset_name)
+    #     VegvisirMI.calculate_mi(high_conf_negatives_arr,high_conf_negatives_arr_mask,aa_groups,seq_max_len,"TrainHighlyConfidentNegatives",storage_folder,args.dataset_name)
+    #
+    #     VegvisirMI.calculate_mi(test_positives_arr,test_positives_arr_mask,aa_groups,seq_max_len,"TestPositives",storage_folder,args.dataset_name)
+    #     VegvisirMI.calculate_mi(test_negatives_arr,test_negatives_arr_mask,aa_groups,seq_max_len,"TestNegatives",storage_folder,args.dataset_name)
+    #     VegvisirMI.calculate_mi(test_high_conf_negatives_arr,test_high_conf_negatives_arr_mask,aa_groups,seq_max_len,"TestHighlyConfidentNegatives",storage_folder,args.dataset_name)
+    #
+    #
+    #     # identifiers = data.index.values.tolist()  # TODO: reset index in process data function?
+    #     # VegvisirMI.calculate_mutual_information(positives_arr.tolist(),identifiers,seq_max_len,"TrainPositives",storage_folder,args.dataset_name)
+    #     # VegvisirMI.calculate_mutual_information(negatives_arr.tolist(),identifiers,seq_max_len,"TrainNegatives",storage_folder,args.dataset_name)
+    #     # VegvisirMI.calculate_mutual_information(high_conf_negatives_arr.tolist(),identifiers,seq_max_len,"TrainHighlyConfidentNegatives",storage_folder,args.dataset_name)
+    # exit()
+    # #plot_frequencies=True
+    # if plot_frequencies:#Highlight: remember to use "int"!!!!!!!!
+    #     #VegvisirPlots.plot_aa_frequencies(training_epitopes,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestAll")
+    #     #VegvisirPlots.plot_aa_frequencies(epitopes_array_int,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainTestAll")
+    #
+    #     VegvisirPlots.plot_aa_frequencies(test_negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestNegatives")
+    #     VegvisirPlots.plot_aa_frequencies(test_positives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestPositives")
+    #     VegvisirPlots.plot_aa_frequencies(test_high_conf_negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TestHighConfidenceNegatives")
+    #
+    #
+    #     VegvisirPlots.plot_aa_frequencies(high_conf_negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainHighConfidenceNegatives")
+    #     VegvisirPlots.plot_aa_frequencies(negatives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainNegatives")
+    #     VegvisirPlots.plot_aa_frequencies(positives_arr,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"TrainPositives")
+    #
+    # if not os.path.exists("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name)):
+    #     print("Epitopes similarity matrices not existing, calculating (this might take a while, 10 minutes for 10000 sequences) ....")
+    #     #VegvisirUtils.folders("{}/similarities".format(args.dataset_name), storage_folder)
+    #     #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum,seq_max_len,epitopes_mask,ksize=ksize)
+    #     #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(training_epitopes,seq_max_len,training_mask,ksize=ksize)
+    #     positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(positives_arr,seq_max_len,positives_arr_mask,ksize=ksize)
+    #     #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(negatives_arr,seq_max_len,negatives_arr_mask,ksize=ksize)
+    #     #positional_weights,percent_identity_mean,cosine_similarity_mean,kmers_pid_similarity,kmers_cosine_similarity = VegvisirSimilarities.calculate_similarity_matrix_parallel(high_conf_negatives_arr,seq_max_len,high_conf_negatives_arr_mask,ksize=ksize)
+    #
+    #     #zarr.save("{}/{}/similarities/pid_pairwise_matrix.npz".format(storage_folder,args.dataset_name), pid_pairwise_matrix)
+    #     np.save("{}/{}/similarities/positional_weights.npy".format(storage_folder,args.dataset_name), positional_weights)
+    #     np.save("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name), percent_identity_mean)
+    #     np.save("{}/{}/similarities/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name), cosine_similarity_mean)
+    #     np.save("{}/{}/similarities/kmers_pid_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_pid_similarity)
+    #     np.save("{}/{}/similarities/kmers_cosine_similarity_{}ksize.npy".format(storage_folder,args.dataset_name,ksize), kmers_cosine_similarity)
+    # else:
+    #     print("Loading pre-calculated epitopes similarity/weights matrices (warning big matrices) located at {}".format("{}/{}/similarities/".format(storage_folder,args.dataset_name)))
+    #     positional_weights = np.load("{}/{}/similarities/positional_weights.npy".format(storage_folder,args.dataset_name))
+    #     #cosine_sim_pairwise_matrix = zarr.load("{}/{}/similarities/cosine_sim_pairwise_matrix.npz".format(storage_folder,args.dataset_name))
+    #     percent_identity_mean = np.load("{}/{}/similarities/percent_identity_mean.npy".format(storage_folder,args.dataset_name))
+    #     cosine_similarity_mean = np.load("{}/{}/similarities/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name))
+    #     kmers_pid_similarity = np.load("{}/{}/similarities/kmers_pid_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,ksize))
+    #     kmers_cosine_similarity = np.load("{}/{}/similarities/kmers_cosine_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,ksize))
+    #
+    # if not os.path.exists("{}/{}/similarities/HEATMAP_percent_identity_mean.png".format(storage_folder,args.dataset_name)):
+    #     VegvisirPlots.plot_heatmap(positional_weights, "Positional Weights","{}/{}/similarities/HEATMAP_positional_weights.png".format(storage_folder,args.dataset_name))
+    #     VegvisirPlots.plot_heatmap(percent_identity_mean, "Percent Identity","{}/{}/similarities/HEATMAP_percent_identity_mean.png".format(storage_folder,args.dataset_name))
+    #     VegvisirPlots.plot_heatmap(cosine_similarity_mean, "Cosine similarity","{}/{}/similarities/HEATMAP_cosine_similarity_mean.png".format(storage_folder,args.dataset_name))
+    #     VegvisirPlots.plot_heatmap(kmers_pid_similarity, "Kmers ({}) percent identity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_pid_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
+    #     VegvisirPlots.plot_heatmap(kmers_cosine_similarity, "Kmers ({}) cosine similarity".format(ksize),"{}/{}/similarities/HEATMAP_kmers_cosine_similarity_{}ksize.png".format(storage_folder, args.dataset_name,ksize))
+    #
+    # exit()
+    # calculate_partitions = False
+    # if calculate_partitions: #TODO: move elsewhere
+    #     import umap,hdbscan
+    #     cosine_umap = umap.UMAP(n_components=6).fit_transform(cosine_similarity_mean)
+    #     clustering = DBSCAN(eps=0.3, min_samples=1,metric="euclidean",algorithm="auto",p=3).fit(cosine_umap) #eps 4
+    #     #clustering = hdbscan.HDBSCAN(min_cluster_size=1, gen_min_span_tree=True).fit(cosine_similarity_mean)
+    #     labels = np.unique(clustering.labels_,return_counts=True)
+    #     #TODO: Separate the most disimilar sequences onto the test dataset. Select labels with counts lower than 20
 
     #Highlight: Reattatch partition, identifier, label, immunodominance score
     labels = data[["target_corrected"]].values.tolist()
@@ -725,13 +1013,13 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
     confidence_scores = data["confidence_score"].values.tolist()
     immunodominance_scores = data[["immunodominance_score"]].values.tolist()
 
-    if plot_umap:
-        VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, immunodominance_scores, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}_immunodominance_score".format(sequence_column))
-        VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, labels, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}".format(sequence_column))
-        VegvisirPlots.plot_umap1(percent_identity_mean,labels,storage_folder,args,"Percent Identity Mean","UMAP_percent_identity_mean_{}".format(sequence_column))
-        VegvisirPlots.plot_umap1(cosine_similarity_mean, labels, storage_folder, args, "Cosine similarity Mean","UMAP_cosine_similarity_mean_{}".format(sequence_column))
-        VegvisirPlots.plot_umap1(kmers_pid_similarity, labels, storage_folder, args, "Kmers Percent Identity Mean","UMAP_kmers_percent_identity_{}".format(sequence_column))
-        VegvisirPlots.plot_umap1(kmers_cosine_similarity, labels, storage_folder, args, "Kmers Cosine similarity Mean","UMAP_kmers_cosine_similarity_{}".format(sequence_column))
+    # if plot_umap:
+    #     VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, immunodominance_scores, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}_immunodominance_score".format(sequence_column))
+    #     VegvisirPlots.plot_umap1(epitopes_array_blosum_norm, labels, storage_folder, args, "Blosum Norm","UMAP_blosum_norm_{}".format(sequence_column))
+    #     VegvisirPlots.plot_umap1(percent_identity_mean,labels,storage_folder,args,"Percent Identity Mean","UMAP_percent_identity_mean_{}".format(sequence_column))
+    #     VegvisirPlots.plot_umap1(cosine_similarity_mean, labels, storage_folder, args, "Cosine similarity Mean","UMAP_cosine_similarity_mean_{}".format(sequence_column))
+    #     VegvisirPlots.plot_umap1(kmers_pid_similarity, labels, storage_folder, args, "Kmers Percent Identity Mean","UMAP_kmers_percent_identity_{}".format(sequence_column))
+    #     VegvisirPlots.plot_umap1(kmers_cosine_similarity, labels, storage_folder, args, "Kmers Cosine similarity Mean","UMAP_kmers_cosine_similarity_{}".format(sequence_column))
 
      #TODO : make a function?
     if features_names is not None:
@@ -812,10 +1100,10 @@ def process_data(data,args,storage_folder,script_dir,sequence_column="Icore",fea
                             max_len=[seq_max_len + len(features_names) if features_names is not None else seq_max_len][0],
                             corrected_aa_types = corrected_aa_types,
                             input_dim=corrected_aa_types,
-                            percent_identity_mean=percent_identity_mean,
-                            cosine_similarity_mean=cosine_similarity_mean,
-                            kmers_pid_similarity=kmers_pid_similarity,
-                            kmers_cosine_similarity=kmers_cosine_similarity,
+                            percent_identity_mean=None,
+                            cosine_similarity_mean=None,
+                            kmers_pid_similarity=None,
+                            kmers_cosine_similarity=None,
                             features_names = features_names)
 
     if not os.path.exists("{}/{}/umap_data_norm.png".format(storage_folder,args.dataset_name)):

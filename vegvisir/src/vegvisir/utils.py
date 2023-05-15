@@ -45,7 +45,7 @@ def str2None(v):
             v = str(v)
         return v
 
-def folders(folder_name,basepath):
+def folders(folder_name,basepath,overwrite=True):
     """ Creates a folder at the indicated location. It rewrites folders with the same name
     :param str folder_name: name of the folder
     :param str basepath: indicates the place where to create the folder
@@ -62,9 +62,12 @@ def folders(folder_name,basepath):
         finally:
             os.umask(original_umask)
     else:
-        print("removing subdirectories") #if this is reached if because you are running the folders function twice with the same folder name
-        shutil.rmtree(newpath)  # removes all the subdirectories!
-        os.makedirs(newpath,0o777)
+        if overwrite:
+            print("removing subdirectories") #if this is reached is because you are running the folders function twice with the same folder name
+            shutil.rmtree(newpath)  # removes all the subdirectories!
+            os.makedirs(newpath,0o777)
+        else:
+            pass
 
 def replace_nan(x,x_unique,replace_val=0.0):
     """Detects nan values and replaces them with a given values

@@ -5,6 +5,9 @@ import time,os,sys
 import datetime
 import numpy as np
 import multiprocessing
+from collections import namedtuple
+import vegvisir.plots as VegvisirPlots
+SimilarityResults = namedtuple("SimilarityResults",["positional_weights","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity"])
 
 def cosine_similarity(a,b,correlation_matrix=False,parallel=False): #TODO: import from utils
     """Calculates the cosine similarity between matrices of k-mers.
@@ -455,7 +458,7 @@ def fill_array_map(array_fixed,ij_arrays,starts,ends,starts_i,ends_i):
      results = list(map(lambda ij,start,end,start_i,end_i: fill_array(array_fixed,ij,start,end,start_i,end_i),ij_arrays,starts,ends,starts_i,ends_i))
      return results[0]
 
-def calculate_similarity_matrix_parallel(array, max_len, array_mask, batch_size=50, ksize=3):
+def calculate_similarity_matrix_parallel(array, max_len, array_mask, storage_folder,args,analysis_mode,batch_size=50, ksize=3):
     """Batched method to calculate the cosine similarity and percent identity/pairwise distance between the blosum encoded sequences.
     :param numpy array: Blosum encoded sequences [n,max_len,aa_types] NOTE: TODO fix to make it work with: Integer representation [n,max_len] ?
     NOTE: Use smaller batches for faster results ( obviously to certain extent, check into balancing the batch size and the number of for loops)
@@ -467,125 +470,162 @@ def calculate_similarity_matrix_parallel(array, max_len, array_mask, batch_size=
                             """
 
     n_data = array.shape[0]
-    assert array.size != 0, "Empty input array"
-    array_mask = array_mask[:n_data]
-    assert array_mask.shape == (n_data,max_len)
-    split_size = [int(array.shape[0] / batch_size) if not batch_size > array.shape[0] else 1][0]
-    splits = np.array_split(array, split_size)
-    mask_splits = np.array_split(array_mask, split_size)
-    print("Generated {} splits from {} data points".format(len(splits), n_data))
+    if array.size == 0:
+        print("Empty array")
+    else:
+        array_mask = array_mask[:n_data]
+        assert array_mask.shape == (n_data,max_len)
+        split_size = [int(array.shape[0] / batch_size) if not batch_size > array.shape[0] else 1][0]
+        splits = np.array_split(array, split_size)
+        mask_splits = np.array_split(array_mask, split_size)
+        print("Generated {} splits from {} data points".format(len(splits), n_data))
 
-    if ksize >= max_len:
-        ksize = max_len
-    overlapping_kmers = extract_windows_vectorized(splits[0], 1, max_len - ksize, ksize, only_windows=True)
+        if ksize >= max_len:
+            ksize = max_len
+        overlapping_kmers = extract_windows_vectorized(splits[0], 1, max_len - ksize, ksize, only_windows=True)
 
-    diag_idx_ndata =np.diag_indices(n_data)
-    diag_idx_ksize = np.diag_indices(ksize)
-    nkmers = overlapping_kmers.shape[0]
-    diag_idx_nkmers = np.diag_indices(nkmers)
-    diag_idx_maxlen = np.diag_indices(max_len)
+        diag_idx_ndata =np.diag_indices(n_data)
+        diag_idx_ksize = np.diag_indices(ksize)
+        nkmers = overlapping_kmers.shape[0]
+        diag_idx_nkmers = np.diag_indices(nkmers)
+        diag_idx_maxlen = np.diag_indices(max_len)
 
-    # Highlight: Initialize the storing matrices (in the future perhaps dictionaries? but seems to withstand quite a bit)
-    percent_identity_mean = np.zeros((n_data, n_data))
-    #pid_pairwise_matrix= np.zeros((n_data, n_data,max_len,max_len))
-    cosine_similarity_mean = np.zeros((n_data, n_data))
-    cosine_sim_pairwise_matrix= np.zeros((n_data, n_data,max_len,max_len))
-    kmers_pid_similarity = np.zeros((n_data, n_data))
-    kmers_cosine_similarity = np.zeros((n_data, n_data))
-    kmers_cosine_similarity_matrix_diag = np.zeros((n_data, n_data,nkmers,nkmers,ksize))
-
-
-    #Iterables
-    idx = list(range(len(splits)))
-    #shifts = list(range(len(splits)))
-    shifts = []
-    start_store_points = []
-    start_store_points_i = []
-    store_point_helpers = []
-    end_store_points = []
-    end_store_points_i = []
-    i_idx = []
-    j_idx = []
-    start_store_point = 0
-    store_point_helper = 0
-    end_store_point = splits[0].shape[0]
-    #TODO: Find pattern?
-    for i in idx:
-        shift = i
-        rest_splits = splits.copy()[shift:]
-        start_store_point_i = 0 + store_point_helper
-        end_store_point_i = rest_splits[0].shape[0] + store_point_helper  # initialize
-        for j, r_j in enumerate(rest_splits):  # calculate distance among all kmers per sequence in the block (n, n_kmers,n_kmers)
-            i_idx.append(i)
-            shifts.append(shift)
-            j_idx.append(j)
-            start_store_points.append(start_store_point)
-            store_point_helpers.append(store_point_helper)
-            end_store_points.append(end_store_point)
-            start_store_points_i.append(start_store_point_i)
-            end_store_points_i.append(end_store_point_i)
-            start_store_point_i = end_store_point_i  # + store_point_helper
-            if j + 1 < len(rest_splits):
-                end_store_point_i += rest_splits[j + 1].shape[0]  # + store_point_helper# it has to be the next r_j
-        start_store_point = end_store_point
-        if i + 1 < len(splits):
-            store_point_helper += splits[i + 1].shape[0]
-        if i + 1 != len(splits):
-            end_store_point += splits[i + 1].shape[0]  # it has to be the next curr_array
-        else:
-            pass
-    start = time.time()
-    #args_fixed = splits, mask_splits, n_data,max_len, overlapping_kmers, diag_idx, diag_idx_maxlen, diag_idx_nkmers, percent_identity_mean,percent_identity, cosine_similarity_mean, kmers_cosine_similarity, kmers_pid_similarity
-    args_fixed = splits, mask_splits, n_data,max_len, overlapping_kmers, diag_idx_ksize, diag_idx_maxlen, diag_idx_nkmers
-    args_iterables = {"i_idx":i_idx,
-                      "j_idx":j_idx,
-                      "shifts":shifts,
-                      "start_store_points":start_store_points,
-                      "start_store_points_i": start_store_points_i,
-                      "store_point_helpers":store_point_helpers,
-                      "end_store_points":end_store_points,
-                      "end_store_points_i": end_store_points_i
-                      }
+        # Highlight: Initialize the storing matrices (in the future perhaps dictionaries? but seems to withstand quite a bit)
+        percent_identity_mean = np.zeros((n_data, n_data))
+        #pid_pairwise_matrix= np.zeros((n_data, n_data,max_len,max_len))
+        cosine_similarity_mean = np.zeros((n_data, n_data))
+        cosine_sim_pairwise_matrix= np.zeros((n_data, n_data,max_len,max_len))
+        kmers_pid_similarity = np.zeros((n_data, n_data))
+        kmers_cosine_similarity = np.zeros((n_data, n_data))
+        kmers_cosine_similarity_matrix_diag = np.zeros((n_data, n_data,nkmers,nkmers,ksize))
 
 
-    with multiprocessing.Pool(multiprocessing.cpu_count() - 1) as pool:
-        results = SimilarityParallel(args_iterables,args_fixed).outer_loop(pool)
-        zipped_results =list(zip(*results))
-        starts,ends,starts_i,ends_i = zipped_results[6],zipped_results[7],zipped_results[8],zipped_results[9]
-        #pid_pairwise_matrix_ij = zipped_results[0]
-        #pid_pairwise_matrix= fill_array_map(pid_pairwise_matrix,pid_pairwise_matrix_ij,starts,ends,starts_i,ends_i) #TODO: How to improve this?
-        #cosine_sim_pairwise_matrix_ij = zipped_results[1]
-        #cosine_sim_pairwise_matrix= fill_array_map(cosine_sim_pairwise_matrix,cosine_sim_pairwise_matrix_ij,starts,ends,starts_i,ends_i)
-        cosine_sim_pairwise_matrix_ij = zipped_results[0]
-        cosine_sim_pairwise_matrix= fill_array_map(cosine_sim_pairwise_matrix,cosine_sim_pairwise_matrix_ij,starts,ends,starts_i,ends_i)
-        percent_identity_mean_ij = zipped_results[1]
-        percent_identity_mean= fill_array_map(percent_identity_mean,percent_identity_mean_ij,starts,ends,starts_i,ends_i)
-        cosine_similarity_mean_ij = zipped_results[2]
-        cosine_similarity_mean= fill_array_map(cosine_similarity_mean,cosine_similarity_mean_ij,starts,ends,starts_i,ends_i)
-        kmers_cosine_similarity_ij = zipped_results[3]
-        kmers_cosine_similarity= fill_array_map(kmers_cosine_similarity,kmers_cosine_similarity_ij,starts,ends,starts_i,ends_i)
-        kmers_pid_similarity_ij = zipped_results[4]
-        kmers_pid_similarity= fill_array_map(kmers_pid_similarity,kmers_pid_similarity_ij,starts,ends,starts_i,ends_i)
-        # kmers_matrix_cosine_diag_ij = zipped_results[5]
-        # kmers_cosine_similarity_matrix_diag = fill_array_map(kmers_cosine_similarity_matrix_diag,kmers_matrix_cosine_diag_ij,starts,ends,starts_i,ends_i)
+        #Iterables
+        idx = list(range(len(splits)))
+        #shifts = list(range(len(splits)))
+        shifts = []
+        start_store_points = []
+        start_store_points_i = []
+        store_point_helpers = []
+        end_store_points = []
+        end_store_points_i = []
+        i_idx = []
+        j_idx = []
+        start_store_point = 0
+        store_point_helper = 0
+        end_store_point = splits[0].shape[0]
+        #TODO: Find pattern?
+        for i in idx:
+            shift = i
+            rest_splits = splits.copy()[shift:]
+            start_store_point_i = 0 + store_point_helper
+            end_store_point_i = rest_splits[0].shape[0] + store_point_helper  # initialize
+            for j, r_j in enumerate(rest_splits):  # calculate distance among all kmers per sequence in the block (n, n_kmers,n_kmers)
+                i_idx.append(i)
+                shifts.append(shift)
+                j_idx.append(j)
+                start_store_points.append(start_store_point)
+                store_point_helpers.append(store_point_helper)
+                end_store_points.append(end_store_point)
+                start_store_points_i.append(start_store_point_i)
+                end_store_points_i.append(end_store_point_i)
+                start_store_point_i = end_store_point_i  # + store_point_helper
+                if j + 1 < len(rest_splits):
+                    end_store_point_i += rest_splits[j + 1].shape[0]  # + store_point_helper# it has to be the next r_j
+            start_store_point = end_store_point
+            if i + 1 < len(splits):
+                store_point_helper += splits[i + 1].shape[0]
+            if i + 1 != len(splits):
+                end_store_point += splits[i + 1].shape[0]  # it has to be the next curr_array
+            else:
+                pass
+        start = time.time()
+        #args_fixed = splits, mask_splits, n_data,max_len, overlapping_kmers, diag_idx, diag_idx_maxlen, diag_idx_nkmers, percent_identity_mean,percent_identity, cosine_similarity_mean, kmers_cosine_similarity, kmers_pid_similarity
+        args_fixed = splits, mask_splits, n_data,max_len, overlapping_kmers, diag_idx_ksize, diag_idx_maxlen, diag_idx_nkmers
+        args_iterables = {"i_idx":i_idx,
+                          "j_idx":j_idx,
+                          "shifts":shifts,
+                          "start_store_points":start_store_points,
+                          "start_store_points_i": start_store_points_i,
+                          "store_point_helpers":store_point_helpers,
+                          "end_store_points":end_store_points,
+                          "end_store_points_i": end_store_points_i
+                          }
 
-    end = time.time()
-    print("Overall calculation time {}".format(str(datetime.timedelta(seconds=end - start))))
-    #Highlight: Mirror values across the diagonal
-    #pid_pairwise_matrix = np.maximum(pid_pairwise_matrix, pid_pairwise_matrix.transpose(1,0,2,3))
-    print("Transposing TODO: Transform inside loop")
-    #kmers_cosine_similarity_matrix_diag = np.maximum(kmers_cosine_similarity_matrix_diag, kmers_cosine_similarity_matrix_diag.transpose(1,0,2,3,4))
-    cosine_sim_pairwise_matrix = np.maximum(cosine_sim_pairwise_matrix, cosine_sim_pairwise_matrix.transpose(1,0,2,3))
-    #positional_weights = importance_weight_kmers(kmers_cosine_similarity_matrix_diag,nkmers,ksize,max_len,array_mask,overlapping_kmers,batch_size)
-    positional_weights = importance_weight(cosine_sim_pairwise_matrix,nkmers,ksize,max_len,array_mask,overlapping_kmers,batch_size)
-    percent_identity_mean = np.maximum(percent_identity_mean, percent_identity_mean.transpose())
-    cosine_similarity_mean = np.maximum(cosine_similarity_mean, cosine_similarity_mean.transpose())
-    kmers_pid_similarity = np.maximum(kmers_pid_similarity, kmers_pid_similarity.transpose())
-    kmers_cosine_similarity = np.maximum(kmers_cosine_similarity, kmers_cosine_similarity.transpose())
 
-    return np.ma.getdata(positional_weights),\
-        np.ma.getdata(percent_identity_mean), \
-        np.ma.getdata(cosine_similarity_mean), \
-        np.ma.getdata(
-        kmers_pid_similarity), \
-        np.ma.getdata(kmers_cosine_similarity)
+        with multiprocessing.Pool(multiprocessing.cpu_count() - 1) as pool:
+            results = SimilarityParallel(args_iterables,args_fixed).outer_loop(pool)
+            zipped_results =list(zip(*results))
+            starts,ends,starts_i,ends_i = zipped_results[6],zipped_results[7],zipped_results[8],zipped_results[9]
+            #pid_pairwise_matrix_ij = zipped_results[0]
+            #pid_pairwise_matrix= fill_array_map(pid_pairwise_matrix,pid_pairwise_matrix_ij,starts,ends,starts_i,ends_i) #TODO: How to improve this?
+            #cosine_sim_pairwise_matrix_ij = zipped_results[1]
+            #cosine_sim_pairwise_matrix= fill_array_map(cosine_sim_pairwise_matrix,cosine_sim_pairwise_matrix_ij,starts,ends,starts_i,ends_i)
+            cosine_sim_pairwise_matrix_ij = zipped_results[0]
+            cosine_sim_pairwise_matrix= fill_array_map(cosine_sim_pairwise_matrix,cosine_sim_pairwise_matrix_ij,starts,ends,starts_i,ends_i)
+            percent_identity_mean_ij = zipped_results[1]
+            percent_identity_mean= fill_array_map(percent_identity_mean,percent_identity_mean_ij,starts,ends,starts_i,ends_i)
+            cosine_similarity_mean_ij = zipped_results[2]
+            cosine_similarity_mean= fill_array_map(cosine_similarity_mean,cosine_similarity_mean_ij,starts,ends,starts_i,ends_i)
+            kmers_cosine_similarity_ij = zipped_results[3]
+            kmers_cosine_similarity= fill_array_map(kmers_cosine_similarity,kmers_cosine_similarity_ij,starts,ends,starts_i,ends_i)
+            kmers_pid_similarity_ij = zipped_results[4]
+            kmers_pid_similarity= fill_array_map(kmers_pid_similarity,kmers_pid_similarity_ij,starts,ends,starts_i,ends_i)
+            # kmers_matrix_cosine_diag_ij = zipped_results[5]
+            # kmers_cosine_similarity_matrix_diag = fill_array_map(kmers_cosine_similarity_matrix_diag,kmers_matrix_cosine_diag_ij,starts,ends,starts_i,ends_i)
+
+        end = time.time()
+        print("Overall calculation time {}".format(str(datetime.timedelta(seconds=end - start))))
+        #Highlight: Mirror values across the diagonal
+        #pid_pairwise_matrix = np.maximum(pid_pairwise_matrix, pid_pairwise_matrix.transpose(1,0,2,3))
+        print("Transposing TODO: Transform inside loop")
+        #kmers_cosine_similarity_matrix_diag = np.maximum(kmers_cosine_similarity_matrix_diag, kmers_cosine_similarity_matrix_diag.transpose(1,0,2,3,4))
+        cosine_sim_pairwise_matrix = np.maximum(cosine_sim_pairwise_matrix, cosine_sim_pairwise_matrix.transpose(1,0,2,3))
+        #positional_weights = importance_weight_kmers(kmers_cosine_similarity_matrix_diag,nkmers,ksize,max_len,array_mask,overlapping_kmers,batch_size)
+        positional_weights = importance_weight(cosine_sim_pairwise_matrix,nkmers,ksize,max_len,array_mask,overlapping_kmers,batch_size)
+        percent_identity_mean = np.maximum(percent_identity_mean, percent_identity_mean.transpose())
+        cosine_similarity_mean = np.maximum(cosine_similarity_mean, cosine_similarity_mean.transpose())
+        kmers_pid_similarity = np.maximum(kmers_pid_similarity, kmers_pid_similarity.transpose())
+        kmers_cosine_similarity = np.maximum(kmers_cosine_similarity, kmers_cosine_similarity.transpose())
+
+        np.save("{}/{}/similarities/{}/positional_weights.npy".format(storage_folder, args.dataset_name,analysis_mode), positional_weights)
+        np.save("{}/{}/similarities/{}/percent_identity_mean.npy".format(storage_folder, args.dataset_name,analysis_mode),
+                percent_identity_mean)
+        np.save("{}/{}/similarities/{}/cosine_similarity_mean.npy".format(storage_folder, args.dataset_name,analysis_mode),
+                cosine_similarity_mean)
+        np.save("{}/{}/similarities/{}/kmers_pid_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,analysis_mode, ksize),
+                kmers_pid_similarity)
+        np.save("{}/{}/similarities/{}/kmers_cosine_similarity_{}ksize.npy".format(storage_folder, args.dataset_name,analysis_mode, ksize),
+                kmers_cosine_similarity)
+
+        similarity_results = SimilarityResults(positional_weights=np.ma.getdata(positional_weights),
+                                               percent_identity_mean=np.ma.getdata(percent_identity_mean),
+                                               cosine_similarity_mean=np.ma.getdata(cosine_similarity_mean),
+                                               kmers_pid_similarity=np.ma.getdata(kmers_pid_similarity),
+                                               kmers_cosine_similarity=np.ma.getdata(kmers_cosine_similarity))
+        print("Visualizing heatmaps...")
+        VegvisirPlots.plot_heatmap(positional_weights, "Positional Weights",
+                                   "{}/{}/similarities/{}/HEATMAP_positional_weights.png".format(storage_folder,
+                                                                                              args.dataset_name,analysis_mode))
+        VegvisirPlots.plot_heatmap(percent_identity_mean, "Percent Identity",
+                                   "{}/{}/similarities/{}/HEATMAP_percent_identity_mean.png".format(storage_folder,
+                                                                                                 args.dataset_name,analysis_mode))
+        VegvisirPlots.plot_heatmap(cosine_similarity_mean, "Cosine similarity",
+                                   "{}/{}/similarities/{}/HEATMAP_cosine_similarity_mean.png".format(storage_folder,
+                                                                                                  args.dataset_name,analysis_mode))
+        VegvisirPlots.plot_heatmap(kmers_pid_similarity, "Kmers ({}) percent identity".format(ksize),
+                                   "{}/{}/similarities/{}/HEATMAP_kmers_pid_similarity_{}ksize.png".format(storage_folder,
+                                                                                                        args.dataset_name,analysis_mode,
+                                                                                                        ksize))
+        VegvisirPlots.plot_heatmap(kmers_cosine_similarity, "Kmers ({}) cosine similarity".format(ksize),
+                                   "{}/{}/similarities/{}/HEATMAP_kmers_cosine_similarity_{}ksize.png".format(storage_folder,
+                                                                                                           args.dataset_name,analysis_mode,
+                                                                                                           ksize))
+
+        #TODO? VegvisirPlots.plot_umap1(kmers_cosine_similarity, labels, storage_folder, args, "Kmers Cosine similarity Mean","UMAP_kmers_cosine_similarity_{}".format(sequence_column))
+
+
+
+
+
+        return similarity_results
