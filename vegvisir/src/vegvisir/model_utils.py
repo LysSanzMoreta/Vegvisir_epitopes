@@ -234,7 +234,6 @@ class Attention5(nn.Module):
         output = torch.matmul(attn, v)  # Highlight:  context vector: attention-weighted version of our original value input
         return output, attn
 
-
 def glorot_init(input_dim, output_dim):
     init_range = torch.sqrt(torch.tensor(6/(input_dim + output_dim)))
     initial = torch.rand(input_dim, output_dim)*2*init_range - init_range

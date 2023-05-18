@@ -39,6 +39,8 @@ def calculate_mi(data,data_mask,aa_groups,max_len,mode,results_dir,dataset_name,
     :param data_mask:
     :param aa_groups:
     :return:
+    Notes:
+        -https://artem.sobolev.name/posts/2019-09-15-thoughts-on-mutual-information-alternative-dependency-measures.html
     """
     print("Calculating Mutual information")
     from sklearn.metrics import mutual_info_score
@@ -62,7 +64,7 @@ def calculate_mi(data,data_mask,aa_groups,max_len,mode,results_dir,dataset_name,
         #print(mi_matrix)
         fig, ax = plt.subplots(nrows=1,ncols=2,figsize=(9,6))
         max_mi = np.argmax(mi_matrix)
-        im = ax[0].imshow(mi_matrix)
+        im = ax[0].imshow(mi_matrix) #vmin=0, vmax=1.5
         ax[0].set_xticks(np.arange(max_len),labels=list(range(max_len)))
         ax[1].axis("off")
         cb_ax = fig.add_axes([0.75, 0.25, 0.02, 0.5])

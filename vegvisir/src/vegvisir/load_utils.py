@@ -143,7 +143,6 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
         dataset_proportions(train_data,results_dir, type="Train")
         dataset_proportions(valid_data,results_dir, type="Valid")
         dataset_proportions(test_data,results_dir, type="Test")
-
     elif method == "predefined_partitions_discard_test":
         """Discard the test dataset (because it seems a hard case) and use one of the partitions as the test instead. 
         The rest of the dataset is used for the training, and a portion for validation"""

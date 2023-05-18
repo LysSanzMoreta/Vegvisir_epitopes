@@ -200,7 +200,6 @@ def create_blosum(aa_types,subs_matrix_name,zero_characters=[],include_zero_char
 
     return subs_array, subs_dict, blosum_array_dict
 
-
 def calculate_aa_frequencies(dataset,freq_bins):
     """Calculates a frequency for each of the aa & gap at each position.The number of bins (of size 1) is one larger than the largest value in x. This is done for numpy arrays
     :param tensor dataset
@@ -976,3 +975,4 @@ def information_shift_samples(hidden_states,data_mask_seq,diag_idx_maxlen,seq_ma
     encoder_information_shift_weights_sample = np.concatenate(encoder_information_shift_weights_seq, axis=0)
 
     return encoder_information_shift_weights_sample[:, None]
+
