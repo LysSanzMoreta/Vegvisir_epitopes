@@ -307,9 +307,9 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
     return data_info
 
 def select_filters(args):
-    filters_dict = {"filter_kmers":[False,9,args.sequence_type], #Icore_non_anchor
+    filters_dict = {"filter_kmers":[True,9,args.sequence_type], #Icore_non_anchor
                     "group_alleles":[True],
-                    "filter_alleles":[False], #if True keeps the most common allele
+                    "filter_alleles":[True], #if True keeps the most common allele
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}
@@ -560,10 +560,16 @@ def data_class_division(array,array_mask,idx,labels,confidence_scores):
     :param idx: training or test idx
     :return:
     """
+    #TODO: not indexing by train or test
+
     labels_ = labels[idx]
     confidence_scores_ = confidence_scores[idx]
+
+
     array_ = array[idx]
     mask_ = array_mask[idx]
+
+
     positives_arr = array_[labels_ == 1]
     positives_arr_mask = mask_[labels_ == 1]
     negatives_arr = array_[labels_ == 0]
@@ -657,7 +663,7 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
     epitopes_array_int_group_divison_test = data_class_division(epitopes_array_int_group,epitopes_array_mask,np.invert(training),labels_arr,confidence_scores)
 
 
-    plot_mi = True
+    plot_mi = False
     if plot_mi:
         #Highlight: Mutual informaton calculated using raw amino acids
         VegvisirMI.calculate_mi(epitopes_array_int_division_train.all,epitopes_array_blosum_norm_group_divison_train.all_mask,
@@ -724,7 +730,7 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
         # VegvisirMI.calculate_mutual_information(positives_arr.tolist(),identifiers,seq_max_len,"TrainPositives",storage_folder,args.dataset_name)
         # VegvisirMI.calculate_mutual_information(negatives_arr.tolist(),identifiers,seq_max_len,"TrainNegatives",storage_folder,args.dataset_name)
         # VegvisirMI.calculate_mutual_information(high_conf_negatives_arr.tolist(),identifiers,seq_max_len,"TrainHighlyConfidentNegatives",storage_folder,args.dataset_name)
-    plot_frequencies=True
+    plot_frequencies=False
     if plot_frequencies:#Highlight: remember to use "int"!!!!!!!!
         VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_test.all,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/{}/Test/{}/neighbours1/all".format(args.sequence_type,analysis_mode),"TestAll")
         VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_test.positives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/{}/Test/{}/neighbours1/positives".format(args.sequence_type,analysis_mode),"TestPositives")

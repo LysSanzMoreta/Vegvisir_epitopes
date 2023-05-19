@@ -29,7 +29,8 @@ def rotate_blosum(v1,cosine_sim_mask):
 
 
     # rotation by pi/2 (np.pi = 180)
-    sign = np.random.randn() > 0
+    #sign = np.random.randn() > 0
+    sign = True
     sign_dict ={True:-1,False:1}
     a = sign_dict[sign]*(np.pi*0.8)
 
@@ -68,25 +69,43 @@ def rotate_blosum_peptide(data,data_mask):
 
     # Gram-Schmidt orthogonalization
     n1 = data/torch.linalg.norm(data,dim=1)[:,None]
-    print("rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr")
     v2 = v2 - torch.matmul(n1,v2[0])[:,None]*n1 #works [L,feat_dim]
-    print(v2)
-    print("rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr")
     n2 = v2 / torch.linalg.norm(v2,dim=1)[:,None]
 
 
     # rotation by pi/2 (np.pi = 180)
-    sign = torch.randn(1) > 0
+    #sign = torch.randn(1) > 0
+    sign = torch.Tensor([True])
+
     sign_dict ={True:torch.tensor([-1]),False:torch.tensor([1])}
     a = sign_dict[sign.item()]*(torch.pi*0.8) #TODO: Also randomly change degrees of rotation
     #a = torch.rand(-1,1,(1))*torch.pi #degrees
     I = torch.eye(data.shape[1])
 
+    #print("BMM-----------------------------")
+    #print(torch.bmm(n2[:,:,None], n1[:,None,:]))
+    # print("---------------n2-------------------")
+    # print(n2)
+    # print("---------------n1-------------------")
+    # print(n1)
+    # print("n1@n2")
+    # print(torch.bmm(n2[:,:,None], n1[:,None,:]).shape)
+    #
+    # print(torch.bmm(n2[:,:,None], n1[:,None,:]))
+    # print("-----------------------")
     R = I + (torch.bmm(n2[:,:,None], n1[:,None,:]) - torch.bmm(n1[:,:,None], n2[:,None,:])) * torch.sin(a) + (torch.bmm(n1[:,:,None], n1[:,None,:]) + torch.bmm(n2[:,:,None], n2[:,None,:])) * (torch.cos(a) - 1)
 
     # check result
     data_rotated = torch.matmul(R,n1[:,:,None]).squeeze(-1)
+    # print("data rotated """"""""""""""")
+    # print(data_rotated)
+
+    # print("geerere")
+    # print(torch.linalg.norm(data,dim=1)[:,None])
     data_rotated_unnormalized = data_rotated*torch.linalg.norm(data,dim=1)[:,None]
+    # print("data rotated unormalized 22222222222222222222")
+    # print(data_rotated_unnormalized)
+
     data_mask = torch.tile(data_mask[:,None],(1,data.shape[-1]))
 
     data[~data_mask] = 0
@@ -97,10 +116,10 @@ def rotate_blosum_peptide(data,data_mask):
     return data_transformed
 
 def batch_multiplication(a,b,n_data,L,feat_dim):
-    c = torch.bmm(a[:,:,:,None].view(n_data,-1,1),b[:,:,None,:].view(n_data,1,-1))
-    c = c.view(n_data,L,L,feat_dim,feat_dim)
-    diag_idx = torch.arange(L),torch.arange(L)
-    c = c[:,diag_idx[0],diag_idx[0]]
+    """Inspired by https://github.com/pytorch/pytorch/issues/3172"""
+    c = torch.bmm(a[:,:,:,None].view(n_data,-1,1),b[:,None,:,:].view(n_data,1,-1))
+    c = c.view(n_data,L,feat_dim,L,feat_dim)
+    c = c.permute(0,1,3,2,4)[:,torch.arange(L),torch.arange(L)]
 
     return c
 
@@ -123,25 +142,22 @@ def rotate_blosum_batch(data,data_mask):
 
     n1 = data/torch.linalg.norm(data,dim=2)[:,:,None] #[N,L,feat_dim]
 
-    v2 = v2 - torch.matmul(n1,v2[0,0])[:,:,None]*n1 #works [N,L,feat_dim] #TODO: if someting is off is probably here
-    print("#########################################################")
-    print(v2)
-    print("#########################################################")
-
+    v2 = v2 - torch.matmul(n1,v2[0,0])[:,:,None]*n1 #works [N,L,feat_dim]
     n2 = v2 / torch.linalg.norm(v2,dim=2)[:,:,None]
 
 
     # rotation by pi/2 (np.pi = 180)
-    sign = torch.randn(1) > 0
+    #sign = torch.randn(1) > 0
+    sign = torch.Tensor([True])
+    degrees = torch.rand(0,1)
+    print(degrees)
+    exit()
     sign_dict ={True:torch.tensor([-1]),False:torch.tensor([1])}
     a = sign_dict[sign.item()]*(torch.pi*0.8) #TODO: Also randomly change degrees of rotation
     #a = torch.rand(-1,1,(1))*torch.pi #degrees
     I = torch.eye(feat_dim)
-    #TODO: https://github.com/pytorch/pytorch/issues/3172
 
 
-
-    #    R = I + (torch.bmm(n2[:,:,:,None], n1[:,:,None,:]) - torch.bmm(n1[:,:,:,None], n2[:,:,None,:])) * torch.sin(a) + (torch.bmm(n1[:,:,:,None], n1[:,:,None,:]) + torch.bmm(n2[:,:,:,None], n2[:,:,None,:])) * (torch.cos(a) - 1)
     one = batch_multiplication(n2,n1,n_data,L,feat_dim)
     two = batch_multiplication(n1,n2,n_data,L,feat_dim)
     three = batch_multiplication(n1,n1,n_data,L,feat_dim)
@@ -149,18 +165,13 @@ def rotate_blosum_batch(data,data_mask):
 
     R = I + (one - two) * torch.sin(a) + (three + four) * (torch.cos(a) - 1)
 
-
     # check result
-
     data_rotated = torch.matmul(R,n1[:,:,:,None]).squeeze(-1)
-
     data_rotated_unnormalized = data_rotated*torch.linalg.norm(data,dim=2)[:,:,None]
-
     data_mask = torch.tile(data_mask[:,:,None],(1,1,data.shape[-1]))
 
     data[~data_mask] = 0
     data_rotated_unnormalized[data_mask] = 0
-
     data_transformed = data + data_rotated_unnormalized
 
     return data_transformed
@@ -173,17 +184,19 @@ def rotate_conserved( dataset, dataset_mask):
     :param int freq_bins
     """
 
-    results = rotate_blosum_batch(dataset.float(),dataset_mask)
-    print(results)
+    #Highlight: Testing for calculation of one peptide at the time
     results = []
     for i,d_i in enumerate(torch.unbind(dataset.float(), dim=0), 0):
         d_mask = dataset_mask[i]
         d_rotated=rotate_blosum_peptide(d_i,d_mask)
         results.append(d_rotated)
-
     results = torch.stack(results)
-    print("---------------------------------------------------")
-    print(results)
+    # print("----------------RESULTS peptide-------------------------")
+    # print(results)
+    #Highlight: Testing for calculation of all peptides simultaneously
+    results = rotate_blosum_batch(dataset.float(), dataset_mask)
+    # print("result batch")
+    # print(results)
 
 
 if __name__ == '__main__':
