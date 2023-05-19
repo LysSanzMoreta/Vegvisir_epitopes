@@ -26,7 +26,7 @@ ModelLoad = namedtuple("ModelLoad",["args","max_len","seq_max_len","n_data","inp
 def batch_loop():
     """"""
 
-def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
+def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
     """Regular batch training
     :param pyro.infer svi
     :param nn.Module,PyroModule Vegvisir: Neural net architecture
@@ -57,20 +57,27 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
         batch_data_onehot = batch_dataset["batch_data_onehot"]
         batch_data_blosum_norm = batch_dataset["batch_data_blosum_norm"]
         batch_mask = batch_dataset["batch_mask"]
+        batch_positional_mask = batch_dataset["batch_positional_mask"]
+
         if args.use_cuda:
             batch_data_blosum = batch_data_blosum.cuda()
             batch_data_int = batch_data_int.cuda()
             batch_data_onehot = batch_data_onehot.cuda()
             batch_data_blosum_norm = batch_data_blosum_norm.cuda()
             batch_mask = batch_mask.cuda()
-        batch_data = {"blosum":batch_data_blosum,"int":batch_data_int,"onehot":batch_data_onehot,"norm":batch_data_blosum_norm}
+            batch_positional_mask = batch_positional_mask.cuda()
+        batch_data = {"blosum":batch_data_blosum,
+                      "int":batch_data_int,
+                      "onehot":batch_data_onehot,
+                      "norm":batch_data_blosum_norm,
+                      "positional_mask":batch_positional_mask}
         data_int.append(batch_data_int.detach().cpu().numpy())
         data_masks.append(batch_mask.detach().cpu().numpy())
         #Forward & Backward pass
-        guide_estimates = guide(batch_data,batch_mask,None,sample=False)
-        loss = svi.step(batch_data,batch_mask,guide_estimates,sample=False)
+        guide_estimates = guide(batch_data,batch_mask,epoch,None,sample=False)
+        loss = svi.step(batch_data,batch_mask,epoch,guide_estimates,sample=False)
 
-        sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=1, return_sites=(), parallel=False)(batch_data,batch_mask,guide_estimates=guide_estimates,sample=True)
+        sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=1, return_sites=(), parallel=False)(batch_data,batch_mask,epoch = 0,guide_estimates=guide_estimates,sample=True)
 
         binary_class_prediction = sampling_output["predictions"].squeeze(0).squeeze(0).detach()
         logits_class_prediction = sampling_output["class_logits"].squeeze(0).squeeze(0).squeeze(0).detach()
@@ -151,7 +158,7 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load):
                         "decoder_final_hidden_state": decoder_final_hidden_arr,
                         }
     return train_loss,target_accuracy,predictions_dict,latent_arr, reconstruction_accuracies_dict
-def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
+def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
     """
     :param svi: pyro infer engine
     :param dataloader data_loader: Pytorch dataloader
@@ -181,18 +188,23 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
             batch_data_onehot = batch_dataset["batch_data_onehot"]
             batch_data_blosum_norm = batch_dataset["batch_data_blosum_norm"]
             batch_mask = batch_dataset["batch_mask"]
+            batch_positional_mask = batch_dataset["batch_positional_mask"]
+
             if args.use_cuda:
                 batch_data_blosum = batch_data_blosum.cuda() #TODO: Automatize for any kind of input (blosum encoding, integers, one-hot)
                 batch_data_int = batch_data_int.cuda()
                 batch_data_onehot = batch_data_onehot.cuda()
                 batch_data_blosum_norm = batch_data_blosum_norm.cuda()
                 batch_mask = batch_mask.cuda()
-            batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
+                batch_positional_mask = batch_positional_mask.cuda()
+            batch_data = {"blosum": batch_data_blosum, "int": batch_data_int,
+                          "onehot": batch_data_onehot,"norm":batch_data_blosum_norm,
+                          "positional_mask":batch_positional_mask}
             data_int.append(batch_data_int.detach().cpu().numpy())
             data_masks.append(batch_mask.detach().cpu().numpy())
 
-            guide_estimates = guide(batch_data, batch_mask, None, sample=False)
-            loss = svi.step(batch_data, batch_mask, guide_estimates, sample=False)
+            guide_estimates = guide(batch_data, batch_mask,epoch, None, sample=False)
+            loss = svi.step(batch_data, batch_mask, epoch, guide_estimates, sample=False)
             # guide_estimates = guide(batch_data,batch_mask)
             # sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
             # predicted_labels = sampling_output.predicted_labels.detach()
@@ -279,7 +291,7 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load):
                         }
 
     return valid_loss,target_accuracy,predictions_dict,latent_arr, reconstruction_accuracies_dict
-def test_loop(svi,Vegvisir,guide,data_loader,args,model_load): #TODO: remove
+def test_loop(svi,Vegvisir,guide,data_loader,args,model_load,epoch): #TODO: remove
     Vegvisir.train(False)
     Vegvisir.eval()
     test_loss = 0.
@@ -305,18 +317,22 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load): #TODO: remove
             batch_data_onehot = batch_dataset["batch_data_onehot"]
             batch_data_blosum_norm = batch_dataset["batch_data_blosum_norm"]
             batch_mask = batch_dataset["batch_mask"]
+            batch_positional_mask = batch_dataset["batch_positional_mask"]
             if args.use_cuda:
                 batch_data_blosum = batch_data_blosum.cuda()
                 batch_data_int = batch_data_int.cuda()
                 batch_data_onehot = batch_data_onehot.cuda()
                 batch_data_blosum_norm = batch_data_blosum_norm.cuda()
                 batch_mask = batch_mask.cuda()
-            batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,"norm":batch_data_blosum_norm}
+                batch_positional_mask = batch_positional_mask.cuda()
+            batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,
+                          "norm":batch_data_blosum_norm,
+                          "positional_mask":batch_positional_mask}
             data_int.append(batch_data_int.detach().cpu().numpy())
             data_masks.append(batch_mask.detach().cpu().numpy())
 
-            guide_estimates = guide(batch_data, batch_mask, None, sample=False)
-            loss = svi.step(batch_data, batch_mask, guide_estimates, sample=False)
+            guide_estimates = guide(batch_data, batch_mask,epoch, None, sample=False)
+            loss = svi.step(batch_data, batch_mask, epoch,guide_estimates, sample=False)
             # guide_estimates = guide(batch_data,batch_mask)
             # sampling_output = Vegvisir.sample(batch_data,batch_mask,guide_estimates,argmax=True)
             # predicted_labels = sampling_output.predicted_labels.detach()
@@ -442,7 +458,7 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             data_int.append(batch_data_int.detach().cpu().numpy())
             data_masks.append(batch_mask.detach().cpu().numpy())
 
-            guide_estimates = guide(batch_data, batch_mask, None, sample=False)
+            guide_estimates = guide(batch_data, batch_mask, None, epoch=0,sample=False)
             sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=args.num_samples, return_sites=(), parallel=False)(batch_data, batch_mask,guide_estimates=guide_estimates, sample=True)
 
             if sampling_output["predictions"].shape == (args.num_samples,batch_data["blosum"].shape[0]):
@@ -559,7 +575,11 @@ def select_model(model_load,results_dir,fold,args):
     """Select among the available models at models.py"""
     if model_load.seq_max_len == model_load.max_len:
         if args.learning_type == "supervised":
-            vegvisir_model = VegvisirModels.VegvisirModel5a_supervised(model_load)
+            if args.glitch:
+                print("Using glitch technique to blur conserved regions")
+                vegvisir_model = VegvisirModels.VegvisirModel5a_supervised_glitch(model_load)
+            else:
+                vegvisir_model = VegvisirModels.VegvisirModel5a_supervised(model_load)
         elif args.learning_type == "unsupervised":
             vegvisir_model = VegvisirModels.VegvisirModel5a_unsupervised(model_load)
         elif args.learning_type == "semisupervised":
@@ -735,7 +755,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         while epoch <= args.num_epochs:
             start = time.time()
             #svi,Vegvisir,guide,data_loader, args
-            train_epoch_loss,train_accuracy,train_predictions,train_reconstruction_accuracies_dict = train_loop(svi,Vegvisir,guide, train_loader, args,model_load)
+            train_epoch_loss,train_accuracy,train_predictions,train_reconstruction_accuracies_dict = train_loop(svi,Vegvisir,guide, train_loader, args,model_load,epoch)
             stop = time.time()
             memory_usage_mib = torch.cuda.max_memory_allocated() * 9.5367 * 1e-7  # convert byte to MiB
             print("[epoch %03d]  average training loss: %.4f %.5g time/epoch %.2f MiB/epoch" % (epoch, train_epoch_loss, stop - start, memory_usage_mib))
@@ -744,7 +764,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
             if (check_point_epoch > 0 and epoch > 0 and epoch % check_point_epoch == 0) or epoch == args.num_epochs :
                 for name_i, value in pyro.get_param_store().named_parameters(): #TODO: https://stackoverflow.com/questions/68634707/best-way-to-detect-vanishing-exploding-gradient-in-pytorch-via-tensorboard
                     value.register_hook(lambda g, name_i=name_i: gradient_norms[name_i].append(g.norm().detach().item()))
-                valid_epoch_loss,valid_accuracy,valid_predictions,valid_reconstruction_accuracies_dict = valid_loop(svi,Vegvisir,guide, valid_loader, args,model_load)
+                valid_epoch_loss,valid_accuracy,valid_predictions,valid_reconstruction_accuracies_dict = valid_loop(svi,Vegvisir,guide, valid_loader, args,model_load,epoch)
                 valid_loss.append(valid_epoch_loss)
                 epochs_list.append(epoch)
                 valid_accuracies.append(valid_accuracy)
@@ -861,16 +881,18 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                                                               test_mask)
         test_loader = DataLoader(custom_dataset_test, batch_size=batch_size, shuffle=True,
                                  generator=torch.Generator(device=args.device), **kwargs)
-        predictions = test_loop(Vegvisir,guide,test_loader,args,model_load)
+        predictions = test_loop(Vegvisir,guide,test_loader,args,model_load,epoch=0)
         score = roc_auc_score(y_true=test_data_blosum[:, 0, 0, 0].numpy(), y_score=predictions)
         print("Final AUC score : {}".format( score))
 def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid"):
+
     #Split the rest of the data (train_data) for train and validation
     data_blosum = dataset_info.data_array_blosum_encoding
     data_int = dataset_info.data_array_int
     data_onehot = dataset_info.data_array_onehot_encoding
     data_blosum_norm = dataset_info.data_array_blosum_norm
     data_array_blosum_encoding_mask = dataset_info.data_array_blosum_encoding_mask
+    data_positional_weights_mask = dataset_info.positional_weights_mask
     train_data_blosum = data_blosum[train_idx]
     valid_data_blosum = data_blosum[valid_idx]
     assert (train_data_blosum[:,0,0,1] == data_int[train_idx,0,1]).all(), "The data is shuffled and the data frames are comparing the wrong things"
@@ -905,12 +927,14 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                                                            data_int[train_idx],
                                                            data_onehot[train_idx],
                                                            data_blosum_norm[train_idx],
-                                                           data_array_blosum_encoding_mask[train_idx])
+                                                           data_array_blosum_encoding_mask[train_idx],
+                                                           data_positional_weights_mask[train_idx])
     custom_dataset_valid = VegvisirLoadUtils.CustomDataset(data_blosum[valid_idx],
                                                            data_int[valid_idx],
                                                            data_onehot[valid_idx],
                                                            data_blosum_norm[valid_idx],
-                                                           data_array_blosum_encoding_mask[valid_idx])
+                                                           data_array_blosum_encoding_mask[valid_idx],
+                                                           data_positional_weights_mask[valid_idx])
 
     train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
     valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
@@ -941,7 +965,11 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
         guide = select_quide(Vegvisir,model_load,n_data,args.guide)
     #svi = SVI(poutine.scale(Vegvisir.model,scale=1.0/n_data), poutine.scale(guide,scale=1.0/n_data), optimizer, loss_func)
     n = 50
-    data_args_0 = {"blosum":train_data_blosum.to(args.device)[:n],"norm":data_blosum_norm[train_idx].to(args.device)[:n],"int":data_int[train_idx].to(args.device)[:n]}
+    data_args_0 = {"blosum":train_data_blosum.to(args.device)[:n],
+                   "norm":data_blosum_norm[train_idx].to(args.device)[:n],
+                   "int":data_int[train_idx].to(args.device)[:n],
+                   "onehot":data_onehot[train_idx].to(args.device)[:n],
+                   "positional_mask":data_positional_weights_mask[train_idx].to(args.device)[:n]}
     data_args_1 = data_array_blosum_encoding_mask[train_idx].to(args.device)[:n]
 
     model_trace = pyro.poutine.trace(Vegvisir.model).get_trace(data_args_0,data_args_1,None,False)
@@ -950,8 +978,8 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     print(model_trace.format_shapes())
 
     #Highlight: Draw the graph model
-    pyro.render_model(Vegvisir.model, model_args=(data_args_0,data_args_1,None,False), filename="{}/model_graph.png".format(results_dir),render_distributions=True,render_params=False)
-    pyro.render_model(guide, model_args=(data_args_0,data_args_1,None,False), filename="{}/guide_graph.png".format(results_dir),render_distributions=True,render_params=False)
+    pyro.render_model(Vegvisir.model, model_args=(data_args_0,data_args_1,0,None,False), filename="{}/model_graph.png".format(results_dir),render_distributions=True,render_params=False)
+    pyro.render_model(guide, model_args=(data_args_0,data_args_1,0,None,False), filename="{}/guide_graph.png".format(results_dir),render_distributions=True,render_params=False)
     svi = SVI(Vegvisir.model, guide, optimizer, loss_func)
 
     #TODO: Dictionary that gathers the results from each fold
@@ -971,9 +999,10 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     train_summary_dict = None
     valid_summary_dict = None
     gradient_norms = defaultdict(list)
+
     while epoch <= args.num_epochs:
         start = time.time()
-        train_epoch_loss,train_accuracy,train_predictions_dict, train_latent_space,train_reconstruction_accuracy_dict = train_loop(svi,Vegvisir,guide, train_loader, args,model_load)
+        train_epoch_loss,train_accuracy,train_predictions_dict, train_latent_space,train_reconstruction_accuracy_dict = train_loop(svi,Vegvisir,guide, train_loader, args,model_load,epoch)
         stop = time.time()
         memory_usage_mib = torch.cuda.max_memory_allocated() * 9.5367 * 1e-7  # convert byte to MiB
         print("[epoch %03d]  average training loss: %.4f %.5g time/epoch %.2f MiB/epoch" % (epoch, train_epoch_loss, stop - start, memory_usage_mib))
@@ -986,7 +1015,7 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
             for name_i, value in pyro.get_param_store().named_parameters(): #TODO: https://stackoverflow.com/questions/68634707/best-way-to-detect-vanishing-exploding-gradient-in-pytorch-via-tensorboard
                 value.register_hook(lambda g, name_i=name_i: gradient_norms[name_i].append(g.norm().detach().item()))
             epochs_list.append(epoch)
-            valid_epoch_loss, valid_accuracy, valid_predictions_dict, valid_latent_space,valid_reconstruction_accuracy_dict = valid_loop(svi, Vegvisir, guide, valid_loader, args,model_load)
+            valid_epoch_loss, valid_accuracy, valid_predictions_dict, valid_latent_space,valid_reconstruction_accuracy_dict = valid_loop(svi, Vegvisir, guide, valid_loader, args,model_load,epoch)
             valid_loss.append(valid_epoch_loss)
             valid_accuracies.append(valid_accuracy)
             valid_reconstruction_accuracies_dict["mean"].append(valid_reconstruction_accuracy_dict["mean"])
@@ -1068,8 +1097,6 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     VegvisirPlots.plot_classification_metrics(args,valid_summary_dict,valid_data_blosum,"all",results_dir,mode=mode)
     stop = time.time()
     print('Final timing: {}'.format(str(datetime.timedelta(seconds=stop-start))))
-
-
 def train_model(dataset_info,additional_info,args):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
@@ -1090,7 +1117,6 @@ def train_model(dataset_info,additional_info,args):
     valid_idx = (data_blosum[:,0,0,1][..., None] == valid_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
     test_idx = (data_blosum[:,0,0,1][..., None] == test_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
 
-
     print('\t Number train data points: {}; Proportion: {}'.format(train_data_blosum.shape[0],(train_data_blosum.shape[0]*100)/train_data_blosum.shape[0]))
     print('\t Number eval data points: {}; Proportion: {}'.format(valid_data_blosum.shape[0],(valid_data_blosum.shape[0]*100)/valid_data_blosum.shape[0]))
     if not args.test:
@@ -1099,7 +1125,6 @@ def train_model(dataset_info,additional_info,args):
     else:
         print("Training & testing...")
         train_idx = (train_idx.int() + valid_idx.int()).bool()
-
         epoch_loop(train_idx, test_idx, dataset_info, args, additional_info,mode="Test")
 
 

@@ -953,9 +953,9 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     n_data = epitopes_array.shape[0]
     all_sim_results = data_exploration(data, epitopes_array_blosum, epitopes_array_int, epitopes_mask, aa_dict, aa_list,
                      blosum_norm, seq_max_len, storage_folder, args, corrected_aa_types,analysis_mode,filters_dict)
-    exit()
+
     positional_weights = all_sim_results.positional_weights
-    positional_weights_mask = (positional_weights[..., None] > 0.6).any(-1)
+    positional_weights_mask = (positional_weights[..., None] > 0.8).any(-1)
 
     #Highlight: Reattatch partition, identifier, label, immunodominance score
     labels = data[["target_corrected"]].values.tolist()
@@ -1044,8 +1044,8 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
                             max_len=[seq_max_len + len(features_names) if features_names is not None else seq_max_len][0],
                             corrected_aa_types = corrected_aa_types,
                             input_dim=corrected_aa_types,
-                            positional_weights=all_sim_results.positional_weights ,
-                            positional_weights_mask=positional_weights_mask,
+                            positional_weights=torch.from_numpy(all_sim_results.positional_weights) ,
+                            positional_weights_mask=torch.from_numpy(positional_weights_mask),
                             percent_identity_mean= all_sim_results.percent_identity_mean,
                             cosine_similarity_mean= all_sim_results.cosine_similarity_mean,
                             kmers_pid_similarity=all_sim_results.kmers_pid_similarity,

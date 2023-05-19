@@ -599,7 +599,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
         self.init_hidden = Init_Hidden(self.z_dim, self.max_len, self.gru_hidden_dim, self.device)
 
-    def model(self,batch_data,batch_mask,guide_estimates,sample=False):
+    def model(self,batch_data,batch_mask,epoch,guide_estimates,sample=False):
         """
         :param batch_data:
         :param batch_mask:
@@ -675,7 +675,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         return Trace_ELBO(strict_enumeration_warning=False)
 
 
-class VegvisirModel5a_supervised_masked(VEGVISIRModelClass,PyroModule):
+class VegvisirModel5a_supervised_glitch(VEGVISIRModelClass,PyroModule):
     """
     Variational Autoencoder with all dimensions dependent
     -Notes:
@@ -705,21 +705,7 @@ class VegvisirModel5a_supervised_masked(VEGVISIRModelClass,PyroModule):
         self.init_hidden = Init_Hidden(self.z_dim, self.max_len, self.gru_hidden_dim, self.device)
 
 
-
-
-    def rotate_conserved(self,dataset, freq_bins):
-        """Calculates a frequency for each of the aa & gap at each position.The number of bins (of size 1) is one larger than the largest value in x. This is done for torch tensors
-        :param tensor dataset
-        :param int freq_bins
-        """
-        freqs = torch.stack([torch.bincount(x_i, minlength=freq_bins) for i, x_i in
-                             enumerate(torch.unbind(dataset.type(torch.int64), dim=1), 0)], dim=1)
-        freqs = freqs.T
-        freqs = freqs / dataset.shape[0]
-        return freqs
-
-
-    def model(self,batch_data,batch_mask,guide_estimates,sample=False):
+    def model(self,batch_data,batch_mask,epoch,guide_estimates,sample=False):
         """
         :param batch_data:
         :param batch_mask:
@@ -734,14 +720,12 @@ class VegvisirModel5a_supervised_masked(VEGVISIRModelClass,PyroModule):
 
         pyro.module("vae_model", self)
         batch_sequences_blosum = batch_data["blosum"][:,1].squeeze(1)
-
-
-
         batch_sequences_int = batch_data["int"][:,1].squeeze(1)
         batch_sequences_norm = batch_data["norm"][:,1]
         batch_size = batch_sequences_blosum.shape[0]
         batch_mask_len = batch_mask[:,1:].squeeze(1)
         batch_mask_len = batch_mask_len[:,:,0]
+
         batch_sequences_lens = batch_mask_len.sum(dim=1)
         batch_mask_len_true = torch.ones_like(batch_mask_len).bool()
         true_labels = batch_data["blosum"][:,0,0,0]
@@ -754,11 +738,8 @@ class VegvisirModel5a_supervised_masked(VEGVISIRModelClass,PyroModule):
         z_mean,z_scale = torch.zeros((batch_size,self.z_dim)), torch.ones((batch_size,self.z_dim))
         with pyro.plate("plate_batch",dim=-1,device=self.device):
             latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale).to_event(1))  # [n,z_dim]
-            #print("Here")
-            #print(latent_space)
-            #print("-------------------")
+
             latent_z_seq = latent_space.repeat(1, self.seq_max_len).reshape(batch_size, self.max_len, self.z_dim) #[N,L,z_dim]
-            #print(latent_z_seq)
             init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * self.bidirectional, batch_size,self.gru_hidden_dim).contiguous()
             #init_h_0_decoder = self.init_hidden(latent_space).expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             #sequences_logits = self.decoder(batch_sequences_norm[:,:,None],batch_sequences_lens,init_h_0_decoder)
@@ -820,7 +801,7 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
         #self.init_hidden = Init_Hidden(self.z_dim,self.max_len,self.gru_hidden_dim,self.device)
         #self.embedding = Embed(self.blosum,self.embedding_dim,self.aa_types,self.device)
-    def model(self,batch_data,batch_mask,guide_estimates,sample=False):
+    def model(self,batch_data,batch_mask,epoch,guide_estimates,sample=False):
         """
         :param batch_data:
         :param batch_mask:
@@ -921,7 +902,7 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
 
-    def model(self,batch_data,batch_mask,guide_estimates,sample=False):
+    def model(self,batch_data,batch_mask,epoch,guide_estimates,sample=False):
         """
         :param batch_data:
         :param batch_mask:
@@ -1010,7 +991,7 @@ class VegvisirModel5b(VEGVISIRModelClass,PyroModule):
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
 
-    def model(self,batch_data,batch_mask,guide_estimates,sample=False):
+    def model(self,batch_data,batch_mask,epoch,guide_estimates,sample=False):
         """
         :param batch_data:
         :param batch_mask:
@@ -1145,7 +1126,7 @@ class VegvisirModel5c(VEGVISIRModelClass,PyroModule):
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
 
-    def model(self,batch_data,batch_mask):
+    def model(self,batch_data,batch_mask,epoch,guide_estimates,sample=False):
         """
         :param batch_data:
         :param batch_mask:

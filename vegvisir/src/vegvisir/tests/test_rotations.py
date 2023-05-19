@@ -141,19 +141,16 @@ def rotate_blosum_batch(data,data_mask):
     # Gram-Schmidt orthogonalization
 
     n1 = data/torch.linalg.norm(data,dim=2)[:,:,None] #[N,L,feat_dim]
-
     v2 = v2 - torch.matmul(n1,v2[0,0])[:,:,None]*n1 #works [N,L,feat_dim]
     n2 = v2 / torch.linalg.norm(v2,dim=2)[:,:,None]
 
-
     # rotation by pi/2 (np.pi = 180)
-    #sign = torch.randn(1) > 0
-    sign = torch.Tensor([True])
-    degrees = torch.rand(0,1)
-    print(degrees)
-    exit()
+    sign = torch.randn(1) > 0
+    #sign = torch.Tensor([True])
+    degree = torch.rand(1)  #A degree 0 will not rotate the vector
+
     sign_dict ={True:torch.tensor([-1]),False:torch.tensor([1])}
-    a = sign_dict[sign.item()]*(torch.pi*0.8) #TODO: Also randomly change degrees of rotation
+    a = sign_dict[sign.item()]*(torch.pi*degree) #TODO: Also randomly change degrees of rotation
     #a = torch.rand(-1,1,(1))*torch.pi #degrees
     I = torch.eye(feat_dim)
 
@@ -196,7 +193,7 @@ def rotate_conserved( dataset, dataset_mask):
     #Highlight: Testing for calculation of all peptides simultaneously
     results = rotate_blosum_batch(dataset.float(), dataset_mask)
     # print("result batch")
-    # print(results)
+    #print(results)
 
 
 if __name__ == '__main__':
