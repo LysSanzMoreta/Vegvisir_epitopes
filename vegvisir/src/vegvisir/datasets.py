@@ -60,7 +60,8 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
                  "viral_dataset2":viral_dataset2,
                  "viral_dataset3":viral_dataset3,
                  "viral_dataset4":viral_dataset4,
-                 "viral_dataset5":viral_dataset5}
+                 "viral_dataset5":viral_dataset5,
+                 "viral_dataset6":viral_dataset6}
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
 
     dataset_load_fx = lambda f,dataset_name,current_path,storage_folder,args,results_dir,update: lambda dataset_name,current_path,storage_folder,args,results_dir,update: f(dataset_name,current_path,storage_folder,args,results_dir,update)
@@ -309,7 +310,7 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
 def select_filters(args):
     filters_dict = {"filter_kmers":[True,9,args.sequence_type], #Icore_non_anchor
                     "group_alleles":[True],
-                    "filter_alleles":[True], #if True keeps the most common allele
+                    "filter_alleles":[False], #if True keeps the most common allele
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
                     "corrected_immunodominance_score":[False,10]}
@@ -423,7 +424,7 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
     else:
         allele_counts_dict = data["allele"].value_counts().to_dict()
-        allele_dict = dict(zip(allele_counts_dict.keys(),list(range(len(allele_counts_dict.keys())))))
+        allele_dict = dict(zip(allele_counts_dict.keys(),list(range(len(allele_counts_dict.keys()))))) #TODO: Replace with allele encoding based on sequential information
         data["allele_encoded"] = data["allele"]
         data.replace({"allele_encoded": allele_dict},inplace=True)
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
@@ -553,6 +554,101 @@ def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     return data_info
 
+def viral_dataset6(dataset_name,script_dir,storage_folder,args,results_dir,update):
+    """
+    Collects IEDB data and creates artificially generated epitopes. The artificial epitopes are designed by randomly collecting anchor points (based on the allele type) from the IEDB sequences
+    and randomly permutating the non-anchor positions
+
+    ####################
+    #HEADER DESCRIPTIONS#
+    ####################
+    allele
+    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
+    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
+    Number of Subjects Responded
+    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
+    training
+    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
+    partition
+
+    return
+          :param pandas dataframe: Results pandas dataframe with the following structure:
+                  Icore:Interaction peptide core
+                  allele: MHC allele
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  training: True assign data point to train , else assign to Test (given)
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  target: Pre-assigned target (given)
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+    """
+
+    dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
+    data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
+    data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
+    filters_dict,analysis_mode = select_filters(args)
+    json.dump(filters_dict, dataset_info_file, indent=2)
+    allele_counts = data.value_counts("allele")
+    most_common_allele = allele_counts.index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
+    data_allele_types = allele_counts.index.tolist() #alleles present in this dataset
+
+    anchors_per_allele = pd.read_csv("{}/anchor_info_content/anchors_per_allele_average.txt".format(storage_folder),sep="\s+",header=0)
+    anchors_per_allele=anchors_per_allele[anchors_per_allele[["allele"]].isin(data_allele_types).any(axis=1)]
+    allele_anchors_dict = dict(zip(anchors_per_allele["allele"],anchors_per_allele["anchors"]))
+    generate_artificial_epitopes(data,allele_anchors_dict,allele_counts)
+    exit()
+    if filters_dict["filter_alleles"][0]:
+        data = data[data["allele"] == most_common_allele]
+
+    if filters_dict["group_alleles"][0]:
+        # Group data by Icore, therefore, the alleles are grouped
+        data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
+        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        # Reattach info on training
+        data = pd.merge(data_a, data_b, on='Icore', how='outer')
+    else:
+        allele_counts_dict = data["allele"].value_counts().to_dict()
+        allele_dict = dict(zip(allele_counts_dict.keys(),list(range(len(allele_counts_dict.keys())))))
+        data["allele_encoded"] = data["allele"]
+        data.replace({"allele_encoded": allele_dict},inplace=True)
+
+def generate_artificial_epitopes(data,allele_anchors_dict,allele_counts,n_replicates=3):
+    """"""
+
+    #Add the anchors points as a column
+
+    data["allele_anchors"] = data["allele"]
+    data =  data.replace({"allele_anchors": allele_anchors_dict})
+
+    seq_list = data[["Icore"]].values.tolist()
+    seq_list = functools.reduce(operator.iconcat, seq_list, [])  # flatten list of lists
+    seq_lens = np.array(list(map(len, data["Icore"])))
+    unique_lens = list(set(seq_lens))
+
+    allele_anchors_list = data["allele_anchors"]
+
+    corrected_aa_types = len(set().union(*seq_list))
+    corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
+    if len(unique_lens) > 1: # Highlight: Pad the sequences (relevant when they differ in length)
+        aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types , zero_characters=["#"])
+    else:
+        aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types , zero_characters=[])
+
+
+    replicates = []
+    for i in range(n_replicates):
+        artificial_icores = VegvisirLoadUtils.ArtificialEpitopes(seq_list,allele_anchors_list,"artificial_1",aa_dict).run()
+        exit()
+
+
+
+
+    data_replicates = pd.concat(replicates, ignore_index=True)
+    exit()
+    #Duplicate rows,
+
+
 def data_class_division(array,array_mask,idx,labels,confidence_scores):
     """
 
@@ -613,6 +709,17 @@ def build_exploration_folders(args,storage_folder,filters_dict):
         VegvisirUtils.folders("negatives","{}/{}/similarities/{}/{}/same_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
         VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/{}/same_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
 
+
+def sample_datapoints_mi(a,b):
+
+    longest, shortest = [(0, 1) if a.shape[0] >b.shape[0] else (1, 0)][0]
+    dict_counts = {0: a.shape[0],1: b.shape[0]}
+    idx_longest = np.arange(dict_counts[longest])
+    idx_sample = np.array(random.sample(range(dict_counts[longest]), dict_counts[shortest]))
+    idx_sample = np.sort(idx_sample,axis=0)
+    idx_sample = (idx_longest[..., None] == idx_sample).any(-1)
+    return idx_sample,dict_counts[longest]
+
 def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_array_mask,aa_dict,aa_list,blosum_norm,seq_max_len,storage_folder,args,corrected_aa_types,analysis_mode,filters_dict):
 
     if not os.path.exists("{}/{}/similarities/{}".format(storage_folder,args.dataset_name,args.sequence_type)):
@@ -621,7 +728,7 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
     else:
         print("Folder structure existing")
     #Highlight: Encode amino acid by chemical group
-    aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aa_dict)
+    aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict,aa_by_groups_dict = VegvisirUtils.aminoacids_groups(aa_dict)
     aa_groups = len(groups_names_colors_dict.keys())
     epitopes_array_int_group = np.vectorize(aa_groups_dict.get)(epitopes_array_int)
     #Highlight: Encode amino acid by blosum norm group
@@ -663,64 +770,135 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
     epitopes_array_int_group_divison_test = data_class_division(epitopes_array_int_group,epitopes_array_mask,np.invert(training),labels_arr,confidence_scores)
 
 
-    plot_mi = False
+    plot_mi = True
     if plot_mi:
+        warnings.warn("Calculating Mutual information: If the dataset is unbalanced , then the longest dataset will be subsampled to match the smaller dataset")
         #Highlight: Mutual informaton calculated using raw amino acids
+
+        train_idx_select,train_longest_array = sample_datapoints_mi(epitopes_array_int_division_train.positives,epitopes_array_int_division_train.negatives)
+        test_idx_select,test_longest_array = sample_datapoints_mi(epitopes_array_int_division_test.positives,epitopes_array_int_division_test.negatives)
+        #Highlight: Train
         VegvisirMI.calculate_mi(epitopes_array_int_division_train.all,epitopes_array_blosum_norm_group_divison_train.all_mask,
                                 aa_groups,seq_max_len,"TrainAll_raw_aa",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode))
-        VegvisirMI.calculate_mi(epitopes_array_int_division_train.positives,epitopes_array_blosum_norm_group_divison_train.positives_mask,
-                                aa_groups,seq_max_len,"TrainPositives_raw_aa",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
-        VegvisirMI.calculate_mi(epitopes_array_int_division_train.negatives,epitopes_array_blosum_norm_group_divison_train.negatives_mask,
-                                aa_groups,seq_max_len,"TrainNegatives_raw_aa",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+
+        if epitopes_array_int_division_train.negatives.shape[0] == train_longest_array:
+            VegvisirMI.calculate_mi(epitopes_array_int_division_train.positives,epitopes_array_blosum_norm_group_divison_train.positives_mask,
+                                    aa_groups,seq_max_len,"TrainPositives_raw_aa",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
+            VegvisirMI.calculate_mi(epitopes_array_int_division_train.negatives[train_idx_select],epitopes_array_blosum_norm_group_divison_train.negatives_mask,
+                                    aa_groups,seq_max_len,"TrainNegatives_raw_aa",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+        else:
+            VegvisirMI.calculate_mi(epitopes_array_int_division_train.positives[train_idx_select],epitopes_array_blosum_norm_group_divison_train.positives_mask,
+                                    aa_groups,seq_max_len,"TrainPositives_raw_aa",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
+            VegvisirMI.calculate_mi(epitopes_array_int_division_train.negatives,epitopes_array_blosum_norm_group_divison_train.negatives_mask,
+                                    aa_groups,seq_max_len,"TrainNegatives_raw_aa",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+
         VegvisirMI.calculate_mi(epitopes_array_int_division_train.high_confidence_negatives,epitopes_array_blosum_norm_group_divison_train.high_confidence_negatives_mask,
                                 aa_groups,seq_max_len,"TrainHighlyConfidentNegatives_raw_aa",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/highconfnegatives".format(args.sequence_type,analysis_mode))
 
+        #Highlight: Test
+
         VegvisirMI.calculate_mi(epitopes_array_int_division_test.all,epitopes_array_blosum_norm_group_divison_test.all_mask,
                                 aa_groups,seq_max_len,"TestAll_raw_aa",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/all".format(args.sequence_type,analysis_mode))
-        VegvisirMI.calculate_mi(epitopes_array_int_division_test.positives,epitopes_array_blosum_norm_group_divison_test.positives_mask,
-                                aa_groups,seq_max_len,"TestPositives_raw_aa",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
-        VegvisirMI.calculate_mi(epitopes_array_int_division_test.negatives,epitopes_array_blosum_norm_group_divison_test.negatives_mask,
-                                aa_groups,seq_max_len,"TestNegatives_raw_aa",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+
+        if epitopes_array_int_division_test.negatives.shape[0] == test_longest_array:
+
+            VegvisirMI.calculate_mi(epitopes_array_int_division_test.positives,epitopes_array_blosum_norm_group_divison_test.positives_mask,
+                                    aa_groups,seq_max_len,"TestPositives_raw_aa",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
+            VegvisirMI.calculate_mi(epitopes_array_int_division_test.negatives[test_idx_select],epitopes_array_blosum_norm_group_divison_test.negatives_mask,
+                                    aa_groups,seq_max_len,"TestNegatives_raw_aa",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+        else:
+            VegvisirMI.calculate_mi(epitopes_array_int_division_test.positives[test_idx_select],
+                                    epitopes_array_blosum_norm_group_divison_test.positives_mask,
+                                    aa_groups, seq_max_len, "TestPositives_raw_aa", storage_folder, args.dataset_name,
+                                    "similarities/{}/Test/{}/neighbours1/positives".format(args.sequence_type,
+                                                                                           analysis_mode))
+            VegvisirMI.calculate_mi(epitopes_array_int_division_test.negatives,
+                                    epitopes_array_blosum_norm_group_divison_test.negatives_mask,
+                                    aa_groups, seq_max_len, "TestNegatives_raw_aa", storage_folder, args.dataset_name,
+                                    "similarities/{}/Test/{}/neighbours1/negatives".format(args.sequence_type,
+                                                                                           analysis_mode))
+
         VegvisirMI.calculate_mi(epitopes_array_int_division_test.high_confidence_negatives,epitopes_array_blosum_norm_group_divison_test.high_confidence_negatives_mask,
                                 aa_groups,seq_max_len,"TestHighlyConfidentNegatives_raw_aa",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/highconfnegatives".format(args.sequence_type,analysis_mode))
 
         #Highlight: Mutual informaton calculated using custom blosum norm amino acid subdivision
+
+        #Highlight: Train
         VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_train.all,epitopes_array_blosum_norm_group_divison_train.all_mask,
                                 aa_groups,seq_max_len,"TrainAll_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode))
-        VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_train.positives,epitopes_array_blosum_norm_group_divison_train.positives_mask,
-                                aa_groups,seq_max_len,"TrainPositives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
-        VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_train.negatives,epitopes_array_blosum_norm_group_divison_train.negatives_mask,
-                                aa_groups,seq_max_len,"TrainNegatives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+
+        if epitopes_array_blosum_norm_group_divison_train.negatives.shape[0] == train_longest_array:
+
+            VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_train.positives,epitopes_array_blosum_norm_group_divison_train.positives_mask,
+                                    aa_groups,seq_max_len,"TrainPositives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
+            VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_train.negatives[train_idx_select],epitopes_array_blosum_norm_group_divison_train.negatives_mask,
+                                    aa_groups,seq_max_len,"TrainNegatives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+        else:
+            VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_train.positives[train_idx_select],epitopes_array_blosum_norm_group_divison_train.positives_mask,
+                                    aa_groups,seq_max_len,"TrainPositives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
+            VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_train.negatives[train_idx_select],epitopes_array_blosum_norm_group_divison_train.negatives_mask,
+                                    aa_groups,seq_max_len,"TrainNegatives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+
+
         VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_train.high_confidence_negatives,epitopes_array_blosum_norm_group_divison_train.high_confidence_negatives_mask,
                                 aa_groups,seq_max_len,"TrainHighlyConfidentNegatives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/highconfnegatives".format(args.sequence_type,analysis_mode))
 
-
-
+        #Highlight: Test
         VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_test.all,epitopes_array_blosum_norm_group_divison_test.all_mask,
                                 aa_groups,seq_max_len,"TestAll_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/all".format(args.sequence_type,analysis_mode))
-        VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_test.positives,epitopes_array_blosum_norm_group_divison_test.positives_mask,
-                                aa_groups,seq_max_len,"TestPositives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
-        VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_test.negatives,epitopes_array_blosum_norm_group_divison_test.negatives_mask,
-                                aa_groups,seq_max_len,"TestNegatives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+
+        if epitopes_array_int_division_test.negatives.shape[0] == test_longest_array:
+            VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_test.positives,epitopes_array_blosum_norm_group_divison_test.positives_mask,
+                                    aa_groups,seq_max_len,"TestPositives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
+            VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_test.negatives[test_idx_select],epitopes_array_blosum_norm_group_divison_test.negatives_mask,
+                                    aa_groups,seq_max_len,"TestNegatives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+
+        else:
+            VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_test.positives[test_idx_select],epitopes_array_blosum_norm_group_divison_test.positives_mask,
+                                    aa_groups,seq_max_len,"TestPositives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
+            VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_test.negatives,epitopes_array_blosum_norm_group_divison_test.negatives_mask,
+                                    aa_groups,seq_max_len,"TestNegatives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+
+
+
         VegvisirMI.calculate_mi(epitopes_array_blosum_norm_group_divison_test.high_confidence_negatives,epitopes_array_blosum_norm_group_divison_test.high_confidence_negatives_mask,
                                 aa_groups,seq_max_len,"TestHighlyConfidentNegatives_blosum_norm_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/highconfnegatives".format(args.sequence_type,analysis_mode))
 
         #Highlight: Mutual Information using the classical amino acids subdivisions
+        #Highlight: Train
         VegvisirMI.calculate_mi(epitopes_array_int_group_divison_train.all,epitopes_array_int_group_divison_train.all_mask,
                                 aa_groups,seq_max_len,"TrainAll_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode))
-        VegvisirMI.calculate_mi(epitopes_array_int_group_divison_train.positives,epitopes_array_int_group_divison_train.positives_mask,
-                                aa_groups,seq_max_len,"TrainPositives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
-        VegvisirMI.calculate_mi(epitopes_array_int_group_divison_train.negatives,epitopes_array_int_group_divison_train.negatives_mask,
-                                aa_groups,seq_max_len,"TrainNegatives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+
+        if epitopes_array_int_group_divison_train.negatives.shape[0] == train_longest_array:
+            VegvisirMI.calculate_mi(epitopes_array_int_group_divison_train.positives,epitopes_array_int_group_divison_train.positives_mask,
+                                    aa_groups,seq_max_len,"TrainPositives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
+            VegvisirMI.calculate_mi(epitopes_array_int_group_divison_train.negatives[train_idx_select],epitopes_array_int_group_divison_train.negatives_mask,
+                                    aa_groups,seq_max_len,"TrainNegatives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+        else:
+            VegvisirMI.calculate_mi(epitopes_array_int_group_divison_train.positives[train_idx_select],epitopes_array_int_group_divison_train.positives_mask,
+                                    aa_groups,seq_max_len,"TrainPositives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
+            VegvisirMI.calculate_mi(epitopes_array_int_group_divison_train.negatives,epitopes_array_int_group_divison_train.negatives_mask,
+                                    aa_groups,seq_max_len,"TrainNegatives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+
         VegvisirMI.calculate_mi(epitopes_array_int_group_divison_train.high_confidence_negatives,epitopes_array_int_group_divison_train.high_confidence_negatives_mask,
                                 aa_groups,seq_max_len,"TrainHighlyConfidentNegatives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Train/{}/neighbours1/highconfnegatives".format(args.sequence_type,analysis_mode))
-
+        #Highlight: Test
         VegvisirMI.calculate_mi(epitopes_array_int_group_divison_test.all,epitopes_array_int_group_divison_test.all_mask,
                                 aa_groups,seq_max_len,"TestAll_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/all".format(args.sequence_type,analysis_mode))
-        VegvisirMI.calculate_mi(epitopes_array_int_group_divison_test.positives,epitopes_array_int_group_divison_test.positives_mask,
-                                aa_groups,seq_max_len,"TestPositives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
-        VegvisirMI.calculate_mi(epitopes_array_int_group_divison_test.negatives,epitopes_array_int_group_divison_test.negatives_mask,
-                                aa_groups,seq_max_len,"TestNegatives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+
+        if epitopes_array_int_group_divison_test.negatives.shape[0] == test_longest_array:
+            VegvisirMI.calculate_mi(epitopes_array_int_group_divison_test.positives,epitopes_array_int_group_divison_test.positives_mask,
+                                    aa_groups,seq_max_len,"TestPositives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
+            VegvisirMI.calculate_mi(epitopes_array_int_group_divison_test.negatives[test_idx_select],epitopes_array_int_group_divison_test.negatives_mask,
+                                    aa_groups,seq_max_len,"TestNegatives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+        else:
+            VegvisirMI.calculate_mi(epitopes_array_int_group_divison_test.positives[test_idx_select],epitopes_array_int_group_divison_test.positives_mask,
+                                    aa_groups,seq_max_len,"TestPositives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))
+            VegvisirMI.calculate_mi(epitopes_array_int_group_divison_test.negatives,epitopes_array_int_group_divison_test.negatives_mask,
+                                    aa_groups,seq_max_len,"TestNegatives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode))
+
+
+
         VegvisirMI.calculate_mi(epitopes_array_int_group_divison_test.high_confidence_negatives,epitopes_array_int_group_divison_test.high_confidence_negatives_mask,
                                 aa_groups,seq_max_len,"TestHighlyConfidentNegatives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/highconfnegatives".format(args.sequence_type,analysis_mode))
 
@@ -730,7 +908,7 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
         # VegvisirMI.calculate_mutual_information(positives_arr.tolist(),identifiers,seq_max_len,"TrainPositives",storage_folder,args.dataset_name)
         # VegvisirMI.calculate_mutual_information(negatives_arr.tolist(),identifiers,seq_max_len,"TrainNegatives",storage_folder,args.dataset_name)
         # VegvisirMI.calculate_mutual_information(high_conf_negatives_arr.tolist(),identifiers,seq_max_len,"TrainHighlyConfidentNegatives",storage_folder,args.dataset_name)
-    plot_frequencies=False
+    plot_frequencies=True
     if plot_frequencies:#Highlight: remember to use "int"!!!!!!!!
         VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_test.all,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/{}/Test/{}/neighbours1/all".format(args.sequence_type,analysis_mode),"TestAll")
         VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_test.positives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/{}/Test/{}/neighbours1/positives".format(args.sequence_type,analysis_mode),"TestPositives")
@@ -741,7 +919,7 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
         VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_train.positives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/{}/Train/{}/neighbours1/positives".format(args.sequence_type,analysis_mode),"TrainPositives")
         VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_train.negatives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/{}/Train/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode),"TrainNegatives")
         VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_train.high_confidence_negatives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/{}/Train/{}/neighbours1/highconfnegatives".format(args.sequence_type,analysis_mode),"TrainHighConfidenceNegatives")
-    plot_cosine_similarity = False
+    plot_cosine_similarity = True
     if plot_cosine_similarity:
         print("Calculating  epitopes similarity matrices (this might take a while, 10 minutes for 10000 sequences) ....")
         all_sim_results =VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum,
@@ -953,9 +1131,10 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     n_data = epitopes_array.shape[0]
     all_sim_results = data_exploration(data, epitopes_array_blosum, epitopes_array_int, epitopes_mask, aa_dict, aa_list,
                      blosum_norm, seq_max_len, storage_folder, args, corrected_aa_types,analysis_mode,filters_dict)
+    exit()
 
     positional_weights = all_sim_results.positional_weights
-    positional_weights_mask = (positional_weights[..., None] > 0.8).any(-1)
+    positional_weights_mask = (positional_weights[..., None] > 0.6).any(-1)
 
     #Highlight: Reattatch partition, identifier, label, immunodominance score
     labels = data[["target_corrected"]].values.tolist()

@@ -398,7 +398,7 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
 
 def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,analysis_mode,mode):
 
-    aa_groups_colors_dict,aa_groups_dict,groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aa_dict)
+    aa_groups_colors_dict,aa_groups_dict,groups_names_colors_dict,aa_by_groups_dict = VegvisirUtils.aminoacids_groups(aa_dict)
     reverse_aa_dict = {val:key for key,val in aa_dict.items()}
     frequencies_per_position = VegvisirUtils.calculate_aa_frequencies(data_array,aa_types)
     aa_patches = [mpatches.Patch(color=colors_list_aa[i], label='{}'.format(aa)) for aa,i in aa_dict.items()]
@@ -521,7 +521,7 @@ def plot_loss(train_loss,valid_loss,epochs_list,fold,results_dir):
         plt.close(fig)
         plt.clf()
 
-def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir):
+def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,mode,results_dir):
     """Plots the model's accuracies, both for target label and for sequence reconstruction loss
     :param list train_elbo: list of accumulated error losses during training
     :param str results_dict: path to results directory
@@ -544,7 +544,7 @@ def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir
         plt.ylabel("Accuracy (average number of correct \n  amino acids across all sequences)")
         plt.title("Sequence Reconstruction Accuracy (Train/valid)")
         plt.legend()
-        plt.savefig("{}/reconstruction_accuracies_{}fold.png".format(results_dir, fold))
+        plt.savefig("{}/reconstruction_accuracies_{}fold.png".format(results_dir, mode))
         plt.clf()
         plt.close(fig)
 
@@ -562,7 +562,7 @@ def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir
         plt.ylabel("Accuracy (number of correct predictions)")
         plt.title("Accuracy (Train/valid)")
         plt.legend()
-        plt.savefig("{}/accuracies_{}fold.png".format(results_dir,fold))
+        plt.savefig("{}/accuracies_{}fold.png".format(results_dir,mode))
         plt.clf()
         plt.close(fig)
 
@@ -1104,8 +1104,11 @@ def plot_attention_weights(summary_dict,dataset_info,results_dir,method="Train")
         https://github.com/jeonsworld/ViT-pytorch/blob/main/visualize_attention_map.ipynb
     """
 
-    aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types,zero_characters=["#"])
-    aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aminoacids_dict)
+    if dataset_info.corrected_aa_types == 20:
+        aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=[])
+    else:
+        aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=["#"])
+    aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict,aa_by_groups_dict = VegvisirUtils.aminoacids_groups(aminoacids_dict)
     aa_groups_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("aa_cm", list(aa_groups_colors_dict.values()))
 
     colors_list = ["black","plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange", "yellow","green",
@@ -1182,8 +1185,13 @@ def plot_attention_weights(summary_dict,dataset_info,results_dir,method="Train")
 def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method="Train"):
     """"""
     print("Analyzing hidden dimensions ...")
-    aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types,zero_characters=["#"])
-    aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aminoacids_dict)
+    if dataset_info.corrected_aa_types == 20:
+        aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=[])
+    else:
+        aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types,zero_characters=["#"])
+    aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict,aa_by_groups_dict = VegvisirUtils.aminoacids_groups(aminoacids_dict)
+    if dataset_info.corrected_aa_types == 20: #TODO: Review
+        aa_groups_colors_dict[0] = "black"  #otherwise it colors everyhing with the color of R, and the weights have been adjusted to 0
     aa_groups_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("aa_cm", list(aa_groups_colors_dict.values()))
 
     colors_list = ["black","plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange", "yellow","green",
@@ -1191,6 +1199,9 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
                    "goldenrod", "chocolate", "cornflowerblue", "pink", "darkgrey", "indianred",
                    "mediumspringgreen"]
     aa_colors_dict = {i:colors_list[i] for aa,i in aminoacids_dict.items()}
+    if dataset_info.corrected_aa_types == 20:  #TODO: Review
+        aa_colors_dict[0] = "black"
+
     aa_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("aa_cm", list(aa_colors_dict.values()))
     aa_patches = [mpatches.Patch(color=colors_list[i], label='{}'.format(aa)) for aa,i in aminoacids_dict.items()]
     aa_groups_patches = [mpatches.Patch(color=color, label='{}'.format(group)) for group,color in groups_names_colors_dict.items()]
@@ -1210,94 +1221,123 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
         plot_latent_space(encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden state")
         plot_latent_space(decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden state")
 
-        for data_points,idx in zip(["all","high_confidence"],[idx_all,idx_highconfidence]):
-            true_labels = summary_dict["true_{}".format(sample_mode)][idx]
+        for data_points,idx_conf in zip(["all","high_confidence"],[idx_all,idx_highconfidence]):
+            true_labels = summary_dict["true_{}".format(sample_mode)][idx_conf]
             positives_idx = (true_labels == 1)
             for class_type,idx_class in zip(["positives","negatives"],[positives_idx,~positives_idx]):
 
-                encoder_hidden_states = summary_dict["encoder_hidden_states_{}".format(sample_mode)][idx][idx_class]
-                decoder_hidden_states = summary_dict["decoder_hidden_states_{}".format(sample_mode)][idx][idx_class] #TODO: Review the values
-
-                #Highlight: Compute the cosine similarity measure (distance = 1 - similarity) among the hidden states of the sequence
-                if sample_mode == "single_sample":
-                    # Highlight: Encoder
-                    encoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
-                        delayed(VegvisirUtils.information_shift)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
-                        zip(encoder_hidden_states,data_mask_seq))
-                    encoder_information_shift_weights = np.concatenate(encoder_information_shift_weights,axis=0)
-                    #Highlight: Decoder
-                    decoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
-                        delayed(VegvisirUtils.information_shift)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
-                        zip(decoder_hidden_states,data_mask_seq))
-                    decoder_information_shift_weights = np.concatenate(decoder_information_shift_weights,axis=0)
-                else:
-                    encoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
-                        delayed(VegvisirUtils.information_shift_samples)(encoder_hidden_states[:, sample_idx],
-                                                                        data_mask_seq, diag_idx_maxlen,dataset_info.seq_max_len) for sample_idx in range(args.num_samples))
-
-                    decoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
-                        delayed(VegvisirUtils.information_shift_samples)(decoder_hidden_states[:, sample_idx],
-                                                                        data_mask_seq, diag_idx_maxlen,
-                                                                        dataset_info.seq_max_len) for sample_idx in range(args.num_samples))
-
-                    encoder_information_shift_weights = np.concatenate(encoder_information_shift_weights,axis=1) #N,samples, L
-                    encoder_information_shift_weights = encoder_information_shift_weights.mean(axis=1)
-                    decoder_information_shift_weights = np.concatenate(decoder_information_shift_weights,axis=1) #N,samples, L
-                    decoder_information_shift_weights = decoder_information_shift_weights.mean(axis=1)
-
-                aminoacids = data_int[idx][idx_class]
-                for nn_name,weights in zip(["Encoder","Decoder"],[encoder_information_shift_weights,decoder_information_shift_weights]):
-                    #Highlight: Start figure
-                    fig, [[ax1, ax2, ax3], [ax4, ax5, ax6]] = plt.subplots(nrows=2, ncols=3, figsize=(9, 6),
-                                                                           gridspec_kw={'width_ratios': [4.5, 4.5, 1],
-                                                                                        'height_ratios': [4.5, 4.5]})
-                    print("{}/{}/{}/{}".format(sample_mode, data_points,class_type,nn_name))
-                    if np.prod(weights.shape) == 0.:
-                        print("No data points, no information shift - weights plots")
-                        pass
+                encoder_hidden_states = summary_dict["encoder_hidden_states_{}".format(sample_mode)][idx_conf][idx_class]
+                decoder_hidden_states = summary_dict["decoder_hidden_states_{}".format(sample_mode)][idx_conf][idx_class] #TODO: Review the values
+                if encoder_hidden_states.size != 0:
+                    #Highlight: Compute the cosine similarity measure (distance = 1 - similarity) among the hidden states of the sequence
+                    if sample_mode == "single_sample":
+                        # Highlight: Encoder
+                        encoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                            delayed(VegvisirUtils.information_shift)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
+                            zip(encoder_hidden_states,data_mask_seq))
+                        encoder_information_shift_weights = np.concatenate(encoder_information_shift_weights,axis=0)
+                        #Highlight: Decoder
+                        decoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                            delayed(VegvisirUtils.information_shift)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
+                            zip(decoder_hidden_states,data_mask_seq))
+                        decoder_information_shift_weights = np.concatenate(decoder_information_shift_weights,axis=0)
                     else:
-                        # Highlight: Attention weights
-                        sns.heatmap(weights, ax=ax1)
-                        ax1.set_xticks(np.arange(weights.shape[1]) + 0.5,
-                                       labels=["{}".format(i) for i in range(weights.shape[1])])
-                        ax1.spines['left'].set_visible(False)
-                        ax1.yaxis.set_ticklabels([])
-                        ax1.set_title("Information shift by weight")
-                        # Highlight: Aminoacids coloured by name
-                        if np.rint(weights).max() != 1:
-                            weights_adjusted = np.array((weights > weights.mean()))
-                            aminoacids_masked = (aminoacids[:, 1]) * weights_adjusted.astype(int)
+                        encoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                            delayed(VegvisirUtils.information_shift_samples)(encoder_hidden_states[:, sample_idx],
+                                                                            data_mask_seq, diag_idx_maxlen,dataset_info.seq_max_len) for sample_idx in range(args.num_samples))
+
+                        decoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                            delayed(VegvisirUtils.information_shift_samples)(decoder_hidden_states[:, sample_idx],
+                                                                            data_mask_seq, diag_idx_maxlen,
+                                                                            dataset_info.seq_max_len) for sample_idx in range(args.num_samples))
+
+                        encoder_information_shift_weights = np.concatenate(encoder_information_shift_weights,axis=1) #N,samples, L
+                        encoder_information_shift_weights = encoder_information_shift_weights.mean(axis=1)
+                        decoder_information_shift_weights = np.concatenate(decoder_information_shift_weights,axis=1) #N,samples, L
+                        decoder_information_shift_weights = decoder_information_shift_weights.mean(axis=1)
+
+                    aminoacids = data_int[idx_conf][idx_class]
+                    for nn_name,weights in zip(["Encoder","Decoder"],[encoder_information_shift_weights,decoder_information_shift_weights]):
+                        #Highlight: Start figure
+                        fig, [[ax1, ax2, ax3], [ax4, ax5, ax6]] = plt.subplots(nrows=2, ncols=3, figsize=(9, 6),
+                                                                               gridspec_kw={'width_ratios': [4.5, 4.5, 1],
+                                                                                            'height_ratios': [4.5, 4.5]})
+                        print("{}/{}/{}/{}".format(sample_mode, data_points,class_type,nn_name))
+                        if np.prod(weights.shape) == 0.:
+                            print("No data points, no information shift - weights plots")
+                            pass
                         else:
-                            aminoacids_masked = (aminoacids[:, 1]) * np.rint(weights)
-                        sns.heatmap(aminoacids_masked, ax=ax2, cbar=False, cmap=aa_colormap)
-                        ax2.set_xticks(np.arange(weights.shape[1] + 1) + 0.5,labels=["{}".format(i) for i in range(weights.shape[1] + 1)])
-                        ax2.spines['left'].set_visible(False)
-                        ax2.yaxis.set_ticklabels([])
-                        ax2.set_title("Information shift by Aa type")
-                        # Highlight: Aminoacids coloured by functional group (i.e positive, negative ...)
-                        sns.heatmap(aminoacids_masked, ax=ax4, cbar=False, cmap=aa_groups_colormap)
-                        ax4.set_xticks(np.arange(max_len + 1) + 0.5,
-                                       labels=["{}".format(i) for i in range(max_len + 1)])
-                        ax4.spines['left'].set_visible(False)
-                        ax4.yaxis.set_ticklabels([])
-                        ax4.set_title("Information shift by Aa group")
-    
-                        ax3.axis("off")
-                        ax5.axis("off")
-                        ax6.axis("off")
-    
-                        legend1 = plt.legend(handles=aa_patches, prop={'size': 8}, loc='center right',
-                                             bbox_to_anchor=(0.9, 0.7), ncol=1)
-                        plt.legend(handles=aa_groups_patches, prop={'size': 8}, loc='center right',
-                                   bbox_to_anchor=(0.1, 0.5), ncol=1)
-                        plt.gca().add_artist(legend1)
-    
-                        fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
-                        fig.suptitle("{}. Information shift weights: {}, {}, {}".format(nn_name,sample_mode, data_points, class_type))
-                        plt.savefig(
-                            "{}/{}/{}_information_shift_plots_{}_{}_{}.png".format(results_dir, method, nn_name,sample_mode, data_points, class_type))
-                        plt.clf()
-                        plt.close(fig)
+                            # Highlight: Attention weights
+                            sns.heatmap(weights, ax=ax1)
+                            ax1.set_xticks(np.arange(weights.shape[1]) + 0.5,
+                                           labels=["{}".format(i) for i in range(weights.shape[1])])
+                            ax1.spines['left'].set_visible(False)
+                            ax1.yaxis.set_ticklabels([])
+                            ax1.set_title("Information shift by weight")
+                            # Highlight: Aminoacids coloured by name
+
+                            if np.rint(weights).max() != 1:
+                                weights_adjusted = np.array((weights > weights.mean()))
+                                aminoacids_masked = (aminoacids[:, 1]) * weights_adjusted.astype(int)
+                            else:
+                                aminoacids_masked = (aminoacids[:, 1]) * np.rint(weights)
+                            sns.heatmap(aminoacids_masked, ax=ax2, cbar=False, cmap=aa_colormap)
+                            ax2.set_xticks(np.arange(weights.shape[1] + 1) + 0.5,labels=["{}".format(i) for i in range(weights.shape[1] + 1)])
+                            ax2.spines['left'].set_visible(False)
+                            ax2.yaxis.set_ticklabels([])
+                            ax2.set_title("Information shift by Aa type")
+                            # Highlight: Aminoacids coloured by functional group (i.e positive, negative ...)
+                            sns.heatmap(aminoacids_masked, ax=ax4, cbar=False, cmap=aa_groups_colormap)
+                            ax4.set_xticks(np.arange(max_len + 1) + 0.5,
+                                           labels=["{}".format(i) for i in range(max_len + 1)])
+                            ax4.spines['left'].set_visible(False)
+                            ax4.yaxis.set_ticklabels([])
+                            ax4.set_title("Information shift by Aa group")
+
+                            ax3.axis("off")
+                            ax5.axis("off")
+                            ax6.axis("off")
+
+                            legend1 = plt.legend(handles=aa_patches, prop={'size': 8}, loc='center right',
+                                                 bbox_to_anchor=(0.9, 0.7), ncol=1)
+                            plt.legend(handles=aa_groups_patches, prop={'size': 8}, loc='center right',
+                                       bbox_to_anchor=(0.1, 0.5), ncol=1)
+                            plt.gca().add_artist(legend1)
+
+                            fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
+                            fig.suptitle("{}. Information shift weights: {}, {}, {}".format(nn_name,sample_mode, data_points, class_type))
+                            plt.savefig(
+                                "{}/{}/{}_information_shift_plots_{}_{}_{}.png".format(results_dir, method, nn_name,sample_mode, data_points, class_type))
+                            plt.clf()
+                            plt.close(fig)
 
 
+                else:
+                    print("Not data points available for {}/{}/{}/{}".format(sample_mode, data_points,class_type,nn_name))
 
+def plot_logits_entropies(train_dict,valid_dict,epochs_list, mode,results_dir):
+    """Plot positional entropies calculated from logits"""
+    train_entropies = np.array(train_dict["entropies"]) #[num_epochs, num_positions]
+    valid_entropies = np.array(valid_dict["entropies"])
+
+    epochs_idx = np.array(epochs_list)
+    train_entropies = train_entropies[epochs_idx.astype(int)]  # select the same epochs as the validation
+    colormap_train = matplotlib.cm.get_cmap('Blues', train_entropies.shape[1])
+    colormap_valid = matplotlib.cm.get_cmap('Oranges', train_entropies.shape[1])
+
+    fig, [ax1, ax2] = plt.subplots(1, 2,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,1]})
+
+    for position in range(train_entropies.shape[1]):
+        ax1.plot(epochs_idx, train_entropies[:,position], color=colormap_train(position), label="train_{}".format(position))
+    if valid_entropies is not None:
+        for position in range(valid_entropies.shape[1]):
+            ax1.plot(epochs_idx, valid_entropies[:,position], color=colormap_valid(position), label="validation_{}".format(position))
+
+    ax2.axis("off")
+    ax1.set_xlabel("Epochs")
+    ax1.set_ylabel("Entropy (positional)",fontsize=15)
+    ax1.set_title("Entropy (Train/valid)",fontsize=15)
+    ax1.legend(prop={'size': 15},loc= 'center right',bbox_to_anchor=(1.3,0.5),ncol=1)
+    plt.savefig("{}/entropies_{}fold.png".format(results_dir, mode))
+    plt.clf()
+    plt.close(fig)

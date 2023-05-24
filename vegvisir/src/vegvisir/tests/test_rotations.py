@@ -10,6 +10,7 @@ def rotate_blosum(v1,cosine_sim_mask):
         -https://www.rollpie.com/post/311
         -https://math.stackexchange.com/questions/2144153/n-dimensional-rotation-matrix
         -https://analyticphysics.com/Higher%20Dimensions/Rotations%20in%20Higher%20Dimensions.htm
+        -https://math.stackexchange.com/questions/209768/transformation-matrix-to-go-from-one-vector-to-another
     """
 
 
@@ -61,6 +62,7 @@ def rotate_blosum_peptide(data,data_mask):
         -https://www.rollpie.com/post/311
         -https://math.stackexchange.com/questions/2144153/n-dimensional-rotation-matrix
         -https://analyticphysics.com/Higher%20Dimensions/Rotations%20in%20Higher%20Dimensions.htm
+        -https://math.stackexchange.com/questions/209768/transformation-matrix-to-go-from-one-vector-to-another
     """
 
 
@@ -132,6 +134,7 @@ def rotate_blosum_batch(data,data_mask):
         -https://www.rollpie.com/post/311
         -https://math.stackexchange.com/questions/2144153/n-dimensional-rotation-matrix
         -https://analyticphysics.com/Higher%20Dimensions/Rotations%20in%20Higher%20Dimensions.htm
+        -https://math.stackexchange.com/questions/209768/transformation-matrix-to-go-from-one-vector-to-another
     """
     n_data,L,feat_dim = data.shape
 

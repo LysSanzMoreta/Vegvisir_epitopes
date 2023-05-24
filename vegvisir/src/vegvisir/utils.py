@@ -112,6 +112,11 @@ def aminoacids_groups(aa_dict):
     hydrophobic = (["A","V","I","L","M"],"orange",5)
     aromatic = (["F","Y","W"],"magenta",6)
     groups_names_colors_dict = {"positive":positive_charged[1],"negative":negative_charged[1],"uncharged":uncharged[1],"special":special[1],"hydrophobic":hydrophobic[1],"aromatic":aromatic[1],"others":others[1]}
+    #aa_by_groups_dict = {"positive":positive_charged[0],"negative":negative_charged[0],"uncharged":uncharged[0],"special":special[0],"hydrophobic":hydrophobic[0],"aromatic":aromatic[0],"others":others[0]}
+
+    aa_by_groups_dict = dict(zip( positive_charged[0] + negative_charged[0] + uncharged[0] + special[0] + hydrophobic[0] + aromatic[0],\
+                         len(positive_charged[0])*["positive"] + len(negative_charged[0])*["negative"] + len(uncharged[0])*["uncharged"]  + len(special[0])*["special"] + len(hydrophobic[0])*["hydrophobic"]  + len(aromatic[0])*["aromatic"] ))
+
     aa_groups_colors_dict = defaultdict()
     aa_groups_dict =defaultdict()
     for aa,i in aa_dict.items():
@@ -121,11 +126,9 @@ def aminoacids_groups(aa_dict):
         elif aa in negative_charged[0]:
             aa_groups_colors_dict[i] = negative_charged[1]
             aa_groups_dict[i] = negative_charged[2]
-
         elif aa in uncharged[0]:
             aa_groups_colors_dict[i] = uncharged[1]
             aa_groups_dict[i] = uncharged[2]
-
         elif aa in special[0]:
             aa_groups_colors_dict[i] = special[1]
             aa_groups_dict[i] = special[2]
@@ -139,8 +142,9 @@ def aminoacids_groups(aa_dict):
             aa_groups_colors_dict[i] = others[1]
             aa_groups_dict[i] = others[2]
 
+
     #return {"aa_groups_colors_dict":aa_groups_colors_dict,"aa_groups_dict":aa_groups_dict,"groups_names_colors_dict":groups_names_colors_dict}
-    return  aa_groups_colors_dict,aa_groups_dict,groups_names_colors_dict
+    return  aa_groups_colors_dict,aa_groups_dict,groups_names_colors_dict,aa_by_groups_dict
 
 def convert_to_onehot(a,dimensions):
     #ncols = a.max() + 1
@@ -976,3 +980,22 @@ def information_shift_samples(hidden_states,data_mask_seq,diag_idx_maxlen,seq_ma
 
     return encoder_information_shift_weights_sample[:, None]
 
+def compute_sites_entropies(logits, node_names):
+    """
+    Calculate the Shannon entropy of a sequence
+    :param tensor logits = [n_seq, L, 21]
+    :param tensor node_names: tensor with the nodes tree level order indexes ("names")
+    observed = [n_seq,L]
+    Pick the aa with the highest logit,
+    logits = log(prob/1-prob)
+    prob = exp(logit)/(1+exp(logit))
+    entropy = prob.log(prob) per position in the sequence
+    The entropy H is maximal when each of the symbols in the position has equal probability
+    The entropy H is minimal when one of the symbols has probability 1 and the rest 0. H = 0"""
+    #probs = torch.exp(logits)  # torch.sum(probs,dim=2) returns 1's so , it's correct
+
+    prob = np.exp(logits) / (1 + np.exp(logits))
+    seq_entropies = -np.sum(prob*np.log(prob),axis=2)
+
+    seq_entropies = np.concatenate((node_names[:,None],seq_entropies),axis=1)
+    return seq_entropies

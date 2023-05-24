@@ -340,7 +340,7 @@ def importance_weight(hotspots,nkmers,ksize,max_len,positional_mask,overlapping_
         results = [sum(results[x:x+max_len]) for x in range(0, len(results), max_len)] #split again by max len
     positional_weights = np.concatenate(results,axis=0) #Highlight: divide by the number of neighbours used to compute the mean TODO: Make a range of neighbour positions to use?
     print("Done calculating the masked average")
-    positional_weights = (positional_weights - positional_weights.min()) / (positional_weights.max() - positional_weights.min()) #min max scale
+    #positional_weights = (positional_weights - positional_weights.min()) / (positional_weights.max() - positional_weights.min()) #min max scale
     positional_weights*= positional_mask
     print("Finished positional weights")
     return positional_weights
@@ -480,6 +480,7 @@ def calculate_similarity_matrix_parallel(array, max_len, array_mask, storage_fol
         mask_splits = np.array_split(array_mask, split_size)
         print("Generated {} splits from {} data points".format(len(splits), n_data))
 
+
         if ksize >= max_len:
             ksize = max_len
         overlapping_kmers = extract_windows_vectorized(splits[0], 1, max_len - ksize, ksize, only_windows=True)
@@ -499,10 +500,9 @@ def calculate_similarity_matrix_parallel(array, max_len, array_mask, storage_fol
         kmers_cosine_similarity = np.zeros((n_data, n_data))
         kmers_cosine_similarity_matrix_diag = np.zeros((n_data, n_data,nkmers,nkmers,ksize))
 
-
-        #Iterables
+        # Iterables
         idx = list(range(len(splits)))
-        #shifts = list(range(len(splits)))
+        # shifts = list(range(len(splits)))
         shifts = []
         start_store_points = []
         start_store_points_i = []
@@ -514,13 +514,14 @@ def calculate_similarity_matrix_parallel(array, max_len, array_mask, storage_fol
         start_store_point = 0
         store_point_helper = 0
         end_store_point = splits[0].shape[0]
-        #TODO: Find pattern?
+        # TODO: Find pattern?
         for i in idx:
             shift = i
             rest_splits = splits.copy()[shift:]
             start_store_point_i = 0 + store_point_helper
             end_store_point_i = rest_splits[0].shape[0] + store_point_helper  # initialize
-            for j, r_j in enumerate(rest_splits):  # calculate distance among all kmers per sequence in the block (n, n_kmers,n_kmers)
+            for j, r_j in enumerate(
+                    rest_splits):  # calculate distance among all kmers per sequence in the block (n, n_kmers,n_kmers)
                 i_idx.append(i)
                 shifts.append(shift)
                 j_idx.append(j)
@@ -539,6 +540,7 @@ def calculate_similarity_matrix_parallel(array, max_len, array_mask, storage_fol
                 end_store_point += splits[i + 1].shape[0]  # it has to be the next curr_array
             else:
                 pass
+
         start = time.time()
         #args_fixed = splits, mask_splits, n_data,max_len, overlapping_kmers, diag_idx, diag_idx_maxlen, diag_idx_nkmers, percent_identity_mean,percent_identity, cosine_similarity_mean, kmers_cosine_similarity, kmers_pid_similarity
         args_fixed = splits, mask_splits, n_data,max_len, overlapping_kmers, diag_idx_ksize, diag_idx_maxlen, diag_idx_nkmers

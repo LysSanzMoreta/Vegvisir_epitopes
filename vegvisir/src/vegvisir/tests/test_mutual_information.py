@@ -129,18 +129,6 @@ def calculate_mi(data,data_mask,aa_groups):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 if __name__ == '__main__':
     """
     Notes: 
