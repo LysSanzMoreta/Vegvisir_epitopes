@@ -856,6 +856,8 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         "true_onehot_single_sample": predictions_dict["true_onehot"],
                         "confidence_scores_samples": samples_dict["confidence_scores"],
                         "confidence_scores_single_sample": predictions_dict["confidence_scores"],
+                        "training_assignation_samples": samples_dict["training_assignation"],
+                        "training_assignation_single_sample": predictions_dict["training_assignation"],
                         "attention_weights_single_sample":predictions_dict["attention_weights"],
                         "attention_weights_samples": samples_dict["attention_weights"],
                         "encoder_hidden_states_single_sample":predictions_dict["encoder_hidden_states"],
@@ -893,6 +895,8 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         "true_onehot_single_sample": None,
                         "confidence_scores_samples": samples_dict["confidence_scores"],
                         "confidence_scores_single_sample": None,
+                        "training_assignation_samples": samples_dict["training_assignation"],
+                        "training_assignation_single_sample": None,
                         "attention_weights_single_sample": None,
                         "attention_weights_samples": samples_dict["attention_weights"],
                         "encoder_hidden_states_single_sample": None,
@@ -906,6 +910,40 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         }
 
     return summary_dict
+
+def extract_group_old_test(train_summary_dict,valid_summary_dict,args):
+    """"""
+    test_train_summary_dict = defaultdict() #old test data points localizados en el train dataset
+    test_valid_summary_dict = defaultdict() #old test data points localizados en el train dataset
+    test_all_summary_dict = defaultdict()
+
+    for train_key,valid_key in zip(train_summary_dict,valid_summary_dict):
+        train_val = train_summary_dict[train_key]
+        valid_val = valid_summary_dict[valid_key]
+        for sample_mode in ["single_sample","samples"]:
+            train_training_assignation = np.invert(train_summary_dict["training_assignation_{}".format(sample_mode)].astype(bool))
+            valid_training_assignation = np.invert(valid_summary_dict["training_assignation_{}".format(sample_mode)].astype(bool))
+            train_ndata = train_training_assignation.shape[0]
+            valid_ndata = valid_training_assignation.shape[0]
+
+            if sample_mode in train_key:
+                if train_val is not None:
+                    if train_val.ndim != 0:
+                        if train_val.shape[0] == train_ndata:
+                            test_train_summary_dict[train_key] = train_val[train_training_assignation]
+                            test_valid_summary_dict[train_key] = valid_val[valid_training_assignation]
+                            test_all_summary_dict[train_key] = np.concatenate([train_val[train_training_assignation],valid_val[valid_training_assignation]],axis=0)
+                        else:
+                            test_train_summary_dict[train_key] = train_val[:,train_training_assignation]
+                            test_valid_summary_dict[train_key] = valid_val[:,valid_training_assignation]
+                            test_all_summary_dict[train_key] = np.concatenate(
+                                [train_val[:,train_training_assignation], valid_val[:,valid_training_assignation]], axis=1)
+                else:
+                    test_train_summary_dict[train_key] = train_val
+                    test_valid_summary_dict[train_key] = valid_val
+                    test_all_summary_dict[train_key] = None
+
+    return test_train_summary_dict,test_valid_summary_dict,test_all_summary_dict
 
 def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
     """
@@ -969,7 +1007,6 @@ def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
     weights = (weights - weights.min()) / (weights - weights.min()).sum()
     weights*= arr_mask
     return weights[None,:]
-
 def information_shift_samples(hidden_states,data_mask_seq,diag_idx_maxlen,seq_max_len):
     # Highlight: Encoder
     encoder_information_shift_weights_seq = Parallel(n_jobs=MAX_WORKERs)(

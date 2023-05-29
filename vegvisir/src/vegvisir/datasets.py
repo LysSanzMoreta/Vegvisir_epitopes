@@ -47,7 +47,9 @@ def available_datasets():
                 1:"viral_dataset2",
                 2:"viral_dataset3",
                 3:"viral_dataset4",
-                4:"viral_dataset5"}
+                4:"viral_dataset5",
+                5:"viral_dataset6",
+                6:"viral_dataset7"}
     return datasets
 
 def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
@@ -61,7 +63,8 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
                  "viral_dataset3":viral_dataset3,
                  "viral_dataset4":viral_dataset4,
                  "viral_dataset5":viral_dataset5,
-                 "viral_dataset6":viral_dataset6}
+                 "viral_dataset6": viral_dataset6,
+                 "viral_dataset7":viral_dataset7}
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
 
     dataset_load_fx = lambda f,dataset_name,current_path,storage_folder,args,results_dir,update: lambda dataset_name,current_path,storage_folder,args,results_dir,update: f(dataset_name,current_path,storage_folder,args,results_dir,update)
@@ -308,7 +311,7 @@ def viral_dataset2(dataset_name,script_dir,storage_folder,args,results_dir,updat
     return data_info
 
 def select_filters(args):
-    filters_dict = {"filter_kmers":[True,9,args.sequence_type], #Icore_non_anchor
+    filters_dict = {"filter_kmers":[False,9,args.sequence_type], #Icore_non_anchor #Highlight: Remmeber to use 8!!
                     "group_alleles":[True],
                     "filter_alleles":[False], #if True keeps the most common allele
                     "filter_ntested":[False,10],
@@ -326,7 +329,6 @@ def select_filters(args):
 
 def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file):
     """Filters, groups and prepares the files from the viral_dataset*() functions"""
-
     if filters_dict["filter_ntested"][0]:
         # Highlight: Filter the points with low subject count and only keep if all "negative"
         threshold = filters_dict["filter_ntested"][1]
@@ -334,7 +336,6 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file):
         data = data[(data["Assay_number_of_subjects_tested"] > threshold)]
         nfiltered = data.shape[0]
         dataset_info_file.write("Filter 1: Icores with number of subjects lower than {}. Drops {} data points, remaining {} \n".format(threshold,nprefilter - nfiltered, nfiltered))
-
 
     data["immunodominance_score"] = data["Assay_number_of_subjects_responded"] / data["Assay_number_of_subjects_tested"]
 
@@ -373,6 +374,7 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file):
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
 
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
+
     VegvisirPlots.plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     #Highlight: Prep data to run in NNalign
     if args.run_nnalign:
@@ -410,6 +412,7 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
     filters_dict,analysis_mode = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
+
     most_common_allele = data.value_counts("allele").index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
 
     if filters_dict["filter_alleles"][0]:
@@ -432,7 +435,6 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
     return data_info
-
 def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,update):
     """
     ####################
@@ -613,6 +615,83 @@ def viral_dataset6(dataset_name,script_dir,storage_folder,args,results_dir,updat
         data["allele_encoded"] = data["allele"]
         data.replace({"allele_encoded": allele_dict},inplace=True)
 
+def viral_dataset7(dataset_name,script_dir,storage_folder,args,results_dir,update):
+    """
+    ####################
+    #HEADER DESCRIPTIONS#
+    ####################
+    allele
+    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
+    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
+    Number of Subjects Responded
+    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
+    training
+    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
+    partition
+    Of: The starting position of the Core within the Peptide (if > 0, the method predicts a N-terminal protrusion) (derived from the prediction with NetMHCpan-4.1).
+    Gp: Position of the deletion, if any (derived from the prediction with NetMHCpan-4.1).
+    Gl: Length of the deletion, if any (derived from the prediction with NetMHCpan-4.1).
+    Ip: Position of the insertion, if any (derived from the prediction with NetMHCpan-4.1).
+    Il: Length of the insertion, if any (derived from the prediction with NetMHCpan-4.1).
+
+    return
+          :param pandas dataframe: Results pandas dataframe with the following structure:
+                  Icore:Interaction peptide core
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  training: True assign data point to train , else assign to Test (given)
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  target: Pre-assigned target(given)
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+            """
+    dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
+    new_partitions = pd.read_csv("{}/{}/Viruses_db_partitions_notest.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+
+    #new_partitions.columns = ["Icore","allele","Core","Of","Gp","Gl","Ip","Il","Rnk_EL","org_id","uniprot_id","target","start_prot","Icore_non_anchor","partition"]
+
+
+    data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
+    data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
+
+    #Highlight: Replace the training and partition columns for the new ones
+
+    data = data.merge(new_partitions, on=['Icore', 'allele'], how='left',suffixes=('_old', '_new'))
+    data = data.loc[:, ~data.columns.str.endswith('_old') | (data.columns == 'partition_old')  ] #remove all columns ending with _old
+    data = data.rename(columns={"Icore_non_anchor_new": "Icore_non_anchor", "target_new": "target","partition_new":"partition"})
+    #TODO: Rename columns with old vs new partition
+
+    filters_dict,analysis_mode = select_filters(args)
+    json.dump(filters_dict, dataset_info_file, indent=2)
+
+    most_common_allele = data.value_counts("allele").index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
+
+    if filters_dict["filter_alleles"][0]:
+        data = data[data["allele"] == most_common_allele]
+
+
+    if filters_dict["group_alleles"][0]:
+        # Group data by Icore, therefore the alleles are grouped
+        data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
+        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition","partition_old", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        # Reattach info on training
+        data = pd.merge(data_a, data_b, on='Icore', how='outer')
+    else:
+        allele_counts_dict = data["allele"].value_counts().to_dict()
+        allele_dict = dict(zip(allele_counts_dict.keys(),list(range(len(allele_counts_dict.keys()))))) #TODO: Replace with allele encoding based on sequential information
+        data["allele_encoded"] = data["allele"]
+        data.replace({"allele_encoded": allele_dict},inplace=True)
+
+
+
+    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
+    #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
+    data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
+
+    return data_info
+
+
+
 def generate_artificial_epitopes(data,allele_anchors_dict,allele_counts,n_replicates=3):
     """"""
 
@@ -648,7 +727,6 @@ def generate_artificial_epitopes(data,allele_anchors_dict,allele_counts,n_replic
     exit()
     #Duplicate rows,
 
-
 def data_class_division(array,array_mask,idx,labels,confidence_scores):
     """
 
@@ -683,7 +761,6 @@ def data_class_division(array,array_mask,idx,labels,confidence_scores):
                                        high_confidence_negatives=high_conf_negatives_arr,
                                        high_confidence_negatives_mask=high_conf_negatives_arr_mask)
     return data_subdivision
-
 def build_exploration_folders(args,storage_folder,filters_dict):
 
     for mode in ["All","Train", "Test"]:
@@ -709,7 +786,6 @@ def build_exploration_folders(args,storage_folder,filters_dict):
         VegvisirUtils.folders("negatives","{}/{}/similarities/{}/{}/same_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
         VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/{}/same_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
 
-
 def sample_datapoints_mi(a,b):
 
     longest, shortest = [(0, 1) if a.shape[0] >b.shape[0] else (1, 0)][0]
@@ -719,7 +795,6 @@ def sample_datapoints_mi(a,b):
     idx_sample = np.sort(idx_sample,axis=0)
     idx_sample = (idx_longest[..., None] == idx_sample).any(-1)
     return idx_sample,dict_counts[longest]
-
 def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_array_mask,aa_dict,aa_list,blosum_norm,seq_max_len,storage_folder,args,corrected_aa_types,analysis_mode,filters_dict):
 
     if not os.path.exists("{}/{}/similarities/{}".format(storage_folder,args.dataset_name,args.sequence_type)):
@@ -770,7 +845,7 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
     epitopes_array_int_group_divison_test = data_class_division(epitopes_array_int_group,epitopes_array_mask,np.invert(training),labels_arr,confidence_scores)
 
 
-    plot_mi = True
+    plot_mi = False
     if plot_mi:
         warnings.warn("Calculating Mutual information: If the dataset is unbalanced , then the longest dataset will be subsampled to match the smaller dataset")
         #Highlight: Mutual informaton calculated using raw amino acids
@@ -908,7 +983,7 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
         # VegvisirMI.calculate_mutual_information(positives_arr.tolist(),identifiers,seq_max_len,"TrainPositives",storage_folder,args.dataset_name)
         # VegvisirMI.calculate_mutual_information(negatives_arr.tolist(),identifiers,seq_max_len,"TrainNegatives",storage_folder,args.dataset_name)
         # VegvisirMI.calculate_mutual_information(high_conf_negatives_arr.tolist(),identifiers,seq_max_len,"TrainHighlyConfidentNegatives",storage_folder,args.dataset_name)
-    plot_frequencies=True
+    plot_frequencies=False
     if plot_frequencies:#Highlight: remember to use "int"!!!!!!!!
         VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_test.all,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/{}/Test/{}/neighbours1/all".format(args.sequence_type,analysis_mode),"TestAll")
         VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_test.positives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/{}/Test/{}/neighbours1/positives".format(args.sequence_type,analysis_mode),"TestPositives")
@@ -919,7 +994,7 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
         VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_train.positives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/{}/Train/{}/neighbours1/positives".format(args.sequence_type,analysis_mode),"TrainPositives")
         VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_train.negatives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/{}/Train/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode),"TrainNegatives")
         VegvisirPlots.plot_aa_frequencies(epitopes_array_int_division_train.high_confidence_negatives,corrected_aa_types,aa_dict,seq_max_len,storage_folder,args,"similarities/{}/Train/{}/neighbours1/highconfnegatives".format(args.sequence_type,analysis_mode),"TrainHighConfidenceNegatives")
-    plot_cosine_similarity = True
+    plot_cosine_similarity = False
     if plot_cosine_similarity:
         print("Calculating  epitopes similarity matrices (this might take a while, 10 minutes for 10000 sequences) ....")
         all_sim_results =VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum,
@@ -930,6 +1005,12 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
                                                                       ksize=ksize)
         
         #Highlight: Train dataset
+        train_all_sim_results =VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum_division_train.all,
+                                                                      seq_max_len,
+                                                                      epitopes_array_blosum_division_train.all_mask,
+                                                                      storage_folder, args,
+                                                                     "{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode),
+                                                                     ksize=ksize)
         train_positives_sim_results =VegvisirSimilarities.calculate_similarity_matrix_parallel(epitopes_array_blosum_division_train.positives,
                                                                       seq_max_len,
                                                                       epitopes_array_blosum_division_train.positives_mask,
@@ -951,11 +1032,19 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
                                                                       ksize=ksize)
 
 
-        train_sim_results = {"positives":train_positives_sim_results,
+        train_sim_results = {"all":train_all_sim_results,
+                             "positives":train_positives_sim_results,
                              "negatives":train_negatives_sim_results,
                              "high_conf_negatives":train_high_conf_sim_results}
 
         #Highlight: Test dataset
+        test_all_sim_results = VegvisirSimilarities.calculate_similarity_matrix_parallel(
+            epitopes_array_blosum_division_test.all,
+            seq_max_len,
+            epitopes_array_blosum_division_test.all_mask,
+            storage_folder, args,
+            "{}/Test/{}/neighbours1/all".format(args.sequence_type, analysis_mode),
+            ksize=ksize)
 
         test_positives_sim_results = VegvisirSimilarities.calculate_similarity_matrix_parallel(
             epitopes_array_blosum_division_test.positives,
@@ -980,15 +1069,19 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
             "{}/Test/{}/neighbours1/highconfnegatives".format(args.sequence_type,analysis_mode),
             ksize=ksize)
 
-        test_sim_results = {"positives": test_positives_sim_results,
+        test_sim_results = { "all":test_all_sim_results,
+                             "positives": test_positives_sim_results,
                              "negatives": test_negatives_sim_results,
                              "high_conf_negatives": test_high_conf_negatives_sim_results}
 
-
-
     else:
         print("Loading pre-calculated epitopes similarity/weights matrices (warning big matrices) located at {}".format("{}/{}/similarities/".format(storage_folder,args.dataset_name)))
-
+        
+        train_all_sim_results = SimilarityResults(positional_weights=np.load("{}/{}/similarities/{}/positional_weights.npy".format(storage_folder,args.dataset_name,"{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode))),
+                                               percent_identity_mean=np.load("{}/{}/similarities/{}/percent_identity_mean.npy".format(storage_folder,args.dataset_name,"{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode))),
+                                               cosine_similarity_mean=np.load("{}/{}/similarities/{}/cosine_similarity_mean.npy".format(storage_folder,args.dataset_name,"{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode))),
+                                               kmers_pid_similarity=np.load("{}/{}/similarities/{}/kmers_pid_similarity_3ksize.npy".format(storage_folder,args.dataset_name,"{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode))),
+                                               kmers_cosine_similarity=np.load("{}/{}/similarities/{}/kmers_cosine_similarity_3ksize.npy".format(storage_folder,args.dataset_name,"{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode))))
 
         train_positives_sim_results = SimilarityResults(positional_weights=np.load("{}/{}/similarities/{}/positional_weights.npy".format(storage_folder,args.dataset_name,"{}/Train/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))),
                                                percent_identity_mean=np.load("{}/{}/similarities/{}/percent_identity_mean.npy".format(storage_folder,args.dataset_name,"{}/Train/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))),
@@ -1018,6 +1111,11 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
         
         
         #Highlight: Test
+        test_all_sim_results = SimilarityResults(positional_weights=np.load("{}/{}/similarities/{}/positional_weights.npy".format(storage_folder, args.dataset_name,"{}/Test/{}/neighbours1/all".format(args.sequence_type,analysis_mode))),
+                                                        percent_identity_mean=np.load("{}/{}/similarities/{}/percent_identity_mean.npy".format(storage_folder, args.dataset_name,"{}/Test/{}/neighbours1/all".format(args.sequence_type,analysis_mode))),
+                                                        cosine_similarity_mean=np.load("{}/{}/similarities/{}/cosine_similarity_mean.npy".format(storage_folder, args.dataset_name,"{}/Test/{}/neighbours1/all".format(args.sequence_type,analysis_mode))),
+                                                        kmers_pid_similarity=np.load("{}/{}/similarities/{}/kmers_pid_similarity_3ksize.npy".format(storage_folder, args.dataset_name,"{}/Test/{}/neighbours1/all".format(args.sequence_type,analysis_mode))),
+                                                        kmers_cosine_similarity=np.load("{}/{}/similarities/{}/kmers_cosine_similarity_3ksize.npy".format(storage_folder, args.dataset_name,"{}/Test/{}/neighbours1/all".format(args.sequence_type,analysis_mode))))
 
         test_positives_sim_results = SimilarityResults(positional_weights=np.load("{}/{}/similarities/{}/positional_weights.npy".format(storage_folder, args.dataset_name,"{}/Test/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))),
                                                         percent_identity_mean=np.load("{}/{}/similarities/{}/percent_identity_mean.npy".format(storage_folder, args.dataset_name,"{}/Test/{}/neighbours1/positives".format(args.sequence_type,analysis_mode))),
@@ -1040,6 +1138,7 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
             test_high_conf_negatives_sim_results = None
 
         test_sim_results = {
+            "all": test_all_sim_results,
             "positives": test_positives_sim_results,
             "negatives": test_negatives_sim_results,
             "high_conf_negatives": test_high_conf_negatives_sim_results,
@@ -1051,7 +1150,6 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
                                                kmers_pid_similarity=np.load("{}/{}/similarities/{}/kmers_pid_similarity_3ksize.npy".format(storage_folder,args.dataset_name,"{}/All/{}/neighbours1/all".format(args.sequence_type,analysis_mode))),
                                                kmers_cosine_similarity=np.load("{}/{}/similarities/{}/kmers_cosine_similarity_3ksize.npy".format(storage_folder,args.dataset_name,"{}/All/{}/neighbours1/all".format(args.sequence_type,analysis_mode))))
 
-
     calculate_partitions = False
     if calculate_partitions: #TODO: move elsewhere
         cosine_similarity_mean = all_sim_results.cosine_similarity_mean
@@ -1061,7 +1159,6 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
         labels = np.unique(clustering.labels_,return_counts=True)
 
     return all_sim_results
-
 def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,features_names=None,plot_blosum=False,plot_umap=False,plot_frequencies=False,plot_mi=False):
     """
     Notes:
@@ -1131,7 +1228,6 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     n_data = epitopes_array.shape[0]
     all_sim_results = data_exploration(data, epitopes_array_blosum, epitopes_array_int, epitopes_mask, aa_dict, aa_list,
                      blosum_norm, seq_max_len, storage_folder, args, corrected_aa_types,analysis_mode,filters_dict)
-    exit()
 
     positional_weights = all_sim_results.positional_weights
     positional_weights_mask = (positional_weights[..., None] > 0.6).any(-1)
@@ -1155,6 +1251,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
         identifiers_labels_array[:, 0, 3] = np.array(training).squeeze(-1).astype(int)
         identifiers_labels_array[:, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
         identifiers_labels_array[:, 0, 5] = np.array(confidence_scores)
+
         epitopes_array = np.concatenate([epitopes_array,features_scores],axis=1)
         epitopes_array_int = np.concatenate([epitopes_array_int,features_scores],axis=1)
         epitopes_array_blosum_norm = np.concatenate([epitopes_array_blosum_norm,features_scores],axis=1)
@@ -1189,6 +1286,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
         identifiers_labels_array[:, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
         identifiers_labels_array[:, 0, 5] = np.array(confidence_scores)
 
+
         data_array_raw = np.concatenate([identifiers_labels_array, epitopes_array[:,None]], axis=1)
         data_array_int = np.concatenate([identifiers_labels_array, epitopes_array_int[:,None]], axis=1)
         data_array_blosum_norm = np.concatenate([identifiers_labels_array, epitopes_array_blosum_norm[:,None]], axis=1)
@@ -1200,6 +1298,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
         identifiers_labels_array_blosum[:, 0, 0, 3] = np.array(training).squeeze(-1).astype(int)
         identifiers_labels_array_blosum[:, 0, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
         identifiers_labels_array_blosum[:, 0, 0, 5] = np.array(confidence_scores)
+
 
         data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:,None]], axis=1)
         data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:,None]], axis=1)
@@ -1245,7 +1344,6 @@ def prepare_nnalign_no_test(args,storage_folder,data,column_names):
     data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
     data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name), sep="\t",index=False,header=None) #TODO: Header None?
     VegvisirNNalign.run_nnalign(args,storage_folder)
-
 def prepare_nnalign(args,storage_folder,data,column_names,no_test=True):
 
     if no_test:
@@ -1269,7 +1367,6 @@ def prepare_nnalign(args,storage_folder,data,column_names,no_test=True):
 
     exit()
     VegvisirNNalign.run_nnalign(args,storage_folder)
-
 def set_confidence_score(data):
 
     nmax_tested = data["Assay_number_of_subjects_tested"].max()

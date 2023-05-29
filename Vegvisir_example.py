@@ -48,17 +48,18 @@ def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
-                        default="viral_dataset3",
+                        default="viral_dataset7",
                         help='Dataset project name, look at nnalignpy.available_datasets(). The data should be always located at nnalignpy/src/nnalignpy/data'
-                             'viral_dataset3 : Only sequences'
+                             'viral_dataset3 : Only sequences, partitioned into train,validation and test'
                              'viral_dataset4 : Sequences + Features'
-                             'viral_dataset5: Contains additional artificially generated negative data points')
+                             'viral_dataset5: Contains additional artificially generated negative data points'
+                             'viral_dataset7: Same dataset as viral_dataset3, where the test dataset is mixed with the train and validation datasets')
     parser.add_argument('-subset_data', type=str, default="no",
                         help="Pick only the first <n> datapoints (epitopes) for testing the pipeline\n"
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=1, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=25, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=False, help='True: Use GPU; False: Use CPU')
 
     #TODO: include more blosum matrix types?
@@ -87,7 +88,7 @@ if __name__ == "__main__":
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. If the sequence contains gaps, the script will use 20 aa + 1 gap character ')
     parser.add_argument('-st','--sequence-type', type=str, nargs='?', default="Icore", help='Define the type of peptide sequence to use:\n'
                                                                                 'Icore: Full peptide '
-                                                                                'Icore_non_anchor: Peptide without the anchoring points ')
+                                                                                'Icore_non_anchor: Peptide without the anchoring points marked from NetMHCPan 4.1')
     parser.add_argument('-p','--seq-padding', type=str, nargs='?', default="ends", help='Controls how the sequences are padded to the length of the longest sequence \n'
                                                                                     '<ends>: The sequences are padded at the end'
                                                                                     '<borders>: The sequences are padded at the beginning and the end. Random choice when the pad is an even number'

@@ -164,6 +164,22 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
         dataset_proportions(test_data, results_dir, type="Test")
         info_file.write("\n -------------------------------------------------")
         info_file.write("\n Using as test partition: {}".format(partition_idx))
+    elif method == "predefined_partitions_no_test":
+        """Diffuse the test dataset to the train and validation datasets"""
+        if partition_test is not None:
+            partition_idx = partition_test
+        else:
+            partition_idx = np.random.randint(0,4) #random selection of a partition as the test
+        traineval_data = data[data[:, 0, 0, 2] != partition_idx]
+        traineval_labels = traineval_data[:,0,0,0]
+        train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
+        test_data = valid_data #the test dataset will be the validation again, since it has been used in the train and validation
+        dataset_proportions(train_data, results_dir, type="Train")
+        dataset_proportions(valid_data, results_dir, type="Valid")
+        dataset_proportions(test_data, results_dir, type="Test")
+        info_file.write("\n -------------------------------------------------")
+        info_file.write("\n Using as test partition: {}".format(partition_idx))
+        warnings.warn("Test dataset == Valid dataset, since it has been diffused onto the train and the validation datasets")
     elif method == "predefined_partitions":
         """Use the test data"""
 

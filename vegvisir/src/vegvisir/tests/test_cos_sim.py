@@ -798,6 +798,7 @@ def test_one():
     #seqs = ["AHPD","ALSW","VLPY","TRMF","IKNM"]#,"FYRA"]
     #seqs = ["AHPDYRM","VHPDYRM","LHPDYRM","IHPDYRM","AHPDYRM"]#,"FYRA"]
     #seqs = ["AHPDYRM","AHPDRRM","AHPDHRM","AHPDYRM","AHPDYRM"]#,"FYRA"]
+    #seqs  = ["AHPDYRM"] * 500
     seqs = ["AHPDYRM"] * 500 + ["AHPTYRM"] *75
     #seqs = ["AHPDYRM","AHPDYRM","AHPDYRM","AHPDYRM","AHPDYRM"]#,"FYRA"]
 

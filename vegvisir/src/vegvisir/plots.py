@@ -14,10 +14,8 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 import torch
-try:
-    import umap # numpy < 1.23
-except:
-    pass
+
+import umap # numpy < 1.23
 import vegvisir.utils as VegvisirUtils
 from sklearn.feature_selection import mutual_info_classif,mutual_info_regression
 from sklearn.metrics import auc,roc_auc_score,roc_curve,confusion_matrix,matthews_corrcoef,precision_recall_curve,average_precision_score
@@ -942,7 +940,7 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     plt.clf()
     plt.close(fig)
 
-def plot_classification_metrics(args,predictions_dict,data,fold,results_dir,mode="Train",per_sample=False):
+def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Train",per_sample=False):
     """
     Notes:
         -http://www.med.mcgill.ca/epidemiology/hanley/software/Hanley_McNeil_Radiology_82.pdf
