@@ -12,12 +12,14 @@ import os,shutil
 from collections import defaultdict
 import time,datetime
 from sklearn import preprocessing
-from sklearn.metrics import auc,roc_auc_score,cohen_kappa_score,roc_curve,confusion_matrix
 
 import pandas as pd
 import torch
 import vegvisir.plots as VegvisirPlots
 from scipy import stats
+from joblib import Parallel, delayed
+import multiprocessing
+MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 def str2bool(v):
     """Converts a string into a boolean, useful for boolean arguments
     :param str v"""
@@ -43,7 +45,7 @@ def str2None(v):
             v = str(v)
         return v
 
-def folders(folder_name,basepath):
+def folders(folder_name,basepath,overwrite=True):
     """ Creates a folder at the indicated location. It rewrites folders with the same name
     :param str folder_name: name of the folder
     :param str basepath: indicates the place where to create the folder
@@ -60,9 +62,24 @@ def folders(folder_name,basepath):
         finally:
             os.umask(original_umask)
     else:
-        print("removing subdirectories") #if this is reached if because you are running the folders function twice with the same folder name
-        shutil.rmtree(newpath)  # removes all the subdirectories!
-        os.makedirs(newpath,0o777)
+        if overwrite:
+            print("removing subdirectories") #if this is reached is because you are running the folders function twice with the same folder name
+            shutil.rmtree(newpath)  # removes all the subdirectories!
+            os.makedirs(newpath,0o777)
+        else:
+            pass
+
+def replace_nan(x,x_unique,replace_val=0.0):
+    """Detects nan values and replaces them with a given values
+    :param x numpy array
+    :param: x_unique numpy array of unique values from x
+    """
+    if np.isnan(x_unique).any():
+        x = np.nan_to_num(replace_val)
+        x_unique = x_unique[~np.isnan(x_unique)]
+        if not np.any(x_unique == replace_val):
+            np.append(x_unique,[0])
+    return x,x_unique
 
 def aminoacid_names_dict(aa_types,zero_characters = []):
     """ Returns an aminoacid associated to a integer value
@@ -74,6 +91,7 @@ def aminoacid_names_dict(aa_types,zero_characters = []):
     :param list zero_characters: character(s) to be set to 0
     """
     if aa_types == 20 :
+        assert len(zero_characters) == 0, "No zero characters allowed, please set zero_characters to empty list"
         aminoacid_names = {"R":0,"H":1,"K":2,"D":3,"E":4,"S":5,"T":6,"N":7,"Q":8,"C":9,"G":10,"P":11,"A":12,"V":13,"I":14,"L":15,"M":16,"F":17,"Y":18,"W":19}
     elif aa_types == 21:
         aminoacid_names = {"R":1,"H":2,"K":3,"D":4,"E":5,"S":6,"T":7,"N":8,"Q":9,"C":10,"G":11,"P":12,"A":13,"V":14,"I":15,"L":16,"M":17,"F":18,"Y":19,"W":20}
@@ -84,6 +102,49 @@ def aminoacid_names_dict(aa_types,zero_characters = []):
                 aminoacid_names[element] = 0
     aminoacid_names = {k: v for k, v in sorted(aminoacid_names.items(), key=lambda item: item[1])} #sort dict by values (for dicts it is an overkill, but I like ordered stuff)
     return aminoacid_names
+
+def aminoacids_groups(aa_dict):
+    others = ([],"black",0)
+    positive_charged = (["R","H","K"],"red",1)
+    negative_charged = (["D","E"],"lawngreen",2)
+    uncharged = (["S","T","N","Q"],"aqua",3)
+    special = (["C","U","G","P"],"yellow",4)
+    hydrophobic = (["A","V","I","L","M"],"orange",5)
+    aromatic = (["F","Y","W"],"magenta",6)
+    groups_names_colors_dict = {"positive":positive_charged[1],"negative":negative_charged[1],"uncharged":uncharged[1],"special":special[1],"hydrophobic":hydrophobic[1],"aromatic":aromatic[1],"others":others[1]}
+    #aa_by_groups_dict = {"positive":positive_charged[0],"negative":negative_charged[0],"uncharged":uncharged[0],"special":special[0],"hydrophobic":hydrophobic[0],"aromatic":aromatic[0],"others":others[0]}
+
+    aa_by_groups_dict = dict(zip( positive_charged[0] + negative_charged[0] + uncharged[0] + special[0] + hydrophobic[0] + aromatic[0],\
+                         len(positive_charged[0])*["positive"] + len(negative_charged[0])*["negative"] + len(uncharged[0])*["uncharged"]  + len(special[0])*["special"] + len(hydrophobic[0])*["hydrophobic"]  + len(aromatic[0])*["aromatic"] ))
+
+    aa_groups_colors_dict = defaultdict()
+    aa_groups_dict =defaultdict()
+    for aa,i in aa_dict.items():
+        if aa in positive_charged[0]:
+            aa_groups_colors_dict[i] = positive_charged[1]
+            aa_groups_dict[i] = positive_charged[2]
+        elif aa in negative_charged[0]:
+            aa_groups_colors_dict[i] = negative_charged[1]
+            aa_groups_dict[i] = negative_charged[2]
+        elif aa in uncharged[0]:
+            aa_groups_colors_dict[i] = uncharged[1]
+            aa_groups_dict[i] = uncharged[2]
+        elif aa in special[0]:
+            aa_groups_colors_dict[i] = special[1]
+            aa_groups_dict[i] = special[2]
+        elif aa in hydrophobic[0]:
+            aa_groups_colors_dict[i] = hydrophobic[1]
+            aa_groups_dict[i] = hydrophobic[2]
+        elif aa in aromatic[0]:
+            aa_groups_colors_dict[i] = aromatic[1]
+            aa_groups_dict[i] = aromatic[2]
+        else:
+            aa_groups_colors_dict[i] = others[1]
+            aa_groups_dict[i] = others[2]
+
+
+    #return {"aa_groups_colors_dict":aa_groups_colors_dict,"aa_groups_dict":aa_groups_dict,"groups_names_colors_dict":groups_names_colors_dict}
+    return  aa_groups_colors_dict,aa_groups_dict,groups_names_colors_dict,aa_by_groups_dict
 
 def convert_to_onehot(a,dimensions):
     #ncols = a.max() + 1
@@ -97,17 +158,21 @@ def create_blosum(aa_types,subs_matrix_name,zero_characters=[],include_zero_char
     Builds an array containing the blosum scores per character
     :param aa_types: amino acid probabilities, determines the choice of BLOSUM matrix
     :param str subs_matrix_name: name of the substitution matrix, check availability at /home/lys/anaconda3/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data
-    :param bool include_zero_characters : If True the score for the zero characters is kept in the blosum encoding, so the vector will have size 21 instead of just 20
+    :param bool include_zero_characters : If True the score for the zero characters is kept in the blosum encoding for each amino acid, so the vector will have size 21 instead of just 20
     """
 
     if aa_types > 21 and not subs_matrix_name.startswith("PAM"):
         warnings.warn("Your dataset contains special amino acids. Switching your substitution matrix to PAM70")
         subs_matrix_name = "PAM70"
+    elif aa_types == 20 and len(zero_characters) !=0:
+        raise ValueError("No zero characters allowed, please set zero_characters to empty list")
 
     subs_matrix = Bio.Align.substitution_matrices.load(subs_matrix_name)
     aa_list = list(aminoacid_names_dict(aa_types,zero_characters=zero_characters).keys())
-    index_gap = aa_list.index("#")
-    aa_list[index_gap] = "*" #in the blosum matrix gaps are represanted as *
+
+    if zero_characters:
+        index_gap = aa_list.index("#")
+        aa_list[index_gap] = "*" #in the blosum matrix gaps are represanted as *
 
     subs_dict = defaultdict()
     subs_array = np.zeros((len(aa_list) , len(aa_list) ))
@@ -125,17 +190,29 @@ def create_blosum(aa_types,subs_matrix_name,zero_characters=[],include_zero_char
     names = np.concatenate((np.array([float("-inf")]), np.arange(0,len(aa_list))))
     subs_array = np.c_[ np.arange(0,len(aa_list)), subs_array ]
     subs_array = np.concatenate((names[None,:],subs_array),axis=0)
+
     #subs_array[1] = np.zeros(aa_types+1)  #replace the gap scores for zeroes , instead of [-4,-4,-4...]
     #subs_array[:,1] = np.zeros(aa_types+1)  #replace the gap scores for zeroes , instead of [-4,-4,-4...]
 
     #blosum_array_dict = dict(enumerate(subs_array[1:,2:])) # Highlight: Changed to [1:,2:] instead of [1:,1:] to skip the scores for non-aa elements
-    if include_zero_characters:
+    if include_zero_characters or not zero_characters:
         blosum_array_dict = dict(enumerate(subs_array[1:,1:]))
     else:
         blosum_array_dict = dict(enumerate(subs_array[1:, 2:])) # Highlight: Changed to [1:,2:] instead of [1:,1:] to skip the scores for non-aa elements
+
     #blosum_array_dict[0] = np.full((aa_types),0)  #np.nan == np.nan is False ...
 
     return subs_array, subs_dict, blosum_array_dict
+
+def calculate_aa_frequencies(dataset,freq_bins):
+    """Calculates a frequency for each of the aa & gap at each position.The number of bins (of size 1) is one larger than the largest value in x. This is done for numpy arrays
+    :param tensor dataset
+    :param int freq_bins
+    """
+
+    freqs = np.apply_along_axis(lambda x: np.bincount(x, minlength=freq_bins), axis=0, arr=dataset.astype("int64")).T
+    #freqs = freqs/dataset.shape[0]
+    return freqs
 
 class AUK:
     """Slighlty re-adapted implementation from https://towardsdatascience.com/auk-a-simple-alternative-to-auc-800e61945be5
@@ -248,7 +325,7 @@ class AUK:
             curve.insert(0, 0)
         return curve  # Add zero to appropriate position in list
 
-def cosine_similarity(a,b,correlation_matrix=False):
+def cosine_similarity(a,b,correlation_matrix=False,parallel=False):
     """Calculates the cosine similarity between matrices of k-mers.
     :param numpy array a: (max_len,aa_types) or (num_seq,max_len, aa_types)
     :param numpy array b: (max_len,aa_types) or (num_seq,max_len, aa_types)
@@ -282,7 +359,10 @@ def cosine_similarity(a,b,correlation_matrix=False):
         p2 = np.sqrt(np.sum(b ** 2, axis=1))[None, :] #[1,seq_len]
         #print(p1*p2)
         cosine_sim = num / (p1 * p2)
-        return cosine_sim
+        if parallel:
+            return cosine_sim[None,:]
+        else:
+            return cosine_sim
     else: #TODO: use elipsis for general approach?
         if correlation_matrix:
             b = b - b.mean(axis=2)[:, :, None]
@@ -404,11 +484,11 @@ def calculate_similarity_matrix_slow(array, max_len, array_mask, batch_size=200,
             #  [m,n,kmers,nkmers,ksize,ksize], where the diagonal contains the pairwise values between the kmers
             kmers_matrix_pid_ij = pairwise_matrix_j[:, :, :, overlapping_kmers][:, :, overlapping_kmers].transpose(0, 1, 4, 2,3, 5)
             kmers_matrix_cosine_ij = cosine_sim_j[:, :, :, overlapping_kmers][:, :, overlapping_kmers].transpose(0, 1, 4, 2,3, 5)
-            # Highlight: Apply masks to calculate the similarities. NOTE: To get the data with the filled value use k = np.ma.getdata(kmers_matrix_diag_masked)
+            # Highlight: Apply masks to calculate the similarities_old. NOTE: To get the data with the filled value use k = np.ma.getdata(kmers_matrix_diag_masked)
             ##PERCENT IDENTITY (binary pairwise comparison) ###############
             percent_identity_mean_ij = np.ma.masked_array(pairwise_sim_j, mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
             percent_identity_mean_i[:,start_store_point_i:end_store_point_i] = percent_identity_mean_ij #TODO: Probably no need to store this either
-            ##COSINE SIMILARITY (pairwise comparison of cosine similarities)########################
+            ##COSINE SIMILARITY (pairwise comparison of cosine similarities_old)########################
             cosine_similarity_mean_ij = np.ma.masked_array(cosine_sim_j[:, :, diag_idx_maxlen[0], diag_idx_maxlen[1]],mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
             cosine_similarity_mean_i[:,start_store_point_i:end_store_point_i] = cosine_similarity_mean_ij
             # KMERS PERCENT IDENTITY ############
@@ -534,7 +614,7 @@ def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksiz
         cosine_similarity_mean_i = np.zeros((n_data_curr, n_data))
         kmers_pid_similarity_i = np.zeros((n_data_curr, n_data))
         kmers_cosine_similarity_i = np.zeros((n_data_curr, n_data))
-        start_store_point_i = 0 + store_point_helper
+        start_store_point_i = 0 + store_point_helper #TODO: Why the + 0? Typo?
         end_store_point_i = rest_splits[0].shape[0] + store_point_helper # initialize
         start_i = time.time()
         for j, r_j in enumerate(rest_splits):  # calculate distance among all kmers per sequence in the block (n, n_kmers,n_kmers)
@@ -559,11 +639,11 @@ def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksiz
             #  [m,n,kmers,nkmers,ksize,ksize], where the diagonal contains the pairwise values between the kmers
             kmers_matrix_pid_ij = pairwise_matrix_j[:, :, :, overlapping_kmers][:, :, overlapping_kmers].transpose(0, 1, 4, 2,3, 5)
             kmers_matrix_cosine_ij = cosine_sim_j[:, :, :, overlapping_kmers][:, :, overlapping_kmers].transpose(0, 1, 4, 2,3, 5)
-            # Highlight: Apply masks to calculate the similarities. NOTE: To get the data with the filled value use k = np.ma.getdata(kmers_matrix_diag_masked)
+            # Highlight: Apply masks to calculate the similarities_old. NOTE: To get the data with the filled value use k = np.ma.getdata(kmers_matrix_diag_masked)
             ##PERCENT IDENTITY (binary pairwise comparison) ###############
-            percent_identity_mean_ij = np.ma.masked_array(pairwise_sim_j, mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
+            percent_identity_mean_ij = np.ma.masked_array(pairwise_sim_j, mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!! #TODO: does it?
             percent_identity_mean_i[:,start_store_point_i:end_store_point_i] = percent_identity_mean_ij #TODO: Probably no need to store this either
-            ##COSINE SIMILARITY (pairwise comparison of cosine similarities)########################
+            ##COSINE SIMILARITY (pairwise comparison of cosine similarities_old)########################
             cosine_similarity_mean_ij = np.ma.masked_array(cosine_sim_j[:, :, diag_idx_maxlen[0], diag_idx_maxlen[1]],mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
             cosine_similarity_mean_i[:,start_store_point_i:end_store_point_i] = cosine_similarity_mean_ij
             # KMERS PERCENT IDENTITY ############
@@ -717,78 +797,23 @@ def euclidean_2d_norm(A,B,squared=True):
     else:
         return distance.clip(min=0)
 
-def fold_auc(predictions_dict,labels,fold,results_dir,mode="Train"):
-    """
-    http://www.med.mcgill.ca/epidemiology/hanley/software/Hanley_McNeil_Radiology_82.pdf
-    https://jorgetendeiro.github.io/SHARE-UMCG-14-Nov-2019/Part2
-    :param predictions_dict: {"mode": tensor of (N,), "frequencies": tensor of (N, num_classes)}
-    :param labels:
-    :param fold:
-    :param results_dir:
-    :param mode:
-    :return:
-    """
-    if isinstance(labels,torch.Tensor):
-        labels = labels.numpy()
-    # total_predictions = np.column_stack(predictions_fold)
-    # model_predictions = stats.mode(total_predictions, axis=1) #mode_predictions.mode
-    auc_score_binary_predictions_samples_mode = roc_auc_score(y_true=labels, y_score=predictions_dict["class_binary_predictions_samples_mode"])
-    if predictions_dict["class_binary_prediction_single_sample"] is not None:
-        auc_score_binary_predictions_single_sample= roc_auc_score(y_true=labels, y_score=predictions_dict["class_binary_prediction_single_sample"])
-    else:
-        auc_score_binary_predictions_single_sample = None
-
-    auk_score_binary_predictions_samples_mode = AUK(predictions_dict["class_binary_predictions_samples_mode"], labels).calculate_auk()
-    if predictions_dict["class_binary_prediction_single_sample"] is not None:
-        auk_score_binary_predictions_single_sample = AUK(predictions_dict["class_binary_prediction_single_sample"], labels).calculate_auk()
-    else:
-        auk_score_binary_predictions_single_sample = None
-
-    for key_name,stats_name in zip(["average_prob","single_sample_prob"],["class_positive_probs_predictions_samples_average","class_positive_probs_prediction_single_sample"]):
-        if predictions_dict[stats_name] is not None:
-            fpr, tpr, threshold = roc_curve(y_true=labels, y_score=predictions_dict[stats_name])
-            VegvisirPlots.plot_ROC_curve(fpr,tpr,auc_score_binary_predictions_samples_mode,auk_score_binary_predictions_samples_mode,"{}/{}".format(results_dir,mode),fold,key_name)
-
-    print("Fold : {}, {} AUC score (binary sample loop MODE): {}, AUK score {}".format(fold,mode, auc_score_binary_predictions_samples_mode,auk_score_binary_predictions_samples_mode))
-    print("Fold : {}, {} AUC score (binary sample loop MODE): {}, AUK score {}".format(fold,mode, auc_score_binary_predictions_samples_mode,auk_score_binary_predictions_samples_mode),file=open("{}/AUC_out.txt".format(results_dir),"a"))
-    print("Fold : {}, {} AUC score (logits-argmax sample loop MODE): {}, AUK score {}".format(fold, mode,
-                                                                                       auc_score_binary_predictions_single_sample,
-                                                                                       auk_score_binary_predictions_single_sample))
-    print("Fold : {}, {} AUC score (logits-argmax sample loop MODE): {}, AUK score {}".format(fold, mode,
-                                                                                       auc_score_binary_predictions_single_sample,
-                                                                                       auk_score_binary_predictions_single_sample),
-                                                                                       file=open("{}/AUC_out.txt".format(results_dir), "a"))
-
-    for stats_name,key_name in zip(["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"],["samples_mode","single_sample"]):
-        if predictions_dict[stats_name] is not None:
-            tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=predictions_dict[stats_name]).ravel()
-            confusion_matrix_df = pd.DataFrame([[tn, fp],
-                                                [fn, tp]],
-                                            columns=["Negative", "Positive"],
-                                            index=["Negative\n(True)", "Positive\n(True)"])
-            recall = tp/(tp + fn)
-            precision = tp/(tp + fp)
-            f1score = 2*tp/(2*tp + fp + fn)
-            tnr = tn/(tn + fp)
-            accuracy = 100*((predictions_dict[stats_name] == labels).sum()/predictions_dict[stats_name].shape[0])
-            performance_metrics = {"recall/tpr":recall,"precision":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr}
-            VegvisirPlots.plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold,key_name)
-
-
-def manage_predictions(samples_dict,args,predictions_dict,true_labels):
+def manage_predictions(samples_dict,args,predictions_dict):
     """
 
     :param samples_dict: Collects the binary, logits and probabilities predicted for args.num_samples  from the posterior predictive after training
     :param args:
-    :param predictions_dict: Collects the binary, logits and probabilities predicted for 1 sample from the posterior predictive during training
+    :param predictions_dict: Collects the binary, logits and probabilities predicted for 1 sample ("single sample") from the posterior predictive during training
     :return:
     """
     binary_predictions_samples = samples_dict["binary"]
+    true_labels_samples = samples_dict["true"]
+    #assert  ((true_labels == true_labels_samples).sum())/true_labels.shape[0] == 1., "Review, the labels are off"
     logits_predictions_samples = samples_dict["logits"]
     probs_predictions_samples = samples_dict["probs"]
-    n_data = true_labels.shape[0]
+
+    n_data = true_labels_samples.shape[0]
     #probs_predictions_samples_true = probs_predictions_samples[np.arange(0, n_data),:, true_labels.long()]  # pick the probability of the true target for every sample
-    probs_positive_class = probs_predictions_samples[:,:, 1]  # pick the probability of the positive class for every sample
+    #probs_positive_class = probs_predictions_samples[:,:, 1]  # pick the probability of the positive class for every sample
 
     class_logits_predictions_samples_argmax = np.argmax(logits_predictions_samples,axis=-1)
     class_logits_predictions_samples_argmax_mode = stats.mode(class_logits_predictions_samples_argmax, axis=1,keepdims=True).mode.squeeze(-1)
@@ -803,26 +828,14 @@ def manage_predictions(samples_dict,args,predictions_dict,true_labels):
     #                                   enumerate(torch.unbind(class_logits_predictions_samples_argmax.type(torch.int64), dim=0),
     #                                             0)], dim=0)
     argmax_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=class_logits_predictions_samples_argmax.astype("int64")).T
-
     argmax_frequencies = argmax_frequencies / args.num_samples
+
     if predictions_dict is not None:
-        summary_dict = {  "class_binary_predictions_samples": binary_predictions_samples,
-                          "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
-                          "class_binary_prediction_samples_frequencies": binary_frequencies,
-                          "class_logits_predictions_samples": logits_predictions_samples,
-                          "class_logits_predictions_samples_argmax": class_logits_predictions_samples_argmax,
-                          "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
-                          "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
-                          "class_probs_predictions_samples": probs_predictions_samples,
-                          "class_positive_probs_predictions_samples_average": np.mean(probs_positive_class,axis=1),
-                          "class_binary_prediction_single_sample": predictions_dict["binary"],
-                          "class_logits_prediction_single_sample": predictions_dict["logits"],
-                          "class_logits_prediction_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
-                          "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),true_labels.long()],
-                          "class_positive_probs_prediction_single_sample": predictions_dict["probs"][:,1],
-                          }
-    else:
-        summary_dict = {"class_binary_predictions_samples": binary_predictions_samples,
+        summary_dict = {"data_int_single_sample":predictions_dict["data_int"],
+                        "data_int_samples": samples_dict["data_int"],
+                        "data_mask_single_sample": predictions_dict["data_mask"],
+                        "data_mask_samples": samples_dict["data_mask"],
+                        "class_binary_predictions_samples": binary_predictions_samples,
                         "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
                         "class_binary_prediction_samples_frequencies": binary_frequencies,
                         "class_logits_predictions_samples": logits_predictions_samples,
@@ -830,13 +843,196 @@ def manage_predictions(samples_dict,args,predictions_dict,true_labels):
                         "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
                         "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
                         "class_probs_predictions_samples": probs_predictions_samples,
-                        "class_positive_probs_predictions_samples_average": np.mean(probs_positive_class, axis=1),
+                        "class_probs_predictions_samples_average": np.mean(probs_predictions_samples,axis=1),
+                        "class_binary_prediction_single_sample": predictions_dict["binary"],
+                        "class_logits_prediction_single_sample": predictions_dict["logits"],
+                        "class_logits_prediction_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
+                        "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),predictions_dict["true"].astype(int)],
+                        "class_probs_prediction_single_sample": predictions_dict["probs"],
+                        "samples_average_accuracy":samples_dict["accuracy"],
+                        "true_samples": true_labels_samples,
+                        "true_onehot_samples": samples_dict["true_onehot"],
+                        "true_single_sample": predictions_dict["true"],
+                        "true_onehot_single_sample": predictions_dict["true_onehot"],
+                        "confidence_scores_samples": samples_dict["confidence_scores"],
+                        "confidence_scores_single_sample": predictions_dict["confidence_scores"],
+                        "training_assignation_samples": samples_dict["training_assignation"],
+                        "training_assignation_single_sample": predictions_dict["training_assignation"],
+                        "attention_weights_single_sample":predictions_dict["attention_weights"],
+                        "attention_weights_samples": samples_dict["attention_weights"],
+                        "encoder_hidden_states_single_sample":predictions_dict["encoder_hidden_states"],
+                        "encoder_hidden_states_samples":samples_dict["encoder_hidden_states"],
+                        "decoder_hidden_states_single_sample": predictions_dict["decoder_hidden_states"],
+                        "decoder_hidden_states_samples": samples_dict["decoder_hidden_states"],
+                        "encoder_final_hidden_state_single_sample": predictions_dict["encoder_final_hidden_state"],
+                        "encoder_final_hidden_state_samples": samples_dict["encoder_final_hidden_state"],
+                        "decoder_final_hidden_state_single_sample": predictions_dict["decoder_final_hidden_state"],
+                        "decoder_final_hidden_state_samples": samples_dict["decoder_final_hidden_state"],
+                        }
+    else:
+        summary_dict = {"data_int_single_sample":None,
+                        "data_int_samples": samples_dict["data_int"],
+                        "data_mask_single_sample": None,
+                        "data_mask_samples": samples_dict["data_mask"],
+                        "class_binary_predictions_samples": binary_predictions_samples,
+                        "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
+                        "class_binary_prediction_samples_frequencies": binary_frequencies,
+                        "class_logits_predictions_samples": logits_predictions_samples,
+                        "class_logits_predictions_samples_argmax": class_logits_predictions_samples_argmax,
+                        "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
+                        "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
+                        "class_probs_predictions_samples": probs_predictions_samples,
+                        "class_probs_predictions_samples_average": np.mean(probs_predictions_samples, axis=1),
                         "class_binary_prediction_single_sample": None,
                         "class_logits_prediction_single_sample": None,
                         "class_logits_prediction_single_sample_argmax": None,
                         "class_probs_prediction_single_sample_true": None,
-                        "class_positive_probs_prediction_single_sample": None,
+                        "class_probs_prediction_single_sample": None,
+                        "samples_average_accuracy": samples_dict["accuracy"],
+                        "true_samples": true_labels_samples,
+                        "true_onehot_samples": samples_dict["true_onehot"],
+                        "true_single_sample": None,
+                        "true_onehot_single_sample": None,
+                        "confidence_scores_samples": samples_dict["confidence_scores"],
+                        "confidence_scores_single_sample": None,
+                        "training_assignation_samples": samples_dict["training_assignation"],
+                        "training_assignation_single_sample": None,
+                        "attention_weights_single_sample": None,
+                        "attention_weights_samples": samples_dict["attention_weights"],
+                        "encoder_hidden_states_single_sample": None,
+                        "encoder_hidden_states_samples": samples_dict["encoder_hidden_states"],
+                        "decoder_hidden_states_single_sample": None,
+                        "decoder_hidden_states_samples": samples_dict["decoder_hidden_states"],
+                        "encoder_final_hidden_state_single_sample": None,
+                        "encoder_final_hidden_state_samples": samples_dict["encoder_final_hidden_state"],
+                        "decoder_final_hidden_state_single_sample": None,
+                        "decoder_final_hidden_state_samples": samples_dict["decoder_final_hidden_state"],
                         }
 
     return summary_dict
 
+def extract_group_old_test(train_summary_dict,valid_summary_dict,args):
+    """"""
+    test_train_summary_dict = defaultdict() #old test data points localizados en el train dataset
+    test_valid_summary_dict = defaultdict() #old test data points localizados en el train dataset
+    test_all_summary_dict = defaultdict()
+
+    for train_key,valid_key in zip(train_summary_dict,valid_summary_dict):
+        train_val = train_summary_dict[train_key]
+        valid_val = valid_summary_dict[valid_key]
+        for sample_mode in ["single_sample","samples"]:
+            train_training_assignation = np.invert(train_summary_dict["training_assignation_{}".format(sample_mode)].astype(bool))
+            valid_training_assignation = np.invert(valid_summary_dict["training_assignation_{}".format(sample_mode)].astype(bool))
+            train_ndata = train_training_assignation.shape[0]
+            valid_ndata = valid_training_assignation.shape[0]
+
+            if sample_mode in train_key:
+                if train_val is not None:
+                    if train_val.ndim != 0:
+                        if train_val.shape[0] == train_ndata:
+                            test_train_summary_dict[train_key] = train_val[train_training_assignation]
+                            test_valid_summary_dict[train_key] = valid_val[valid_training_assignation]
+                            test_all_summary_dict[train_key] = np.concatenate([train_val[train_training_assignation],valid_val[valid_training_assignation]],axis=0)
+                        else:
+                            test_train_summary_dict[train_key] = train_val[:,train_training_assignation]
+                            test_valid_summary_dict[train_key] = valid_val[:,valid_training_assignation]
+                            test_all_summary_dict[train_key] = np.concatenate(
+                                [train_val[:,train_training_assignation], valid_val[:,valid_training_assignation]], axis=1)
+                else:
+                    test_train_summary_dict[train_key] = train_val
+                    test_valid_summary_dict[train_key] = valid_val
+                    test_all_summary_dict[train_key] = None
+
+    return test_train_summary_dict,test_valid_summary_dict,test_all_summary_dict
+
+def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
+    """
+    Assuming that the RNN hidden states are obtained as stated here: https://github.com/pytorch/pytorch/issues/3587
+    Calculates the amount of vector similarity/distance change between the hidden representations of the positions in the sequence for both backward and forward RNN hidden states.
+    1) For a given sequence with 2 sequences of hidden states [2,L,Hidden_dim]
+
+        A) Calculate cosine similarities_old for each of the forward and backward hidden states of an RNN
+        Forward = Cos_sim([Hidden_states[0],Hidden_states[0]]
+        Backward = Cos_sim([Hidden_states[1],Hidden_states[1]]
+
+        b) Retrieve from the cosine similarity matrix the offset +1 diagonal which contains the following information about contigous states
+
+        Forward states:        [0->1][1->2][2->3][3->4]
+        Backward states: [0<-1][1<-2][2<-3][3<-4]
+        ------------------------------------
+
+    2) Make the average among the information gains of the forward and backward states (overlapping)
+        Pos 0 : [0<-1]
+        Pos 1 : ([0->1] + [1<-2])/2
+        Pos 2 : ([1->2] + [2<-3])/2
+        Pos 3 : ([2->3] + [3<-4])/2
+        Pos 4 : [3->4]
+
+
+    :param arr:
+    :param arr_mask:
+    :param diag_idx_maxlen:
+    :param max_len:
+    :return:
+    """
+    forward = None
+    backward = None
+    for idx in [0,1]:
+        cos_sim_arr = cosine_similarity(arr[idx],arr[idx],correlation_matrix=False)
+        cos_sim_diag = cos_sim_arr[diag_idx_maxlen[0][:-1],diag_idx_maxlen[1][1:]] #k=1 offset diagonal
+        #Highlight: ignore the positions that have paddings
+        n_paddings = (arr_mask.shape[0] - arr_mask.sum()) # max_len - true_len
+        keep = cos_sim_diag.shape[0] - n_paddings #number of elements in the offset diagonal - number of "False" or paddings along the sequence
+        if keep <= 0: #when all the sequence is paddings or only one position is not a padding, every position gets value 0
+            if idx == 0:
+                forward = np.zeros((max_len-1))
+            else:
+                backward = np.zeros((max_len-1))
+        else:
+            information_shift = 1-cos_sim_diag[:keep] #or cosine distance
+            #information_shift = np.abs(cos_sim_diag[:-1] -cos_sim_diag[1:])
+            #Highlight: Set to 0 the information gain in the padding positions
+            information_shift = np.concatenate([information_shift,np.zeros((n_paddings,))])
+            if idx == 0:
+                forward = information_shift
+            else:
+                backward = information_shift
+            assert information_shift.shape[0] == max_len-1
+
+    #Highlight: Make the arrays overlap
+    forward = np.insert(forward,obj=0,values=0,axis=0)
+    backward = np.append(backward,np.zeros((1,)),axis=0)
+    weights = (forward + backward)/2
+    #weights = np.exp(weights - np.max(weights)) / np.exp(weights - np.max(weights)).sum() #softmax
+    weights = (weights - weights.min()) / (weights - weights.min()).sum()
+    weights*= arr_mask
+    return weights[None,:]
+def information_shift_samples(hidden_states,data_mask_seq,diag_idx_maxlen,seq_max_len):
+    # Highlight: Encoder
+    encoder_information_shift_weights_seq = Parallel(n_jobs=MAX_WORKERs)(
+        delayed(information_shift)(seq, seq_mask, diag_idx_maxlen,
+                                                seq_max_len) for seq, seq_mask in
+        zip(hidden_states, data_mask_seq))
+    encoder_information_shift_weights_sample = np.concatenate(encoder_information_shift_weights_seq, axis=0)
+
+    return encoder_information_shift_weights_sample[:, None]
+
+def compute_sites_entropies(logits, node_names):
+    """
+    Calculate the Shannon entropy of a sequence
+    :param tensor logits = [n_seq, L, 21]
+    :param tensor node_names: tensor with the nodes tree level order indexes ("names")
+    observed = [n_seq,L]
+    Pick the aa with the highest logit,
+    logits = log(prob/1-prob)
+    prob = exp(logit)/(1+exp(logit))
+    entropy = prob.log(prob) per position in the sequence
+    The entropy H is maximal when each of the symbols in the position has equal probability
+    The entropy H is minimal when one of the symbols has probability 1 and the rest 0. H = 0"""
+    #probs = torch.exp(logits)  # torch.sum(probs,dim=2) returns 1's so , it's correct
+
+    prob = np.exp(logits) / (1 + np.exp(logits))
+    seq_entropies = -np.sum(prob*np.log(prob),axis=2)
+
+    seq_entropies = np.concatenate((node_names[:,None],seq_entropies),axis=1)
+    return seq_entropies

@@ -9,3 +9,5 @@ from .load_utils import *
 from .models import *
 from .model_utils import *
 from .losses import *
+from .similarities import *
+from .mutual_information import *

@@ -4,6 +4,8 @@
 Vegvisir :
 =======================
 """
+import json
+from collections import defaultdict
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.colors import Normalize
@@ -12,12 +14,21 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 import torch
-import umap
+
+import umap # numpy < 1.23
 import vegvisir.utils as VegvisirUtils
 from sklearn.feature_selection import mutual_info_classif,mutual_info_regression
+from sklearn.metrics import auc,roc_auc_score,roc_curve,confusion_matrix,matthews_corrcoef,precision_recall_curve,average_precision_score
+from joblib import Parallel, delayed
+import multiprocessing
+MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
 colors_dict = {0: "red", 1: "green"}
-
+colors_list_aa = ["black", "plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange",
+               "yellow", "green",
+               "dodgerblue", "blue", "purple", "magenta", "grey", "maroon", "lightcoral", "olive", "teal",
+               "goldenrod", "chocolate", "cornflowerblue", "pink", "darkgrey", "indianred",
+               "mediumspringgreen"]
 
 
 def plot_data_information(data, filters_dict, storage_folder, args, name_suffix):
@@ -30,7 +41,7 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
 
     ############LABELS #############
     freq, bins, patches = ax[0][0].hist(data["target"].to_numpy(), bins=2, density=True, edgecolor='white')
-    ax[0][0].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][0].set_xlabel('Target/Label (0: Non-binder, \n 1: Binder)')
     ax[0][0].set_title('Histogram of targets/labels \n',fontsize=10)
     ax[0][0].xaxis.set_ticks([0.25, 0.75])
     ax[0][0].set_xticklabels([0, 1])
@@ -46,7 +57,7 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
 
     ############LABELS CORRECTED #############
     freq, bins, patches = ax[0][1].hist(data["target_corrected"].to_numpy(), bins=2, density=True, edgecolor='white')
-    ax[0][1].set_xlabel('Target/Label (0: Non-binder, 1: Binder)')
+    ax[0][1].set_xlabel('Target/Label (0: Non-binder, \n 1: Binder)')
     ax[0][1].set_title('Histogram of re-assigned \n targets/labels',fontsize=10)
     ax[0][1].xaxis.set_ticks([0.25, 0.75])
     ax[0][1].set_xticklabels([0, 1])
@@ -232,6 +243,8 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
 
     ax[0][3].axis("off")
     ax[1][3].axis("off")
+    ax[2][2].axis("off")
+    ax[1][2].axis("off")
     ax[2][3].axis("off")
 
     legends = [mpatches.Patch(color=color, label='Class {}'.format(label)) for label, color in colors_dict.items()]
@@ -239,6 +252,7 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     fig.tight_layout(pad=0.1)
     plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder, args.dataset_name, name_suffix), dpi=500)
     plt.clf()
+    plt.close(fig)
 
 def plot_features_histogram(data, features_names, results_dir, name_suffix):
     """Plots the histogram densities featues of all data points
@@ -273,6 +287,8 @@ def plot_features_histogram(data, features_names, results_dir, name_suffix):
         plt.legend(handles=[negative_patch, positive_patch], prop={'size': 8}, loc='center',bbox_to_anchor=(-1.6, -0.2), ncol=2)
         plt.savefig("{}/Viruses_features_histograms_{}".format(results_dir, name_suffix), dpi=300)
         plt.clf()
+        plt.close()
+
     elif isinstance(data,torch.Tensor) or isinstance(data,np.ndarray):
         i = 0
         seq_max_len = data.shape[2] - len(features_names)
@@ -299,6 +315,8 @@ def plot_features_histogram(data, features_names, results_dir, name_suffix):
         plt.savefig("{}/Viruses_features_histograms_{}".format(results_dir, name_suffix),
                     dpi=300)
         plt.clf()
+        plt.close(fig)
+
     else:
         print("Data type not implemented, not plotting features histograms")
 
@@ -348,6 +366,8 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
                bbox_to_anchor=(0.6, 0.5), ncol=1)
     plt.savefig("{}/{}/umap_data_norm".format(script_dir,dataset_name))
     plt.clf()
+    plt.close(fig)
+
 
     if seq_max_len != max_len:
         umap_proj = reducer.fit_transform(data_features)
@@ -372,13 +392,76 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
                    bbox_to_anchor=(0.7, 0.5), ncol=1)
         plt.savefig("{}/{}/umap_data_features".format(script_dir, dataset_name))
         plt.clf()
+        plt.close(fig)
+
+def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,analysis_mode,mode):
+
+    aa_groups_colors_dict,aa_groups_dict,groups_names_colors_dict,aa_by_groups_dict = VegvisirUtils.aminoacids_groups(aa_dict)
+    reverse_aa_dict = {val:key for key,val in aa_dict.items()}
+    frequencies_per_position = VegvisirUtils.calculate_aa_frequencies(data_array,aa_types)
+    aa_patches = [mpatches.Patch(color=colors_list_aa[i], label='{}'.format(aa)) for aa,i in aa_dict.items()]
+    aa_groups_patches = [mpatches.Patch(color=color, label='{}'.format(group)) for group,color in groups_names_colors_dict.items()]
+    aa_colors_dict = {i: colors_list_aa[i] for aa, i in aa_dict.items()}
+    aa_int = np.array(list(aa_dict.values()))
+    fig, axs = plt.subplots(nrows=1, ncols=3,figsize=(12, 6),gridspec_kw={'width_ratios': [4.5, 4.5,1]})  # check this: https://stackoverflow.com/questions/9834452/how-do-i-make-a-single-legend-for-many-subplots
+
+    x_pos = 0
+    x_pos_labels = []
+    for p_idx, frequencies_position in enumerate(frequencies_per_position):
+        x_pos_labels.append(x_pos)
+        sorted_idx = np.argsort(frequencies_position)[::-1]
+        frequencies_position_sorted = frequencies_position[sorted_idx]
+        sorted_aa = aa_int[sorted_idx]
+        group_frequencies_inverted_dict = dict.fromkeys(list(groups_names_colors_dict.values()))
+        #group_frequencies_inverted_dict = defaultdict(float)
+        for freq,aa in zip(frequencies_position_sorted,sorted_aa):
+            group_color_aa = aa_groups_colors_dict[aa]
+            #print("aa idx {}, aa name {},freq {},group color {}".format(aa,reverse_aa_dict[aa],freq,group_color_aa))
+            if group_frequencies_inverted_dict[group_color_aa] is not None:
+                group_frequencies_inverted_dict[group_color_aa] += freq
+            else:
+                group_frequencies_inverted_dict[group_color_aa] = freq
+        group_frequencies_inverted_dict = {k: v for k, v in group_frequencies_inverted_dict.items() if v is not None}
+        assert np.sum(frequencies_position_sorted) == sum(list(group_frequencies_inverted_dict.values()))
+
+        prev_group_freq = 0
+        for group_color,group_frequency in sorted(group_frequencies_inverted_dict.items(), key=lambda x: x[1],reverse=True):
+            if group_frequency != 0:
+                if group_frequency == prev_group_freq: # avoids overlapping frequencies with equal values
+                    x_pos += 0.3
+                axs[1].bar(x_pos, group_frequency,color=group_color,width = 0.2)
+                prev_group_freq = group_frequency
+        prev_aa_freq = 0
+        for aa_idx, aa_frequency in zip(sorted_aa,frequencies_position_sorted):
+            if aa_frequency != 0:
+                if aa_frequency == prev_aa_freq: # avoids overlapping frequencies with equal values
+                    x_pos += 0.3
+                axs[0].bar(x_pos, aa_frequency,color=aa_colors_dict[aa_idx],width = 0.2)
+                prev_aa_freq = aa_frequency
+        x_pos += 1
+
+    axs[0].set_xticks(x_pos_labels)
+    axs[0].set_xticklabels(labels=list(range(max_len)))
+    axs[1].set_xticks(x_pos_labels)
+    axs[1].set_xticklabels(labels=list(range(max_len)))
+    axs[2].axis("off")
+    legend1 = plt.legend(handles=aa_patches, prop={'size': 8}, loc='center right',
+                         bbox_to_anchor=(1.4, 0.5), ncol=1)
+    plt.legend(handles=aa_groups_patches, prop={'size': 8}, loc='center right',
+               bbox_to_anchor=(0.7, 0.45), ncol=1)
+    plt.gca().add_artist(legend1)
+    plt.suptitle("Amino acid/Group counts per position ()".format(mode))
+    plt.savefig("{}/{}/{}/Aminoacids_frequency_counts_{}".format(storage_folder, args.dataset_name,analysis_mode,mode), dpi=500)
+    plt.clf()
+    plt.close(fig)
 
 def plot_heatmap(array, title,file_name):
-    plt.figure(figsize=(20, 20))
+    fig = plt.figure(figsize=(20, 20))
     sns.heatmap(array, cmap='RdYlGn_r',yticklabels=False,xticklabels=False)
     plt.title(title)
     plt.savefig(file_name)
     plt.clf()
+    plt.close(fig)
 
 def plot_umap1(array,labels,storage_folder,args,title_name,file_name):
     from matplotlib.colors import ListedColormap
@@ -403,8 +486,9 @@ def plot_umap1(array,labels,storage_folder,args,title_name,file_name):
     else:
         fig.colorbar(plt.cm.ScalarMappable(cmap=colormap),ax=ax) #cax= fig.add_axes([0.9, 0.5, 0.01, 0.09])
     plt.title("UMAP dimensionality reduction of {}".format(title_name),fontsize=20)
-    plt.savefig("{}/{}/similarities/{}.png".format(storage_folder,args.dataset_name,file_name))
+    plt.savefig("{}/{}/similarities_old/{}.png".format(storage_folder,args.dataset_name,file_name))
     plt.clf()
+    plt.close(fig)
 
 def plot_loss(train_loss,valid_loss,epochs_list,fold,results_dir):
     """Plots the model's error loss
@@ -417,10 +501,12 @@ def plot_loss(train_loss,valid_loss,epochs_list,fold,results_dir):
     valid_loss = np.array(valid_loss)
     epochs_idx = np.array(epochs_list)
     train_loss = train_loss[epochs_idx.astype(int)] #select the same epochs as the vaidation
+
     if np.isnan(train_loss).any():
         print("Error loss contains nan")
         pass
     else:
+        fig = plt.figure()
         plt.plot(epochs_idx,train_loss, color="dodgerblue",label="train")
         if valid_loss is not None:
             plt.plot(epochs_idx,valid_loss, color="darkorange", label="validation")
@@ -430,10 +516,10 @@ def plot_loss(train_loss,valid_loss,epochs_list,fold,results_dir):
         plt.title("Error loss (Train/valid)")
         plt.legend()
         plt.savefig("{}/error_loss_{}fold.png".format(results_dir,fold))
-        plt.close()
-    plt.clf()
+        plt.close(fig)
+        plt.clf()
 
-def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir):
+def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,mode,results_dir):
     """Plots the model's accuracies, both for target label and for sequence reconstruction loss
     :param list train_elbo: list of accumulated error losses during training
     :param str results_dict: path to results directory
@@ -445,7 +531,7 @@ def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir
         train_accuracies_std = np.array(train_accuracies["std"])[epochs_idx.astype(int)]
         valid_accuracies_std = np.array(valid_accuracies["std"])
         epochs_idx = np.array(epochs_list)
-
+        fig = plt.figure()
         plt.plot(epochs_idx, train_accuracies_mean, color="deepskyblue", label="train")
         plt.fill_between(epochs_idx,train_accuracies_mean-train_accuracies_std,train_accuracies_mean+train_accuracies_std,color="cyan",alpha=0.2)
         if valid_accuracies is not None:
@@ -456,16 +542,17 @@ def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir
         plt.ylabel("Accuracy (average number of correct \n  amino acids across all sequences)")
         plt.title("Sequence Reconstruction Accuracy (Train/valid)")
         plt.legend()
-        plt.savefig("{}/reconstruction_accuracies_{}fold.png".format(results_dir, fold))
-        plt.close()
+        plt.savefig("{}/reconstruction_accuracies_{}fold.png".format(results_dir, mode))
         plt.clf()
-    
+        plt.close(fig)
+
+
     else:
         train_accuracies = np.array(train_accuracies)
         valid_accuracies = np.array(valid_accuracies)
         epochs_idx = np.array(epochs_list)
         train_accuracies = train_accuracies[epochs_idx.astype(int)] #select the same epochs as the vaidation
-    
+        fig = plt.figure()
         plt.plot(epochs_idx,train_accuracies, color="deepskyblue",label="train")
         if valid_accuracies is not None:
             plt.plot(epochs_idx,valid_accuracies, color="salmon", label="validation")
@@ -473,9 +560,9 @@ def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,results_dir
         plt.ylabel("Accuracy (number of correct predictions)")
         plt.title("Accuracy (Train/valid)")
         plt.legend()
-        plt.savefig("{}/accuracies_{}fold.png".format(results_dir,fold))
-        plt.close()
+        plt.savefig("{}/accuracies_{}fold.png".format(results_dir,mode))
         plt.clf()
+        plt.close(fig)
 
 def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,method):
     """Plots the AUC/AUK scores while training
@@ -485,6 +572,7 @@ def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,m
     :param str method: AUC or AUK
     """
     epochs_idx = np.array(epochs_list)
+    fig = plt.figure()
     plt.plot(epochs_idx,train_auc, color="deepskyblue",label="train")
     if valid_auc is not None:
         plt.plot(epochs_idx,valid_auc, color="salmon", label="validation")
@@ -493,12 +581,12 @@ def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,m
     plt.title("{} (Train/valid)".format(method))
     plt.legend()
     plt.savefig("{}/{}_{}fold.png".format(results_dir,method,fold))
-    plt.close()
     plt.clf()
+    plt.close(fig)
 
 def plot_latent_vector(latent_space,predictions_dict,fold,results_dir,method):
 
-    print("Plotting Latent Vector...")
+    print("Plotting latent vector...")
     latent_vectors = latent_space[:,5:]
     colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,0])
@@ -533,10 +621,11 @@ def plot_latent_vector(latent_space,predictions_dict,fold,results_dir,method):
     plt.legend(handles=[negative_patch,positive_patch], prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5),ncol=1)
     plt.savefig("{}/{}/zvector_fold{}".format(results_dir,method,fold))
     plt.clf()
+    plt.close(fig)
 
-def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
+def plot_latent_space(latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z"):
 
-    print("Plotting UMAP...")
+    print("Plotting UMAP of {}...".format(vector_name))
     reducer = umap.UMAP()
     umap_proj = reducer.fit_transform(latent_space[:, 5:])
     colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
@@ -555,8 +644,9 @@ def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
     colors_confidence = np.vectorize(colors_dict.get, signature='()->(n)')(confidence_scores)
     #Highlight: Immunodominance scores colors
     immunodominance_scores = latent_space[:,3]
-    immunodominance_scores_unique = np.unique(immunodominance_scores).tolist()
-    colormap_immunodominance = matplotlib.cm.get_cmap('plasma_r', len(immunodominance_scores_unique))
+    immunodominance_scores_unique = np.unique(immunodominance_scores)
+    immunodominance_scores,immunodominance_scores_unique = VegvisirUtils.replace_nan(immunodominance_scores,immunodominance_scores_unique)
+    colormap_immunodominance = matplotlib.cm.get_cmap('plasma_r', len(immunodominance_scores_unique.tolist()))
     colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
     colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
     #Highlight: Frequency scores per class: https://stackoverflow.com/questions/65927253/linearsegmentedcolormap-to-list
@@ -570,28 +660,28 @@ def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
     colormap_frequency_class1_array =  np.array([colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
     colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
     colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_binary_prediction_samples_frequencies"][:,1])
-
+    alpha = 0.7
     fig, [[ax1, ax2, ax3],[ax4,ax5,ax6],[ax7,ax8,ax9],[ax10,ax11,ax12]] = plt.subplots(4, 3,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [4,4,4,2]})
     fig.suptitle('UMAP projections',fontsize=20)
-    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:,2], alpha=1,s=30)
+    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:,2], alpha=alpha,s=30)
     ax1.set_title("True labels",fontsize=20)
     if method == "_single_sample":
-        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=1,s=30)
+        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha,s=30)
         ax2.set_title("Predicted labels (single sample)",fontsize=20)
     else:
-        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=1,s=30)
+        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha,s=30)
         ax2.set_title("Predicted binary labels (samples mode)",fontsize=20)
 
-    ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=1, s=30)
+    ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=alpha, s=30)
     ax4.set_title("Confidence scores", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence),ax=ax4)
-    ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class0, alpha=1, s=30)
+    ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class0, alpha=alpha, s=30)
     ax5.set_title("Probability class 0 (frequency argmax)", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable( norm = Normalize(0,1),cmap=colormap_frequency_class0),ax=ax5)
-    ax7.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=1, s=30)
+    ax7.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=alpha, s=30)
     ax7.set_title("Probability class 1 (frequency argmax)", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable( cmap=colormap_frequency_class1),ax=ax7)
-    ax8.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=1, s=30)
+    ax8.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=alpha, s=30)
     ax8.set_title("Immunodominance scores", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance),ax=ax8)
 
@@ -602,15 +692,17 @@ def plot_latent_space(latent_space,predictions_dict,fold,results_dir,method):
     ax11.axis("off")
     ax12.axis("off")
 
+    fig.suptitle("UMAP of {}".format(vector_name))
 
     negative_patch = mpatches.Patch(color=colors_dict_labels[0], label='Class 0')
     positive_patch = mpatches.Patch(color=colors_dict_labels[1], label='Class 1')
     fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
     plt.legend(handles=[negative_patch,positive_patch], prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5),ncol=1)
-    plt.savefig("{}/{}/umap_fold{}".format(results_dir,method,fold))
+    plt.savefig("{}/{}/umap_{}_{}".format(results_dir,method,vector_name,sample_mode))
     plt.clf()
+    plt.close(fig)
 
-def plot_gradients(gradient_norms,results_dir,fold):
+def plot_gradients(gradient_norms,results_dir,mode):
     print("Plotting gradients")
     #fig = plt.figure(figsize=(13, 6), dpi=100).set_facecolor('white')
     fig, (ax1,ax2)= plt.subplots(1, 2, figsize=(15, 12),dpi=100,gridspec_kw={'width_ratios': [3.7, 1]})
@@ -621,13 +713,15 @@ def plot_gradients(gradient_norms,results_dir,fold):
     plt.ylabel('gradient norm')
     plt.yscale('log')
     ax2.axis('off')
-    ax1.legend(loc= 'center right',bbox_to_anchor=(1.5,0.5),fontsize=11, borderaxespad=0.)
-    ax1.set_title('Gradient norms of model parameters')
+    plt.legend(loc= 'center right',bbox_to_anchor=(1.5,0.5),fontsize=11, borderaxespad=0.)
+    fig.suptitle('Gradient norms of model parameters')
 
-    plt.savefig("{}/gradients_fold{}".format(results_dir,fold))
+    plt.savefig("{}/gradients_{}".format(results_dir,mode))
     plt.clf()
+    plt.close(fig)
 
 def plot_ROC_curve(fpr,tpr,roc_auc,auk_score,results_dir,fold,method):
+    fig = plt.figure()
     plt.title('Receiver Operating Characteristic',fontdict={"size":20})
     plt.plot(fpr, tpr, 'b', label='AUC = %0.2f \n '
                                   'AUK = %0.2f' % (roc_auc,auk_score))
@@ -639,6 +733,7 @@ def plot_ROC_curve(fpr,tpr,roc_auc,auk_score,results_dir,fold,method):
     plt.xlabel('False Positive Rate',fontsize=20)
     plt.savefig("{}/ROC_curve_fold{}_{}".format(results_dir,fold,method))
     plt.clf()
+    plt.close(fig)
 
 def plot_blosum_cosine(blosum_array,storage_folder,args):
     """
@@ -647,7 +742,7 @@ def plot_blosum_cosine(blosum_array,storage_folder,args):
     :param storage_folder:
     :param args:
     """
-    plt.subplots(figsize=(10, 10))
+    fig,_=plt.subplots(figsize=(10, 10))
     blosum_cosine = VegvisirUtils.cosine_similarity(blosum_array[1:, 1:], blosum_array[1:, 1:])
     aa_dict = VegvisirUtils.aminoacid_names_dict(21, zero_characters=["#"])
     aa_list = [key for key, val in aa_dict.items() if val in list(blosum_array[:, 0])]
@@ -658,57 +753,7 @@ def plot_blosum_cosine(blosum_array,storage_folder,args):
     plt.title("Amino acids blosum vector cosine similarity", fontsize=10)
     plt.savefig('{}/{}/blosum_cosine.png'.format(storage_folder, args.dataset_name), dpi=600)
     plt.clf()
-
-def plot_feature_importance_old(feature_dict:dict,max_len:int,features_names:list,results_dir:str) -> None:
-    """
-    :rtype: object
-    :param feature_dict:
-    :param max_len:
-    :param features_names:
-    :param results_dir:
-
-    """
-    colors_list = ["plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange", "yellow",
-                   "green",
-                   "dodgerblue", "blue", "purple", "magenta", "grey", "maroon", "lightcoral", "olive", "teal",
-                   "goldenrod",
-                   "black", "chocolate", "cornflowerblue", "pink", "darkgrey", "indianred", "mediumspringgreen",
-                   "cadetblue", "sienna",
-                   "crimson", "deepbluesky", "wheat", "silver"]
-    # plot
-    ncols = int(len(feature_dict.keys())/2)
-    nrows = [int(len(feature_dict.keys())/ncols) + 1 if len(feature_dict.keys())/ncols % 2 != 0 else int(len(feature_dict.keys())/ncols)][0]
-    row = 0
-    col = 0
-
-
-    if len(feature_dict["Fold_0"]) == max_len:
-        labels = ["Pos.{}".format(pos) for pos in list(range(max_len))]
-    else:
-        labels = ["Pos.{}".format(pos) for pos in list(range(max_len))] + features_names
-    colors_dict = dict(zip(labels,colors_list))
-
-    fig,ax = plt.subplots(nrows=nrows,ncols=ncols,squeeze=False) #check this: https://stackoverflow.com/questions/9834452/how-do-i-make-a-single-legend-for-many-subplots
-    for fold,features in feature_dict.items(): #ax = fig.add_subplot(2,2,a+1)
-        ax[int(row)][int(col)].bar(range(len(features)),features,color=colors_dict.values())
-        #ax[int(row)][int(col)].set_xticks(np.arange(len(labels)),labels,rotation=45,fontsize=8)
-        ax[int(row)][int(col)].set_title("{}".format(fold))
-        col += 1
-        if col >= ncols:
-            row += 1
-            col = 0
-            if row >= nrows:
-                # if col <= ncols and not len(feature_dict) % 2 == 0:
-                #     ax[int(row) -1 ][int(col)].axis("off")
-                break
-
-    fig.add_subplot(111) #added to fit the legend
-    patches = [mpatches.Patch(color='{}'.format(val), label='{}'.format(key)) for key,val in colors_dict.items()]
-    fig.legend(handles=patches, prop={'size': 10},loc= 'center right',bbox_to_anchor=(1.37,0.5))
-
-    fig.tight_layout(pad=3.0)
-    fig.suptitle("Feature importance")
-    plt.savefig("{}/feature_importance_xgboost".format(results_dir))
+    plt.close(fig)
 
 def plot_feature_importance(feature_dict:dict,max_len:int,features_names:list,results_dir:str) -> None:
     """
@@ -746,6 +791,7 @@ def plot_feature_importance(feature_dict:dict,max_len:int,features_names:list,re
     fig.tight_layout(pad=3.0,w_pad=1.5, h_pad=2.0)
     fig.suptitle("Feature importance")
     plt.savefig("{}/feature_importance_xgboost".format(results_dir))
+    plt.close(fig)
 
 def plot_mutual_information(full_data,full_labels,feature_names,results_dir):
     """
@@ -764,6 +810,7 @@ def plot_mutual_information(full_data,full_labels,feature_names,results_dir):
     colors_dict = dict(zip(feature_names,colors_list))
 
     mutual_information = mutual_info_regression(full_data[:,1], full_labels, discrete_features=False, n_neighbors=3, copy=True,random_state=None)
+    fig = plt.figure()
     plt.bar(range(len(feature_names)), feature_names,color=colors_dict.values())
     plt.xticks(np.arange(len(feature_names)), feature_names, rotation=45, fontsize=8)
     plt.title("Mutual Information feature importance")
@@ -773,6 +820,7 @@ def plot_mutual_information(full_data,full_labels,feature_names,results_dir):
     plt.legend(handles=patches, prop={'size': 10},loc= 'center right',bbox_to_anchor=(1.37,0.5))
     plt.savefig("{}/mi_feature_importance".format(results_dir),dpi=600)
     plt.clf()
+    plt.close(fig)
 
 def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold,method):
     """Plot confusion matrix
@@ -793,3 +841,501 @@ def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold,
     ax[0].legend(handles=patches, prop={'size': 10}, loc='right',bbox_to_anchor=(1.5, 0.5), ncol=1)
     plt.savefig("{}/confusion_matrix_fold{}_{}.png".format(results_dir,fold,method),dpi=100)
     plt.clf()
+    plt.close(fig)
+
+def micro_auc(args,onehot_labels,y_prob,idx):
+    """Calculates the AUC for a multi-class problem"""
+
+    micro_roc_auc_ovr = roc_auc_score(
+        onehot_labels[idx],
+        y_prob[idx],
+        multi_class="ovr",
+        average="micro",
+    )
+    fprs = dict()
+    tprs = dict()
+    roc_aucs = dict()
+    for i in range(2):
+          fprs[i], tprs[i], _ = roc_curve(onehot_labels[:, i], y_prob[:, i])
+          roc_aucs[i] = auc(fprs[i], tprs[i])
+    return [micro_roc_auc_ovr,fprs,tprs,roc_aucs]
+
+def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name):
+    """Following https://scikit-learn.org/stable/auto_examples/model_selection/plot_precision_recall.html#:~:text=The%20precision%2Drecall%20curve%20shows,a%20low%20false%20negative%20rate."""
+    onehot_targets = onehot_labels[idx]
+    target_scores = predictions_dict[stats_name][idx]
+    # For each class
+    precision = dict()
+    recall = dict()
+    average_precision = dict()
+    for i in range(args.num_classes):
+        precision[i], recall[i], _ = precision_recall_curve(onehot_targets[:, i], target_scores[:, i])
+        average_precision[i] = average_precision_score(onehot_targets[:, i], target_scores[:, i])
+
+    # A "micro-average": quantifying score on all classes jointly
+    precision["micro"], recall["micro"], _ = precision_recall_curve(
+        onehot_targets.ravel(), target_scores.ravel()
+    )
+    average_precision["micro"] = average_precision_score(onehot_targets, target_scores, average="micro")
+    fig = plt.figure()
+    plt.plot(recall["micro"],precision["micro"], label="Average Precision (AP): {}".format(average_precision["micro"]))
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    plt.ylabel('Precision', fontsize=20)
+    plt.xlabel('Recall', fontsize=20)
+    plt.legend(loc='lower right', prop={'size': 15})
+    plt.title("Average Precision curves")
+    plt.savefig("{}/{}/PrecisionRecall_curves_fold{}_{}".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
+    plt.clf()
+    plt.close(fig)
+
+
+
+    # display = PrecisionRecallDisplay(
+    #     recall=recall["micro"],
+    #     precision=precision["micro"],
+    #     average_precision=average_precision["micro"],
+    # )
+    # display.plot()
+    # _ = display.ax_.set_title("Micro-averaged over all classes")
+
+def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name):
+    # Compute ROC curve and ROC area for each class
+    fpr = dict()
+    tpr = dict()
+    roc_auc = dict()
+    labels = labels[idx]
+    onehot_targets = onehot_labels[idx]
+    target_scores = predictions_dict[stats_name][idx]
+    fig = plt.figure()
+    # ROC AUC per class
+    for i in range(args.num_classes):
+        fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
+        roc_auc[i] = auc(fpr[i], tpr[i])
+        plt.plot(fpr[i], tpr[i], label='ROC curve (AUC_{}: {})'.format(i, roc_auc[i]), c=colors_dict[i])
+    # Micro ROC AUC
+    fpr["micro"], tpr["micro"], _ = roc_curve(onehot_targets.ravel(), target_scores.ravel())
+    roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
+    plt.plot(fpr["micro"], tpr["micro"], label="micro-average ROC curve (area : {})".format(roc_auc["micro"]),
+             linestyle="-.", color="magenta")
+    # Macro ROC AUC
+    all_fpr = np.unique(np.concatenate([fpr[i] for i in range(args.num_classes)]))
+    fpr["macro"] = all_fpr
+    mean_tpr = np.zeros_like(all_fpr)
+    for i in range(args.num_classes):
+        mean_tpr += np.interp(all_fpr, fpr[i], tpr[i]) #linear interpolation of data points
+    tpr["macro"] = mean_tpr / args.num_classes
+    roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
+    plt.plot(fpr["macro"], tpr["macro"], label="macro-average ROC curve (area : {})".format(roc_auc["macro"]),
+             linestyle="-.", color="blue")
+
+    plt.legend(loc='lower right', prop={'size': 15})
+    plt.plot([0, 1], [0, 1], 'r--')
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    plt.ylabel('True Positive Rate', fontsize=20)
+    plt.xlabel('False Positive Rate', fontsize=20)
+    plt.title("ROC curves")
+    plt.savefig("{}/{}/ROC_curves_fold{}_{}".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
+    plt.clf()
+    plt.close(fig)
+
+def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Train",per_sample=False):
+    """
+    Notes:
+        -http://www.med.mcgill.ca/epidemiology/hanley/software/Hanley_McNeil_Radiology_82.pdf
+        -https://jorgetendeiro.github.io/SHARE-UMCG-14-Nov-2019/Part2
+        -Avoid AUC: https://onlinelibrary.wiley.com/doi/10.1111/j.1466-8238.2007.00358.x
+        - "Can Micro-Average ROC AUC score be larger than Class ROC AUC scores
+        - https://arxiv.org/pdf/2107.13171.pdf
+        - Find optimal treshold: https://machinelearningmastery.com/threshold-moving-for-imbalanced-classification/
+        - Interpretation: https://glassboxmedicine.com/2020/07/14/the-complete-guide-to-auc-and-average-precision-simulations-and-visualizations/#:~:text=the%20PR%20curve.-,Average%20precision%20indicates%20whether%20your%20model%20can%20correctly%20identify%20all,to%201.0%20(perfect%20model).
+    :param predictions_dict: {"mode": tensor of (N,), "frequencies": tensor of (N, num_classes)}
+    :param labels:
+    :param fold:
+    :param results_dir:
+    :param mode:
+    :return:
+    """
+
+    for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
+        labels = predictions_dict["true_{}".format(sample_mode)]
+        onehot_labels = np.zeros((labels.shape[0],args.num_classes))
+        onehot_labels[np.arange(0,labels.shape[0]),labels.astype(int)] = 1
+        confidence_scores = predictions_dict["confidence_scores_{}".format(sample_mode)]
+        idx_all = np.ones_like(labels).astype(bool)
+        idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
+
+        for idx,idx_name in zip([idx_all,idx_highconfidence],["ALL","HIGH_CONFIDENCE"]):
+            print("---------------- {} data points ----------------\n ".format(idx_name))
+            print("---------------- {} data points ----------------\n ".format(idx_name),file=open("{}/AUC_out.txt".format(results_dir), "a"))
+
+
+            #for key_name_1,stats_name_1 in zip(["samples_average_prob","single_sample_prob"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"]):
+            if predictions_dict[prob_mode] is not None:
+                #fpr, tpr, threshold = roc_curve(y_true=onehot_labels[idx], y_score=predictions_dict[stats_name][idx])
+                micro_roc_auc_ovr = roc_auc_score(
+                    onehot_labels[idx],
+                    predictions_dict[prob_mode][idx],
+                    multi_class="ovr",
+                    average="micro",
+                )
+                micro_roc_auc_ovo = roc_auc_score(
+                    onehot_labels[idx],
+                    predictions_dict[prob_mode][idx],
+                    multi_class="ov0",
+                    average="micro",
+                )
+                try:
+                    macro_roc_auc_ovr = roc_auc_score(
+                        onehot_labels[idx],
+                        predictions_dict[prob_mode][idx],
+                        multi_class="ovr",
+                        average="macro",
+                    )
+                except:
+                    macro_roc_auc_ovr = None
+                try:
+                    macro_roc_auc_ovo = roc_auc_score(
+                        onehot_labels[idx],
+                        predictions_dict[prob_mode][idx],
+                        multi_class="ovo",
+                        average="macro",
+                    )
+                except:
+                    macro_roc_auc_ovo = None
+                try:
+                    weighted_roc_auc_ovr = roc_auc_score(
+                        onehot_labels[idx],
+                        predictions_dict[prob_mode][idx],
+                        multi_class="ovr",
+                        average="weighted",
+                    )
+                except:
+                    weighted_roc_auc_ovr = None
+                try:
+                    weighted_roc_auc_ovo = roc_auc_score(
+                        onehot_labels[idx],
+                        predictions_dict[prob_mode][idx],
+                        multi_class="ovo",
+                        average="weighted",
+                    )
+                except:
+                    weighted_roc_auc_ovo = None
+                if predictions_dict[binary_mode] is not None:
+                    try:
+                        auk_score_binary = VegvisirUtils.AUK(predictions_dict[binary_mode][idx],
+                                                             labels[idx]).calculate_auk()
+                    except:
+                        auk_score_binary = None
+                else:
+                    auk_score_binary = None
+                plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name)
+                plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name)
+
+                print("---------------- {} ----------------\n".format(prob_mode))
+                print("---------------- {} ----------------\n ".format(prob_mode),file=open("{}/AUC_out.txt".format(results_dir), "a"))
+                scores_dict = {"micro_roc_auc_ovr":micro_roc_auc_ovr,
+                               "micro_roc_auc_ovo": micro_roc_auc_ovo,
+                               "macro_roc_auc_ovr": macro_roc_auc_ovr,
+                               "macro_roc_auc_ovo": macro_roc_auc_ovo,
+                               "weighted_roc_auc_ovr": weighted_roc_auc_ovr,
+                               "weighted_roc_auc_ovo": weighted_roc_auc_ovo,
+                               "auk_score_binary":auk_score_binary}
+
+                json.dump(scores_dict, open("{}/AUC_out.txt".format(results_dir), "a"), indent=2)
+
+            #for key_name_2,stats_name_2 in zip(["samples_mode","single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
+            if predictions_dict[binary_mode] is not None:
+                targets = labels[idx]
+                scores = predictions_dict[binary_mode][idx]
+                try:
+                    #TODO: Change to https://scikit-learn.org/stable/modules/generated/sklearn.metrics.multilabel_confusion_matrix.html
+                    tn, fp, fn, tp = confusion_matrix(y_true=targets, y_pred=scores).ravel()
+                    confusion_matrix_df = pd.DataFrame([[tp, fp],
+                                                        [fn, tn]],
+                                                    index=["Positive\n(Pred)", "Negative\n(Pred)"],
+                                                    columns=["Positive\n(True)", "Negative\n(True)"])
+                    recall = tp/(tp + fn)
+                    precision = tp/(tp + fp)
+                    f1score = 2*tp/(2*tp + fp + fn)
+                    tnr = tn/(tn + fp)
+                    mcc_custom = (tp*tn - fp*fn)/np.sqrt([(tp + tp)*(tp + fn)*(tn + fp)*(tn + fn)])[0]
+                    mcc = matthews_corrcoef(targets,scores)
+                    accuracy = 100*((scores == targets).sum()/targets.shape[0])
+                    performance_metrics = {"recall/tpr":recall,"precision/ppv":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr,"samples\naverage\naccuracy":predictions_dict["samples_average_accuracy"],
+                                           "Matthew CC":mcc, "AUK":auk_score_binary}
+                    plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold,"{}_{}".format(sample_mode,idx_name))
+                except:
+                    print("Only one class found, not plotting confusion matrix")
+
+            if per_sample:
+                #Calculate metrics for every individual samples
+                samples_results = Parallel(n_jobs=MAX_WORKERs)(delayed(micro_auc)(args,onehot_labels, sample, idx) for sample in np.transpose(predictions_dict["class_probs_predictions_samples"],(1,0,2)))
+                average_micro_auc = 0
+                fig, [ax1, ax2] = plt.subplots(1, 2,figsize=(17, 12),gridspec_kw={'width_ratios': [6, 2]})
+                for i in range(args.num_samples):
+                    micro_roc_auc_ovr, fprs, tprs, roc_aucs = samples_results[i]
+                    average_micro_auc += micro_roc_auc_ovr
+                    for j in range(args.num_classes):
+                        ax1.plot(fprs[j], tprs[j], label='AUC_{}: {} MicroAUC: {}'.format(i, roc_aucs[j],micro_roc_auc_ovr), c=colors_dict[j])
+                ax1.plot([0, 1], [0, 1], 'r--')
+                ax1.set_xlim([0, 1])
+                ax1.set_ylim([0, 1])
+                ax1.set_ylabel('True Positive Rate', fontsize=20)
+                ax1.set_xlabel('False Positive Rate', fontsize=20)
+                ax2.axis("off")
+                ax1.legend(loc='lower right', prop={'size': 8},bbox_to_anchor=(1.3, 0.))
+                fig.suptitle("ROC curve. AUC_micro_ovr_average: {}".format(average_micro_auc/args.num_samples),fontsize=12)
+                plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
+                plt.clf()
+                plt.close(fig)
+
+def plot_attention_weights(summary_dict,dataset_info,results_dir,method="Train"):
+    """
+
+    :param summary_dict:
+    :param results_dir:
+    :param method:
+    :return:
+    Notes:
+        https://github.com/jeonsworld/ViT-pytorch/blob/main/visualize_attention_map.ipynb
+    """
+
+    if dataset_info.corrected_aa_types == 20:
+        aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=[])
+    else:
+        aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=["#"])
+    aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict,aa_by_groups_dict = VegvisirUtils.aminoacids_groups(aminoacids_dict)
+    aa_groups_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("aa_cm", list(aa_groups_colors_dict.values()))
+
+    colors_list = ["black","plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange", "yellow","green",
+                   "dodgerblue", "blue", "purple", "magenta", "grey", "maroon", "lightcoral", "olive", "teal",
+                   "goldenrod", "chocolate", "cornflowerblue", "pink", "darkgrey", "indianred",
+                   "mediumspringgreen"]
+    aa_colors_dict = {i:colors_list[i] for aa,i in aminoacids_dict.items()}
+    aa_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("aa_cm", list(aa_colors_dict.values()))
+    aa_patches = [mpatches.Patch(color=colors_list[i], label='{}'.format(aa)) for aa,i in aminoacids_dict.items()]
+    aa_groups_patches = [mpatches.Patch(color=color, label='{}'.format(group)) for group,color in groups_names_colors_dict.items()]
+
+    for sample_mode in ["single_sample","samples"]:
+        data_int = summary_dict["data_int_{}".format(sample_mode)]
+        confidence_scores = summary_dict["confidence_scores_{}".format(sample_mode)]
+        idx_all = np.ones_like(confidence_scores).astype(bool)
+        idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
+        for data_points,idx in zip(["all","high_confidence"],[idx_all,idx_highconfidence]):
+            true_labels = summary_dict["true_{}".format(sample_mode)][idx]
+            positives_idx = (true_labels == 1)
+            for class_type,idx_class in zip(["positives","negatives"],[positives_idx,~positives_idx]):
+                attention_weights = summary_dict["attention_weights_{}".format(sample_mode)][idx][idx_class]
+                aminoacids = data_int[idx][idx_class]
+                if sample_mode == "single_sample":
+                    attention_weights = attention_weights[:,:,0]
+                else:
+                    attention_weights = attention_weights[:,:,:,0].mean(axis=1)
+                #try:
+
+                fig,[[ax1,ax2,ax3],[ax4,ax5,ax6]] = plt.subplots(nrows=2,ncols=3,figsize=(9, 6),gridspec_kw={'width_ratios': [4.5, 4.5,1],'height_ratios': [4.5, 4.5]})
+                print("{}/{}".format(sample_mode,data_points))
+                if np.prod(attention_weights.shape) == 0.:
+                    print("No data points, no attention plots")
+                    pass
+                else:
+                    #Highlight: Attention weights
+                    sns.heatmap(attention_weights,ax=ax1)
+                    ax1.set_xticks(np.arange(attention_weights.shape[1]) + 0.5,labels=["{}".format(i) for i in range(attention_weights.shape[1])])
+                    ax1.spines['left'].set_visible(False)
+                    ax1.yaxis.set_ticklabels([])
+                    ax1.set_title("Attention by weight")
+                    #Highlight: Aminoacids coloured by name
+                    if np.rint(attention_weights).max() != 1:
+                        aminoacids_masked = (aminoacids[:,1])*attention_weights.bool().int()
+                    else:
+                        aminoacids_masked = (aminoacids[:,1])*np.rint(attention_weights)
+                    sns.heatmap(aminoacids_masked,ax=ax2,cbar=False,cmap=aa_colormap)
+                    ax2.set_xticks(np.arange(attention_weights.shape[1] +1 ) + 0.5,labels=["{}".format(i) for i in range(attention_weights.shape[1] + 1)])
+                    ax2.spines['left'].set_visible(False)
+                    ax2.yaxis.set_ticklabels([])
+                    ax2.set_title("Attention by Aa type")
+                    #Highlight: Aminoacids coloured by functional group (i.e positive, negative ...)
+                    sns.heatmap(aminoacids_masked,ax=ax4,cbar=False,cmap=aa_groups_colormap)
+                    ax4.set_xticks(np.arange(attention_weights.shape[1] +1) + 0.5,labels=["{}".format(i) for i in range(attention_weights.shape[1] + 1)])
+                    ax4.spines['left'].set_visible(False)
+                    ax4.yaxis.set_ticklabels([])
+                    ax4.set_title("Attention by Aa group")
+
+                    ax3.axis("off")
+                    ax5.axis("off")
+                    ax6.axis("off")
+
+                    legend1 = plt.legend(handles=aa_patches, prop={'size': 8}, loc='center right',
+                               bbox_to_anchor=(0.9, 0.7), ncol=1)
+                    plt.legend(handles=aa_groups_patches, prop={'size': 8}, loc='center right',
+                               bbox_to_anchor=(0.1, 0.5), ncol=1)
+                    plt.gca().add_artist(legend1)
+
+                    fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
+                    fig.suptitle("Attention weights: {}, {}, {}".format(sample_mode,data_points,class_type))
+                    plt.savefig("{}/{}/Attention_plots_{}_{}_{}.png".format(results_dir,method,sample_mode,data_points,class_type))
+                    plt.clf()
+                    plt.close(fig)
+
+def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method="Train"):
+    """"""
+    print("Analyzing hidden dimensions ...")
+    if dataset_info.corrected_aa_types == 20:
+        aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=[])
+    else:
+        aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types,zero_characters=["#"])
+    aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict,aa_by_groups_dict = VegvisirUtils.aminoacids_groups(aminoacids_dict)
+    if dataset_info.corrected_aa_types == 20: #TODO: Review
+        aa_groups_colors_dict[0] = "black"  #otherwise it colors everyhing with the color of R, and the weights have been adjusted to 0
+    aa_groups_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("aa_cm", list(aa_groups_colors_dict.values()))
+
+    colors_list = ["black","plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange", "yellow","green",
+                   "dodgerblue", "blue", "purple", "magenta", "grey", "maroon", "lightcoral", "olive", "teal",
+                   "goldenrod", "chocolate", "cornflowerblue", "pink", "darkgrey", "indianred",
+                   "mediumspringgreen"]
+    aa_colors_dict = {i:colors_list[i] for aa,i in aminoacids_dict.items()}
+    if dataset_info.corrected_aa_types == 20:  #TODO: Review
+        aa_colors_dict[0] = "black"
+
+    aa_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("aa_cm", list(aa_colors_dict.values()))
+    aa_patches = [mpatches.Patch(color=colors_list[i], label='{}'.format(aa)) for aa,i in aminoacids_dict.items()]
+    aa_groups_patches = [mpatches.Patch(color=color, label='{}'.format(group)) for group,color in groups_names_colors_dict.items()]
+    max_len = dataset_info.seq_max_len
+    diag_idx_maxlen = np.diag_indices(max_len)
+
+    for sample_mode in ["single_sample","samples"]:
+        data_int = summary_dict["data_int_{}".format(sample_mode)]
+        data_mask = summary_dict["data_mask_{}".format(sample_mode)]
+        data_mask_seq = data_mask[:, 1:,:,0].squeeze(1)
+
+        confidence_scores = summary_dict["confidence_scores_{}".format(sample_mode)]
+        idx_all = np.ones_like(confidence_scores).astype(bool)
+        idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
+        encoder_final_hidden_state = summary_dict["encoder_final_hidden_state_{}".format(sample_mode)]
+        decoder_final_hidden_state = summary_dict["decoder_final_hidden_state_{}".format(sample_mode)]
+        plot_latent_space(encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden state")
+        plot_latent_space(decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden state")
+
+        for data_points,idx_conf in zip(["all","high_confidence"],[idx_all,idx_highconfidence]):
+            true_labels = summary_dict["true_{}".format(sample_mode)][idx_conf]
+            positives_idx = (true_labels == 1)
+            for class_type,idx_class in zip(["positives","negatives"],[positives_idx,~positives_idx]):
+
+                encoder_hidden_states = summary_dict["encoder_hidden_states_{}".format(sample_mode)][idx_conf][idx_class]
+                decoder_hidden_states = summary_dict["decoder_hidden_states_{}".format(sample_mode)][idx_conf][idx_class] #TODO: Review the values
+                if encoder_hidden_states.size != 0:
+                    #Highlight: Compute the cosine similarity measure (distance = 1 - similarity) among the hidden states of the sequence
+                    if sample_mode == "single_sample":
+                        # Highlight: Encoder
+                        encoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                            delayed(VegvisirUtils.information_shift)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
+                            zip(encoder_hidden_states,data_mask_seq))
+                        encoder_information_shift_weights = np.concatenate(encoder_information_shift_weights,axis=0)
+                        #Highlight: Decoder
+                        decoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                            delayed(VegvisirUtils.information_shift)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
+                            zip(decoder_hidden_states,data_mask_seq))
+                        decoder_information_shift_weights = np.concatenate(decoder_information_shift_weights,axis=0)
+                    else:
+                        encoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                            delayed(VegvisirUtils.information_shift_samples)(encoder_hidden_states[:, sample_idx],
+                                                                            data_mask_seq, diag_idx_maxlen,dataset_info.seq_max_len) for sample_idx in range(args.num_samples))
+
+                        decoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                            delayed(VegvisirUtils.information_shift_samples)(decoder_hidden_states[:, sample_idx],
+                                                                            data_mask_seq, diag_idx_maxlen,
+                                                                            dataset_info.seq_max_len) for sample_idx in range(args.num_samples))
+
+                        encoder_information_shift_weights = np.concatenate(encoder_information_shift_weights,axis=1) #N,samples, L
+                        encoder_information_shift_weights = encoder_information_shift_weights.mean(axis=1)
+                        decoder_information_shift_weights = np.concatenate(decoder_information_shift_weights,axis=1) #N,samples, L
+                        decoder_information_shift_weights = decoder_information_shift_weights.mean(axis=1)
+
+                    aminoacids = data_int[idx_conf][idx_class]
+                    for nn_name,weights in zip(["Encoder","Decoder"],[encoder_information_shift_weights,decoder_information_shift_weights]):
+                        #Highlight: Start figure
+                        fig, [[ax1, ax2, ax3], [ax4, ax5, ax6]] = plt.subplots(nrows=2, ncols=3, figsize=(9, 6),
+                                                                               gridspec_kw={'width_ratios': [4.5, 4.5, 1],
+                                                                                            'height_ratios': [4.5, 4.5]})
+                        print("{}/{}/{}/{}".format(sample_mode, data_points,class_type,nn_name))
+                        if np.prod(weights.shape) == 0.:
+                            print("No data points, no information shift - weights plots")
+                            pass
+                        else:
+                            # Highlight: Attention weights
+                            sns.heatmap(weights, ax=ax1)
+                            ax1.set_xticks(np.arange(weights.shape[1]) + 0.5,
+                                           labels=["{}".format(i) for i in range(weights.shape[1])])
+                            ax1.spines['left'].set_visible(False)
+                            ax1.yaxis.set_ticklabels([])
+                            ax1.set_title("Information shift by weight")
+                            # Highlight: Aminoacids coloured by name
+
+                            if np.rint(weights).max() != 1:
+                                weights_adjusted = np.array((weights > weights.mean()))
+                                aminoacids_masked = (aminoacids[:, 1]) * weights_adjusted.astype(int)
+                            else:
+                                aminoacids_masked = (aminoacids[:, 1]) * np.rint(weights)
+                            sns.heatmap(aminoacids_masked, ax=ax2, cbar=False, cmap=aa_colormap)
+                            ax2.set_xticks(np.arange(weights.shape[1] + 1) + 0.5,labels=["{}".format(i) for i in range(weights.shape[1] + 1)])
+                            ax2.spines['left'].set_visible(False)
+                            ax2.yaxis.set_ticklabels([])
+                            ax2.set_title("Information shift by Aa type")
+                            # Highlight: Aminoacids coloured by functional group (i.e positive, negative ...)
+                            sns.heatmap(aminoacids_masked, ax=ax4, cbar=False, cmap=aa_groups_colormap)
+                            ax4.set_xticks(np.arange(max_len + 1) + 0.5,
+                                           labels=["{}".format(i) for i in range(max_len + 1)])
+                            ax4.spines['left'].set_visible(False)
+                            ax4.yaxis.set_ticklabels([])
+                            ax4.set_title("Information shift by Aa group")
+
+                            ax3.axis("off")
+                            ax5.axis("off")
+                            ax6.axis("off")
+
+                            legend1 = plt.legend(handles=aa_patches, prop={'size': 8}, loc='center right',
+                                                 bbox_to_anchor=(0.9, 0.7), ncol=1)
+                            plt.legend(handles=aa_groups_patches, prop={'size': 8}, loc='center right',
+                                       bbox_to_anchor=(0.1, 0.5), ncol=1)
+                            plt.gca().add_artist(legend1)
+
+                            fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
+                            fig.suptitle("{}. Information shift weights: {}, {}, {}".format(nn_name,sample_mode, data_points, class_type))
+                            plt.savefig(
+                                "{}/{}/{}_information_shift_plots_{}_{}_{}.png".format(results_dir, method, nn_name,sample_mode, data_points, class_type))
+                            plt.clf()
+                            plt.close(fig)
+
+
+                else:
+                    print("Not data points available for {}/{}/{}/{}".format(sample_mode, data_points,class_type,nn_name))
+
+def plot_logits_entropies(train_dict,valid_dict,epochs_list, mode,results_dir):
+    """Plot positional entropies calculated from logits"""
+    train_entropies = np.array(train_dict["entropies"]) #[num_epochs, num_positions]
+    valid_entropies = np.array(valid_dict["entropies"])
+
+    epochs_idx = np.array(epochs_list)
+    train_entropies = train_entropies[epochs_idx.astype(int)]  # select the same epochs as the validation
+    colormap_train = matplotlib.cm.get_cmap('Blues', train_entropies.shape[1])
+    colormap_valid = matplotlib.cm.get_cmap('Oranges', train_entropies.shape[1])
+
+    fig, [ax1, ax2] = plt.subplots(1, 2,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,1]})
+
+    for position in range(train_entropies.shape[1]):
+        ax1.plot(epochs_idx, train_entropies[:,position], color=colormap_train(position), label="train_{}".format(position))
+    if valid_entropies is not None:
+        for position in range(valid_entropies.shape[1]):
+            ax1.plot(epochs_idx, valid_entropies[:,position], color=colormap_valid(position), label="validation_{}".format(position))
+
+    ax2.axis("off")
+    ax1.set_xlabel("Epochs")
+    ax1.set_ylabel("Entropy (positional)",fontsize=15)
+    ax1.set_title("Entropy (Train/valid)",fontsize=15)
+    ax1.legend(prop={'size': 15},loc= 'center right',bbox_to_anchor=(1.3,0.5),ncol=1)
+    plt.savefig("{}/entropies_{}fold.png".format(results_dir, mode))
+    plt.clf()
+    plt.close(fig)
