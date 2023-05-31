@@ -1003,11 +1003,12 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                    "onehot":data_onehot[train_idx].to(args.device)[:n],
                    "positional_mask":data_positional_weights_mask[train_idx].to(args.device)[:n]}
     data_args_1 = data_array_blosum_encoding_mask[train_idx].to(args.device)[:n]
-
     model_trace = pyro.poutine.trace(Vegvisir.model).get_trace(data_args_0,data_args_1,0,None,False)
     info_file = open("{}/dataset_info.txt".format(results_dir),"a+")
     info_file.write("\n ---------TRACE SHAPES------------\n {}".format(str(model_trace.format_shapes())))
-    print(model_trace.format_shapes())
+    #print(model_trace.format_shapes())
+    # print(model_trace.nodes["sequences"])
+    # print(model_trace.nodes["predictions"])
 
     #Highlight: Draw the graph model
     pyro.render_model(Vegvisir.model, model_args=(data_args_0,data_args_1,0,None,False), filename="{}/model_graph.png".format(results_dir),render_distributions=True,render_params=False)
@@ -1173,7 +1174,10 @@ def train_model(dataset_info,additional_info,args):
         print("Only Training & Validation")
         epoch_loop( train_idx, valid_idx, dataset_info, args, additional_info)
     else:
-        print("Training & testing...")
+        if args.dataset_name == "viral_dataset7":
+            print("Test == Valid for dataset7")
+        else:
+            print("Training & testing...")
         train_idx = (train_idx.int() + valid_idx.int()).bool()
         epoch_loop(train_idx, test_idx, dataset_info, args, additional_info,mode="Test")
 def load_model(dataset_info,additional_info,args):

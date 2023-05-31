@@ -353,35 +353,97 @@ class VEGVISIRGUIDES(EasyGuide):
         :return:
         """
         pyro.module("vae_guide", self)
-        batch_mask = batch_mask[:, 1]
-        batch_mask = batch_mask[:, :, 0]
+        batch_mask_len = batch_mask[:, 1]
+        batch_mask_len = batch_mask_len[:, :, 0]
+        batch_sequences_lens = batch_mask_len.sum(dim=1)
         batch_sequences_blosum = batch_data["blosum"][:, 1, :self.seq_max_len].squeeze(1)
         batch_size = batch_sequences_blosum.shape[0]
         batch_sequences_norm = batch_data["norm"][:, 1]  # only sequences norm
 
         confidence_scores = batch_data["blosum"][:,0,0,5]
-        confidence_mask = (confidence_scores[..., None] < 0.7).any(-1) #now we try to predict those with a low confidence score
+        confidence_mask = (confidence_scores[..., None] < 0.4).any(-1) #now we try to predict those with a low confidence score
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
         init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
-        #with pyro.plate("plate_batch",dim= -1,device=self.device):
-        z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state,rnn_final_hidden_state_bidirectional, rnn_final_hidden_state_bidirectional = self.encoder_guide(batch_sequences_blosum, init_h_0)
-        assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
-        assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
-        latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(2))  # ,infer=dict(baseline={'nn_baseline': self.guide_rnn,'nn_baseline_input': batch_sequences_blosum}))  # [z_dim,n]
-        # Highlight: We only need to specify a variational distribution over the class/class if class/label is unobserved
-        class_logits = self.classifier_guide(latent_space, None)
-        class_logits = self.logsoftmax(class_logits)
-        #with pyro.poutine.mask(mask=confidence_mask_true):
-        pyro.sample("predictions", dist.Categorical(logits=class_logits).mask(confidence_mask))
 
+        with pyro.plate("plate_batch",dim= -1,device=self.device):
+            z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state,rnn_final_hidden_state_bidirectional, rnn_hidden_states_bidirectional = self.encoder_guide(batch_sequences_blosum, batch_sequences_lens,init_h_0)
+            assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
+            assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
+            latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(1))
         return {"latent_z": latent_space,
                 "z_mean": z_mean,
                 "z_scale": z_scale,
                 "rnn_hidden":rnn_hidden,
                 "rnn_final_hidden":rnn_final_hidden_state,
                 "rnn_final_hidden_bidirectional": rnn_final_hidden_state_bidirectional,
+                "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
                 "rnn_hidden_states":rnn_hidden_states}
 
+    def guide_semisupervised_glitched(self, batch_data, batch_mask, epoch, guide_estimates, sample=False):
+        """
+        Amortized inference with only sequences, all sites and sequences dependent
+        Notes:
+            -https://pyro.ai/examples/easyguide.html
+            -https://medium.com/analytics-vidhya/activity-detection-using-the-variational-autoencoder-d2b017da1a88
+            -https://sites.google.com/illinois.edu/supervised-vae?pli=1
+            -TODO: https://github.com/analytique-bourassa/VAE-Classifier
+        :param batch_data:
+        :param batch_mask:
+        :return:
+        """
+        pyro.module("vae_guide", self)
+        batch_mask_len = batch_mask[:, 1]
+        batch_mask_len = batch_mask_len[:, :, 0]
+        batch_sequences_lens = batch_mask_len.sum(dim=1)
+        batch_sequences_blosum = batch_data["blosum"][:, 1, :self.seq_max_len].squeeze(1)
+        batch_size = batch_sequences_blosum.shape[0]
+        batch_sequences_norm = batch_data["norm"][:, 1]  # only sequences norm
+        batch_positional_mask = batch_data["positional_mask"]
+
+        # Highlight: Rotational Glitch
+        #rotate = torch.randn(1) > 0.5
+        #rotate = torch.tensor([True])
+
+        if  epoch%2 != 0:
+            #print("Rotating ....epoch {}".format(epoch))
+            #print("Translating ....epoch {}".format(epoch))
+            batch_positional_mask = torch.ones_like(batch_positional_mask)
+            batch_positional_mask[:,1] = False
+            batch_positional_mask[:,3] = False
+            batch_positional_mask[:,8] = False
+            #print("-----------------------------------")
+            #print(batch_sequences_blosum[0])
+            #positional_mask = torch.tile(batch_positional_mask[:, :, None], (1, 1, batch_sequences_blosum.shape[-1]))
+            #batch_sequences_blosum = self.rotate_blosum_batch(batch_sequences_blosum, batch_positional_mask)
+            # print(batch_sequences_blosum[0])
+            # print("----------------------------------")
+            # exit()
+
+        else:
+            #print("not rotating....")
+            pass
+        confidence_scores = batch_data["blosum"][:, 0, 0, 5]
+        confidence_mask = (confidence_scores[..., None] < 0.4).any(-1)  # now we try to predict those with a low confidence score
+        confidence_mask_true = torch.ones_like(confidence_mask).bool()
+        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,
+                                         self.gru_hidden_dim).contiguous()  # bidirectional
+
+        with pyro.plate("plate_batch", dim=-1, device=self.device):
+            z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state,rnn_final_hidden_state_bidirectional, rnn_hidden_states_bidirectional = self.encoder_guide(
+                batch_sequences_blosum, batch_sequences_lens, init_h_0)
+            assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(
+                z_mean.shape)
+            assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(
+                z_scale.shape)
+            latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale).to_event(1))
+        return {"latent_z": latent_space,
+                "z_mean": z_mean,
+                "z_scale": z_scale,
+                "rnn_hidden": rnn_hidden,
+                "rnn_final_hidden": rnn_final_hidden_state,
+                "rnn_final_hidden_bidirectional": rnn_final_hidden_state_bidirectional,
+                "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
+                "rnn_hidden_states": rnn_hidden_states}
 
     def guide(self,batch_data,batch_mask,epoch,guide_estimates,sample):
         if self.seq_max_len == self.max_len:
@@ -396,7 +458,10 @@ class VEGVISIRGUIDES(EasyGuide):
                 else:
                     return self.guide_unsupervised(batch_data, batch_mask,epoch,guide_estimates, sample)
             elif self.learning_type == "semisupervised":
-                return self.guide_semisupervised(batch_data, batch_mask, epoch, guide_estimates, sample)
+                if self.glitch:
+                    return self.guide_semisupervised_glitched(batch_data, batch_mask, epoch, guide_estimates, sample)
+                else:
+                    return self.guide_semisupervised(batch_data, batch_mask, epoch, guide_estimates, sample)
         else:
             raise ValueError("guide not implemented for features, re-do")
 

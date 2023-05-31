@@ -594,17 +594,25 @@ def viral_dataset6(dataset_name,script_dir,storage_folder,args,results_dir,updat
     allele_counts = data.value_counts("allele")
     most_common_allele = allele_counts.index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
     data_allele_types = allele_counts.index.tolist() #alleles present in this dataset
+    data_artificial = pd.read_csv("{}/{}/dataset_artificial_peptides_from_proteins_partitioned_hla.tsv".format(storage_folder,args.dataset_name),sep = "\s+")
+    data_artificial.columns = ["Icore", "target", "partition", "source","allele"]
+    data = data.merge(data_artificial, on=['Icore', 'allele'], how='right',suffixes=('_labelled', '_artificial'))
+    data = data.drop(["target_artificial","partition_labelled"],axis=1)
 
-    anchors_per_allele = pd.read_csv("{}/anchor_info_content/anchors_per_allele_average.txt".format(storage_folder),sep="\s+",header=0)
-    anchors_per_allele=anchors_per_allele[anchors_per_allele[["allele"]].isin(data_allele_types).any(axis=1)]
-    allele_anchors_dict = dict(zip(anchors_per_allele["allele"],anchors_per_allele["anchors"]))
-    generate_artificial_epitopes(data,allele_anchors_dict,allele_counts)
-    exit()
+    data = data.rename(columns={"target_labelled": "target","partition_artificial":"partition"})
+    data.loc[(data["source"] == "artificial"), "target"] = 2
+
+    print(data.shape)
+    # anchors_per_allele = pd.read_csv("{}/anchor_info_content/anchors_per_allele_average.txt".format(storage_folder),sep="\s+",header=0)
+    # anchors_per_allele=anchors_per_allele[anchors_per_allele[["allele"]].isin(data_allele_types).any(axis=1)]
+    # allele_anchors_dict = dict(zip(anchors_per_allele["allele"],anchors_per_allele["anchors"]))
     if filters_dict["filter_alleles"][0]:
         data = data[data["allele"] == most_common_allele]
 
     if filters_dict["group_alleles"][0]:
+        print("Grouping alleles")
         # Group data by Icore, therefore, the alleles are grouped
+        d = data.groupby('Icore', as_index=False).agg(list)
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
         data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
         # Reattach info on training
@@ -614,7 +622,15 @@ def viral_dataset6(dataset_name,script_dir,storage_folder,args,results_dir,updat
         allele_dict = dict(zip(allele_counts_dict.keys(),list(range(len(allele_counts_dict.keys())))))
         data["allele_encoded"] = data["allele"]
         data.replace({"allele_encoded": allele_dict},inplace=True)
+    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
+    data.loc[(data["target"] == 2), "confidence_score"] = 0
 
+    print(data.columns)
+    exit()
+    #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
+    data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
+
+    return data_info
 def viral_dataset7(dataset_name,script_dir,storage_folder,args,results_dir,update):
     """
     ####################
@@ -652,6 +668,7 @@ def viral_dataset7(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
     data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
+
     data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
 
     #Highlight: Replace the training and partition columns for the new ones
@@ -685,47 +702,12 @@ def viral_dataset7(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
+
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
     return data_info
 
-
-
-def generate_artificial_epitopes(data,allele_anchors_dict,allele_counts,n_replicates=3):
-    """"""
-
-    #Add the anchors points as a column
-
-    data["allele_anchors"] = data["allele"]
-    data =  data.replace({"allele_anchors": allele_anchors_dict})
-
-    seq_list = data[["Icore"]].values.tolist()
-    seq_list = functools.reduce(operator.iconcat, seq_list, [])  # flatten list of lists
-    seq_lens = np.array(list(map(len, data["Icore"])))
-    unique_lens = list(set(seq_lens))
-
-    allele_anchors_list = data["allele_anchors"]
-
-    corrected_aa_types = len(set().union(*seq_list))
-    corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
-    if len(unique_lens) > 1: # Highlight: Pad the sequences (relevant when they differ in length)
-        aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types , zero_characters=["#"])
-    else:
-        aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types , zero_characters=[])
-
-
-    replicates = []
-    for i in range(n_replicates):
-        artificial_icores = VegvisirLoadUtils.ArtificialEpitopes(seq_list,allele_anchors_list,"artificial_1",aa_dict).run()
-        exit()
-
-
-
-
-    data_replicates = pd.concat(replicates, ignore_index=True)
-    exit()
-    #Duplicate rows,
 
 def data_class_division(array,array_mask,idx,labels,confidence_scores):
     """

@@ -48,18 +48,19 @@ def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
-                        default="viral_dataset7",
+                        default="viral_dataset6",
                         help='Dataset project name, look at nnalignpy.available_datasets(). The data should be always located at nnalignpy/src/nnalignpy/data'
                              'viral_dataset3 : Only sequences, partitioned into train,validation and test'
                              'viral_dataset4 : Sequences + Features'
                              'viral_dataset5: Contains additional artificially generated negative data points'
+                             'viral_dataset6: Contains additional artificially generated negative and positive data points for semi supervised learning'
                              'viral_dataset7: Same dataset as viral_dataset3, where the test dataset is mixed with the train and validation datasets')
     parser.add_argument('-subset_data', type=str, default="no",
                         help="Pick only the first <n> datapoints (epitopes) for testing the pipeline\n"
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=25, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=10, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=False, help='True: Use GPU; False: Use CPU')
 
     #TODO: include more blosum matrix types?
@@ -101,7 +102,7 @@ if __name__ == "__main__":
     parser.add_argument('-beta-scale', type=int, nargs='?', default=1, help='Scaling the KL (p(z) | p(z \mid x)) of the variational autoencoder')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=40, help='Embedding dimensions, use with self-attention')
-    parser.add_argument('-lt','--learning-type', type=str, nargs='?', default="supervised", help='<unsupervised> Unsupervised learning. The class is inferred directly from the latent representation and via amortized inference \n'
+    parser.add_argument('-lt','--learning-type', type=str, nargs='?', default="semisupervised", help='<unsupervised> Unsupervised learning. The class is inferred directly from the latent representation and via amortized inference \n'
                                                                                         '<semisupervised> Semi-supervised model/learning. The likelihood of the class (p(c | z)) is only computed and maximized using the most confident scores. \n '
                                                                                                             'The non confident data points are inferred by the guide \n'
                                                                                         '<supervised> Supervised model. All target observations are used to compute the likelihood of the class given the latent representation')
