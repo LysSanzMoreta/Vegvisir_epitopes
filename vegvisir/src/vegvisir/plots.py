@@ -23,7 +23,9 @@ from joblib import Parallel, delayed
 import multiprocessing
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
-colors_dict = {0: "red", 1: "green"}
+colors_dict = {0: "green", 1: "red",2:"navajowhite"}
+colors_dict_labels = {0: "mediumaquamarine", 1: "orangered",2:"lightgrey"}
+
 colors_list_aa = ["black", "plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange",
                "yellow", "green",
                "dodgerblue", "blue", "purple", "magenta", "grey", "maroon", "lightcoral", "olive", "teal",
@@ -330,7 +332,6 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
 
     reducer = umap.UMAP()
     true_labels = data_array_blosum_norm[:,0,0]
-    colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
     colors_true = np.vectorize(colors_dict_labels.get)(true_labels)
 
     confidence_scores = data_array_blosum_norm[:,0,5]
@@ -588,7 +589,6 @@ def plot_latent_vector(latent_space,predictions_dict,fold,results_dir,method):
 
     print("Plotting latent vector...")
     latent_vectors = latent_space[:,5:]
-    colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,0])
     colors_predicted = np.vectorize(colors_dict_labels.get)(predictions_dict["class_logits_predictions_samples_argmax_mode"])
     #Highlight: Confidence scores colors
@@ -628,7 +628,6 @@ def plot_latent_space(latent_space,predictions_dict,sample_mode,results_dir,meth
     print("Plotting UMAP of {}...".format(vector_name))
     reducer = umap.UMAP()
     umap_proj = reducer.fit_transform(latent_space[:, 5:])
-    colors_dict_labels = {0:"mediumaquamarine",1:"orangered"}
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,0])
 
     if method == "_single_sample":
@@ -964,6 +963,8 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
         onehot_labels[np.arange(0,labels.shape[0]),labels.astype(int)] = 1
         confidence_scores = predictions_dict["confidence_scores_{}".format(sample_mode)]
         idx_all = np.ones_like(labels).astype(bool)
+        if args.dataset_name == "viral_dataset6":
+            idx_all = (labels[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
         idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
 
         for idx,idx_name in zip([idx_all,idx_highconfidence],["ALL","HIGH_CONFIDENCE"]):
@@ -1210,9 +1211,11 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
         data_int = summary_dict["data_int_{}".format(sample_mode)]
         data_mask = summary_dict["data_mask_{}".format(sample_mode)]
         data_mask_seq = data_mask[:, 1:,:,0].squeeze(1)
-
+        true_labels = summary_dict["true_{}".format(sample_mode)]
         confidence_scores = summary_dict["confidence_scores_{}".format(sample_mode)]
         idx_all = np.ones_like(confidence_scores).astype(bool)
+        # if args.dataset_name == "viral_dataset6":
+        #     idx_all = (true_labels[..., None] != 2).any(-1)
         idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
         encoder_final_hidden_state = summary_dict["encoder_final_hidden_state_{}".format(sample_mode)]
         decoder_final_hidden_state = summary_dict["decoder_final_hidden_state_{}".format(sample_mode)]

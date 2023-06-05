@@ -854,7 +854,6 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
         confidence_mask = (confidence_scores[..., None] > 0.7).any(-1)  # now we try to predict those with a low confidence score
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
         # init_h_0_encoder = self.h_0_MODEL_encoder.expand(self.encoder.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
-        # z_mean,z_scale = self.encoder(batch_sequences_blosum,init_h_0_encoder)
         z_mean, z_scale = torch.zeros((batch_size, self.z_dim)), torch.ones((batch_size, self.z_dim))
         with pyro.plate("plate_batch", dim=-1, device=self.device):
             latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale).to_event(1))  # [n,z_dim]
@@ -864,8 +863,8 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
             class_logits = self.logsoftmax(class_logits)
             pyro.deterministic("class_logits", class_logits, event_dim=0)
             pyro.deterministic("predictions", true_labels, event_dim=0)
-            #init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * self.bidirectional, batch_size,self.gru_hidden_dim).contiguous()
-            init_h_0_decoder = self.init_hidden(latent_space).expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
+            init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * self.bidirectional, batch_size,self.gru_hidden_dim).contiguous()
+            #init_h_0_decoder = self.init_hidden(latent_space).expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             assert torch.isnan(init_h_0_decoder).int().sum().item() == 0, "found nan in init_h_0_decoder"
             outputnn = self.decoder(batch_sequences_blosum, batch_sequences_lens, init_h_0_decoder, z=latent_z_seq,
                                     mask=batch_mask_len, guide_estimates=guide_estimates)
@@ -955,13 +954,18 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
         batch_size = batch_sequences_blosum.shape[0]
         batch_mask_len = batch_mask[:, 1:].squeeze(1)
         batch_mask_len = batch_mask_len[:, :, 0]
+        b_size = batch_sequences_blosum.shape[0]
 
         batch_sequences_lens = batch_mask_len.sum(dim=1)
         batch_mask_len_true = torch.ones_like(batch_mask_len).bool()
         true_labels = batch_data["blosum"][:, 0, 0, 0]
+        onehot_true_labels = np.zeros((b_size,3))
+        onehot_true_labels[torch.arange(b_size),true_labels.long()] = 1
         # immunodominance_scores = batch_data["blosum"][:,0,0,4]
         confidence_scores = batch_data["blosum"][:, 0, 0, 5]
-        confidence_mask = (confidence_scores[..., None] >= 0.35).any(-1)  # now we try to predict those with a low confidence score
+        #confidence_mask = (confidence_scores[..., None] >= 0.35).any(-1)  # now we try to predict those with a low confidence score
+        confidence_mask = (true_labels[..., None] != 2).any(-1) #Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
+        #confidence_mask = confidence_mask[:,None].tile(1,3)
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
         # init_h_0_encoder = self.h_0_MODEL_encoder.expand(self.encoder.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
         # z_mean,z_scale = self.encoder(batch_sequences_blosum,init_h_0_encoder)
@@ -994,11 +998,13 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
             class_logits = self.classifier_model(latent_space, None)
             class_logits = self.logsoftmax(class_logits)  # [N,num_classes]
             pyro.deterministic("class_logits", class_logits, event_dim=1)
-
-            with pyro.poutine.mask(mask=confidence_mask_true):
-                with pyro.poutine.mask(mask=confidence_mask):
-                    pyro.sample("predictions", dist.Categorical(logits=class_logits).mask(confidence_mask).to_event(1),obs=[None if sample else true_labels][0])  # [N,]
-
+            with pyro.poutine.mask(mask=confidence_mask):  # .mask(confidence_mask).to_event(1)
+                #with pyro.poutine.mask(mask=confidence_mask_true): #with this is predicts class 2
+                      p = pyro.sample("predictions", dist.Categorical(logits=class_logits).mask(confidence_mask).to_event(1),obs=[None if sample else true_labels][0])#,obs_mask=confidence_mask)  # [N,]
+                      # print(true_labels)
+                      # print(p)
+                      # print(p.shape)
+                      # print("-------------------------------------------------------------------------")
         return {"attn_weights": outputnn.attn_weights}
 
 

@@ -960,13 +960,15 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                                                            data_onehot[train_idx],
                                                            data_blosum_norm[train_idx],
                                                            data_array_blosum_encoding_mask[train_idx],
-                                                           data_positional_weights_mask[train_idx])
+                                                           data_positional_weights_mask[train_idx],
+                                                           )
     custom_dataset_valid = VegvisirLoadUtils.CustomDataset(data_blosum[valid_idx],
                                                            data_int[valid_idx],
                                                            data_onehot[valid_idx],
                                                            data_blosum_norm[valid_idx],
                                                            data_array_blosum_encoding_mask[valid_idx],
-                                                           data_positional_weights_mask[valid_idx])
+                                                           data_positional_weights_mask[valid_idx],
+                                                           )
 
     train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
     valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
@@ -1057,28 +1059,30 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
             valid_reconstruction_dict["std"].append(valid_reconstruction_accuracy_dict["std"])
             valid_reconstruction_dict["entropies"].append(valid_reconstruction_accuracy_dict["entropies"])
 
-
+            train_observed_idx = (train_predictions_dict["true"][..., None] != 2).any(-1)
             #train_true_prob = train_predictions_dict["probs"][np.arange(0, train_true.shape[0]), train_true.long()] #pick the probability of the true target
             #train_pred_prob = np.argmax(train_predictions_dict["probs"],axis=-1) #return probability of the most likely class predicted by the model
             train_micro_roc_auc_ovr = roc_auc_score(
-                train_predictions_dict["true_onehot"],
-                train_predictions_dict["probs"],
+                train_predictions_dict["true_onehot"][train_observed_idx],
+                train_predictions_dict["probs"][train_observed_idx],
                 multi_class="ovr",
                 average="micro",
             )
-            train_auk_score = VegvisirUtils.AUK(probabilities= train_predictions_dict["binary"],labels=train_predictions_dict["true"]).calculate_auk()
+            train_auk_score = VegvisirUtils.AUK(probabilities= train_predictions_dict["binary"][train_observed_idx],labels=train_predictions_dict["true"][train_observed_idx]).calculate_auk()
             train_auk.append(train_auk_score)
             train_auc.append(train_micro_roc_auc_ovr)
 
             #valid_true_prob = valid_predictions_dict["probs"][np.arange(0, valid_true.shape[0]), valid_true.long()]  # pick the probability of the true target
             #valid_pred_prob = np.argmax(valid_predictions_dict["probs"],axis=-1)  # return probability of the most likely class predicted by the model
+            valid_observed_idx = (valid_predictions_dict["true"][..., None] != 2).any(-1)
+
             valid_micro_roc_auc_ovr = roc_auc_score(
-                valid_predictions_dict["true_onehot"],
-                valid_predictions_dict["probs"],
+                valid_predictions_dict["true_onehot"][valid_observed_idx],
+                valid_predictions_dict["probs"][valid_observed_idx],
                 multi_class="ovr",
                 average="micro",
             )
-            valid_auk_score = VegvisirUtils.AUK(probabilities=valid_predictions_dict["binary"], labels=valid_predictions_dict["true"]).calculate_auk()
+            valid_auk_score = VegvisirUtils.AUK(probabilities=valid_predictions_dict["binary"][valid_observed_idx], labels=valid_predictions_dict["true"][valid_observed_idx]).calculate_auk()
             valid_auk.append(valid_auk_score)
             valid_auc.append(valid_micro_roc_auc_ovr)
 
@@ -1110,12 +1114,12 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                 VegvisirPlots.plot_latent_space(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
                 VegvisirPlots.plot_latent_space(train_predictive_samples_latent_space, train_summary_dict, "samples",results_dir, method="Train")
                 VegvisirPlots.plot_latent_space(valid_predictive_samples_latent_space,valid_summary_dict, "samples",results_dir, method=mode)
-
-                VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train")
-                VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
-
-                VegvisirPlots.plot_attention_weights(train_summary_dict,dataset_info,results_dir,method="Train")
-                VegvisirPlots.plot_attention_weights(valid_summary_dict,dataset_info,results_dir,method=mode)
+                #
+                # VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train")
+                # VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
+                #
+                # VegvisirPlots.plot_attention_weights(train_summary_dict,dataset_info,results_dir,method="Train")
+                # VegvisirPlots.plot_attention_weights(valid_summary_dict,dataset_info,results_dir,method=mode)
 
                 VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir,args, method="Train")
                 VegvisirPlots.plot_hidden_dimensions(valid_summary_dict, dataset_info, results_dir,args, method=mode)
@@ -1153,8 +1157,8 @@ def train_model(dataset_info,additional_info,args):
     results_dir = additional_info.results_dir
     #Highlight: Train- Test split and kfold generator
     partitioning_method = ["predefined_partitions" if args.test else"predefined_partitions_discard_test"][0]
-    if args.dataset_name == "viral_dataset7":
-        partitioning_method = "predefined_partitions_no_test"
+    if args.dataset_name in ["viral_dataset6","viral_dataset7"]:
+        partitioning_method = "predefined_partitions_diffused_test"
 
     train_data_blosum,valid_data_blosum,test_data_blosum = VegvisirLoadUtils.trainevaltest_split(data_blosum,
                                                                                                  args,results_dir,
@@ -1162,7 +1166,7 @@ def train_model(dataset_info,additional_info,args):
                                                                                                  dataset_info.features_names,
                                                                                                  None,method=partitioning_method)
 
-
+    print("Here")
     #Highlight:Also split the rest of arrays
     train_idx = (data_blosum[:,0,0,1][..., None] == train_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
     valid_idx = (data_blosum[:,0,0,1][..., None] == valid_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not

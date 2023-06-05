@@ -14,3 +14,13 @@ vegvisir/src/vegvisir/tests/toyexample.py
 vegvisir/src/vegvisir/tests/test_masking.py
 
 *.png
+
+vegvisir/src/vegvisir/tests/utils/mnist_cached.py
+
+vegvisir/src/vegvisir/tests/utils/custom_mlp.py
+
+vegvisir/src/vegvisir/tests/utils/__init__.py
+
+vegvisir/src/vegvisir/tests/test_semisupervised.py
+
+vegvisir/src/vegvisir/tests/utils/vae_plots.py

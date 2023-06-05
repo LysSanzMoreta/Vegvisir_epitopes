@@ -48,7 +48,7 @@ def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
-                        default="viral_dataset6",
+                        default="viral_dataset3",
                         help='Dataset project name, look at nnalignpy.available_datasets(). The data should be always located at nnalignpy/src/nnalignpy/data'
                              'viral_dataset3 : Only sequences, partitioned into train,validation and test'
                              'viral_dataset4 : Sequences + Features'
@@ -60,7 +60,7 @@ if __name__ == "__main__":
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=10, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=2, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=False, help='True: Use GPU; False: Use CPU')
 
     #TODO: include more blosum matrix types?
@@ -95,21 +95,20 @@ if __name__ == "__main__":
                                                                                     '<borders>: The sequences are padded at the beginning and the end. Random choice when the pad is an even number'
                                                                                     '<replicated_borders>: Padds by replicating the borders of the sequence'
                                                                                     '<random>: random insertion of 0 along the sequence')
-    parser.add_argument('-shuffle','--shuffle_sequence', type=str2bool, nargs='?', default=False, help='Testing measurement for attention? by shuffling the sequence prior to padding')
+    parser.add_argument('-shuffle','--shuffle_sequence', type=str2bool, nargs='?', default=True, help='Testing measurement for attention? by shuffling the sequence prior to padding')
 
 
     parser.add_argument('-z-dim','--z-dim', type=int, nargs='?', default=30, help='Latent space dimension')
     parser.add_argument('-beta-scale', type=int, nargs='?', default=1, help='Scaling the KL (p(z) | p(z \mid x)) of the variational autoencoder')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=40, help='Embedding dimensions, use with self-attention')
-    parser.add_argument('-lt','--learning-type', type=str, nargs='?', default="semisupervised", help='<unsupervised> Unsupervised learning. The class is inferred directly from the latent representation and via amortized inference \n'
+    parser.add_argument('-lt','--learning-type', type=str, nargs='?', default="supervised", help='<unsupervised> Unsupervised learning. The class is inferred directly from the latent representation and via amortized inference \n'
                                                                                         '<semisupervised> Semi-supervised model/learning. The likelihood of the class (p(c | z)) is only computed and maximized using the most confident scores. \n '
                                                                                                             'The non confident data points are inferred by the guide \n'
                                                                                         '<supervised> Supervised model. All target observations are used to compute the likelihood of the class given the latent representation')
 
     parser.add_argument('-glitch','--glitch', type=str2bool, nargs='?', default=True, help='<True>: Applies a random noise distortion (via rotations) to the encoded vector within the conserved positions of the sequences  \n'
                                                                                            '<False>: The blosum encodings are left untouched')
-    parser.add_argument('-num_classes', type=int, nargs='?', default=2, help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')
     parser.add_argument('-num_samples', type=int, nargs='?', default=30, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
     parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="None", help='Load the checkpoints (state_dict and optimizer) from a previous run \n'
                                                                                                 '<None>: Trains model \n'
@@ -128,6 +127,12 @@ if __name__ == "__main__":
     else:
         torch.set_default_tensor_type(torch.DoubleTensor)
         parser.add_argument('--device', type=str, default="cpu", nargs='?',help='Device choice (cpu, cuda:0, cuda:1), linked to use_cuda')
+    if args.dataset_name == "viral_dataset6":
+        parser.add_argument('-num_classes', type=int, nargs='?', default=3,help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')
+    else:
+        parser.add_argument('-num_classes', type=int, nargs='?', default=2,
+                            help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')
+
     args = parser.parse_args()
     #pyro.set_rng_seed(0)
     #torch.manual_seed(0)

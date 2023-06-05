@@ -16,6 +16,7 @@ from sklearn import preprocessing
 import pandas as pd
 import torch
 import vegvisir.plots as VegvisirPlots
+import vegvisir.load_utils as VegvisirLoadUtils
 from scipy import stats
 from joblib import Parallel, delayed
 import multiprocessing
@@ -1007,6 +1008,7 @@ def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
     weights = (weights - weights.min()) / (weights - weights.min()).sum()
     weights*= arr_mask
     return weights[None,:]
+
 def information_shift_samples(hidden_states,data_mask_seq,diag_idx_maxlen,seq_max_len):
     # Highlight: Encoder
     encoder_information_shift_weights_seq = Parallel(n_jobs=MAX_WORKERs)(
@@ -1036,3 +1038,69 @@ def compute_sites_entropies(logits, node_names):
 
     seq_entropies = np.concatenate((node_names[:,None],seq_entropies),axis=1)
     return seq_entropies
+
+
+def convert_to_pandas_dataframe(epitopes_padded,data,storage_folder,args,use_test=True):
+    """"""
+    epitopes_padded = list(map(''.join, epitopes_padded))
+    data["Icore"] = epitopes_padded
+    data["Icore"] = data["Icore"].str.replace('#','')
+
+    column_names = ["Icore","target_corrected","partition"]
+    shift_proportions =False
+    if use_test:
+        data_train = data[data["training"] == True][column_names]
+        data_valid = data[data["training"] == False][column_names]
+
+        labels_counts = data_valid["target_corrected"].value_counts()
+        n_positives = labels_counts[1.0]
+        n_negatives = labels_counts[0.0]
+        positives_proportion = (n_positives * 100)/data_valid.shape[0]
+        negatives_proportion = (n_negatives * 100)/data_valid.shape[0]
+
+        if shift_proportions:
+            VegvisirLoadUtils.redefine_class_proportions(data_valid,n_positives,n_negatives,positives_proportion,negatives_proportion,drop="positives")
+            shifted = "shifted_proportions"
+        else:
+            shifted = ""
+
+        data_train = data_train.astype({'partition': 'int'})
+        data_valid.drop("partition", axis=1, inplace=True)
+        data_train["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder, args.dataset_name), sep="\t",
+                                   index=False, header=None)
+        shuffled = ["shuffled" if args.shuffle_sequence else "non_shuffled"][0]
+        data_train.to_csv("{}/{}/viral_nnalign_input_train_{}.tsv".format(storage_folder, args.dataset_name,shuffled), sep="\t",
+                          index=False, header=None)
+        data_valid.to_csv("{}/{}/viral_nnalign_input_valid_{}_{}.tsv".format(storage_folder, args.dataset_name,shuffled,shifted), sep="\t",
+                          index=False, header=None)  # TODO: Header None?
+
+    else:
+        data = data[data["training"] == True]
+        data_train = data[data["partition"] != 4][column_names]
+        data_valid = data[data["partition"] == 4][column_names]
+
+        labels_counts = data_valid["target_corrected"].value_counts()
+        n_positives = labels_counts[1.0]
+        n_negatives = labels_counts[0.0]
+        positives_proportion = (n_positives * 100)/data_valid.shape[0]
+        negatives_proportion = (n_negatives * 100)/data_valid.shape[0]
+
+        if shift_proportions:
+            VegvisirLoadUtils.redefine_class_proportions(data_valid,n_positives,n_negatives,positives_proportion,negatives_proportion,drop="negatives")
+            shifted = "shifted_proportions"
+        else:
+            shifted = ""
+        data_train = data_train.astype({'partition': 'int'})
+        data_valid.drop("partition", axis=1, inplace=True)
+        data_train["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder, args.dataset_name), sep="\t",
+                                   index=False, header=None)
+        shuffled = ["shuffled" if args.shuffle_sequence else "non_shuffled"][0]
+        data_train.to_csv("{}/{}/viral_nnalign_input_train_{}_no_test.tsv".format(storage_folder, args.dataset_name,shuffled),
+                          sep="\t",
+                          index=False, header=None)
+        data_valid.to_csv("{}/{}/viral_nnalign_input_valid_{}_no_test_partition_4_{}.tsv".format(storage_folder, args.dataset_name,shuffled,shifted),
+                          sep="\t",
+                          index=False, header=None)  # TODO: Header None?
+
+
+

@@ -8,6 +8,7 @@ import random
 import warnings
 from collections import defaultdict
 import numpy as np
+import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import KFold,train_test_split,StratifiedShuffleSplit,StratifiedGroupKFold
 import torch
@@ -44,17 +45,82 @@ def dataset_proportions(data,results_dir,type="TrainEval"):
     if isinstance(data,np.ndarray):
         data = torch.from_numpy(data)
     if data.ndim == 4:
-        positives = torch.sum(data[:,0,0,0])
+        positives = torch.sum(data[:,0,0,0] == 1)
+        negatives = torch.sum(data[:,0,0,0] == 0)
+
     else:
-        positives = torch.sum(data[:,0,0])
+        positives = torch.sum(data[:,0,0] == 1)
+        negatives = torch.sum(data[:,0,0] == 0)
+
     positives_proportion = (positives*100)/torch.tensor([data.shape[0]])
-    negatives = data.shape[0] - positives
-    negatives_proportion = 100-positives_proportion
+    negatives_proportion = (negatives*100)/torch.tensor([data.shape[0]])
     f = open("{}/dataset_info.txt".format(results_dir),"a+")
     print("\n{} dataset: \n \t Total number of data points: {} \n \t Number positives : {}; \n \t Proportion positives : {} ; \n \t Number negatives : {} ; \n \t Proportion negatives : {}".format(type,data.shape[0],positives,positives_proportion.item(),negatives,negatives_proportion.item()))
     print("-------------------------------------------------------------",file=f)
     print("\n{} dataset: \n \t Total number of data points: {} \n \t Number positives : {}; \n \t Proportion positives : {} ; \n \t Number negatives : {} ; \n \t Proportion negatives : {}".format(type,data.shape[0],positives,positives_proportion.item(),negatives,negatives_proportion.item()),file=f)
     return (positives,positives_proportion),(negatives,negatives_proportion)
+
+
+def redefine_class_proportions(dataset,n_positives,n_negatives,positives_proportion,negatives_proportion,drop="negatives"):
+    """Assessing if the model has truly learnt a signal from the sequences or simply a data distribution"""
+    if isinstance(dataset,np.ndarray):
+        if drop == "negatives":
+            n_negatives_to_drop = int(dataset.shape[0] - n_positives * (100 / negatives_proportion))  # Drop negative data points to make the positives majority
+            print("Dropping {} negative data points from {} total negatives to adjust +/- proportions".format(n_negatives_to_drop,n_negatives))
+            warnings.warn("Dropping {} negative data points from {} total negatives to adjust +/- proportions".format(n_negatives_to_drop,n_negatives))
+            data_negatives = dataset[dataset[:, 0, 0, 0] == 0]
+            data_positives = dataset[dataset[:, 0, 0, 0] == 1]
+            idx_drop = np.concatenate([np.zeros((n_negatives_to_drop)),np.ones((n_negatives-n_negatives_to_drop))]).astype(bool)
+            np.random.shuffle(idx_drop)
+            data_negatives = data_negatives[idx_drop]
+            dataset = np.concatenate([data_positives,data_negatives],axis=0)
+        elif drop == "positives":
+            n_positives_to_drop = int(dataset.shape[0] - n_negatives * (100 / positives_proportion))  # Drop negative data points to make the positives majority
+            print("Dropping {} positives data points from {} total negatives to adjust +/- proportions".format(n_positives_to_drop,n_positives))
+            warnings.warn("Dropping {} positives data points from {} total negatives to adjust +/- proportions".format(n_positives_to_drop,n_positives))
+            data_negatives = dataset[dataset[:, 0, 0, 0] == 0]
+            data_positives = dataset[dataset[:, 0, 0, 0] == 1]
+            idx_drop = np.concatenate([np.zeros((n_positives_to_drop)),np.ones((n_negatives-n_positives_to_drop))]).astype(bool)
+            np.random.shuffle(idx_drop)
+            data_negatives = data_negatives[idx_drop]
+            dataset = np.concatenate([data_positives,data_negatives],axis=0)
+        else:
+            print("Not removing any data points")
+            return dataset
+    elif isinstance(dataset,pd.DataFrame):
+        if drop == "negatives":
+            n_negatives_to_drop = int(dataset.shape[0] - n_positives * (
+                        100 / negatives_proportion))  # Drop negative data points to make the positives majority
+            print("Dropping {} negative data points from {} total negatives to adjust +/- proportions".format(n_negatives_to_drop, n_negatives))
+            warnings.warn("Dropping {} negative data points from {} total negatives to adjust +/- proportions".format(n_negatives_to_drop, n_negatives))
+            data_negatives = dataset[dataset["target_corrected"] == 0]
+            data_positives = dataset[dataset["target_corrected"] == 1]
+            idx_drop = np.concatenate([np.zeros((n_negatives_to_drop)), np.ones((n_negatives - n_negatives_to_drop))]).astype(bool)
+            np.random.shuffle(idx_drop)
+            data_negatives = data_negatives.loc[idx_drop]
+            dataset = pd.concat([data_positives, data_negatives], axis=0)
+        elif drop == "positives":
+            n_positives_to_drop = int(dataset.shape[0] - n_negatives * (
+                        100 / positives_proportion))  # Drop negative data points to make the positives majority
+            print("Dropping {} positive data points from {} total positives to adjust +/- proportions".format(n_positives_to_drop, n_positives))
+            warnings.warn("Dropping {} positive data points from {} total positives to adjust +/- proportions".format(n_positives_to_drop, n_positives))
+            data_negatives = dataset[dataset["target_corrected"] == 0]
+            data_positives = dataset[dataset["target_corrected"] == 1]
+            idx_drop = np.concatenate([np.zeros((n_positives_to_drop)), np.ones((n_positives - n_positives_to_drop))]).astype(bool)
+            np.random.shuffle(idx_drop)
+            data_positives = data_positives.loc[idx_drop]
+            dataset = pd.concat([data_positives, data_negatives], axis=0)
+        else:
+            print("Not removing any data points")
+            return dataset
+
+
+
+
+
+
+    return dataset
+
 
 def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitions"):
     """Perform kfolds partitions division and test split"""
@@ -155,17 +221,22 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
             partition_idx = partition_test
         else:
             partition_idx = np.random.randint(0,4) #random selection of a partition as the test
-        traineval_data = data[data[:, 0, 0, 2] != partition_idx]
-        test_data = data[data[:, 0, 0, 2] == partition_idx] #data[data[:, 0, 0, 3] == 1.]
-        traineval_labels = traineval_data[:,0,0,0]
-        train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
+        #traineval_data = data[data[:, 0, 0, 2] != partition_idx]
+        train_data = data[data[:, 0, 0, 2] != partition_idx]
+        valid_data = data[data[:, 0, 0, 2] == partition_idx] #data[data[:, 0, 0, 3] == 1.]
+        #train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
+        test_data = valid_data
         dataset_proportions(train_data, results_dir, type="Train")
-        dataset_proportions(valid_data, results_dir, type="Valid")
+        (positives_valid,positives_proportion_valid),(negatives_valid,negatives_proportion_valid) = dataset_proportions(valid_data, results_dir, type="Valid")
         dataset_proportions(test_data, results_dir, type="Test")
         info_file.write("\n -------------------------------------------------")
-        info_file.write("\n Using as test partition: {}".format(partition_idx))
-    elif method == "predefined_partitions_no_test":
-        """Diffuse the test dataset to the train and validation datasets"""
+        info_file.write("\n Using as valid/test partition: {}".format(partition_idx))
+        warnings.warn("Test dataset == Valid dataset, since the test has been discarded, if you want to use the test dataset please select <prededined_partitions> or <predefined_partitions_diffused_test> ")
+        #valid_data = redefine_class_proportions(valid_data,positives_valid,negatives_valid,positives_proportion_valid,negatives_proportion_valid,drop="negatives")
+
+
+    elif method == "predefined_partitions_diffused_test":
+        """Diffuse/divide/transfers the test dataset to the train and validation datasets. The test has been assigned onto training partitions"""
         if partition_test is not None:
             partition_idx = partition_test
         else:
@@ -178,10 +249,10 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
         dataset_proportions(valid_data, results_dir, type="Valid")
         dataset_proportions(test_data, results_dir, type="Test")
         info_file.write("\n -------------------------------------------------")
-        info_file.write("\n Using as test partition: {}".format(partition_idx))
+        info_file.write("\n Using as valid/test partition: {}".format(partition_idx))
         warnings.warn("Test dataset == Valid dataset, since it has been diffused onto the train and the validation datasets")
     elif method == "predefined_partitions":
-        """Use the test data"""
+        """Use the test data as intended"""
 
         traineval_data = data[data[:, 0, 0, 3] == 1]
         test_data = data[data[:, 0, 0, 3] == 0] #data[data[:, 0, 0, 3] == 1.]
@@ -234,9 +305,9 @@ class SequencePadding(object):
         padded_sequences = {"no_padding": list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds)),
                             #"ends":list(map(lambda seq: (list(seq.ljust(self.seq_max_len, "#")),list(seq.ljust(self.seq_max_len, "#"))),self.sequences)) ,
                             "ends": list(map(lambda seq,seed: self.ends_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds)),
-                            #"random":list(map(lambda seq,seed: self.random_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds)),
-                            #"borders":list(map(lambda seq,seed: self.border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds)),
-                            #"replicated_borders":list(map(lambda seq,seed: self.replicated_border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds))
+                            "random":list(map(lambda seq,seed: self.random_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds)),
+                            "borders":list(map(lambda seq,seed: self.border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds)),
+                            "replicated_borders":list(map(lambda seq,seed: self.replicated_border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds))
                             }
 
 
