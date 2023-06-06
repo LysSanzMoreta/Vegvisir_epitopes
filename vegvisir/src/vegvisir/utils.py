@@ -848,7 +848,7 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         "class_binary_prediction_single_sample": predictions_dict["binary"],
                         "class_logits_prediction_single_sample": predictions_dict["logits"],
                         "class_logits_prediction_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
-                        "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),predictions_dict["true"].astype(int)],
+                        "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),predictions_dict["observed"].astype(int)],
                         "class_probs_prediction_single_sample": predictions_dict["probs"],
                         "samples_average_accuracy":samples_dict["accuracy"],
                         "true_samples": true_labels_samples,

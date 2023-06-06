@@ -224,7 +224,7 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
         #traineval_data = data[data[:, 0, 0, 2] != partition_idx]
         train_data = data[data[:, 0, 0, 2] != partition_idx]
         valid_data = data[data[:, 0, 0, 2] == partition_idx] #data[data[:, 0, 0, 3] == 1.]
-        #train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
+        #train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffled_Ibel=True)
         test_data = valid_data
         dataset_proportions(train_data, results_dir, type="Train")
         (positives_valid,positives_proportion_valid),(negatives_valid,negatives_proportion_valid) = dataset_proportions(valid_data, results_dir, type="Valid")

@@ -24,7 +24,7 @@ import multiprocessing
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
 colors_dict = {0: "green", 1: "red",2:"navajowhite"}
-colors_dict_labels = {0: "mediumaquamarine", 1: "orangered",2:"lightgrey"}
+colors_dict_labels = {0: "mediumaquamarine", 1: "orangered",2:"navajowhite"}
 
 colors_list_aa = ["black", "plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange",
                "yellow", "green",
@@ -863,11 +863,15 @@ def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,resul
     """Following https://scikit-learn.org/stable/auto_examples/model_selection/plot_precision_recall.html#:~:text=The%20precision%2Drecall%20curve%20shows,a%20low%20false%20negative%20rate."""
     onehot_targets = onehot_labels[idx]
     target_scores = predictions_dict[stats_name][idx]
+    if args.dataset_name != "viral_dataset6":
+        num_classes = args.num_classes
+    else:
+        num_classes = 2
     # For each class
     precision = dict()
     recall = dict()
     average_precision = dict()
-    for i in range(args.num_classes):
+    for i in range(num_classes):
         precision[i], recall[i], _ = precision_recall_curve(onehot_targets[:, i], target_scores[:, i])
         average_precision[i] = average_precision_score(onehot_targets[:, i], target_scores[:, i])
 
@@ -907,8 +911,12 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     onehot_targets = onehot_labels[idx]
     target_scores = predictions_dict[stats_name][idx]
     fig = plt.figure()
+    if args.dataset_name != "viral_dataset6":
+        num_classes = args.num_classes
+    else:
+        num_classes = 2
     # ROC AUC per class
-    for i in range(args.num_classes):
+    for i in range(num_classes):
         fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
         roc_auc[i] = auc(fpr[i], tpr[i])
         plt.plot(fpr[i], tpr[i], label='ROC curve (AUC_{}: {})'.format(i, roc_auc[i]), c=colors_dict[i])
@@ -918,12 +926,12 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     plt.plot(fpr["micro"], tpr["micro"], label="micro-average ROC curve (area : {})".format(roc_auc["micro"]),
              linestyle="-.", color="magenta")
     # Macro ROC AUC
-    all_fpr = np.unique(np.concatenate([fpr[i] for i in range(args.num_classes)]))
+    all_fpr = np.unique(np.concatenate([fpr[i] for i in range(num_classes)]))
     fpr["macro"] = all_fpr
     mean_tpr = np.zeros_like(all_fpr)
-    for i in range(args.num_classes):
+    for i in range(num_classes):
         mean_tpr += np.interp(all_fpr, fpr[i], tpr[i]) #linear interpolation of data points
-    tpr["macro"] = mean_tpr / args.num_classes
+    tpr["macro"] = mean_tpr / num_classes
     roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
     plt.plot(fpr["macro"], tpr["macro"], label="macro-average ROC curve (area : {})".format(roc_auc["macro"]),
              linestyle="-.", color="blue")
@@ -959,8 +967,9 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
 
     for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
         labels = predictions_dict["true_{}".format(sample_mode)]
-        onehot_labels = np.zeros((labels.shape[0],args.num_classes))
-        onehot_labels[np.arange(0,labels.shape[0]),labels.astype(int)] = 1
+        # onehot_labels = np.zeros((labels.shape[0],args.num_classes))
+        # onehot_labels[np.arange(0,labels.shape[0]),labels.astype(int)] = 1
+        onehot_labels = predictions_dict["true_onehot_{}".format(sample_mode)]
         confidence_scores = predictions_dict["confidence_scores_{}".format(sample_mode)]
         idx_all = np.ones_like(labels).astype(bool)
         if args.dataset_name == "viral_dataset6":

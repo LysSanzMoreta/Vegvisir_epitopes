@@ -34,7 +34,8 @@ class VEGVISIRModelClass(nn.Module):
         self.device = model_load.args.device
         self.use_cuda = model_load.args.use_cuda
         #self.dropout = model_load.args.dropout
-        self.num_classes = model_load.args.num_classes
+        #self.num_classes = model_load.args.num_classes
+        self.num_classes = 2
         self.embedding_dim = model_load.args.embedding_dim
         self.blosum = model_load.blosum
         self.loss_type = model_load.args.loss_func
@@ -965,10 +966,10 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
         confidence_scores = batch_data["blosum"][:, 0, 0, 5]
         #confidence_mask = (confidence_scores[..., None] >= 0.35).any(-1)  # now we try to predict those with a low confidence score
         confidence_mask = (true_labels[..., None] != 2).any(-1) #Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
+
         #confidence_mask = confidence_mask[:,None].tile(1,3)
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
         # init_h_0_encoder = self.h_0_MODEL_encoder.expand(self.encoder.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
-        # z_mean,z_scale = self.encoder(batch_sequences_blosum,init_h_0_encoder)
         z_mean, z_scale = torch.zeros((batch_size, self.z_dim)), torch.ones((batch_size, self.z_dim))
         with pyro.plate("plate_batch", dim=-1, device=self.device):
             latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale).to_event(1))  # [n,z_dim]
@@ -998,9 +999,14 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
             class_logits = self.classifier_model(latent_space, None)
             class_logits = self.logsoftmax(class_logits)  # [N,num_classes]
             pyro.deterministic("class_logits", class_logits, event_dim=1)
-            with pyro.poutine.mask(mask=confidence_mask):  # .mask(confidence_mask).to_event(1)
-                #with pyro.poutine.mask(mask=confidence_mask_true): #with this is predicts class 2
-                      p = pyro.sample("predictions", dist.Categorical(logits=class_logits).mask(confidence_mask).to_event(1),obs=[None if sample else true_labels][0])#,obs_mask=confidence_mask)  # [N,]
+            with pyro.poutine.mask(mask=confidence_mask):
+                #with pyro.poutine.mask(mask=confidence_mask_true):
+
+                observed_labels = true_labels.clone()
+                observed_labels[~confidence_mask] = 0. #TODO: random labels
+                #print(true_labels)
+                #TODO: Try without to_event(1)
+                pyro.sample("predictions", dist.Categorical(logits=class_logits).mask(confidence_mask).to_event(1),obs=None if sample else observed_labels*confidence_mask)#,obs_mask=confidence_mask)  # [N,]
                       # print(true_labels)
                       # print(p)
                       # print(p.shape)

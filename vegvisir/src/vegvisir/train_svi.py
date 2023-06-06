@@ -153,8 +153,18 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies_arr.mean(),
                                       "std":reconstruction_accuracies_arr.std(),
                                       "entropies": np.mean(reconstruction_entropy[:,1:],axis=0)}
-    true_onehot = np.zeros((true_labels_arr.shape[0],args.num_classes))
-    true_onehot[np.arange(0,true_labels_arr.shape[0]),true_labels_arr.astype(int)] = 1
+
+    if args.dataset_name != "viral_dataset6":
+        num_classes = args.num_classes
+        observed_labels = true_labels_arr
+    else:
+        num_classes = 2
+        confidence_mask = (true_labels_arr[..., None] != 2).any(-1) #Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
+        observed_labels = true_labels_arr.copy()
+        observed_labels[~confidence_mask] = 0
+
+    true_onehot = np.zeros((true_labels_arr.shape[0],num_classes))
+    true_onehot[np.arange(0,true_labels_arr.shape[0]),observed_labels.astype(int)] = 1
     predictions_dict = {"data_int":data_int_arr,
                         "data_mask": data_mask_arr,
                         "binary":binary_predictions_arr,
@@ -162,6 +172,7 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
                         "probs":probs_predictions_arr,
                         "true":true_labels_arr,
                         "true_onehot":true_onehot,
+                        "observed":observed_labels,
                         "confidence_scores":confidence_scores_arr,
                         "training_assignation":training_assignation_arr,
                         "attention_weights":attention_weights_arr,
@@ -293,8 +304,17 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies_arr.mean(),
                                       "std":reconstruction_accuracies_arr.std(),
                                       "entropies": np.mean(reconstruction_entropy[:,1:],axis=0)}
-    true_onehot = np.zeros((true_labels_arr.shape[0],args.num_classes))
-    true_onehot[np.arange(0,true_labels_arr.shape[0]),true_labels_arr.astype(int)] = 1
+    if args.dataset_name != "viral_dataset6":
+        num_classes = args.num_classes
+        observed_labels = true_labels_arr
+    else:
+        num_classes = 2
+        confidence_mask = (true_labels_arr[..., None] != 2).any(
+            -1)  # Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
+        observed_labels = true_labels_arr.copy()
+        observed_labels[~confidence_mask] = 0
+    true_onehot = np.zeros((true_labels_arr.shape[0],num_classes))
+    true_onehot[np.arange(0,true_labels_arr.shape[0]),observed_labels.astype(int)] = 1
     predictions_dict = {"data_int": data_int_arr ,
                         "data_mask": data_mask_arr,
                         "binary":binary_predictions_arr,
@@ -302,6 +322,7 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
                         "probs":probs_predictions_arr,
                         "true": true_labels_arr,
                         "true_onehot": true_onehot,
+                        "observed": observed_labels,
                         "confidence_scores":confidence_scores_arr,
                         "training_assignation":training_asignation_arr,
                         "attention_weights":attention_weights_arr,
@@ -427,7 +448,16 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load,epoch): #TODO: remo
     target_accuracy = 100 * ((true_labels_arr == binary_predictions_arr).sum() / true_labels_arr.shape[0])
     reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
-    true_onehot = np.zeros((true_labels_arr.shape[0],args.num_classes))
+    if args.dataset_name != "viral_dataset6":
+        num_classes = args.num_classes
+        observed_labels = true_labels_arr
+    else:
+        num_classes = 2
+        confidence_mask = (true_labels_arr[..., None] != 2).any(
+            -1)  # Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
+        observed_labels = true_labels_arr.copy()
+        observed_labels[~confidence_mask] = 0
+    true_onehot = np.zeros((true_labels_arr.shape[0],num_classes))
     true_onehot[np.arange(0,true_labels_arr.shape[0]),true_labels_arr.astype(int)] = 1
     predictions_dict = {"data_int":data_int_arr,
                         "data_mask": data_mask_arr,
@@ -436,6 +466,7 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load,epoch): #TODO: remo
                         "probs":probs_predictions_arr,
                         "true": true_labels_arr,
                         "true_onehot": true_onehot,
+                        "observed": observed_labels,
                         "confidence_scores":confidence_scores_arr,
                         "training_assignation":training_assignation_arr,
                         "attention_weights":attention_weights_arr,
@@ -568,8 +599,17 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
     target_accuracy = 100 * ((true_labels_arr[:,None] == binary_predictions_arr).astype(float).mean(axis=1).mean(axis=0))
     reconstruction_accuracies_arr = np.concatenate(reconstruction_accuracies).mean(axis=1) #[N,num_samples,1]
     reconstruction_accuracies_dict = {"mean": reconstruction_accuracies_arr.mean(), "std": reconstruction_accuracies_arr.std()}
-    true_onehot = np.zeros((true_labels_arr.shape[0],args.num_classes))
-    true_onehot[np.arange(0,true_labels_arr.shape[0]),true_labels_arr.astype(int)] = 1
+    if args.dataset_name != "viral_dataset6":
+        num_classes = args.num_classes
+        observed_labels = true_labels_arr
+    else:
+        num_classes = 2
+        confidence_mask = (true_labels_arr[..., None] != 2).any(
+            -1)  # Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
+        observed_labels = true_labels_arr.copy()
+        observed_labels[~confidence_mask] = 0
+    true_onehot = np.zeros((true_labels_arr.shape[0],num_classes))
+    true_onehot[np.arange(0,true_labels_arr.shape[0]),observed_labels.astype(int)] = 1
     predictions_dict = {"data_int":data_int_arr,
                         "data_mask":data_mask_arr,
                         "binary": binary_predictions_arr,
@@ -577,6 +617,7 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
                         "probs": probs_predictions_arr,
                         "true":true_labels_arr,
                         "true_onehot": true_onehot,
+                        "observed": observed_labels,
                         "accuracy":target_accuracy,
                         "training_assignation":training_assignation_arr,
                         "confidence_scores":confidence_scores_arr,
@@ -744,7 +785,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                                                                fold_valid_data_onehot,
                                                                traineval_data_norm[valid_idx],
                                                                traineval_mask[valid_idx])
-        train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
+        train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffled_Ibel? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
         valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device),**kwargs)
 
 
@@ -841,7 +882,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                                                                traineval_data_onehot,
                                                                traineval_data_norm,
                                                                traineval_mask)
-        train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
+        train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffled_Ibel? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
 
         Vegvisir = select_model(model_load, additional_info.results_dir,0,args)
         params_config = config_build(args, results_dir)
@@ -970,8 +1011,8 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                                                            data_positional_weights_mask[valid_idx],
                                                            )
 
-    train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
-    valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
+    train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffled_Ibel? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
+    valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffled_Ibel? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
 
     #Restart the model each fold
     Vegvisir = select_model(model_load, additional_info.results_dir,"all",args)
@@ -1062,6 +1103,7 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
             train_observed_idx = (train_predictions_dict["true"][..., None] != 2).any(-1)
             #train_true_prob = train_predictions_dict["probs"][np.arange(0, train_true.shape[0]), train_true.long()] #pick the probability of the true target
             #train_pred_prob = np.argmax(train_predictions_dict["probs"],axis=-1) #return probability of the most likely class predicted by the model
+
             train_micro_roc_auc_ovr = roc_auc_score(
                 train_predictions_dict["true_onehot"][train_observed_idx],
                 train_predictions_dict["probs"][train_observed_idx],
@@ -1110,19 +1152,19 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                 train_summary_dict = VegvisirUtils.manage_predictions(train_predictive_samples_dict,args,train_predictions_dict)
                 valid_summary_dict = VegvisirUtils.manage_predictions(valid_predictive_samples_dict,args,valid_predictions_dict)
                 VegvisirPlots.plot_gradients(gradient_norms, results_dir, "Train_{}".format(mode))
-                VegvisirPlots.plot_latent_space(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train")
-                VegvisirPlots.plot_latent_space(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
+                # VegvisirPlots.plot_latent_space(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train")
+                # VegvisirPlots.plot_latent_space(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
                 VegvisirPlots.plot_latent_space(train_predictive_samples_latent_space, train_summary_dict, "samples",results_dir, method="Train")
                 VegvisirPlots.plot_latent_space(valid_predictive_samples_latent_space,valid_summary_dict, "samples",results_dir, method=mode)
-                #
+
                 # VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train")
                 # VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
                 #
                 # VegvisirPlots.plot_attention_weights(train_summary_dict,dataset_info,results_dir,method="Train")
                 # VegvisirPlots.plot_attention_weights(valid_summary_dict,dataset_info,results_dir,method=mode)
 
-                VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir,args, method="Train")
-                VegvisirPlots.plot_hidden_dimensions(valid_summary_dict, dataset_info, results_dir,args, method=mode)
+                # VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir,args, method="Train")
+                # VegvisirPlots.plot_hidden_dimensions(valid_summary_dict, dataset_info, results_dir,args, method=mode)
 
                 Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer,guide)
                 Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_train.p".format(results_dir),
@@ -1166,7 +1208,7 @@ def train_model(dataset_info,additional_info,args):
                                                                                                  dataset_info.features_names,
                                                                                                  None,method=partitioning_method)
 
-    print("Here")
+
     #Highlight:Also split the rest of arrays
     train_idx = (data_blosum[:,0,0,1][..., None] == train_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
     valid_idx = (data_blosum[:,0,0,1][..., None] == valid_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
@@ -1245,8 +1287,8 @@ def load_model(dataset_info,additional_info,args):
                                                            data_blosum_norm[valid_idx],
                                                            data_array_blosum_encoding_mask[valid_idx])
 
-    train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
-    valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
+    train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffled_Ibel? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
+    valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffled_Ibel? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
 
     Vegvisir = select_model(model_load, additional_info.results_dir,"all",args)
     Vegvisir.load_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(pretrained_model_path))

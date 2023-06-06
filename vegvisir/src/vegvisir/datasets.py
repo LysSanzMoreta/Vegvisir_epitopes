@@ -1189,9 +1189,6 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
 
     #VegvisirUtils.convert_to_pandas_dataframe(epitopes_padded,data,storage_folder,args,use_test=True)
 
-
-
-
     epitopes_array = np.array(epitopes_padded)
     if args.seq_padding == "replicated_borders":  # I keep it separately to avoid doing the np vectorized loop twice
         epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
