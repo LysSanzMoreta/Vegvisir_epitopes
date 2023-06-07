@@ -1157,14 +1157,14 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                 VegvisirPlots.plot_latent_space(train_predictive_samples_latent_space, train_summary_dict, "samples",results_dir, method="Train")
                 VegvisirPlots.plot_latent_space(valid_predictive_samples_latent_space,valid_summary_dict, "samples",results_dir, method=mode)
 
-                # VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train")
-                # VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
-                #
-                # VegvisirPlots.plot_attention_weights(train_summary_dict,dataset_info,results_dir,method="Train")
-                # VegvisirPlots.plot_attention_weights(valid_summary_dict,dataset_info,results_dir,method=mode)
+                VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train")
+                VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
 
-                # VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir,args, method="Train")
-                # VegvisirPlots.plot_hidden_dimensions(valid_summary_dict, dataset_info, results_dir,args, method=mode)
+                VegvisirPlots.plot_attention_weights(train_summary_dict,dataset_info,results_dir,method="Train")
+                VegvisirPlots.plot_attention_weights(valid_summary_dict,dataset_info,results_dir,method=mode)
+
+                VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir,args, method="Train")
+                VegvisirPlots.plot_hidden_dimensions(valid_summary_dict, dataset_info, results_dir,args, method=mode)
 
                 Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer,guide)
                 Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_train.p".format(results_dir),

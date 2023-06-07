@@ -423,45 +423,6 @@ class SequencePadding(object):
         else:
             return (seq,seq)
 
-class ArtificialEpitopes(object):
-    """Performs padding of a list of given sequences to a given len"""
-    def __init__(self,sequences,allele_anchors,method,aa_dict):
-        self.sequences = sequences
-        self.allele_anchors = allele_anchors
-        self.method = method
-        self.aa_dict = aa_dict
-
-    def weight_aminoacids(self,aa_dict):
-        aa_groups_colors_dict,aa_groups_dict,groups_names_colors_dict,aa_by_groups_dict=VegvisirUtils.aminoacids_groups(aa_dict)
-
-        weights_dict = defaultdict()
-        for aa in aa_dict.keys():
-            pass
-        return aa_by_groups_dict
-
-    def run(self):
-
-        weighted_aminoacids_dict = self.weight_aminoacids(self.aa_dict)
-
-        exit()
-
-        artificial_sequences = {"artificial_1": list(map(lambda seq,anchors: self.artificial_1(seq,anchors),self.sequences,self.allele_anchors))}
-
-        if self.method not in artificial_sequences.keys():
-            raise ValueError("Padding method <{}> not implemented, please choose among <{}>".format(self.method,artificial_sequences.keys()))
-        else:
-            return artificial_sequences[self.method]
-
-    def artificial_1(self,seq,anchors):
-
-
-        new_aa = random.draw = choice(list_of_candidates, number_of_items_to_pick,p=probability_distribution)
-
-        if shuffle:
-            random.seed(seed)
-            seq = "".join(random.sample(list(seq), len(seq)))
-        return (random.sample(seq, len(seq)),random.sample(seq, len(seq)))
-
 
 
 

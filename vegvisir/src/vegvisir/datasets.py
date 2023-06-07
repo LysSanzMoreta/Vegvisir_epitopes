@@ -1162,6 +1162,8 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     unique_lens = list(set(epitopes_lens))
     corrected_aa_types = len(set().union(*epitopes_list))
     corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
+
+
     if len(unique_lens) > 1: # Highlight: Pad the sequences (relevant when they differ in length)
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types , zero_characters=["#"])
         if args.shuffle_sequence:
@@ -1184,9 +1186,8 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
                                                                                    zero_characters=[],
                                                                                    include_zero_characters=False)
 
-
-
-
+    if args.random_sequences:
+        epitopes_padded, epitopes_padded_mask = VegvisirUtils.generate_random_sequences(data, epitopes_list, seq_max_len, args, unique_lens, "/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/")
     #VegvisirUtils.convert_to_pandas_dataframe(epitopes_padded,data,storage_folder,args,use_test=True)
 
     epitopes_array = np.array(epitopes_padded)

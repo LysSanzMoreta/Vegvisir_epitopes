@@ -951,7 +951,7 @@ class RNN_model7(nn.Module):
         assert not torch.isnan(z).any(), "found nan in latent space"
         rnn_input_packed = torch.nn.utils.rnn.pack_padded_sequence(z,x_lens.cpu(),batch_first=True,enforce_sorted=False)
 
-        packed_decoder_hidden_states, decoder_final_hidden = self.rnn(rnn_input_packed,encoder_final_hidden_bidirectional) #Highlight: Initialized from latent space
+        packed_decoder_hidden_states, decoder_final_hidden = self.rnn(rnn_input_packed,encoder_rnn_hidden) #Highlight: I switched encoder_final_hidden_bidir to encoder_rnn_hidden
         decoder_hidden_states, seq_sizes = torch.nn.utils.rnn.pad_packed_sequence(packed_decoder_hidden_states, batch_first=True,total_length=self.max_len)
         seq_idx = torch.arange(seq_sizes.shape[0])
         decoder_hidden_states = self.softplus(decoder_hidden_states)

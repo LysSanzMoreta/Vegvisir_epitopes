@@ -1159,7 +1159,7 @@ def plot_attention_weights(summary_dict,dataset_info,results_dir,method="Train")
                     ax1.set_title("Attention by weight")
                     #Highlight: Aminoacids coloured by name
                     if np.rint(attention_weights).max() != 1:
-                        aminoacids_masked = (aminoacids[:,1])*attention_weights.bool().int()
+                        aminoacids_masked = (aminoacids[:,1])*attention_weights.astype(bool).astype(int)
                     else:
                         aminoacids_masked = (aminoacids[:,1])*np.rint(attention_weights)
                     sns.heatmap(aminoacids_masked,ax=ax2,cbar=False,cmap=aa_colormap)
