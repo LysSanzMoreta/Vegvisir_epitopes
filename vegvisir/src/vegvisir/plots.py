@@ -14,16 +14,18 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 import torch
-
 import umap # numpy < 1.23
 import vegvisir.utils as VegvisirUtils
 from sklearn.feature_selection import mutual_info_classif,mutual_info_regression
 from sklearn.metrics import auc,roc_auc_score,roc_curve,confusion_matrix,matthews_corrcoef,precision_recall_curve,average_precision_score
+from sklearn.cluster import MiniBatchKMeans
 from joblib import Parallel, delayed
 import multiprocessing
+import os
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
 colors_dict = {0: "green", 1: "red",2:"navajowhite"}
+colors_cluster_dict = {0: "seagreen", 1: "crimson",2:"gold",3:"mediumslateblue"}
 colors_dict_labels = {0: "mediumaquamarine", 1: "orangered",2:"navajowhite"}
 
 colors_list_aa = ["black", "plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange",
@@ -623,13 +625,160 @@ def plot_latent_vector(latent_space,predictions_dict,fold,results_dir,method):
     plt.clf()
     plt.close(fig)
 
-def plot_latent_space(latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z"):
+
+def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method):
+    """
+    Notes:
+        - https://www.researchgate.net/publication/15556561_Global_Fold_Determination_from_a_Small_Number_of_Distance_Restraints/figures?lo=1
+        - Radius table: https://www.researchgate.net/publication/15556561_Global_Fold_Determination_from_a_Small_Number_of_Distance_Restraints/figures?lo=1
+    """
+    storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
+
+    aminoacid_properties = pd.read_csv("{}/aminoacid_properties.txt".format(storage_folder),sep = "\s+")
+    hydropathy_dict= dict(zip(aminoacid_properties["1letter"].values.tolist(),aminoacid_properties["Hydropathy_index"].values.tolist()))
+    hydropathy_dict["#"] =0
+    volume_dict= dict(zip(aminoacid_properties["1letter"].values.tolist(),aminoacid_properties["Volume(A3)"].values.tolist()))
+    volume_dict["#"] =0
+    radius_dict= dict(zip(aminoacid_properties["1letter"].values.tolist(),aminoacid_properties["Radius"].values.tolist()))
+    radius_dict["#"] =0
+    if dataset_info.corrected_aa_types == 20:
+        aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=[])
+    else:
+        aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=["#"])
+    hydropathy_dict = {aminoacids_dict[key]:value for key,value in hydropathy_dict.items()}
+    volume_dict = {aminoacids_dict[key]:value for key,value in volume_dict.items()}
+    radius_dict = {aminoacids_dict[key]:value for key,value in radius_dict.items()}
+
+
+    data_int = predictions_dict["data_int_{}".format(sample_mode)]
+    sequences = data_int[:,1:].squeeze(1)
+    sequences_mask = np.array((sequences == 0))
+    hydropathy_scores = np.vectorize(hydropathy_dict.get)(sequences)
+    hydropathy_scores = np.ma.masked_array(hydropathy_scores, mask=sequences_mask, fill_value=0)
+    hydropathy_scores = np.ma.sum(hydropathy_scores, axis=1)
+    
+    volume_scores = np.vectorize(volume_dict.get)(sequences)
+    volume_scores = np.ma.masked_array(volume_scores, mask=sequences_mask, fill_value=0)
+    volume_scores = np.ma.sum(volume_scores, axis=1)
+    
+    radius_scores = np.vectorize(radius_dict.get)(sequences)
+    radius_scores = np.ma.masked_array(radius_scores, mask=sequences_mask, fill_value=0)
+    radius_scores = np.ma.sum(radius_scores, axis=1)
+    
+    
+    fig, [ax0,ax1,ax2] = plt.subplots(1, 3,figsize=(22,15))
+
+    clusters_info = defaultdict(lambda : defaultdict(lambda : defaultdict()))
+    i = 0
+    labels = []
+
+    all_hydropathy = []
+    all_volumes = []
+    all_radius = []
+    label_locations = []
+    for cluster in range(n_clusters):
+        idx_cluster = (cluster_assignments[..., None] == cluster).any(-1)
+        data_int_cluster = data_int[idx_cluster]
+        idx_observed = (data_int_cluster[:, 0, 0][..., None] != 2).any(-1)
+        for mode,idx in zip(["observed","unobserved"],[idx_observed,np.invert(idx_observed)]):
+            sequences_cluster = data_int_cluster[idx][:, 1:].squeeze(1)
+            if sequences_cluster.size != 0:
+                sequences_mask = np.array((sequences_cluster == 0))
+                hydropathy = np.vectorize(hydropathy_dict.get)(sequences_cluster)
+                hydropathy = np.ma.masked_array(hydropathy,mask=sequences_mask,fill_value=0)
+                hydropathy = np.ma.sum(hydropathy,axis=1)
+                volumes = np.vectorize(volume_dict.get)(sequences_cluster)
+                volumes = np.ma.masked_array(volumes,mask=sequences_mask,fill_value=0)
+                volumes = np.ma.sum(volumes,axis=1)
+                radius = np.vectorize(radius_dict.get)(sequences_cluster)
+                radius = np.ma.masked_array(radius,mask=sequences_mask,fill_value=0)
+                radius = np.ma.sum(radius,axis=1)
+                
+
+                clusters_info["Cluster_{}".format(cluster)][mode]["hydrophobicity"] = hydropathy.mean()
+                clusters_info["Cluster_{}".format(cluster)][mode]["volumes"] = volumes.mean()
+                clusters_info["Cluster_{}".format(cluster)][mode]["radius"] = radius.mean()
+
+
+                all_hydropathy.append(hydropathy)
+                all_volumes.append(volumes)
+                all_radius.append(radius)
+                labels.append("Cluster {}, {}".format(cluster,mode))
+                label_locations.append(i + 0.2)
+                i+=0.4
+
+    boxplot0 = ax0.boxplot( all_hydropathy,
+                     vert=True,  # vertical box alignment
+                     patch_artist=True,  # fill with color
+                     labels=labels
+                     )  # olor=colors_cluster_dict[cluster]
+    boxplot1 = ax1.boxplot( all_volumes,
+                     vert=True,  # vertical box alignment
+                     patch_artist=True,  # fill with color
+                     labels=labels
+                     )  # olor=colors_cluster_dict[cluster])  # color=colors_cluster_dict[cluster]
+
+    boxplot2 = ax2.boxplot( all_radius,
+                     vert=True,  # vertical box alignment
+                     patch_artist=True,  # fill with color
+                     labels=labels
+                     )  # olor=colors_cluster_dict[cluster])  # color=colors_cluster_dict[cluster]
+
+
+    # fill with colors
+    #colors = ['pink', 'lightblue', 'lightgreen',"gold"]
+    colors = list(colors_cluster_dict.values()) * int((len(labels)/len(list(colors_cluster_dict.values()))))
+    for bplot in (boxplot0, boxplot1,boxplot2):
+        for patch, color in zip(bplot['boxes'], colors):
+            patch.set_facecolor(color)
+
+    ax0.set_title("Hydrophobicity")
+    #ax0.set_xticks(label_locations)
+    #ax0.set_xticklabels(labels=labels0,rotation=45,fontsize=8)
+    ax1.set_title("Volumes")
+    ax2.set_title("Radius")
+
+    ax0.set_xticklabels(rotation=90,labels=labels)
+    ax1.set_xticklabels(rotation=90,labels=labels)
+    ax2.set_xticklabels(rotation=90,labels=labels)
+
+    #ax1.set_xticks(label_locations)
+    3#ax1.set_xticklabels(labels=labels1,rotation=45,fontsize=8)
+    #plt.legend(handles=[negative_patch,positive_patch], prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5),ncol=1)
+    plt.savefig("{}/{}/clusters_features_{}".format(results_dir,method,sample_mode))
+    plt.clf()
+    plt.close(fig)
+
+    return hydropathy_scores,radius_scores,clusters_info
+
+
+def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4):
 
     print("Plotting UMAP of {}...".format(vector_name))
     reducer = umap.UMAP()
     umap_proj = reducer.fit_transform(latent_space[:, 5:])
-    colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,0])
 
+    if vector_name == "latent_space_z":
+        cluster_assignments = MiniBatchKMeans(n_clusters=n_clusters, random_state=0, batch_size=100, max_iter=10, reassignment_ratio=0).fit_predict(umap_proj)
+        colors_clusters = np.vectorize(colors_cluster_dict.get)(cluster_assignments)
+        #dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method
+        hydropathy_scores,volume_scores,clusters_info=plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
+
+        #Highlight: Hydropathy
+        hydropathy_scores_unique = np.unique(hydropathy_scores)
+        hydropathy_scores, hydropathy_scores_unique = VegvisirUtils.replace_nan(hydropathy_scores,hydropathy_scores_unique)
+        colormap_hydropathy = matplotlib.cm.get_cmap('viridis', len(hydropathy_scores_unique.tolist()))
+        colors_dict = dict(zip(hydropathy_scores_unique, colormap_hydropathy.colors))
+        colors_hydropathy = np.vectorize(colors_dict.get, signature='()->(n)')(hydropathy_scores)
+        # Highlight: Peptide volumes
+        volume_scores_unique = np.unique(volume_scores)
+
+        volume_scores, volume_scores_unique = VegvisirUtils.replace_nan(volume_scores,volume_scores_unique)
+        colormap_volume = matplotlib.cm.get_cmap('magma', len(volume_scores_unique.tolist()))
+        colors_dict = dict(zip(volume_scores_unique, colormap_volume.colors))
+        colors_volume = np.vectorize(colors_dict.get, signature='()->(n)')(volume_scores)
+
+    colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,0])
     if method == "_single_sample":
         colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_dict["class_binary_prediction_single_sample"])
     else:
@@ -660,7 +809,7 @@ def plot_latent_space(latent_space,predictions_dict,sample_mode,results_dir,meth
     colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
     colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_binary_prediction_samples_frequencies"][:,1])
     alpha = 0.7
-    fig, [[ax1, ax2, ax3],[ax4,ax5,ax6],[ax7,ax8,ax9],[ax10,ax11,ax12]] = plt.subplots(4, 3,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [4,4,4,2]})
+    fig, [[ax1, ax2, ax3],[ax4,ax5,ax6],[ax7,ax8,ax9],[ax10,ax11,ax12],[ax13,ax14,ax15]] = plt.subplots(5, 3,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [4,4,4,4,4]})
     fig.suptitle('UMAP projections',fontsize=20)
     ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:,2], alpha=alpha,s=30)
     ax1.set_title("True labels",fontsize=20)
@@ -683,13 +832,26 @@ def plot_latent_space(latent_space,predictions_dict,sample_mode,results_dir,meth
     ax8.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=alpha, s=30)
     ax8.set_title("Immunodominance scores", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance),ax=ax8)
+    if vector_name == "latent_space_z":
+        ax10.scatter(umap_proj[:, 0],umap_proj[:, 1], c=colors_clusters, alpha=alpha,s=30)
+        ax10.set_title("Coloured by Kmeans cluster")
+        ax11.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_hydropathy, alpha=alpha, s=30)
+        ax11.set_title("Coloured by Hydrophobicity")
+        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_hydropathy,norm=Normalize(vmin=np.min(hydropathy_scores_unique),vmax=np.max(hydropathy_scores_unique))), ax=ax11)
+        ax13.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_volume, alpha=alpha, s=30)
+        ax13.set_title("Coloured by Peptide volume")
+        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_volume,norm=Normalize(vmin=np.min(volume_scores_unique),vmax=np.max(volume_scores_unique))), ax=ax13)
+    else:
+        ax10.axis("off")
+        ax11.axis("off")
+        ax13.axis("off")
 
     ax3.axis("off")
     ax6.axis("off")
     ax9.axis("off")
-    ax10.axis("off")
-    ax11.axis("off")
     ax12.axis("off")
+    ax14.axis("off")
+    ax15.axis("off")
 
     fig.suptitle("UMAP of {}".format(vector_name))
 
@@ -863,15 +1025,11 @@ def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,resul
     """Following https://scikit-learn.org/stable/auto_examples/model_selection/plot_precision_recall.html#:~:text=The%20precision%2Drecall%20curve%20shows,a%20low%20false%20negative%20rate."""
     onehot_targets = onehot_labels[idx]
     target_scores = predictions_dict[stats_name][idx]
-    if args.dataset_name != "viral_dataset6":
-        num_classes = args.num_classes
-    else:
-        num_classes = 2
     # For each class
     precision = dict()
     recall = dict()
     average_precision = dict()
-    for i in range(num_classes):
+    for i in range(args.num_obs_classes):
         precision[i], recall[i], _ = precision_recall_curve(onehot_targets[:, i], target_scores[:, i])
         average_precision[i] = average_precision_score(onehot_targets[:, i], target_scores[:, i])
 
@@ -911,12 +1069,9 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     onehot_targets = onehot_labels[idx]
     target_scores = predictions_dict[stats_name][idx]
     fig = plt.figure()
-    if args.dataset_name != "viral_dataset6":
-        num_classes = args.num_classes
-    else:
-        num_classes = 2
+
     # ROC AUC per class
-    for i in range(num_classes):
+    for i in range(args.num_obs_classes):
         fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
         roc_auc[i] = auc(fpr[i], tpr[i])
         plt.plot(fpr[i], tpr[i], label='ROC curve (AUC_{}: {})'.format(i, roc_auc[i]), c=colors_dict[i])
@@ -926,12 +1081,12 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     plt.plot(fpr["micro"], tpr["micro"], label="micro-average ROC curve (area : {})".format(roc_auc["micro"]),
              linestyle="-.", color="magenta")
     # Macro ROC AUC
-    all_fpr = np.unique(np.concatenate([fpr[i] for i in range(num_classes)]))
+    all_fpr = np.unique(np.concatenate([fpr[i] for i in range(args.num_obs_classes)]))
     fpr["macro"] = all_fpr
     mean_tpr = np.zeros_like(all_fpr)
-    for i in range(num_classes):
+    for i in range(args.num_obs_classes):
         mean_tpr += np.interp(all_fpr, fpr[i], tpr[i]) #linear interpolation of data points
-    tpr["macro"] = mean_tpr / num_classes
+    tpr["macro"] = mean_tpr / args.num_obs_classes
     roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
     plt.plot(fpr["macro"], tpr["macro"], label="macro-average ROC curve (area : {})".format(roc_auc["macro"]),
              linestyle="-.", color="blue")
@@ -972,7 +1127,7 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
         onehot_labels = predictions_dict["true_onehot_{}".format(sample_mode)]
         confidence_scores = predictions_dict["confidence_scores_{}".format(sample_mode)]
         idx_all = np.ones_like(labels).astype(bool)
-        if args.dataset_name == "viral_dataset6":
+        if args.num_classes > args.num_obs_classes:
             idx_all = (labels[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
         idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
 
@@ -1223,13 +1378,13 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
         true_labels = summary_dict["true_{}".format(sample_mode)]
         confidence_scores = summary_dict["confidence_scores_{}".format(sample_mode)]
         idx_all = np.ones_like(confidence_scores).astype(bool)
-        # if args.dataset_name == "viral_dataset6":
-        #     idx_all = (true_labels[..., None] != 2).any(-1)
+
         idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
         encoder_final_hidden_state = summary_dict["encoder_final_hidden_state_{}".format(sample_mode)]
         decoder_final_hidden_state = summary_dict["decoder_final_hidden_state_{}".format(sample_mode)]
-        plot_latent_space(encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden state")
-        plot_latent_space(decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden state")
+
+        plot_latent_space(dataset_info,encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden state")
+        plot_latent_space(dataset_info,decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden state")
 
         for data_points,idx_conf in zip(["all","high_confidence"],[idx_all,idx_highconfidence]):
             true_labels = summary_dict["true_{}".format(sample_mode)][idx_conf]

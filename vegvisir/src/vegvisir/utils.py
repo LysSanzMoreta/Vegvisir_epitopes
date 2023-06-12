@@ -1234,10 +1234,8 @@ class SequenceRandomGeneration(object):
         else:
             return (seq,seq)
 
-
 def generate_random_sequences(data,sequences_list,seq_max_len,args,unique_lens,storage_folder):
     """Generates the same amount of sequences as in the dataset, with the same length distribution, but completely random amino acid distribution
-
     """
 
     print("Generating random sequences with the given input lengths")
@@ -1252,6 +1250,9 @@ def generate_random_sequences(data,sequences_list,seq_max_len,args,unique_lens,s
     convert_to_pandas_dataframe(sequences_padded, data, storage_folder, args, use_test=True)
 
     return sequences_padded,sequences_padded_mask
+
+
+
 
 
 

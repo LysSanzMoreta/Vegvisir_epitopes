@@ -1,4 +1,6 @@
 import json
+import warnings
+
 from scipy import stats
 import time,os,datetime
 from collections import defaultdict
@@ -154,16 +156,13 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
                                       "std":reconstruction_accuracies_arr.std(),
                                       "entropies": np.mean(reconstruction_entropy[:,1:],axis=0)}
 
-    if args.dataset_name != "viral_dataset6":
-        num_classes = args.num_classes
+    if args.num_classes == args.num_obs_classes:
         observed_labels = true_labels_arr
     else:
-        num_classes = 2
         confidence_mask = (true_labels_arr[..., None] != 2).any(-1) #Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
         observed_labels = true_labels_arr.copy()
         observed_labels[~confidence_mask] = 0
-
-    true_onehot = np.zeros((true_labels_arr.shape[0],num_classes))
+    true_onehot = np.zeros((true_labels_arr.shape[0],args.num_obs_classes))
     true_onehot[np.arange(0,true_labels_arr.shape[0]),observed_labels.astype(int)] = 1
     predictions_dict = {"data_int":data_int_arr,
                         "data_mask": data_mask_arr,
@@ -304,16 +303,13 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies_arr.mean(),
                                       "std":reconstruction_accuracies_arr.std(),
                                       "entropies": np.mean(reconstruction_entropy[:,1:],axis=0)}
-    if args.dataset_name != "viral_dataset6":
-        num_classes = args.num_classes
+    if args.num_classes == args.num_obs_classes:
         observed_labels = true_labels_arr
     else:
-        num_classes = 2
-        confidence_mask = (true_labels_arr[..., None] != 2).any(
-            -1)  # Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
+        confidence_mask = (true_labels_arr[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
         observed_labels = true_labels_arr.copy()
         observed_labels[~confidence_mask] = 0
-    true_onehot = np.zeros((true_labels_arr.shape[0],num_classes))
+    true_onehot = np.zeros((true_labels_arr.shape[0],args.num_obs_classes))
     true_onehot[np.arange(0,true_labels_arr.shape[0]),observed_labels.astype(int)] = 1
     predictions_dict = {"data_int": data_int_arr ,
                         "data_mask": data_mask_arr,
@@ -448,16 +444,13 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load,epoch): #TODO: remo
     target_accuracy = 100 * ((true_labels_arr == binary_predictions_arr).sum() / true_labels_arr.shape[0])
     reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
-    if args.dataset_name != "viral_dataset6":
-        num_classes = args.num_classes
+    if args.num_classes == args.num_obs_classes:
         observed_labels = true_labels_arr
     else:
-        num_classes = 2
-        confidence_mask = (true_labels_arr[..., None] != 2).any(
-            -1)  # Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
+        confidence_mask = (true_labels_arr[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
         observed_labels = true_labels_arr.copy()
         observed_labels[~confidence_mask] = 0
-    true_onehot = np.zeros((true_labels_arr.shape[0],num_classes))
+    true_onehot = np.zeros((true_labels_arr.shape[0],args.num_obs_classes))
     true_onehot[np.arange(0,true_labels_arr.shape[0]),true_labels_arr.astype(int)] = 1
     predictions_dict = {"data_int":data_int_arr,
                         "data_mask": data_mask_arr,
@@ -599,16 +592,14 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
     target_accuracy = 100 * ((true_labels_arr[:,None] == binary_predictions_arr).astype(float).mean(axis=1).mean(axis=0))
     reconstruction_accuracies_arr = np.concatenate(reconstruction_accuracies).mean(axis=1) #[N,num_samples,1]
     reconstruction_accuracies_dict = {"mean": reconstruction_accuracies_arr.mean(), "std": reconstruction_accuracies_arr.std()}
-    if args.dataset_name != "viral_dataset6":
-        num_classes = args.num_classes
+    if args.num_classes == args.num_obs_classes:
         observed_labels = true_labels_arr
     else:
-        num_classes = 2
         confidence_mask = (true_labels_arr[..., None] != 2).any(
             -1)  # Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
         observed_labels = true_labels_arr.copy()
         observed_labels[~confidence_mask] = 0
-    true_onehot = np.zeros((true_labels_arr.shape[0],num_classes))
+    true_onehot = np.zeros((true_labels_arr.shape[0],args.num_obs_classes))
     true_onehot[np.arange(0,true_labels_arr.shape[0]),observed_labels.astype(int)] = 1
     predictions_dict = {"data_int":data_int_arr,
                         "data_mask":data_mask_arr,
@@ -1152,11 +1143,10 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                 train_summary_dict = VegvisirUtils.manage_predictions(train_predictive_samples_dict,args,train_predictions_dict)
                 valid_summary_dict = VegvisirUtils.manage_predictions(valid_predictive_samples_dict,args,valid_predictions_dict)
                 VegvisirPlots.plot_gradients(gradient_norms, results_dir, "Train_{}".format(mode))
-                # VegvisirPlots.plot_latent_space(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train")
-                # VegvisirPlots.plot_latent_space(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
-                VegvisirPlots.plot_latent_space(train_predictive_samples_latent_space, train_summary_dict, "samples",results_dir, method="Train")
-                VegvisirPlots.plot_latent_space(valid_predictive_samples_latent_space,valid_summary_dict, "samples",results_dir, method=mode)
-
+                # VegvisirPlots.plot_latent_space(dataset_info,train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train")
+                # VegvisirPlots.plot_latent_space(dataset_info,valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
+                # VegvisirPlots.plot_latent_space(dataset_info,train_predictive_samples_latent_space, train_summary_dict, "samples",results_dir, method="Train")
+                VegvisirPlots.plot_latent_space(dataset_info,valid_predictive_samples_latent_space,valid_summary_dict, "samples",results_dir, method=mode)
                 VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train")
                 VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
 
@@ -1221,7 +1211,7 @@ def train_model(dataset_info,additional_info,args):
         epoch_loop( train_idx, valid_idx, dataset_info, args, additional_info)
     else:
         if args.dataset_name == "viral_dataset7":
-            print("Test == Valid for dataset7")
+            warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
         else:
             print("Training & testing...")
         train_idx = (train_idx.int() + valid_idx.int()).bool()
