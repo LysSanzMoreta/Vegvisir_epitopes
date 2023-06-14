@@ -261,7 +261,8 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
         else:
             partition_idx = np.random.randint(0,4) #random selection of a partition as the validation
 
-        if args.dataset_name == "viral_dataset8":
+        if args.dataset_name == "viral_dataset9":
+
             traineval_data = data[data[:, 0, 0, 3] == 1]
             traineval_labels = traineval_data[:,0,0,0]
             train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
@@ -313,26 +314,38 @@ class SequencePadding(object):
 
     def run(self):
 
-        padded_sequences = {"no_padding": list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds)),
-                            #"ends":list(map(lambda seq: (list(seq.ljust(self.seq_max_len, "#")),list(seq.ljust(self.seq_max_len, "#"))),self.sequences)) ,
-                            "ends": list(map(lambda seq,seed: self.ends_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds)),
-                            "random":list(map(lambda seq,seed: self.random_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds)),
-                            "borders":list(map(lambda seq,seed: self.border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds)),
-                            "replicated_borders":list(map(lambda seq,seed: self.replicated_border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds))
-                            }
+        # padded_sequences = {"no_padding": list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds)),
+        #                     #"ends":list(map(lambda seq: (list(seq.ljust(self.seq_max_len, "#")),list(seq.ljust(self.seq_max_len, "#"))),self.sequences)) ,
+        #                     "ends": list(map(lambda seq,seed: self.ends_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds)),
+        #                     "random":list(map(lambda seq,seed: self.random_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds)),
+        #                     "borders":list(map(lambda seq,seed: self.border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds)),
+        #                     "replicated_borders":list(map(lambda seq,seed: self.replicated_border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds))
+        #                     }
 
-
-
-        if self.method not in padded_sequences.keys():
-            raise ValueError("Padding method <{}> not implemented, please choose among <{}>".format(self.method,padded_sequences.keys()))
+        if self.method == "no_padding":
+            result = list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds))
+        elif self.method == "ends":
+            result = list(map(lambda seq,seed: self.ends_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds))
+        elif self.method == "random":
+            result = list(map(lambda seq,seed: self.random_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds))
+        elif self.method == "borders":
+            result = list(map(lambda seq,seed: self.border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds))
+        elif self.method == "replicated_borders":
+            result = list(map(lambda seq,seed: self.replicated_border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds))
         else:
-            return padded_sequences[self.method]
+            raise ValueError(
+                "Padding method <{}> not implemented, please choose among <no_padding,ends,random,borders,replicated_borders>".format(
+                    self.method))
+
+        return result
 
     def no_padding(self,seq,seed,max_len,shuffle):
         if shuffle:
             random.seed(seed)
             seq = "".join(random.sample(list(seq), len(seq)))
-        return (random.sample(seq, len(seq)),random.sample(seq, len(seq)))
+        #seq = "".join(seq)
+
+        return (list(seq),list(seq))
 
     def ends_padding(self,seq,seed,max_len,shuffle):
         if shuffle:
@@ -433,6 +446,366 @@ class SequencePadding(object):
             return (new_seq.tolist(), new_seq_mask.tolist())
         else:
             return (seq,seq)
+
+class SequenceRandomGeneration(object):
+    """Generates random sequences given a sequence length"""
+    def __init__(self,sequences,seq_max_len,method):
+        self.sequences = sequences
+        self.seq_max_len = seq_max_len
+        self.method = method
+        self.random_seeds = list(range(len(sequences)))
+        self.aminoacids_list = np.array(list(VegvisirUtils.aminoacid_names_dict(20).keys()))
+
+    def run(self):
+
+        # padded_sequences = { "no_padding": list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len),self.sequences,self.random_seeds)),
+        #                     "ends": list(map(lambda seq,seed: self.ends_padding(seq,seed, self.seq_max_len),self.sequences,self.random_seeds)),
+        #                     "random":list(map(lambda seq,seed: self.random_padding(seq,seed, self.seq_max_len), self.sequences,self.random_seeds)),
+        #                     "borders":list(map(lambda seq,seed: self.border_padding(seq,seed, self.seq_max_len), self.sequences,self.random_seeds)),
+        #                     "replicated_borders":list(map(lambda seq,seed: self.replicated_border_padding(seq,seed, self.seq_max_len), self.sequences,self.random_seeds))
+        #                     }
+
+        if self.method == "no_padding":
+            result = list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len),self.sequences,self.random_seeds))
+        elif self.method == "ends":
+            result = list(map(lambda seq,seed: self.ends_padding(seq,seed, self.seq_max_len),self.sequences,self.random_seeds))
+        elif self.method == "random":
+            result = list(map(lambda seq,seed: self.random_padding(seq,seed, self.seq_max_len), self.sequences,self.random_seeds))
+        elif self.method == "borders":
+            result = list(map(lambda seq,seed: self.border_padding(seq,seed, self.seq_max_len), self.sequences,self.random_seeds))
+        elif self.method == "replicated_borders":
+            result = list(map(lambda seq,seed: self.replicated_border_padding(seq,seed, self.seq_max_len), self.sequences,self.random_seeds))
+        else:
+            raise ValueError(
+                "Padding method <{}> not implemented, please choose among <no_padding,ends,random,borders,replicated_borders>".format(
+                    self.method))
+
+        return result
+
+    def no_padding(self,seq,seed,max_len):
+        np.random.seed(seed)
+        seq = self.aminoacids_list[np.random.choice(len(self.aminoacids_list),len(seq))]
+        return (list(seq),list(seq))
+
+
+    def ends_padding(self,seq,seed,max_len):
+        np.random.seed(seed)
+        seq = self.aminoacids_list[np.random.choice(len(self.aminoacids_list), len(seq))]
+        seq = "".join(seq)
+        return (list(seq.ljust(max_len, "#")),list(seq.ljust(max_len, "#")))
+
+    def random_padding(self,seq,seed, max_len):
+        """Randomly pad sequence. Introduces <n pads> in random places until max_len"""
+        np.random.seed(seed)
+        seq = self.aminoacids_list[np.random.choice(len(self.aminoacids_list), len(seq))]
+        #seq = "".join(seq)
+        pad = max_len - len(seq)
+        seq = list(seq)
+        if pad != 0:
+            idx = np.array(random.sample(range(0, max_len), pad), dtype=int)
+            new_seq = np.array(["#"] * max_len)
+            mask = np.full(max_len, True)
+            mask[idx] = False
+            new_seq[mask] = np.array(seq)
+            return (new_seq.tolist(),new_seq.tolist())
+        else:
+            return (seq,seq)
+
+    def border_padding(self,seq,seed, max_len):
+        """For sequences shorter than seq_max_len introduced padding in the beginning and the ends of the sequences.
+        If the amount of padding needed is divisible by 2 then the padding is shared evenly at the bginning and the end of the sequence.
+        Otherwise randomly, the beginning or the end of the sequence will receive more padding"""
+        np.random.seed(seed)
+        seq = self.aminoacids_list[np.random.choice(len(self.aminoacids_list), len(seq))]
+        #seq = "".join(seq)
+        pad = max_len - len(seq)
+        seq = list(seq)
+        if pad != 0:
+            half_pad = pad / 2
+            even_pad = [True if pad % 2 == 0 else False][0]
+            if even_pad:#same amount of padding added at the beginning and the end of the sequence
+                idx_pads = np.concatenate(
+                    [np.arange(0, int(half_pad)), np.arange(max_len - int(half_pad), max_len)])
+            else:
+                idx_choice = np.array(random.sample(range(0, 1), 1),dtype=int).item()  # random choice of adding the extra padding to the beginning or end
+                idx_pads_dict = {0: np.concatenate([np.arange(0, int(half_pad) + 1), np.arange(max_len - int(half_pad), max_len)]),
+                                 1: np.concatenate([np.arange(0, int(half_pad)),np.arange(max_len - (int(half_pad) + 1), max_len)])}
+                idx_pads = idx_pads_dict[idx_choice]
+
+            new_seq = np.array(["#"] * max_len)
+            mask = np.full(max_len, True)
+            mask[idx_pads] = False
+            new_seq[mask] = np.array(seq)
+            return (new_seq.tolist(),new_seq.tolist())
+        else:
+            return (seq,seq)
+
+    def replicated_border_padding(self, seq,seed, max_len):
+        """
+        Inspired by "replicated" padding in Convolutional NN https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
+        For sequences shorter than seq_max_len introduced padding in the beginning and the ends of the sequences.
+        If the amount of padding needed is divisible by 2 then the padding is shared evenly at the bginning and the end of the sequence.
+        Otherwise randomly, the beginning or the end of the sequence will receive more padding"""
+        np.random.seed(seed)
+        seq = self.aminoacids_list[np.random.choice(len(self.aminoacids_list), len(seq))]
+        #seq = "".join(seq)
+        pad = max_len - len(seq)
+        seq = list(seq)
+        if pad != 0:
+            half_pad = pad / 2
+            even_pad = [True if pad % 2 == 0 else False][0]
+            if even_pad:  # same amount of paddng added at the beginning and the end of the sequence
+                start = np.arange(0, int(half_pad))
+                end = np.arange(max_len - int(half_pad), max_len)
+                idx_pads = np.concatenate(
+                    [start, end])
+            else:
+                idx_choice = np.array(random.sample(range(0, 1), 1),
+                                      dtype=int).item()  # random choice of adding the extra padding to the beginning or end
+                start_0 = np.arange(0, int(half_pad) + 1)
+                end_0 = np.arange(max_len - int(half_pad), max_len)
+                start_1 = np.arange(0, int(half_pad))
+                end_1 = np.arange(max_len - (int(half_pad) + 1), max_len)
+                idx_pads_dict = {
+                    0: [np.concatenate([start_0, end_0]),start_0,end_0],
+                    1: [np.concatenate([start_1, end_1]),start_1,end_0]}
+                idx_pads,start,end = idx_pads_dict[idx_choice]
+
+            new_seq = np.array(["#"] * max_len)
+            new_seq_mask = np.array(["#"] * max_len)
+            mask = np.full(max_len, True)
+            mask[idx_pads] = False
+            new_seq[mask] = np.array(seq)
+            new_seq_mask[mask] = np.array(seq)
+            if start.size != 0 and end.size == 0:
+                new_seq[~mask] = np.array(seq[:len(start)])
+            elif start.size == 0 and end.size != 0:
+                    new_seq[~mask] = np.array(seq[-len(end):])
+            else:
+                new_seq[~mask] = np.concatenate([np.array(seq[:len(start)]),np.array(seq[-len(end):])])
+            return (new_seq.tolist(), new_seq_mask.tolist())
+        else:
+            return (seq,seq)
+
+class PointMutations(object):
+    """Performs single o several point mutations to the sequences and pads them"""
+    def __init__(self,sequences,seq_max_len,method,n_mutations):
+        self.sequences = sequences
+        self.seq_max_len = seq_max_len
+        self.method = method
+        self.n_mutations = n_mutations
+        self.random_seeds = list(range(len(sequences)))
+        self.aminoacids_list = np.array(list(VegvisirUtils.aminoacid_names_dict(20).keys()))
+
+
+    def run(self):
+
+        #TODO: Cannot use the dictionary since it runs the map functions, useful for quick testing of all methods
+
+        # padded_sequences = {"no_padding": list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len,self.n_mutations),self.sequences,self.random_seeds)),
+        #                     "ends": list(map(lambda seq,seed: self.ends_padding(seq,seed, self.seq_max_len,self.n_mutations),self.sequences,self.random_seeds)),
+        #                     "random":list(map(lambda seq,seed: self.random_padding(seq,seed, self.seq_max_len,self.n_mutations), self.sequences,self.random_seeds)),
+        #                     "borders":list(map(lambda seq,seed: self.border_padding(seq,seed, self.seq_max_len,self.n_mutations), self.sequences,self.random_seeds)),
+        #                     "replicated_borders":list(map(lambda seq,seed: self.replicated_border_padding(seq,seed, self.seq_max_len,self.n_mutations), self.sequences,self.random_seeds))
+        #                     }
+
+
+        if self.method == "no_padding":
+            result = list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len,self.n_mutations),self.sequences,self.random_seeds))
+        elif self.method == "ends":
+            result = list(map(lambda seq,seed: self.ends_padding(seq,seed, self.seq_max_len,self.n_mutations),self.sequences,self.random_seeds))
+        elif self.method == "random":
+            result = list(map(lambda seq,seed: self.random_padding(seq,seed, self.seq_max_len,self.n_mutations), self.sequences,self.random_seeds))
+        elif self.method == "borders":
+            result = list(map(lambda seq,seed: self.border_padding(seq,seed, self.seq_max_len,self.n_mutations), self.sequences,self.random_seeds))
+        elif self.method == "replicated_borders":
+            result = list(map(lambda seq,seed: self.replicated_border_padding(seq,seed, self.seq_max_len,self.n_mutations), self.sequences,self.random_seeds))
+        else:
+            raise ValueError("Padding method <{}> not implemented, please choose among <no_padding,ends,random,borders,replicated_borders>".format(self.method))
+
+        return result
+
+    def no_padding(self,seq,seed,max_len,shuffle):
+        if self.n_mutations > len(seq):
+            n_mutations = len(seq)
+        else:
+            n_mutations = self.n_mutations
+
+        random.seed(seed)
+        idx_mutation = random.sample(range(len(seq)), n_mutations)
+        mutated_aminoacids = np.array(self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
+        seq = np.array(list(seq))
+        if (seq[idx_mutation] != mutated_aminoacids).all():
+            seq[idx_mutation] = np.array(list(mutated_aminoacids))
+        else:
+            random.seed(seed + 1)
+            mutated_aminoacids = np.array(
+                self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
+            seq[idx_mutation] = np.array(list(mutated_aminoacids))
+
+        return (list(seq),list(seq))
+
+
+    def ends_padding(self,seq,seed,max_len,shuffle):
+
+        if self.n_mutations > len(seq):
+            n_mutations = len(seq)
+        else:
+            n_mutations = self.n_mutations
+
+        random.seed(seed)
+        idx_mutation = random.sample(range(len(seq)), n_mutations)
+        mutated_aminoacids = np.array(self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
+        seq = np.array(list(seq))
+        if (seq[idx_mutation] != mutated_aminoacids).all():
+            seq[idx_mutation] = np.array(list(mutated_aminoacids))
+        else:
+            random.seed(seed + 1)
+            mutated_aminoacids = np.array(self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
+            seq[idx_mutation] = np.array(list(mutated_aminoacids))
+
+        seq = "".join(seq)
+
+
+        return (list(seq.ljust(max_len, "#")),list(seq.ljust(max_len, "#")))
+
+    def random_padding(self,seq,seed, max_len,shuffle):
+        """Randomly pad sequence. Introduces <n pads> in random places until max_len"""
+
+        if self.n_mutations > len(seq):
+            n_mutations = len(seq)
+        else:
+            n_mutations = self.n_mutations
+
+        random.seed(seed)
+        idx_mutation = random.sample(range(len(seq)), n_mutations)
+        mutated_aminoacids = np.array(self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
+        seq = np.array(list(seq))
+        if (seq[idx_mutation] != mutated_aminoacids).all():
+            seq[idx_mutation] = np.array(list(mutated_aminoacids))
+        else:
+            random.seed(seed + 1)
+            mutated_aminoacids = np.array(
+                self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
+            seq[idx_mutation] = np.array(list(mutated_aminoacids))
+        pad = max_len - len(seq)
+        seq = list(seq)
+        if pad != 0:
+            idx = np.array(random.sample(range(0, max_len), pad), dtype=int)
+            new_seq = np.array(["#"] * max_len)
+            mask = np.full(max_len, True)
+            mask[idx] = False
+            new_seq[mask] = np.array(seq)
+            return (new_seq.tolist(),new_seq.tolist())
+        else:
+            return (seq,seq)
+
+    def border_padding(self,seq,seed, max_len,shuffle):
+        """For sequences shorter than seq_max_len introduced padding in the beginning and the ends of the sequences.
+        If the amount of padding needed is divisible by 2 then the padding is shared evenly at the bginning and the end of the sequence.
+        Otherwise randomly, the beginning or the end of the sequence will receive more padding"""
+
+        if self.n_mutations > len(seq):
+            n_mutations = len(seq)
+        else:
+            n_mutations = self.n_mutations
+
+        random.seed(seed)
+        idx_mutation = random.sample(range(len(seq)), n_mutations)
+        mutated_aminoacids = np.array(self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
+        seq = np.array(list(seq))
+        if (seq[idx_mutation] != mutated_aminoacids).all():
+            seq[idx_mutation] = np.array(list(mutated_aminoacids))
+        else:
+            random.seed(seed + 1)
+            mutated_aminoacids = np.array(
+                self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
+            seq[idx_mutation] = np.array(list(mutated_aminoacids))
+
+        pad = max_len - len(seq)
+        seq = list(seq)
+        if pad != 0:
+            half_pad = pad / 2
+            even_pad = [True if pad % 2 == 0 else False][0]
+            if even_pad:#same amount of padding added at the beginning and the end of the sequence
+                idx_pads = np.concatenate(
+                    [np.arange(0, int(half_pad)), np.arange(max_len - int(half_pad), max_len)])
+            else:
+                idx_choice = np.array(random.sample(range(0, 1), 1),dtype=int).item()  # random choice of adding the extra padding to the beginning or end
+                idx_pads_dict = {0: np.concatenate([np.arange(0, int(half_pad) + 1), np.arange(max_len - int(half_pad), max_len)]),
+                                 1: np.concatenate([np.arange(0, int(half_pad)),np.arange(max_len - (int(half_pad) + 1), max_len)])}
+                idx_pads = idx_pads_dict[idx_choice]
+
+            new_seq = np.array(["#"] * max_len)
+            mask = np.full(max_len, True)
+            mask[idx_pads] = False
+            new_seq[mask] = np.array(seq)
+            return (new_seq.tolist(),new_seq.tolist())
+        else:
+            return (seq,seq)
+
+    def replicated_border_padding(self, seq,seed, max_len,shuffle):
+        """
+        Inspired by "replicated" padding in Convolutional NN https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
+        For sequences shorter than seq_max_len introduced padding in the beginning and the ends of the sequences.
+        If the amount of padding needed is divisible by 2 then the padding is shared evenly at the bginning and the end of the sequence.
+        Otherwise randomly, the beginning or the end of the sequence will receive more padding"""
+        if self.n_mutations > len(seq):
+            n_mutations = len(seq)
+        else:
+            n_mutations = self.n_mutations
+
+        random.seed(seed)
+        idx_mutation = random.sample(range(len(seq)), n_mutations)
+        mutated_aminoacids = np.array(self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
+        seq = np.array(list(seq))
+        if (seq[idx_mutation] != mutated_aminoacids).all():
+            seq[idx_mutation] = np.array(list(mutated_aminoacids))
+        else:
+            random.seed(seed + 1)
+            mutated_aminoacids = np.array(self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
+            seq[idx_mutation] = np.array(list(mutated_aminoacids))
+        #TODO: Not reviewed
+
+        pad = max_len - len(seq)
+        seq = list(seq)
+        if pad != 0:
+            half_pad = pad / 2
+            even_pad = [True if pad % 2 == 0 else False][0]
+            if even_pad:  # same amount of paddng added at the beginning and the end of the sequence
+                start = np.arange(0, int(half_pad))
+                end = np.arange(max_len - int(half_pad), max_len)
+                idx_pads = np.concatenate(
+                    [start, end])
+            else:
+                idx_choice = np.array(random.sample(range(0, 1), 1),
+                                      dtype=int).item()  # random choice of adding the extra padding to the beginning or end
+                start_0 = np.arange(0, int(half_pad) + 1)
+                end_0 = np.arange(max_len - int(half_pad), max_len)
+                start_1 = np.arange(0, int(half_pad))
+                end_1 = np.arange(max_len - (int(half_pad) + 1), max_len)
+                idx_pads_dict = {
+                    0: [np.concatenate([start_0, end_0]),start_0,end_0],
+                    1: [np.concatenate([start_1, end_1]),start_1,end_0]}
+                idx_pads,start,end = idx_pads_dict[idx_choice]
+
+            new_seq = np.array(["#"] * max_len)
+            new_seq_mask = np.array(["#"] * max_len)
+            mask = np.full(max_len, True)
+            mask[idx_pads] = False
+            new_seq[mask] = np.array(seq)
+            new_seq_mask[mask] = np.array(seq)
+            if start.size != 0 and end.size == 0:
+                new_seq[~mask] = np.array(seq[:len(start)])
+            elif start.size == 0 and end.size != 0:
+                    new_seq[~mask] = np.array(seq[-len(end):])
+            else:
+                new_seq[~mask] = np.concatenate([np.array(seq[:len(start)]),np.array(seq[-len(end):])])
+            return (new_seq.tolist(), new_seq_mask.tolist())
+        else:
+            return (seq,seq)
+
+
 
 
 

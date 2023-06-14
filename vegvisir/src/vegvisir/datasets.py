@@ -94,7 +94,7 @@ def select_filters(args):
 
     return filters_dict,analysis_mode
 
-def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file):
+def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,unobserved=False):
     """Filters, groups and prepares the files from the viral_dataset*() functions"""
     if filters_dict["filter_ntested"][0]:
         # Highlight: Filter the points with low subject count and only keep if all "negative"
@@ -105,7 +105,6 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file):
         dataset_info_file.write("Filter 1: Icores with number of subjects lower than {}. Drops {} data points, remaining {} \n".format(threshold,nprefilter - nfiltered, nfiltered))
 
     data["immunodominance_score"] = data["Assay_number_of_subjects_responded"] / data["Assay_number_of_subjects_tested"]
-
     data = data.fillna({"immunodominance_score":0})
 
     if filters_dict["corrected_immunodominance_score"][0]:
@@ -114,7 +113,6 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file):
 
     # Highlight: Scale-standarize values . This is done here for visualization purposes, it is done afterwards separately for train, eval and test
     data = VegvisirUtils.minmax_scale(data, column_name="immunodominance_score", suffix="_scaled")
-
     if filters_dict["filter_kmers"][0]:
         #Highlight: Grab only k-mers
         use_column = filters_dict["filter_kmers"][2]
@@ -125,9 +123,16 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file):
         dataset_info_file.write("Filter 2: {} whose length is different than 9. Drops {} data points, remaining {} \n".format(use_column,kmer_size,nprefilter-nfiltered,nfiltered))
 
     #Highlight: Strict target reassignment
-    data.loc[data["immunodominance_score_scaled"] <= 0.,"target_corrected"] = 0 #["target"] = 0. #Strict target reassignment
-    #print(data_a.sort_values(by="immunodominance_score", ascending=True)[["immunodominance_score","target"]])
-    data.loc[data["immunodominance_score_scaled"] > 0.,"target_corrected"] = 1.
+    if unobserved:
+
+        data.loc[(data["immunodominance_score_scaled"] <= 0.) & (data["target_corrected"] != 2), "target_corrected"] = 0  # ["target"] = 0. #Strict target reassignment
+        # print(data_a.sort_values(by="immunodominance_score", ascending=True)[["immunodominance_score","target"]])
+        data.loc[(data["immunodominance_score_scaled"] > 0.) & (data["target_corrected"] != 2), "target_corrected"] = 1.
+    else:
+
+        data.loc[data["immunodominance_score_scaled"] <= 0., "target_corrected"] = 0  # ["target"] = 0. #Strict target reassignment
+        # print(data_a.sort_values(by="immunodominance_score", ascending=True)[["immunodominance_score","target"]])
+        data.loc[data["immunodominance_score_scaled"] > 0., "target_corrected"] = 1.
 
     #Highlight: Filter data points with low confidence (!= 0, 1)
     if filters_dict["filter_lowconfidence"][0]:
@@ -394,13 +399,21 @@ def viral_dataset6(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     data_unobserved = pd.read_csv("{}/{}/dataset_artificial_peptides_from_proteins_partitioned_hla.tsv".format(storage_folder,args.dataset_name),sep = "\s+") #Highlight: The sequences from the labelled dataset have been filtered for some reason
     data_unobserved.columns = ["Icore", "target", "partition", "source","allele"]
+    data_unobserved_partition = data_unobserved[["Icore","partition","source"]]
     data_unobserved = data_unobserved[(data_unobserved["source"] == "artificial")]
-    data_unobserved = data_unobserved.sample(n=5000)
-
+    #data_unobserved = data_unobserved.sample(n=args.num_unobserved,replace=False)
+    unique_partitions = data_unobserved["partition"].value_counts()
+    if args.num_unobserved < data_unobserved.shape[0]:
+        data_unobserved_list = []
+        for partition in unique_partitions.keys():
+            data_unobserved_i = data_unobserved.loc[(data_unobserved["partition"] == partition)]
+            data_unobserved_list.append(data_unobserved_i.sample(n=int((args.num_unobserved/len(unique_partitions.keys()))),replace=False))
+        data_unobserved = pd.concat(data_unobserved_list,axis=0)
     data = data_observed.merge(data_unobserved, on=['Icore', 'allele'], how='outer',suffixes=('_observed', '_unobserved'))
-
-    data = data.drop(["target_unobserved","partition_observed"],axis=1)
-    data = data.rename(columns={"target_unobserved": "target","partition_unobserved":"partition"})
+    data = data.drop(["target_unobserved","partition_observed","partition_unobserved"],axis=1)
+    data = data.merge(data_unobserved_partition,on=["Icore"],how="left",suffixes=('_observed', '_unobserved'))
+    data = data.drop(["source_observed"],axis=1)
+    data = data.rename(columns={"target_observed": "target","source_unobserved":"source"})
     data.loc[(data["source"] == "artificial"), "target"] = 2
 
     #Filter peptides/Icores with unknown aminoacids "X"
@@ -430,7 +443,11 @@ def viral_dataset6(dataset_name,script_dir,storage_folder,args,results_dir,updat
         data["allele_encoded"] = data["allele"]
         data.replace({"allele_encoded": allele_dict},inplace=True)
 
-    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
+    data["training"] = True
+    data.loc[(data["target"] == 2), "target_corrected"] = 2
+    data.loc[(data["target"] == 2), "confidence_score"] = 0
+    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,unobserved=True)
+
     data.loc[(data["target"] == 2), "target_corrected"] = 2
     data.loc[(data["target"] == 2), "confidence_score"] = 0
     data = pd.merge(data,data_species, on=['Icore'], how='left')
@@ -563,15 +580,26 @@ def viral_dataset8(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     data_unobserved = pd.read_csv("{}/{}/dataset_artificial_peptides_from_proteins_partitioned_hla.tsv".format(storage_folder,args.dataset_name),sep = "\s+") #Highlight: The sequences from the labelled dataset have been filtered for some reason
     data_unobserved.columns = ["Icore", "target", "partition", "source","allele"]
-    data_unobserved.loc[data_unobserved["source"] == "dataset_test","training"] = False
-    data_unobserved.loc[data_unobserved["source"] != "dataset_test","training"] = True
+    data_unobserved_partition = data_unobserved[["Icore","partition","source"]]
     data_unobserved = data_unobserved[(data_unobserved["source"] == "artificial")]
-    data_unobserved = data_unobserved.sample(n=5000)
+    unique_partitions = data_unobserved["partition"].value_counts()
+    if args.num_unobserved < data_unobserved.shape[0]:
+        data_unobserved_list = []
+        for partition in unique_partitions.keys():
+            data_unobserved_i = data_unobserved.loc[(data_unobserved["partition"] == partition)]
+            data_unobserved_list.append(data_unobserved_i.sample(n=int((args.num_unobserved/len(unique_partitions.keys()))),replace=False))
+        data_unobserved = pd.concat(data_unobserved_list,axis=0)
+
+    #data_unobserved = data_unobserved.sample(n=args.num_unobserved,replace=False)
     data = data_observed.merge(data_unobserved, on=['Icore', 'allele'], how='outer',suffixes=('_observed', '_unobserved'))
-    data = data.drop(["target_unobserved","partition_observed","training_unobserved"],axis=1)
-    data = data.rename(columns={"target_observed": "target","partition_unobserved":"partition","training_observed":"training"})
-    data['training'] = data['training'].fillna(True) #the nan values are from the unobserved values
+    data = data.drop(["target_unobserved","partition_observed","partition_unobserved"],axis=1)
+    data = data.merge(data_unobserved_partition,on=["Icore"],how="left",suffixes=('_observed', '_unobserved'))
+    data = data.drop(["source_observed"],axis=1)
+    data = data.rename(columns={"target_observed": "target","source_unobserved":"source"})
     data.loc[(data["source"] == "artificial"), "target"] = 2
+    data.loc[(data["source"] != "dataset_test"), "training"] = True
+    data.loc[(data["source"] == "dataset_test"), "training"] = False
+
 
     #Filter peptides/Icores with unknown aminoacids "X"
     data = data[~data['Icore'].str.contains("X")]
@@ -600,12 +628,14 @@ def viral_dataset8(dataset_name,script_dir,storage_folder,args,results_dir,updat
         data["allele_encoded"] = data["allele"]
         data.replace({"allele_encoded": allele_dict},inplace=True)
 
-    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
+
+    data.loc[(data["target"] == 2), "target_corrected"] = 2
+    data.loc[(data["target"] == 2), "confidence_score"] = 0
+    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,unobserved=True)
     data.loc[(data["target"] == 2), "target_corrected"] = 2
     data.loc[(data["target"] == 2), "confidence_score"] = 0
     data = pd.merge(data,data_species, on=['Icore'], how='left')
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
-
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
     return data_info
@@ -687,8 +717,7 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
     else:
         print("Folder structure existing")
     plot_mi,plot_frequencies,plot_cosine_similarity = False,False,False
-
-
+    #plot_mi,plot_frequencies,plot_cosine_similarity = True,True,True
     #Highlight: Encode amino acid by chemical group
     aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict,aa_by_groups_dict = VegvisirUtils.aminoacids_groups(aa_dict)
     aa_groups = len(groups_names_colors_dict.keys())
@@ -862,7 +891,6 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
 
         VegvisirMI.calculate_mi(epitopes_array_int_group_divison_test.high_confidence_negatives,epitopes_array_int_group_divison_test.high_confidence_negatives_mask,
                                 aa_groups,seq_max_len,"TestHighlyConfidentNegatives_int_group_division",storage_folder,args.dataset_name,"similarities/{}/Test/{}/neighbours1/highconfnegatives".format(args.sequence_type,analysis_mode))
-
 
 
         # identifiers = data.index.values.tolist()  # TODO: reset index in process data function?
@@ -1043,6 +1071,53 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
         labels = np.unique(clustering.labels_,return_counts=True)
 
     return all_sim_results
+
+def process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,sequences_list,data,storage_folder="/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/"):
+    """Pads, randomizes or mutates a list of sequences to be converted onto a numpy array"""
+    if len(unique_lens) > 1:  # Highlight: Pad the sequences (relevant when they differ in length)
+        aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types, zero_characters=["#"])
+        if args.random_sequences:
+            warnings.warn("Randomizing the sequence")
+            sequences_pad_result = VegvisirLoadUtils.SequenceRandomGeneration(sequences_list,seq_max_len,args.seq_padding).run()
+        elif args.num_mutations > 0:
+            warnings.warn(
+                "Performing {} mutaions to your sequence. If you do not wish to mutate your sequence please set n_mutations to 0")
+            sequences_pad_result = VegvisirLoadUtils.PointMutations(sequences_list, seq_max_len, args.seq_padding,
+                                                  args.num_mutations).run()
+        else:
+            if args.shuffle_sequence:
+                warnings.warn("shuffling the sequence sites for testing purposes")
+            sequences_pad_result = VegvisirLoadUtils.SequencePadding(sequences_list, seq_max_len, args.seq_padding,
+                                                                    args.shuffle_sequence).run()
+        sequences_padded, sequences_padded_mask = zip(*sequences_pad_result)  # unpack list of tuples onto 2 lists
+        
+        if args.random_sequences or args.num_mutations > 0:
+            VegvisirUtils.convert_to_pandas_dataframe(sequences_padded, data, storage_folder, args, use_test=True)
+
+        blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, args.subs_matrix,
+                                                                                   zero_characters=["#"],
+                                                                                   include_zero_characters=True)
+    else:
+        print("All sequences found to have the same length")
+        aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types)
+        if args.random_sequences:
+            warnings.warn("Randomizing the sequence")
+            sequences_pad_result = VegvisirLoadUtils.SequenceRandomGeneration(sequences_list,seq_max_len,"no_padding").run()
+        elif args.num_mutations > 0:
+            warnings.warn("Performing {} mutaions to your sequence. If you do not wish to mutate your sequence please set n_mutations to 0")
+            sequences_pad_result = VegvisirLoadUtils.PointMutations(sequences_list, seq_max_len, "no_padding",args.num_mutations).run()
+        else:
+            if args.shuffle_sequence:
+                warnings.warn("shuffling the sequence for testing purposes")
+            sequences_pad_result = VegvisirLoadUtils.SequencePadding(sequences_list, seq_max_len, "no_padding",args.shuffle_sequence).run()
+        sequences_padded, sequences_padded_mask = zip(*sequences_pad_result)  # unpack list of tuples onto 2 lists
+        blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, args.subs_matrix,
+                                                                                   zero_characters=[],
+                                                                                   include_zero_characters=False)
+
+    return sequences_padded,sequences_padded_mask,aa_dict,blosum_array,blosum_dict,blosum_array_dict
+    
+
 def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,features_names=None,plot_blosum=False,plot_umap=False):
     """
     Notes:
@@ -1060,32 +1135,8 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     corrected_aa_types = len(set().union(*epitopes_list))
     corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
 
+    epitopes_padded, epitopes_padded_mask, aa_dict, blosum_array, blosum_dict, blosum_array_dict = process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,epitopes_list,data)
 
-    if len(unique_lens) > 1: # Highlight: Pad the sequences (relevant when they differ in length)
-        aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types , zero_characters=["#"])
-        if args.shuffle_sequence:
-            warnings.warn("shuffling the sequence sites for testing purposes")
-        epitopes_pad_result = VegvisirLoadUtils.SequencePadding(epitopes_list,seq_max_len,args.seq_padding,args.shuffle_sequence).run()
-        epitopes_padded, epitopes_padded_mask = zip(*epitopes_pad_result) #unpack list of tuples onto 2 lists
-        blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types , args.subs_matrix,
-                                                                                   zero_characters= ["#"],
-                                                                                   include_zero_characters=True)
-
-    else:
-        print("All sequences found to have the same length")
-        aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types)
-        if args.shuffle_sequence:
-            warnings.warn("shuffling the sequence for testing purposes")
-
-        epitopes_pad_result = VegvisirLoadUtils.SequencePadding(epitopes_list, seq_max_len, "no_padding",args.shuffle_sequence).run()
-        epitopes_padded, epitopes_padded_mask = zip(*epitopes_pad_result)  # unpack list of tuples onto 2 lists
-        blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, args.subs_matrix,
-                                                                                   zero_characters=[],
-                                                                                   include_zero_characters=False)
-
-    if args.random_sequences:
-        epitopes_padded, epitopes_padded_mask = VegvisirUtils.generate_random_sequences(data, epitopes_list, seq_max_len, args, unique_lens, "/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/")
-    #VegvisirUtils.convert_to_pandas_dataframe(epitopes_padded,data,storage_folder,args,use_test=True)
 
     epitopes_array = np.array(epitopes_padded)
     if args.seq_padding == "replicated_borders":  # I keep it separately to avoid doing the np vectorized loop twice
@@ -1111,7 +1162,6 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     if plot_blosum:
         VegvisirPlots.plot_blosum_cosine(blosum_array, storage_folder, args)
 
-
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
     n_data = epitopes_array.shape[0]
@@ -1128,7 +1178,6 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
                                                kmers_cosine_similarity=None)
         positional_weights = np.ones((n_data,seq_max_len))
         positional_weights_mask = np.ones((n_data,seq_max_len)).astype(bool)
-
 
     #Highlight: Reattatch partition, identifier, label, immunodominance score
     labels = data[["target_corrected"]].values.tolist()

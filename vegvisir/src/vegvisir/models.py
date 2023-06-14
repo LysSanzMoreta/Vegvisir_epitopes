@@ -652,13 +652,13 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
             #with pyro.plate("plate_len", dim=-2, device=self.device):
             #with pyro.poutine.mask(mask=batch_mask_len_true):#highlight: removed .to_event(1)
             #with pyro.poutine.mask(mask=batch_mask_len):
-            pyro.sample("sequences",dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=[None if sample else batch_sequences_int][0])
+            pyro.sample("sequences",dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=None if sample else batch_sequences_int)
             #init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             class_logits = self.classifier_model(latent_space,None)
             class_logits = self.logsoftmax(class_logits) #[N,num_classes]
             pyro.deterministic("class_logits", class_logits,event_dim=1)
             with pyro.poutine.mask(mask=confidence_mask_true):
-                pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=[None if sample else true_labels][0])  # [N,]
+                pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=None if sample else true_labels)  # [N,]
 
 
         return {"attn_weights":outputnn.attn_weights}
@@ -716,7 +716,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
             # with pyro.plate("plate_len", dim=-2, device=self.device):
             # with pyro.poutine.mask(mask=batch_mask_len_true):#highlight: removed .to_event(1)
             #with pyro.poutine.mask(mask=batch_mask_len):
-            pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=[None if sample else batch_sequences_int][0])
+            pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=None if sample else batch_sequences_int)
             # init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             class_logits = self.classifier_model(latent_space, None)
             class_logits = self.logsoftmax(class_logits)  # [N,num_classes]
@@ -994,8 +994,9 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
             # with pyro.plate("plate_len", dim=-2, device=self.device):
             #with pyro.poutine.mask(mask=batch_mask_len_true):#highlight: removed .to_event(1)
             #with pyro.poutine.mask(mask=batch_mask_len):
-            pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len_true).mask(batch_mask_len).to_event(1),obs=[None if sample else batch_sequences_int][0])
+            pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len_true).mask(batch_mask_len).to_event(1),obs=None if sample else batch_sequences_int)
             # init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
+            print(latent_space.shape)
             class_logits = self.classifier_model(latent_space, None)
             class_logits = self.logsoftmax(class_logits)  # [N,num_classes]
             pyro.deterministic("class_logits", class_logits, event_dim=1)
@@ -1003,7 +1004,7 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
                 #with pyro.poutine.mask(mask=confidence_mask_true):
 
                 observed_labels = true_labels.clone()
-                observed_labels[~confidence_mask] = 0. #TODO: random labels
+                observed_labels[~confidence_mask] = 0. #TODO: random labels?
                 #print(true_labels)
                 #TODO: Try without to_event(1)
                 pyro.sample("predictions", dist.Categorical(logits=class_logits).mask(confidence_mask).to_event(1),obs=None if sample else observed_labels*confidence_mask)#,obs_mask=confidence_mask)  # [N,]
@@ -1066,14 +1067,14 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
             # with pyro.plate("plate_len", dim=-2, device=self.device):
             # with pyro.poutine.mask(mask=batch_mask_len_true):#highlight: removed .to_event(1)
             #with pyro.poutine.mask(mask=batch_mask_len):
-            pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=[None if sample else batch_sequences_int][0])
+            pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=None if sample else batch_sequences_int)
             # init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             class_logits = self.classifier_model(latent_space, None)
             class_logits = self.logsoftmax(class_logits)  # [N,num_classes]
             pyro.deterministic("class_logits", class_logits, event_dim=1)
             with pyro.poutine.mask(mask=confidence_mask_true):
                 with pyro.poutine.mask(mask=confidence_mask):
-                    pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=[None if sample else true_labels][0])  # [N,]
+                    pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=None if sample else true_labels)  # [N,]
 
         return {"attn_weights": outputnn.attn_weights}
 

@@ -24,3 +24,7 @@ vegvisir/src/vegvisir/tests/utils/__init__.py
 vegvisir/src/vegvisir/tests/test_semisupervised.py
 
 vegvisir/src/vegvisir/tests/utils/vae_plots.py
+
+run0.sh
+
+run1.sh
