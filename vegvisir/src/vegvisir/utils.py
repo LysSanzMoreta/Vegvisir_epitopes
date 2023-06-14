@@ -7,6 +7,8 @@ Vegvisir :
 import argparse
 import ast,warnings
 import Bio.Align
+from Bio.SeqUtils.IsoelectricPoint import IsoelectricPoint as IP
+from Bio.SeqUtils.ProtParam import ProteinAnalysis
 import numpy as np
 import os,shutil
 from collections import defaultdict
@@ -1100,6 +1102,29 @@ def convert_to_pandas_dataframe(epitopes_padded,data,storage_folder,args,use_tes
         data_valid.to_csv("{}/{}/viral_nnalign_input_valid_{}_no_test_partition_4_{}.tsv".format(storage_folder, args.dataset_name,shuffled,shifted),
                           sep="\t",
                           index=False, header=None)  # TODO: Header None?
+
+def calculate_isoelectric(seq):
+    seq = "".join(seq).replace("#","")
+    isoelectric = IP(seq).pi()
+    return isoelectric
+
+def calculate_molecular_weight(seq):
+    seq = "".join(seq).replace("#","")
+    molecular_weight = ProteinAnalysis(seq).molecular_weight()
+    return molecular_weight
+
+def calculate_aromaticity(seq):
+    seq = "".join(seq).replace("#","")
+    aromaticity = ProteinAnalysis(seq).aromaticity()
+    return aromaticity
+
+def calculate_hydropathy(seq):
+    "GRAVY (grand average of hydropathy)"
+    seq = "".join(seq).replace("#","")
+    hydropathy = ProteinAnalysis(seq).gravy()
+    return hydropathy
+
+
 
 
 

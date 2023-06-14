@@ -21,6 +21,7 @@ else:#pip installed module
      import vegvisir
 from vegvisir import str2bool,str2None
 import vegvisir.utils as VegvisirUtils
+#os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 print("Loading Vegvisir module from {}".format(vegvisir.__file__))
 now = datetime.datetime.now()
 def main():
@@ -29,14 +30,14 @@ def main():
     2) Execute Vegvisir"""
 
     if args.shuffle_sequence:
-        suffix = "shuffled"
+        suffix = "_shuffled"
     elif args.random_sequences:
-        suffix = "random"
+        suffix = "_random"
     elif args.num_mutations > 0:
-        suffix = "{}_mutations_positions_{}".format(args.num_mutations,args.idx_mutations if args.idx_mutations is not None else "random")
+        suffix = "_{}_mutations_positions_{}".format(args.num_mutations,args.idx_mutations if args.idx_mutations is not None else "random")
     else:
         suffix = ""
-    results_dir = "{}/PLOTS_Vegvisir_{}_{}_{}epochs_{}_{}_{}".format(script_dir, args.dataset_name, now.strftime("%Y_%m_%d_%Hh%Mmin%Ss%fms"),args.num_epochs,args.learning_type,args.sequence_type,suffix)
+    results_dir = "{}/PLOTS_Vegvisir_{}_{}_{}epochs_{}_{}{}".format(script_dir, args.dataset_name, now.strftime("%Y_%m_%d_%Hh%Mmin%Ss%fms"),args.num_epochs,args.learning_type,args.sequence_type,suffix)
     VegvisirUtils.folders(ntpath.basename(results_dir), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Train"), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Valid"), script_dir)
@@ -69,7 +70,7 @@ if __name__ == "__main__":
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=1, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=10, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=False, help='True: Use GPU; False: Use CPU')
 
     #TODO: include more blosum matrix types?

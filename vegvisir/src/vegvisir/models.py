@@ -996,7 +996,6 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
             #with pyro.poutine.mask(mask=batch_mask_len):
             pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len_true).mask(batch_mask_len).to_event(1),obs=None if sample else batch_sequences_int)
             # init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
-            print(latent_space.shape)
             class_logits = self.classifier_model(latent_space, None)
             class_logits = self.logsoftmax(class_logits)  # [N,num_classes]
             pyro.deterministic("class_logits", class_logits, event_dim=1)

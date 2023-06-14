@@ -638,6 +638,8 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
         aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=[])
     else:
         aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=["#"])
+
+    aminoacids_dict_reversed = {val:key for key,val in aminoacids_dict.items()}
     hydropathy_dict = {aminoacids_dict[key]:value for key,value in hydropathy_dict.items()}
     volume_dict = {aminoacids_dict[key]:value for key,value in volume_dict.items()}
     radius_dict = {aminoacids_dict[key]:value for key,value in radius_dict.items()}
@@ -648,9 +650,12 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     data_int = predictions_dict["data_int_{}".format(sample_mode)]
     sequences = data_int[:,1:].squeeze(1)
     sequences_mask = np.array((sequences == 0))
-    hydropathy_scores = np.vectorize(hydropathy_dict.get)(sequences)
-    hydropathy_scores = np.ma.masked_array(hydropathy_scores, mask=sequences_mask, fill_value=0)
-    hydropathy_scores = np.ma.sum(hydropathy_scores, axis=1)
+    sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(sequences)
+    sequences_list = sequences_raw.tolist()
+
+    # hydropathy_scores = np.vectorize(hydropathy_dict.get)(sequences)
+    # hydropathy_scores = np.ma.masked_array(hydropathy_scores, mask=sequences_mask, fill_value=0)
+    # hydropathy_scores = np.ma.mean(hydropathy_scores, axis=1)
     
     volume_scores = np.vectorize(volume_dict.get)(sequences)
     volume_scores = np.ma.masked_array(volume_scores, mask=sequences_mask, fill_value=0)
@@ -664,11 +669,12 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     side_chain_pka_scores = np.ma.masked_array(side_chain_pka_scores, mask=sequences_mask, fill_value=0)
     side_chain_pka_scores = np.ma.sum(side_chain_pka_scores, axis=1)
 
-    isoelectric_scores = np.vectorize(isoelectric_dict.get)(sequences)
-    isoelectric_scores = np.ma.masked_array(isoelectric_scores, mask=sequences_mask, fill_value=0)
-    isoelectric_scores = np.ma.sum(isoelectric_scores, axis=1)
+    isoelectric_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_list)))
+    aromaticity_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_list)))
+    hydropathy_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_list)))
 
-    fig, [ax0,ax1,ax2] = plt.subplots(1, 3,figsize=(22,15))
+
+    fig, [[ax0,ax1,ax2],[ax3,ax4,ax5]] = plt.subplots(2, 3,figsize=(22,22))
 
     clusters_info = defaultdict(lambda : defaultdict(lambda : defaultdict()))
     i = 0
@@ -677,6 +683,9 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     all_hydropathy = []
     all_volumes = []
     all_radius = []
+    all_isoelectric = []
+    all_aromaticity = []
+    all_side_chain_pka = []
     all_colors = []
     label_locations = []
     for cluster in range(n_clusters):
@@ -685,11 +694,16 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
         idx_observed = (data_int_cluster[:, 0, 0][..., None] != 2).any(-1)
         for mode,idx in zip(["observed","unobserved"],[idx_observed,np.invert(idx_observed)]):
             sequences_cluster = data_int_cluster[idx][:, 1:].squeeze(1)
+            sequences_raw_cluster = np.vectorize(aminoacids_dict_reversed.get)(sequences)
+            sequences_raw_list = sequences_raw.tolist()
             if sequences_cluster.size != 0:
                 sequences_mask = np.array((sequences_cluster == 0))
-                hydropathy = np.vectorize(hydropathy_dict.get)(sequences_cluster)
-                hydropathy = np.ma.masked_array(hydropathy,mask=sequences_mask,fill_value=0)
-                hydropathy = np.ma.sum(hydropathy,axis=1)
+                # hydropathy = np.vectorize(hydropathy_dict.get)(sequences_cluster)
+                # hydropathy = np.ma.masked_array(hydropathy,mask=sequences_mask,fill_value=0)
+                # hydropathy = np.ma.sum(hydropathy,axis=1)
+                hydropathy = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_raw_list)))
+                aromaticity = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_raw_list)))
+
                 volumes = np.vectorize(volume_dict.get)(sequences_cluster)
                 volumes = np.ma.masked_array(volumes,mask=sequences_mask,fill_value=0)
                 volumes = np.ma.sum(volumes,axis=1)
@@ -700,23 +714,26 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 side_chain_pka = np.ma.masked_array(side_chain_pka,mask=sequences_mask,fill_value=0)
                 side_chain_pka = np.ma.sum(side_chain_pka,axis=1)
 
-                isoelectric = np.vectorize(isoelectric_dict.get)(sequences_cluster)
-                isoelectric = np.ma.masked_array(isoelectric,mask=sequences_mask,fill_value=0)
-                isoelectric = np.ma.sum(isoelectric,axis=1)
-                
+                # isoelectric = np.vectorize(isoelectric_dict.get)(sequences_cluster)
+                # isoelectric = np.ma.masked_array(isoelectric,mask=sequences_mask,fill_value=0)
+                # isoelectric = np.ma.sum(isoelectric,axis=1)
+                isoelectric = np.array(list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_list)))
 
                 clusters_info["Cluster_{}".format(cluster)][mode]["hydrophobicity"] = hydropathy.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["volumes"] = volumes.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["radius"] = radius.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["side_chain_pka"] = side_chain_pka.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["isoelectric"] = isoelectric.mean()
+                clusters_info["Cluster_{}".format(cluster)][mode]["aromaticity"] = aromaticity.mean()
 
-
+                all_side_chain_pka.append(side_chain_pka)
+                all_isoelectric.append(isoelectric)
                 all_hydropathy.append(hydropathy)
                 all_volumes.append(volumes)
                 all_radius.append(radius)
+                all_aromaticity.append(aromaticity)
                 all_colors.append(colors_cluster_dict[cluster])
-                labels.append("Cluster {}, {}".format(cluster,mode))
+                labels.append("Cluster {}, \n {}".format(cluster,mode))
                 label_locations.append(i + 0.2)
                 i+=0.4
 
@@ -736,32 +753,56 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                      patch_artist=True,  # fill with color
                      labels=labels
                      )  # olor=colors_cluster_dict[cluster])  # color=colors_cluster_dict[cluster]
+    boxplot3 = ax3.boxplot( all_isoelectric,
+                     vert=True,  # vertical box alignment
+                     patch_artist=True,  # fill with color
+                     labels=labels
+                     )  # olor=colors_cluster_dict[cluster])  # color=colors_cluster_dict[cluster]
+
+    boxplot4 = ax4.boxplot( all_side_chain_pka,
+                     vert=True,  # vertical box alignment
+                     patch_artist=True,  # fill with color
+                     labels=labels
+                     )  # olor=colors_cluster_dict[cluster])  # color=colors_cluster_dict[cluster]
+    boxplot5 = ax4.boxplot( all_aromaticity,
+                     vert=True,  # vertical box alignment
+                     patch_artist=True,  # fill with color
+                     labels=labels
+                     )  # olor=colors_cluster_dict[cluster])  # color=colors_cluster_dict[cluster]
 
 
     # fill with colors
     #colors = ['pink', 'lightblue', 'lightgreen',"gold"]
-    for bplot in (boxplot0, boxplot1,boxplot2):
+    for bplot in (boxplot0, boxplot1,boxplot2,boxplot3,boxplot4,boxplot5):
         for patch, color in zip(bplot['boxes'], all_colors):
             patch.set_facecolor(color)
 
     ax0.set_title("Hydrophobicity")
-    #ax0.set_xticks(label_locations)
-    #ax0.set_xticklabels(labels=labels0,rotation=45,fontsize=8)
     ax1.set_title("Volumes")
     ax2.set_title("Radius")
+    ax3.set_title("Isoelectric")
+    ax4.set_title("Side chain PKA")
+    ax5.set_title("Aromaticity")
+
+
 
     ax0.set_xticklabels(rotation=90,labels=labels)
     ax1.set_xticklabels(rotation=90,labels=labels)
     ax2.set_xticklabels(rotation=90,labels=labels)
+    ax3.set_xticklabels(rotation=90,labels=labels)
+    # ax4.set_xticklabels(rotation=90,labels=labels)
+    # ax5.set_xticklabels(rotation=90,labels=labels)
+
+
 
     #ax1.set_xticks(label_locations)
-    3#ax1.set_xticklabels(labels=labels1,rotation=45,fontsize=8)
+    #ax1.set_xticklabels(labels=labels1,rotation=45,fontsize=8)
     #plt.legend(handles=[negative_patch,positive_patch], prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5),ncol=1)
     plt.savefig("{}/{}/clusters_features_{}".format(results_dir,method,sample_mode))
     plt.clf()
     plt.close(fig)
 
-    return hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,clusters_info
+    return hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,aromaticity_scores,clusters_info
 
 def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4):
 
@@ -772,8 +813,8 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
     if vector_name == "latent_space_z":
         cluster_assignments = MiniBatchKMeans(n_clusters=n_clusters, random_state=0, batch_size=100, max_iter=10, reassignment_ratio=0).fit_predict(umap_proj)
         colors_clusters = np.vectorize(colors_cluster_dict.get)(cluster_assignments)
-        #dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method
-        hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,clusters_info=plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
+
+        hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,aromaticity_scores,clusters_info=plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
 
         #Highlight: Hydropathy
         hydropathy_scores_unique = np.unique(hydropathy_scores)
@@ -807,6 +848,13 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
         colormap_isoelectric = matplotlib.cm.get_cmap('magma', len(isoelectric_scores_unique.tolist()))
         colors_dict = dict(zip(isoelectric_scores_unique, colormap_isoelectric.colors))
         colors_isoelectric = np.vectorize(colors_dict.get, signature='()->(n)')(isoelectric_scores)
+        
+        #Highlight: aromaticity scores
+        aromaticity_scores_unique = np.unique(aromaticity_scores)
+        aromaticity_scores, aromaticity_scores_unique = VegvisirUtils.replace_nan(aromaticity_scores,aromaticity_scores_unique)
+        colormap_aromaticity = matplotlib.cm.get_cmap('cividis', len(aromaticity_scores_unique.tolist()))
+        colors_dict = dict(zip(aromaticity_scores_unique, colormap_aromaticity.colors))
+        colors_aromaticity = np.vectorize(colors_dict.get, signature='()->(n)')(aromaticity_scores)
 
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,0])
     if method == "_single_sample":
@@ -882,27 +930,29 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
         ax14.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_isoelectric, alpha=alpha, s=30)
         ax14.set_title("Coloured by Isoelectric point")
         fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_isoelectric,norm=Normalize(vmin=np.min(isoelectric_scores_unique),vmax=np.max(isoelectric_scores_unique))), ax=ax14)
+
+        ax15.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_aromaticity, alpha=alpha, s=30)
+        ax15.set_title("Coloured by aromaticity")
+        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_aromaticity,norm=Normalize(vmin=np.min(aromaticity_scores_unique),vmax=np.max(aromaticity_scores_unique))), ax=ax15)
     else:
         ax9.axis("off")
         ax10.axis("off")
         ax11.axis("off")
         ax13.axis("off")
         ax14.axis("off")
+        ax15.axis("off")
 
     ax4.axis("off")
     ax8.axis("off")
     ax12.axis("off")
-    ax15.axis("off")
     ax16.axis("off")
-
-
 
     fig.suptitle("UMAP of {}".format(vector_name))
 
     negative_patch = mpatches.Patch(color=colors_dict_labels[0], label='Class 0')
     positive_patch = mpatches.Patch(color=colors_dict_labels[1], label='Class 1')
     fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
-    plt.legend(handles=[negative_patch,positive_patch], prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5),ncol=1)
+    plt.legend(handles=[negative_patch,positive_patch], prop={'size': 20},loc= 'center right',bbox_to_anchor=(1.5,2.5),ncol=1)
     plt.savefig("{}/{}/umap_{}_{}".format(results_dir,method,vector_name,sample_mode))
     plt.clf()
     plt.close(fig)
