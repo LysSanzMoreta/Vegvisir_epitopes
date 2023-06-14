@@ -1077,16 +1077,16 @@ def process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,sequences_
     if len(unique_lens) > 1:  # Highlight: Pad the sequences (relevant when they differ in length)
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types, zero_characters=["#"])
         if args.random_sequences:
-            warnings.warn("Randomizing the sequence")
+            warnings.warn("Randomizing the sequence.If you do not wish to randomize the sequence please set args.random_sequences to False")
             sequences_pad_result = VegvisirLoadUtils.SequenceRandomGeneration(sequences_list,seq_max_len,args.seq_padding).run()
         elif args.num_mutations > 0:
             warnings.warn(
                 "Performing {} mutaions to your sequence. If you do not wish to mutate your sequence please set n_mutations to 0")
             sequences_pad_result = VegvisirLoadUtils.PointMutations(sequences_list, seq_max_len, args.seq_padding,
-                                                  args.num_mutations).run()
+                                                  args.num_mutations,args.idx_mutations).run()
         else:
             if args.shuffle_sequence:
-                warnings.warn("shuffling the sequence sites for testing purposes")
+                warnings.warn("Shuffling the sequence sites for testing purposes. If you do not wish to randomize the sequence please set args.shuffle_sequences to False")
             sequences_pad_result = VegvisirLoadUtils.SequencePadding(sequences_list, seq_max_len, args.seq_padding,
                                                                     args.shuffle_sequence).run()
         sequences_padded, sequences_padded_mask = zip(*sequences_pad_result)  # unpack list of tuples onto 2 lists
@@ -1101,14 +1101,14 @@ def process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,sequences_
         print("All sequences found to have the same length")
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types)
         if args.random_sequences:
-            warnings.warn("Randomizing the sequence")
+            warnings.warn("Randomizing the sequence. If you do not wish to randomize the sequence please set args.random_sequences to False")
             sequences_pad_result = VegvisirLoadUtils.SequenceRandomGeneration(sequences_list,seq_max_len,"no_padding").run()
         elif args.num_mutations > 0:
-            warnings.warn("Performing {} mutaions to your sequence. If you do not wish to mutate your sequence please set n_mutations to 0")
-            sequences_pad_result = VegvisirLoadUtils.PointMutations(sequences_list, seq_max_len, "no_padding",args.num_mutations).run()
+            warnings.warn("Performing {} mutations to your sequence. If you do not wish to mutate your sequence please set n_mutations to 0".format(args.num_mutations))
+            sequences_pad_result = VegvisirLoadUtils.PointMutations(sequences_list, seq_max_len, "no_padding",args.num_mutations,args.idx_mutations).run()
         else:
             if args.shuffle_sequence:
-                warnings.warn("shuffling the sequence for testing purposes")
+                warnings.warn("Shuffling the sequence for testing purposes.If you do not wish to randomize the sequence please set args.shuffle_sequences to False")
             sequences_pad_result = VegvisirLoadUtils.SequencePadding(sequences_list, seq_max_len, "no_padding",args.shuffle_sequence).run()
         sequences_padded, sequences_padded_mask = zip(*sequences_pad_result)  # unpack list of tuples onto 2 lists
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, args.subs_matrix,

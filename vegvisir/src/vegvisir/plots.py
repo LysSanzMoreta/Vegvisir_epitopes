@@ -615,7 +615,6 @@ def plot_latent_vector(latent_space,predictions_dict,fold,results_dir,method):
     plt.clf()
     plt.close(fig)
 
-
 def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method):
     """
     Notes:
@@ -631,6 +630,10 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     volume_dict["#"] =0
     radius_dict= dict(zip(aminoacid_properties["1letter"].values.tolist(),aminoacid_properties["Radius"].values.tolist()))
     radius_dict["#"] =0
+    side_chain_pka_dict= dict(zip(aminoacid_properties["1letter"].values.tolist(),aminoacid_properties["side_chain_pka"].values.tolist()))
+    side_chain_pka_dict["#"] =0
+    isoelectric_dict= dict(zip(aminoacid_properties["1letter"].values.tolist(),aminoacid_properties["isoelectric_point"].values.tolist()))
+    isoelectric_dict["#"] =0
     if dataset_info.corrected_aa_types == 20:
         aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=[])
     else:
@@ -638,6 +641,8 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     hydropathy_dict = {aminoacids_dict[key]:value for key,value in hydropathy_dict.items()}
     volume_dict = {aminoacids_dict[key]:value for key,value in volume_dict.items()}
     radius_dict = {aminoacids_dict[key]:value for key,value in radius_dict.items()}
+    side_chain_pka_dict = {aminoacids_dict[key]:value for key,value in side_chain_pka_dict.items()}
+    isoelectric_dict = {aminoacids_dict[key]:value for key,value in isoelectric_dict.items()}
 
 
     data_int = predictions_dict["data_int_{}".format(sample_mode)]
@@ -654,8 +659,15 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     radius_scores = np.vectorize(radius_dict.get)(sequences)
     radius_scores = np.ma.masked_array(radius_scores, mask=sequences_mask, fill_value=0)
     radius_scores = np.ma.sum(radius_scores, axis=1)
-    
-    
+
+    side_chain_pka_scores = np.vectorize(side_chain_pka_dict.get)(sequences)
+    side_chain_pka_scores = np.ma.masked_array(side_chain_pka_scores, mask=sequences_mask, fill_value=0)
+    side_chain_pka_scores = np.ma.sum(side_chain_pka_scores, axis=1)
+
+    isoelectric_scores = np.vectorize(isoelectric_dict.get)(sequences)
+    isoelectric_scores = np.ma.masked_array(isoelectric_scores, mask=sequences_mask, fill_value=0)
+    isoelectric_scores = np.ma.sum(isoelectric_scores, axis=1)
+
     fig, [ax0,ax1,ax2] = plt.subplots(1, 3,figsize=(22,15))
 
     clusters_info = defaultdict(lambda : defaultdict(lambda : defaultdict()))
@@ -684,11 +696,20 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 radius = np.vectorize(radius_dict.get)(sequences_cluster)
                 radius = np.ma.masked_array(radius,mask=sequences_mask,fill_value=0)
                 radius = np.ma.sum(radius,axis=1)
+                side_chain_pka = np.vectorize(side_chain_pka_dict.get)(sequences_cluster)
+                side_chain_pka = np.ma.masked_array(side_chain_pka,mask=sequences_mask,fill_value=0)
+                side_chain_pka = np.ma.sum(side_chain_pka,axis=1)
+
+                isoelectric = np.vectorize(isoelectric_dict.get)(sequences_cluster)
+                isoelectric = np.ma.masked_array(isoelectric,mask=sequences_mask,fill_value=0)
+                isoelectric = np.ma.sum(isoelectric,axis=1)
                 
 
                 clusters_info["Cluster_{}".format(cluster)][mode]["hydrophobicity"] = hydropathy.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["volumes"] = volumes.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["radius"] = radius.mean()
+                clusters_info["Cluster_{}".format(cluster)][mode]["side_chain_pka"] = side_chain_pka.mean()
+                clusters_info["Cluster_{}".format(cluster)][mode]["isoelectric"] = isoelectric.mean()
 
 
                 all_hydropathy.append(hydropathy)
@@ -740,8 +761,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     plt.clf()
     plt.close(fig)
 
-    return hydropathy_scores,volume_scores,clusters_info
-
+    return hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,clusters_info
 
 def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4):
 
@@ -753,7 +773,7 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
         cluster_assignments = MiniBatchKMeans(n_clusters=n_clusters, random_state=0, batch_size=100, max_iter=10, reassignment_ratio=0).fit_predict(umap_proj)
         colors_clusters = np.vectorize(colors_cluster_dict.get)(cluster_assignments)
         #dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method
-        hydropathy_scores,volume_scores,clusters_info=plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
+        hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,clusters_info=plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
 
         #Highlight: Hydropathy
         hydropathy_scores_unique = np.unique(hydropathy_scores)
@@ -763,11 +783,30 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
         colors_hydropathy = np.vectorize(colors_dict.get, signature='()->(n)')(hydropathy_scores)
         # Highlight: Peptide volumes
         volume_scores_unique = np.unique(volume_scores)
-
         volume_scores, volume_scores_unique = VegvisirUtils.replace_nan(volume_scores,volume_scores_unique)
         colormap_volume = matplotlib.cm.get_cmap('magma', len(volume_scores_unique.tolist()))
         colors_dict = dict(zip(volume_scores_unique, colormap_volume.colors))
         colors_volume = np.vectorize(colors_dict.get, signature='()->(n)')(volume_scores)
+        #Highlight: Radius
+        radius_scores_unique = np.unique(radius_scores)
+        radius_scores, radius_scores_unique = VegvisirUtils.replace_nan(radius_scores,radius_scores_unique)
+        colormap_radius = matplotlib.cm.get_cmap('magma', len(radius_scores_unique.tolist()))
+        colors_dict = dict(zip(radius_scores_unique, colormap_radius.colors))
+        colors_radius = np.vectorize(colors_dict.get, signature='()->(n)')(radius_scores)
+
+        #Highlight: Side chain Pka
+        side_chain_pka_scores_unique = np.unique(side_chain_pka_scores)
+        side_chain_pka_scores, side_chain_pka_scores_unique = VegvisirUtils.replace_nan(side_chain_pka_scores,side_chain_pka_scores_unique)
+        colormap_side_chain_pka = matplotlib.cm.get_cmap('magma', len(side_chain_pka_scores_unique.tolist()))
+        colors_dict = dict(zip(side_chain_pka_scores_unique, colormap_side_chain_pka.colors))
+        colors_side_chain_pka = np.vectorize(colors_dict.get, signature='()->(n)')(side_chain_pka_scores)
+
+        #Highlight: Isoelectric scores
+        isoelectric_scores_unique = np.unique(isoelectric_scores)
+        isoelectric_scores, isoelectric_scores_unique = VegvisirUtils.replace_nan(isoelectric_scores,isoelectric_scores_unique)
+        colormap_isoelectric = matplotlib.cm.get_cmap('magma', len(isoelectric_scores_unique.tolist()))
+        colors_dict = dict(zip(isoelectric_scores_unique, colormap_isoelectric.colors))
+        colors_isoelectric = np.vectorize(colors_dict.get, signature='()->(n)')(isoelectric_scores)
 
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,0])
     if method == "_single_sample":
@@ -800,49 +839,63 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
     colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
     colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_binary_prediction_samples_frequencies"][:,1])
     alpha = 0.7
-    fig, [[ax1, ax2, ax3],[ax4,ax5,ax6],[ax7,ax8,ax9],[ax10,ax11,ax12],[ax13,ax14,ax15]] = plt.subplots(5, 3,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [4,4,4,4,4]})
+    fig, [[ax1, ax2, ax3,ax4],[ax5,ax6,ax7,ax8],[ax9,ax10,ax11,ax12],[ax13,ax14,ax15,ax16]] = plt.subplots(4, 4,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,4.5,1],'height_ratios': [4,4,4,4]})
     fig.suptitle('UMAP projections',fontsize=20)
     ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:,2], alpha=alpha,s=30)
     ax1.set_title("True labels",fontsize=20)
     if method == "_single_sample":
         ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha,s=30)
-        ax2.set_title("Predicted labels (single sample)",fontsize=20)
+        ax2.set_title("Predicted labels \n (single sample)",fontsize=20)
     else:
         ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha,s=30)
-        ax2.set_title("Predicted binary labels (samples mode)",fontsize=20)
+        ax2.set_title("Predicted binary labels \n (samples mode)",fontsize=20)
 
-    ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=alpha, s=30)
-    ax4.set_title("Confidence scores", fontsize=20)
-    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence),ax=ax4)
+    ax3.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=alpha, s=30)
+    ax3.set_title("Confidence scores", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence),ax=ax3)
     ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class0, alpha=alpha, s=30)
-    ax5.set_title("Probability class 0 (frequency argmax)", fontsize=20)
+    ax5.set_title("Probability class 0 \n (frequency argmax)", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable( norm = Normalize(0,1),cmap=colormap_frequency_class0),ax=ax5)
-    ax7.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=alpha, s=30)
-    ax7.set_title("Probability class 1 (frequency argmax)", fontsize=20)
-    fig.colorbar(plt.cm.ScalarMappable( cmap=colormap_frequency_class1),ax=ax7)
-    ax8.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=alpha, s=30)
-    ax8.set_title("Immunodominance scores", fontsize=20)
-    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance),ax=ax8)
+    ax6.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=alpha, s=30)
+    ax6.set_title("Probability class 1 \n (frequency argmax)", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable( cmap=colormap_frequency_class1),ax=ax6)
+    ax7.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=alpha, s=30)
+    ax7.set_title("Immunodominance scores", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance),ax=ax7)
     if vector_name == "latent_space_z":
-        ax10.scatter(umap_proj[:, 0],umap_proj[:, 1], c=colors_clusters, alpha=alpha,s=30)
-        ax10.set_title("Coloured by Kmeans cluster")
-        ax11.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_hydropathy, alpha=alpha, s=30)
-        ax11.set_title("Coloured by Hydrophobicity")
-        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_hydropathy,norm=Normalize(vmin=np.min(hydropathy_scores_unique),vmax=np.max(hydropathy_scores_unique))), ax=ax11)
-        ax13.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_volume, alpha=alpha, s=30)
-        ax13.set_title("Coloured by Peptide volume")
-        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_volume,norm=Normalize(vmin=np.min(volume_scores_unique),vmax=np.max(volume_scores_unique))), ax=ax13)
+
+        ax9.scatter(umap_proj[:, 0],umap_proj[:, 1], c=colors_clusters, alpha=alpha,s=30)
+        ax9.set_title("Coloured by Kmeans cluster")
+
+        ax10.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_hydropathy, alpha=alpha, s=30)
+        ax10.set_title("Coloured by Hydrophobicity")
+        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_hydropathy,norm=Normalize(vmin=np.min(hydropathy_scores_unique),vmax=np.max(hydropathy_scores_unique))), ax=ax10)
+
+        ax11.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_volume, alpha=alpha, s=30)
+        ax11.set_title("Coloured by Peptide volume")
+        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_volume,norm=Normalize(vmin=np.min(volume_scores_unique),vmax=np.max(volume_scores_unique))), ax=ax11)
+
+        ax13.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_side_chain_pka, alpha=alpha, s=30)
+        ax13.set_title("Coloured by Side chain pka")
+        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_volume,norm=Normalize(vmin=np.min(side_chain_pka_scores_unique),vmax=np.max(side_chain_pka_scores_unique))), ax=ax13)
+
+        ax14.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_isoelectric, alpha=alpha, s=30)
+        ax14.set_title("Coloured by Isoelectric point")
+        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_isoelectric,norm=Normalize(vmin=np.min(isoelectric_scores_unique),vmax=np.max(isoelectric_scores_unique))), ax=ax14)
     else:
+        ax9.axis("off")
         ax10.axis("off")
         ax11.axis("off")
         ax13.axis("off")
+        ax14.axis("off")
 
-    ax3.axis("off")
-    ax6.axis("off")
-    ax9.axis("off")
+    ax4.axis("off")
+    ax8.axis("off")
     ax12.axis("off")
-    ax14.axis("off")
     ax15.axis("off")
+    ax16.axis("off")
+
+
 
     fig.suptitle("UMAP of {}".format(vector_name))
 

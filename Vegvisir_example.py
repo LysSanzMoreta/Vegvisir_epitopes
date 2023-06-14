@@ -28,8 +28,15 @@ def main():
     1) Select the train/validation/test dataset
     2) Execute Vegvisir"""
 
-    shuffle = "shuffled" if args.shuffle_sequence else "non_shuffled"
-    results_dir = "{}/PLOTS_Vegvisir_{}_{}_{}epochs_{}_{}_{}".format(script_dir, args.dataset_name, now.strftime("%Y_%m_%d_%Hh%Mmin%Ss%fms"),args.num_epochs,args.learning_type,args.sequence_type,shuffle)
+    if args.shuffle_sequence:
+        suffix = "shuffled"
+    elif args.random_sequences:
+        suffix = "random"
+    elif args.num_mutations > 0:
+        suffix = "{}_mutations_positions_{}".format(args.num_mutations,args.idx_mutations if args.idx_mutations is not None else "random")
+    else:
+        suffix = ""
+    results_dir = "{}/PLOTS_Vegvisir_{}_{}_{}epochs_{}_{}_{}".format(script_dir, args.dataset_name, now.strftime("%Y_%m_%d_%Hh%Mmin%Ss%fms"),args.num_epochs,args.learning_type,args.sequence_type,suffix)
     VegvisirUtils.folders(ntpath.basename(results_dir), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Train"), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Valid"), script_dir)
@@ -62,7 +69,7 @@ if __name__ == "__main__":
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=2, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=1, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=False, help='True: Use GPU; False: Use CPU')
 
     #TODO: include more blosum matrix types?
@@ -94,7 +101,7 @@ if __name__ == "__main__":
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. If the sequence contains gaps, the script will use 20 aa + 1 gap character ')
     parser.add_argument('-st','--sequence-type', type=str, nargs='?', default="Icore", help='Define the type of peptide sequence to use:\n'
                                                                                 'Icore: Full peptide '
-                                                                                'Icore_non_anchor: Peptide without the anchoring points marked from NetMHCPan 4.1')
+                                                                                'Icore_non_anchor: Peptide without the anchoring points marked by NetMHCPan 4.1')
     parser.add_argument('-p','--seq-padding', type=str, nargs='?', default="ends", help='Controls how the sequences are padded to the length of the longest sequence \n'
                                                                                     '<ends>: The sequences are padded at the end'
                                                                                     '<borders>: The sequences are padded at the beginning and the end. Random choice when the pad is an even number'
@@ -102,8 +109,8 @@ if __name__ == "__main__":
                                                                                     '<random>: random insertion of 0 along the sequence')
     parser.add_argument('-shuffle','--shuffle_sequence', type=str2bool, nargs='?', default=False, help='Shuffling the sequence prior to padding for model stress-testing')
     parser.add_argument('-random','--random_sequences', type=str2bool, nargs='?', default=False, help='Create completely random peptide sequences for model stress-testing')
-    parser.add_argument('-mutations','--num_mutations', type=int, nargs='?', default=1, help='Mutate the original sequences n times for model stress-testing')
-
+    parser.add_argument('-mutations','--num_mutations', type=int, nargs='?', default=0, help='Mutate the original sequences n times for model stress-testing')
+    parser.add_argument('-idx-mutations','--idx_mutations', type=str, nargs='?', default=None, help='Positions where to perform the mutations for model stress-testing. Set to None otherwise')
 
     parser.add_argument('-z-dim','--z-dim', type=int, nargs='?', default=30, help='Latent space dimension')
     parser.add_argument('-beta-scale', type=int, nargs='?', default=1, help='Scaling the KL (p(z) | p(z \mid x)) of the variational autoencoder')

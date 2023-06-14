@@ -589,17 +589,22 @@ class SequenceRandomGeneration(object):
 
 class PointMutations(object):
     """Performs single o several point mutations to the sequences and pads them"""
-    def __init__(self,sequences,seq_max_len,method,n_mutations):
+    def __init__(self,sequences,seq_max_len,method,n_mutations,idx_mutations):
         self.sequences = sequences
         self.seq_max_len = seq_max_len
         self.method = method
         self.n_mutations = n_mutations
+        self.idx_mutations = np.array(eval(idx_mutations)) if idx_mutations is not None else None
         self.random_seeds = list(range(len(sequences)))
         self.aminoacids_list = np.array(list(VegvisirUtils.aminoacid_names_dict(20).keys()))
 
 
     def run(self):
 
+
+        if self.idx_mutations is not None and self.n_mutations != len(self.idx_mutations):
+            warnings.warn("num_mutations != len(idx_mutations), adjusting to same len")
+            self.n_mutations = len(self.idx_mutations)
         #TODO: Cannot use the dictionary since it runs the map functions, useful for quick testing of all methods
 
         # padded_sequences = {"no_padding": list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len,self.n_mutations),self.sequences,self.random_seeds)),
@@ -632,7 +637,10 @@ class PointMutations(object):
             n_mutations = self.n_mutations
 
         random.seed(seed)
-        idx_mutation = random.sample(range(len(seq)), n_mutations)
+        if self.idx_mutations is not None:
+            idx_mutation = self.idx_mutations
+        else:
+            idx_mutation = random.sample(range(len(seq)), n_mutations)
         mutated_aminoacids = np.array(self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
         seq = np.array(list(seq))
         if (seq[idx_mutation] != mutated_aminoacids).all():
@@ -654,7 +662,11 @@ class PointMutations(object):
             n_mutations = self.n_mutations
 
         random.seed(seed)
-        idx_mutation = random.sample(range(len(seq)), n_mutations)
+        if self.idx_mutations is not None:
+            idx_mutation = self.idx_mutations
+        else:
+            idx_mutation = random.sample(range(len(seq)), n_mutations)
+
         mutated_aminoacids = np.array(self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
         seq = np.array(list(seq))
         if (seq[idx_mutation] != mutated_aminoacids).all():
@@ -678,7 +690,10 @@ class PointMutations(object):
             n_mutations = self.n_mutations
 
         random.seed(seed)
-        idx_mutation = random.sample(range(len(seq)), n_mutations)
+        if self.idx_mutations is not None:
+            idx_mutation = self.idx_mutations
+        else:
+            idx_mutation = random.sample(range(len(seq)), n_mutations)
         mutated_aminoacids = np.array(self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
         seq = np.array(list(seq))
         if (seq[idx_mutation] != mutated_aminoacids).all():
@@ -711,7 +726,10 @@ class PointMutations(object):
             n_mutations = self.n_mutations
 
         random.seed(seed)
-        idx_mutation = random.sample(range(len(seq)), n_mutations)
+        if self.idx_mutations is not None:
+            idx_mutation = self.idx_mutations
+        else:
+            idx_mutation = random.sample(range(len(seq)), n_mutations)
         mutated_aminoacids = np.array(self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
         seq = np.array(list(seq))
         if (seq[idx_mutation] != mutated_aminoacids).all():
@@ -756,7 +774,10 @@ class PointMutations(object):
             n_mutations = self.n_mutations
 
         random.seed(seed)
-        idx_mutation = random.sample(range(len(seq)), n_mutations)
+        if self.idx_mutations is not None:
+            idx_mutation = self.idx_mutations
+        else:
+            idx_mutation = random.sample(range(len(seq)), n_mutations)
         mutated_aminoacids = np.array(self.aminoacids_list[np.random.choice(len(self.aminoacids_list), n_mutations)])
         seq = np.array(list(seq))
         if (seq[idx_mutation] != mutated_aminoacids).all():
