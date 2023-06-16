@@ -22,6 +22,8 @@ import vegvisir.load_utils as VegvisirLoadUtils
 from scipy import stats
 from joblib import Parallel, delayed
 import multiprocessing
+from collections import namedtuple
+PeptideFeatures = namedtuple("PeptideFeatures",["hydropathy_dict","volume_dict","radius_dict","side_chain_pka_dict","isoelectric_dict","bulkiness_dict"])
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 def str2bool(v):
     """Converts a string into a boolean, useful for boolean arguments
@@ -1123,6 +1125,63 @@ def calculate_hydropathy(seq):
     seq = "".join(seq).replace("#","")
     hydropathy = ProteinAnalysis(seq).gravy()
     return hydropathy
+
+class CalculatePeptideFeatures(object):
+    def __init__(self,seq_max_len,list_sequences,storage_folder):
+        self.storage_folder = storage_folder
+        self.seq_max_len = seq_max_len
+        self.aminoacid_properties = pd.read_csv("{}/aminoacid_properties.txt".format(storage_folder),sep = "\s+")
+        self.list_sequences = list_sequences
+        self.hydropathy_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["Hydropathy_index"].values.tolist()))
+        self.volume_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["Volume(A3)"].values.tolist()))
+        self.radius_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["Radius"].values.tolist()))
+        self.side_chain_pka_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["side_chain_pka"].values.tolist()))
+        self.isoelectric_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["isoelectric_point"].values.tolist()))
+        self.bulkiness_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["bulkiness"].values.tolist()))
+    def return_dicts(self):
+
+        return PeptideFeatures(hydropathy_dict=self.hydropathy_dict,
+                               volume_dict = self.volume_dict,
+                               radius_dict= self.radius_dict,
+                               side_chain_pka_dict=self.side_chain_pka_dict,
+                               isoelectric_dict= self.isoelectric_dict,
+                               bulkiness_dict=self.bulkiness_dict)
+
+    def calculate_volumetrics(self,seq,seq_max_len):
+        """Calculates molecular weight, volume, radius of each residue in a protein sequence"""
+        seq = "".join(seq).replace("#", "")
+
+        pads = [0] *(seq_max_len-len(seq))
+        molecular_weight = list( map(lambda aa: ProteinAnalysis(aa).molecular_weight(), list(seq))) + pads
+        volume = list( map(lambda aa: self.volume_dict[aa], list(seq))) +  pads
+        radius = list( map(lambda aa: self.radius_dict[aa], list(seq))) + pads
+        bulkiness = list( map(lambda aa: self.bulkiness_dict[aa], list(seq))) + pads
+
+
+        return molecular_weight,volume,radius,bulkiness
+
+    def volumetrics_summary(self):
+
+        if self.list_sequences:
+            results = list(map(lambda seq: self.calculate_volumetrics(seq,self.seq_max_len), self.list_sequences))
+            zipped_results = list(zip(*results))
+            volumetrics_dict = {"molecular_weights":np.array(zipped_results[0]),
+                                "volume":np.array(zipped_results[1]),
+                                "radius":np.array(zipped_results[2]),
+                                "bulkiness":np.array(zipped_results[3])}
+        else:
+            volumetrics_dict = {"molecular_weights":None,
+                                "volume":None,
+                                "radius":None,
+                                "bulkiness":None}
+
+        return volumetrics_dict
+
+
+
+
+
+
 
 
 

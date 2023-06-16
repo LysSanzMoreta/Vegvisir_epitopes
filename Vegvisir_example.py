@@ -24,19 +24,36 @@ import vegvisir.utils as VegvisirUtils
 #os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 print("Loading Vegvisir module from {}".format(vegvisir.__file__))
 now = datetime.datetime.now()
+
+def define_suffix(args):
+    if args.shuffle_sequence:
+        if args.test:
+            suffix = "_shuffled_TESTING"
+        else:
+            suffix = "_shuffled"
+    elif args.random_sequences:
+        if args.test:
+            suffix = "_random_TESTING"
+        else:
+            suffix = "_random"
+    elif args.num_mutations > 0:
+        if args.test:
+            suffix = "_{}_mutations_positions_{}_TESTING".format(args.num_mutations,
+                                                                 args.idx_mutations if args.idx_mutations is not None else "random")
+        else:
+            suffix = "_{}_mutations_positions_{}".format(args.num_mutations,args.idx_mutations if args.idx_mutations is not None else "random")
+    else:
+        if args.test:
+            suffix = "_TESTING"
+        else:
+            suffix = ""
+    return suffix
 def main():
     """Executes nnalignpy:
     1) Select the train/validation/test dataset
     2) Execute Vegvisir"""
 
-    if args.shuffle_sequence:
-        suffix = "_shuffled"
-    elif args.random_sequences:
-        suffix = "_random"
-    elif args.num_mutations > 0:
-        suffix = "_{}_mutations_positions_{}".format(args.num_mutations,args.idx_mutations if args.idx_mutations is not None else "random")
-    else:
-        suffix = ""
+    suffix = define_suffix(args)
     results_dir = "{}/PLOTS_Vegvisir_{}_{}_{}epochs_{}_{}{}".format(script_dir, args.dataset_name, now.strftime("%Y_%m_%d_%Hh%Mmin%Ss%fms"),args.num_epochs,args.learning_type,args.sequence_type,suffix)
     VegvisirUtils.folders(ntpath.basename(results_dir), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Train"), script_dir)
@@ -70,7 +87,7 @@ if __name__ == "__main__":
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=10, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=1, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=False, help='True: Use GPU; False: Use CPU')
 
     #TODO: include more blosum matrix types?
@@ -124,7 +141,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-glitch','--glitch', type=str2bool, nargs='?', default=True, help='<True>: Applies a random noise distortion (via rotations) to the encoded vector within the conserved positions of the sequences  \n'
                                                                                            '<False>: The blosum encodings are left untouched')
-    parser.add_argument('-num_samples', type=int, nargs='?', default=30, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
+    parser.add_argument('-num-samples','-num_samples', type=int, nargs='?', default=3, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
     parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="None", help='Load the checkpoints (state_dict and optimizer) from a previous run \n'
                                                                                                 '<None>: Trains model \n'
                                                                                                 '<str path>: Loads pre-trained model from given path \n')

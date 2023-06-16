@@ -215,17 +215,17 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
     elif method == "predefined_partitions_discard_test":
         """Discard the test dataset (because it seems a hard case) and use one of the partitions as the test instead. 
         The rest of the dataset is used for the training, and a portion for validation"""
+        traineval_data = data[data[:, 0, 0, 3] == 1]
         if partition_test is not None:
             partition_idx = partition_test
         else:
-            partition_idx = np.random.randint(0,4) #random selection of a partition as the test
-        if args.dataset_name == "viral_dataset8":
-            traineval_data = data[data[:, 0, 0, 3] == 1]
+            partition_idx = np.random.randint(0,5) #random selection of a partition as the test
+        if args.dataset_name == "viral_dataset_california":
             traineval_labels = traineval_data[:,0,0,0]
             train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
         else:
-            train_data = data[data[:, 0, 0, 2] != partition_idx]
-            valid_data = data[data[:, 0, 0, 2] == partition_idx]  # data[data[:, 0, 0, 3] == 1.]
+            train_data = traineval_data[traineval_data[:, 0, 0, 2] != partition_idx]
+            valid_data = traineval_data[traineval_data[:, 0, 0, 2] == partition_idx]  # data[data[:, 0, 0, 3] == 1.]
         test_data = valid_data
         dataset_proportions(train_data, results_dir, type="Train")
         dataset_proportions(valid_data, results_dir, type="Valid")
@@ -233,23 +233,22 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
         info_file.write("\n -------------------------------------------------")
         info_file.write("\n Using as valid/test partition: {}".format(partition_idx))
         warnings.warn("Test dataset == Valid dataset, since the test has been discarded. If you want to use the test dataset please select args.test == True to activate <prededined_partitions> or <predefined_partitions_diffused_test> ")
-
     elif method == "predefined_partitions_diffused_test":
         """Diffuse/divide/transfers the test dataset to the train and validation datasets. The test has been assigned onto training partitions"""
         if partition_test is not None:
             partition_idx = partition_test
         else:
-            partition_idx = np.random.randint(0,4) #random selection of a partition as the test
-        traineval_data = data[data[:, 0, 0, 2] != partition_idx]
-        traineval_labels = traineval_data[:,0,0,0]
-        train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
+            partition_idx = np.random.randint(0,5) #random selection of a partition as the test
+        train_data = data[data[:, 0, 0, 2] != partition_idx]
+        valid_data = data[data[:, 0, 0, 2] == partition_idx]
         test_data = valid_data #the test dataset will be the validation again, since the test has been merged onto the train and validation
+
         dataset_proportions(train_data, results_dir, type="Train")
         dataset_proportions(valid_data, results_dir, type="Valid")
         dataset_proportions(test_data, results_dir, type="Test")
         info_file.write("\n -------------------------------------------------")
         info_file.write("\n Using as valid/test partition: {}".format(partition_idx))
-        warnings.warn("Test dataset == Valid dataset, since it has been diffused onto the train and the validation datasets")
+        warnings.warn("Test dataset == Valid dataset, since the test has been diffused onto the train and the validation datasets")
     elif method == "predefined_partitions":
         """Use the test data as intended. The train and validation datasets are split using the pre-given partitions"""
 
@@ -259,16 +258,16 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
         if partition_test is not None:
             partition_idx = partition_test
         else:
-            partition_idx = np.random.randint(0,4) #random selection of a partition as the validation
+            partition_idx = np.random.randint(0,5) #random selection of a partition as the validation
 
-        if args.dataset_name == "viral_dataset9":
+        if args.dataset_name == "viral_dataset_california":
 
             traineval_data = data[data[:, 0, 0, 3] == 1]
             traineval_labels = traineval_data[:,0,0,0]
             train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
         else:
-            train_data = data[data[:, 0, 0, 2] != partition_idx]
-            valid_data = data[data[:, 0, 0, 2] == partition_idx] #data[data[:, 0, 0, 3] == 1.]
+            train_data = traineval_data[traineval_data[:, 0, 0, 2] != partition_idx] #Highlight: was using data before #TODO: Check that data points are not mixed or lost
+            valid_data = traineval_data[traineval_data[:, 0, 0, 2] == partition_idx] #data[data[:, 0, 0, 3] == 1.]
 
         dataset_proportions(train_data, results_dir, type="Train")
         dataset_proportions(valid_data, results_dir, type="Valid")

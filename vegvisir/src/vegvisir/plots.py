@@ -23,6 +23,7 @@ from sklearn.cluster import MiniBatchKMeans
 from joblib import Parallel, delayed
 import multiprocessing
 import os
+from scipy import stats
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
 colors_dict = {0: "green", 1: "red",2:"navajowhite"}
@@ -620,24 +621,37 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     Notes:
         - https://www.researchgate.net/publication/15556561_Global_Fold_Determination_from_a_Small_Number_of_Distance_Restraints/figures?lo=1
         - Radius table: https://www.researchgate.net/publication/15556561_Global_Fold_Determination_from_a_Small_Number_of_Distance_Restraints/figures?lo=1
+        - Peptide properties: https://cran.r-project.org/web/packages/Peptides/Peptides.pdf
+        -Peptide properties:
+                http://biotools.nubic.northwestern.edu/proteincalc.html
+                https://web.nmsu.edu/~talipovm/lib/exe/fetch.php?media=world:pasted:table08.pdf
+        -Peptides and lenghts: https://academic.oup.com/bioinformatics/article/22/22/2761/197569
+        -Aminoacid side chain bulkiness:
+                    Zimmerman scale: https://pubmed.ncbi.nlm.nih.gov/5700434/
+                    https://search.r-project.org/CRAN/refmans/alakazam/html/bulk.html
+
+
     """
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
+    features_dicts = VegvisirUtils.CalculatePeptideFeatures(storage_folder).return_dicts()
+    hydropathy_dict = features_dicts.hydropathy_dict
+    volume_dict = features_dicts.volume_dict
+    radius_dict = features_dicts.radius_dict
+    side_chain_pka_dict = features_dicts.side_chain_pka_dict
+    isoelectric_dict = features_dicts.isoelectric_dict
+    bulkiness_dict = features_dicts.bulkiness_dict
 
-    aminoacid_properties = pd.read_csv("{}/aminoacid_properties.txt".format(storage_folder),sep = "\s+")
-    hydropathy_dict= dict(zip(aminoacid_properties["1letter"].values.tolist(),aminoacid_properties["Hydropathy_index"].values.tolist()))
-    hydropathy_dict["#"] =0
-    volume_dict= dict(zip(aminoacid_properties["1letter"].values.tolist(),aminoacid_properties["Volume(A3)"].values.tolist()))
-    volume_dict["#"] =0
-    radius_dict= dict(zip(aminoacid_properties["1letter"].values.tolist(),aminoacid_properties["Radius"].values.tolist()))
-    radius_dict["#"] =0
-    side_chain_pka_dict= dict(zip(aminoacid_properties["1letter"].values.tolist(),aminoacid_properties["side_chain_pka"].values.tolist()))
-    side_chain_pka_dict["#"] =0
-    isoelectric_dict= dict(zip(aminoacid_properties["1letter"].values.tolist(),aminoacid_properties["isoelectric_point"].values.tolist()))
-    isoelectric_dict["#"] =0
+
     if dataset_info.corrected_aa_types == 20:
         aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=[])
     else:
         aminoacids_dict = VegvisirUtils.aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=["#"])
+        hydropathy_dict["#"] = 0
+        volume_dict["#"] = 0
+        radius_dict["#"] = 0
+        side_chain_pka_dict["#"] = 0
+        isoelectric_dict["#"] = 0
+        bulkiness_dict["#"] = 0
 
     aminoacids_dict_reversed = {val:key for key,val in aminoacids_dict.items()}
     hydropathy_dict = {aminoacids_dict[key]:value for key,value in hydropathy_dict.items()}
@@ -645,11 +659,15 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     radius_dict = {aminoacids_dict[key]:value for key,value in radius_dict.items()}
     side_chain_pka_dict = {aminoacids_dict[key]:value for key,value in side_chain_pka_dict.items()}
     isoelectric_dict = {aminoacids_dict[key]:value for key,value in isoelectric_dict.items()}
-
+    bulkiness_dict = {aminoacids_dict[key]:value for key,value in bulkiness_dict.items()}
 
     data_int = predictions_dict["data_int_{}".format(sample_mode)]
     sequences = data_int[:,1:].squeeze(1)
-    sequences_mask = np.array((sequences == 0))
+    if dataset_info.corrected_aa_types == 20:
+        sequences_mask=np.zeros_like(sequences).astype(bool)
+    else:
+        sequences_mask = np.array((sequences == 0))
+    sequences_lens = np.sum(~sequences_mask,axis=1)
     sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(sequences)
     sequences_list = sequences_raw.tolist()
 
@@ -657,9 +675,13 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     # hydropathy_scores = np.ma.masked_array(hydropathy_scores, mask=sequences_mask, fill_value=0)
     # hydropathy_scores = np.ma.mean(hydropathy_scores, axis=1)
     
+    bulkiness_scores = np.vectorize(bulkiness_dict.get)(sequences)
+    bulkiness_scores = np.ma.masked_array(bulkiness_scores, mask=sequences_mask, fill_value=0)
+    bulkiness_scores = np.ma.sum(bulkiness_scores, axis=1)
+    
     volume_scores = np.vectorize(volume_dict.get)(sequences)
     volume_scores = np.ma.masked_array(volume_scores, mask=sequences_mask, fill_value=0)
-    volume_scores = np.ma.sum(volume_scores, axis=1)
+    volume_scores = np.ma.sum(volume_scores, axis=1) #TODO: Mean? or sum?
     
     radius_scores = np.vectorize(radius_dict.get)(sequences)
     radius_scores = np.ma.masked_array(radius_scores, mask=sequences_mask, fill_value=0)
@@ -672,9 +694,9 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     isoelectric_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_list)))
     aromaticity_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_list)))
     hydropathy_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_list)))
+    molecular_weight_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_list)))
 
-
-    fig, [[ax0,ax1,ax2],[ax3,ax4,ax5]] = plt.subplots(2, 3,figsize=(22,22))
+    fig, [[ax0,ax1,ax2,ax3,ax4],[ax5,ax6,ax7,ax8,ax9]] = plt.subplots(2, 5,figsize=(26,22))
 
     clusters_info = defaultdict(lambda : defaultdict(lambda : defaultdict()))
     i = 0
@@ -686,6 +708,9 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     all_isoelectric = []
     all_aromaticity = []
     all_side_chain_pka = []
+    all_dict_lens = []
+    all_molecular_weights = []
+    all_bulkiness = []
     all_colors = []
     label_locations = []
     for cluster in range(n_clusters):
@@ -694,22 +719,32 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
         idx_observed = (data_int_cluster[:, 0, 0][..., None] != 2).any(-1)
         for mode,idx in zip(["observed","unobserved"],[idx_observed,np.invert(idx_observed)]):
             sequences_cluster = data_int_cluster[idx][:, 1:].squeeze(1)
-            sequences_raw_cluster = np.vectorize(aminoacids_dict_reversed.get)(sequences)
-            sequences_raw_list = sequences_raw.tolist()
             if sequences_cluster.size != 0:
-                sequences_mask = np.array((sequences_cluster == 0))
+                sequences_raw_cluster = np.vectorize(aminoacids_dict_reversed.get)(sequences_cluster)
+                sequences_cluster_list = sequences_raw_cluster.tolist()
+                if dataset_info.corrected_aa_types == 20:
+                    sequences_mask = np.zeros_like(sequences_cluster).astype(bool)
+                else:
+                    sequences_mask = np.array((sequences_cluster == 0))
+                sequences_len = np.sum(~sequences_mask,axis=1)
                 # hydropathy = np.vectorize(hydropathy_dict.get)(sequences_cluster)
                 # hydropathy = np.ma.masked_array(hydropathy,mask=sequences_mask,fill_value=0)
                 # hydropathy = np.ma.sum(hydropathy,axis=1)
-                hydropathy = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_raw_list)))
-                aromaticity = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_raw_list)))
+                hydropathy = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_cluster_list)))
+                aromaticity = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_cluster_list)))
 
                 volumes = np.vectorize(volume_dict.get)(sequences_cluster)
                 volumes = np.ma.masked_array(volumes,mask=sequences_mask,fill_value=0)
                 volumes = np.ma.sum(volumes,axis=1)
+
+                bulkiness = np.vectorize(bulkiness_dict.get)(sequences_cluster)
+                bulkiness = np.ma.masked_array(bulkiness, mask=sequences_mask, fill_value=0)
+                bulkiness = np.ma.sum(bulkiness, axis=1)
+                
                 radius = np.vectorize(radius_dict.get)(sequences_cluster)
                 radius = np.ma.masked_array(radius,mask=sequences_mask,fill_value=0)
                 radius = np.ma.sum(radius,axis=1)
+                
                 side_chain_pka = np.vectorize(side_chain_pka_dict.get)(sequences_cluster)
                 side_chain_pka = np.ma.masked_array(side_chain_pka,mask=sequences_mask,fill_value=0)
                 side_chain_pka = np.ma.sum(side_chain_pka,axis=1)
@@ -717,7 +752,9 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 # isoelectric = np.vectorize(isoelectric_dict.get)(sequences_cluster)
                 # isoelectric = np.ma.masked_array(isoelectric,mask=sequences_mask,fill_value=0)
                 # isoelectric = np.ma.sum(isoelectric,axis=1)
-                isoelectric = np.array(list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_list)))
+                isoelectric = np.array(list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_cluster_list)))
+                molecular_weight = np.array(list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_cluster_list)))
+
 
                 clusters_info["Cluster_{}".format(cluster)][mode]["hydrophobicity"] = hydropathy.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["volumes"] = volumes.mean()
@@ -725,6 +762,10 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 clusters_info["Cluster_{}".format(cluster)][mode]["side_chain_pka"] = side_chain_pka.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["isoelectric"] = isoelectric.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["aromaticity"] = aromaticity.mean()
+                clusters_info["Cluster_{}".format(cluster)][mode]["lengths"] = sequences_lens.mean()
+                clusters_info["Cluster_{}".format(cluster)][mode]["molecular_weights"] = molecular_weight.mean()
+                clusters_info["Cluster_{}".format(cluster)][mode]["bulkiness_scores"] = bulkiness.mean()
+
 
                 all_side_chain_pka.append(side_chain_pka)
                 all_isoelectric.append(isoelectric)
@@ -732,7 +773,13 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 all_volumes.append(volumes)
                 all_radius.append(radius)
                 all_aromaticity.append(aromaticity)
+                all_molecular_weights.append(molecular_weight)
+                all_bulkiness.append(bulkiness)
                 all_colors.append(colors_cluster_dict[cluster])
+                unique,counts = np.unique(sequences_len,return_counts=True)
+                len_dict = dict(zip(unique,counts))
+                len_dict =  dict(sorted(len_dict.items(), key=operator.itemgetter(1), reverse=True))
+                all_dict_lens.append(len_dict)
                 labels.append("Cluster {}, \n {}".format(cluster,mode))
                 label_locations.append(i + 0.2)
                 i+=0.4
@@ -764,35 +811,62 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                      patch_artist=True,  # fill with color
                      labels=labels
                      )  # olor=colors_cluster_dict[cluster])  # color=colors_cluster_dict[cluster]
-    boxplot5 = ax4.boxplot( all_aromaticity,
+    boxplot5 = ax5.boxplot( all_aromaticity,
+                     vert=True,  # vertical box alignment
+                     patch_artist=True,  # fill with color
+                     labels=labels
+                     )  # olor=colors_cluster_dict[cluster])  # color=colors_cluster_dict[cluster]
+    boxplot6 = ax6.boxplot( all_molecular_weights,
+                     vert=True,  # vertical box alignment
+                     patch_artist=True,  # fill with color
+                     labels=labels
+                     )  # olor=colors_cluster_dict[cluster])  # color=colors_cluster_dict[cluster]
+    
+    boxplot7 = ax7.boxplot( all_bulkiness,
                      vert=True,  # vertical box alignment
                      patch_artist=True,  # fill with color
                      labels=labels
                      )  # olor=colors_cluster_dict[cluster])  # color=colors_cluster_dict[cluster]
 
-
+    i = 0
+    j = 0
+    hist_labels = []
+    hist_labels_locations = []
+    for color,label,cluster_dict in zip(all_colors,labels,all_dict_lens):
+        for seq_len,count in cluster_dict.items():
+            hist_labels_locations.append(i+j)
+            ax8.bar(i+j,count,label=seq_len, color=color, width=0.3, edgecolor='white')
+            i += 0.4
+            hist_labels.append(seq_len)
+        j = i + 0.1
+        
     # fill with colors
     #colors = ['pink', 'lightblue', 'lightgreen',"gold"]
-    for bplot in (boxplot0, boxplot1,boxplot2,boxplot3,boxplot4,boxplot5):
+    for bplot in (boxplot0, boxplot1,boxplot2,boxplot3,boxplot4,boxplot5,boxplot6,boxplot7):
         for patch, color in zip(bplot['boxes'], all_colors):
             patch.set_facecolor(color)
 
-    ax0.set_title("Hydrophobicity")
-    ax1.set_title("Volumes")
-    ax2.set_title("Radius")
-    ax3.set_title("Isoelectric")
-    ax4.set_title("Side chain PKA")
-    ax5.set_title("Aromaticity")
-
+    ax0.set_title("Hydrophobicity",fontsize=20)
+    ax1.set_title("Volumes",fontsize=20)
+    ax2.set_title("Radius",fontsize=20)
+    ax3.set_title("Isoelectric",fontsize=20)
+    ax4.set_title("Side chain PKA",fontsize=20)
+    ax5.set_title("Aromaticity",fontsize=20)
+    ax6.set_title("Molecular weights",fontsize=20)
+    ax7.set_title("Bulkiness",fontsize=20)
+    ax8.set_title("Sequences lenghts",fontsize=20)
 
 
     ax0.set_xticklabels(rotation=90,labels=labels)
     ax1.set_xticklabels(rotation=90,labels=labels)
     ax2.set_xticklabels(rotation=90,labels=labels)
     ax3.set_xticklabels(rotation=90,labels=labels)
-    # ax4.set_xticklabels(rotation=90,labels=labels)
-    # ax5.set_xticklabels(rotation=90,labels=labels)
-
+    ax4.set_xticklabels(rotation=90,labels=labels)
+    ax5.set_xticklabels(rotation=90,labels=labels)
+    ax6.set_xticklabels(rotation=90,labels=labels)
+    ax7.set_xticklabels(rotation=90,labels=labels)
+    ax8.set_xticks(hist_labels_locations)
+    ax8.set_xticklabels(rotation=90,labels=hist_labels)
 
 
     #ax1.set_xticks(label_locations)
@@ -801,8 +875,19 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     plt.savefig("{}/{}/clusters_features_{}".format(results_dir,method,sample_mode))
     plt.clf()
     plt.close(fig)
-
-    return hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,aromaticity_scores,clusters_info
+    
+    features_dict = {"hydropathy_scores":hydropathy_scores,
+                "isoelectric_scores":isoelectric_scores,
+                "volume_scores":volume_scores,
+                "radius_scores":radius_scores,
+                "side_chain_pka_scores":side_chain_pka_scores,
+                "aromaticity_scores":aromaticity_scores,
+                "molecular_weights":molecular_weight_scores,
+                "bulkiness_scores":bulkiness_scores,
+                "sequences_lens":sequences_lens,
+                "clusters_info":clusters_info}
+    
+    return features_dict
 
 def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4):
 
@@ -811,24 +896,36 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
     umap_proj = reducer.fit_transform(latent_space[:, 5:])
 
     if vector_name == "latent_space_z":
-        cluster_assignments = MiniBatchKMeans(n_clusters=n_clusters, random_state=0, batch_size=100, max_iter=10, reassignment_ratio=0).fit_predict(umap_proj)
+        cluster_assignments = MiniBatchKMeans(n_clusters=n_clusters, random_state=0, batch_size=100, max_iter=10, reassignment_ratio=0,n_init="auto").fit_predict(umap_proj)
         colors_clusters = np.vectorize(colors_cluster_dict.get)(cluster_assignments)
 
-        hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,aromaticity_scores,clusters_info=plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
+        #hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,aromaticity_scores,sequences_lens,clusters_info=plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
+        features_dict = plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
+
+        #Highlight: Sequences lens
+        sequences_lens = features_dict["sequences_lens"]
+        sequences_lens_unique = np.unique(sequences_lens)
+        sequences_lens, sequences_lens_unique = VegvisirUtils.replace_nan(sequences_lens,sequences_lens_unique)
+        colormap_len = matplotlib.cm.get_cmap('viridis', len(sequences_lens_unique.tolist()))
+        colors_dict = dict(zip(sequences_lens_unique, colormap_len.colors))
+        colors_lens = np.vectorize(colors_dict.get, signature='()->(n)')(sequences_lens)
 
         #Highlight: Hydropathy
+        hydropathy_scores = features_dict["hydropathy_scores"]
         hydropathy_scores_unique = np.unique(hydropathy_scores)
         hydropathy_scores, hydropathy_scores_unique = VegvisirUtils.replace_nan(hydropathy_scores,hydropathy_scores_unique)
         colormap_hydropathy = matplotlib.cm.get_cmap('viridis', len(hydropathy_scores_unique.tolist()))
         colors_dict = dict(zip(hydropathy_scores_unique, colormap_hydropathy.colors))
         colors_hydropathy = np.vectorize(colors_dict.get, signature='()->(n)')(hydropathy_scores)
         # Highlight: Peptide volumes
+        volume_scores = features_dict["volume_scores"]
         volume_scores_unique = np.unique(volume_scores)
         volume_scores, volume_scores_unique = VegvisirUtils.replace_nan(volume_scores,volume_scores_unique)
         colormap_volume = matplotlib.cm.get_cmap('magma', len(volume_scores_unique.tolist()))
         colors_dict = dict(zip(volume_scores_unique, colormap_volume.colors))
         colors_volume = np.vectorize(colors_dict.get, signature='()->(n)')(volume_scores)
         #Highlight: Radius
+        radius_scores = features_dict["radius_scores"]
         radius_scores_unique = np.unique(radius_scores)
         radius_scores, radius_scores_unique = VegvisirUtils.replace_nan(radius_scores,radius_scores_unique)
         colormap_radius = matplotlib.cm.get_cmap('magma', len(radius_scores_unique.tolist()))
@@ -836,6 +933,7 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
         colors_radius = np.vectorize(colors_dict.get, signature='()->(n)')(radius_scores)
 
         #Highlight: Side chain Pka
+        side_chain_pka_scores = features_dict["side_chain_pka_scores"]
         side_chain_pka_scores_unique = np.unique(side_chain_pka_scores)
         side_chain_pka_scores, side_chain_pka_scores_unique = VegvisirUtils.replace_nan(side_chain_pka_scores,side_chain_pka_scores_unique)
         colormap_side_chain_pka = matplotlib.cm.get_cmap('magma', len(side_chain_pka_scores_unique.tolist()))
@@ -843,6 +941,7 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
         colors_side_chain_pka = np.vectorize(colors_dict.get, signature='()->(n)')(side_chain_pka_scores)
 
         #Highlight: Isoelectric scores
+        isoelectric_scores = features_dict["isoelectric_scores"]
         isoelectric_scores_unique = np.unique(isoelectric_scores)
         isoelectric_scores, isoelectric_scores_unique = VegvisirUtils.replace_nan(isoelectric_scores,isoelectric_scores_unique)
         colormap_isoelectric = matplotlib.cm.get_cmap('magma', len(isoelectric_scores_unique.tolist()))
@@ -850,11 +949,28 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
         colors_isoelectric = np.vectorize(colors_dict.get, signature='()->(n)')(isoelectric_scores)
         
         #Highlight: aromaticity scores
+        aromaticity_scores = features_dict["aromaticity_scores"]
         aromaticity_scores_unique = np.unique(aromaticity_scores)
         aromaticity_scores, aromaticity_scores_unique = VegvisirUtils.replace_nan(aromaticity_scores,aromaticity_scores_unique)
         colormap_aromaticity = matplotlib.cm.get_cmap('cividis', len(aromaticity_scores_unique.tolist()))
         colors_dict = dict(zip(aromaticity_scores_unique, colormap_aromaticity.colors))
         colors_aromaticity = np.vectorize(colors_dict.get, signature='()->(n)')(aromaticity_scores)
+        
+        #Highlight: molecular_weight scores
+        molecular_weight_scores = features_dict["molecular_weights"]
+        molecular_weight_scores_unique = np.unique(molecular_weight_scores)
+        molecular_weight_scores, molecular_weight_scores_unique = VegvisirUtils.replace_nan(molecular_weight_scores,molecular_weight_scores_unique)
+        colormap_molecular_weight = matplotlib.cm.get_cmap('cividis', len(molecular_weight_scores_unique.tolist()))
+        colors_dict = dict(zip(molecular_weight_scores_unique, colormap_molecular_weight.colors))
+        colors_molecular_weight = np.vectorize(colors_dict.get, signature='()->(n)')(molecular_weight_scores)
+        
+        #Highlight: bulkiness scores
+        bulkiness_scores = features_dict["bulkiness_scores"]
+        bulkiness_scores_unique = np.unique(bulkiness_scores)
+        bulkiness_scores, bulkiness_scores_unique = VegvisirUtils.replace_nan(bulkiness_scores,bulkiness_scores_unique)
+        colormap_bulkiness = matplotlib.cm.get_cmap('magma', len(bulkiness_scores_unique.tolist()))
+        colors_dict = dict(zip(bulkiness_scores_unique, colormap_bulkiness.colors))
+        colors_bulkiness = np.vectorize(colors_dict.get, signature='()->(n)')(bulkiness_scores)
 
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,0])
     if method == "_single_sample":
@@ -886,54 +1002,69 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
     colormap_frequency_class1_array =  np.array([colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
     colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
     colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_binary_prediction_samples_frequencies"][:,1])
-    alpha = 0.7
-    fig, [[ax1, ax2, ax3,ax4],[ax5,ax6,ax7,ax8],[ax9,ax10,ax11,ax12],[ax13,ax14,ax15,ax16]] = plt.subplots(4, 4,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,4.5,1],'height_ratios': [4,4,4,4]})
+    alpha = 0.6
+    size = 20
+    fig, [[ax1, ax2, ax3,ax4],[ax5,ax6,ax7,ax8],[ax9,ax10,ax11,ax12],[ax13,ax14,ax15,ax16],[ax17,ax18,ax19,ax20]] = plt.subplots(5, 4,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,4.5,1],'height_ratios': [4,4,4,4,4]})
     fig.suptitle('UMAP projections',fontsize=20)
-    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:,2], alpha=alpha,s=30)
+    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:,2], alpha=alpha,s=size)
     ax1.set_title("True labels",fontsize=20)
     if method == "_single_sample":
-        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha,s=30)
+        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha,s=size)
         ax2.set_title("Predicted labels \n (single sample)",fontsize=20)
     else:
-        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha,s=30)
+        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha,s=size)
         ax2.set_title("Predicted binary labels \n (samples mode)",fontsize=20)
 
-    ax3.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=alpha, s=30)
+    ax3.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=alpha, s=size)
     ax3.set_title("Confidence scores", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence),ax=ax3)
-    ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class0, alpha=alpha, s=30)
+    ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class0, alpha=alpha, s=size)
     ax5.set_title("Probability class 0 \n (frequency argmax)", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable( norm = Normalize(0,1),cmap=colormap_frequency_class0),ax=ax5)
-    ax6.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=alpha, s=30)
+    ax6.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=alpha, s=size)
     ax6.set_title("Probability class 1 \n (frequency argmax)", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable( cmap=colormap_frequency_class1),ax=ax6)
-    ax7.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=alpha, s=30)
+    ax7.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=alpha, s=size)
     ax7.set_title("Immunodominance scores", fontsize=20)
     fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance),ax=ax7)
     if vector_name == "latent_space_z":
 
-        ax9.scatter(umap_proj[:, 0],umap_proj[:, 1], c=colors_clusters, alpha=alpha,s=30)
+        ax9.scatter(umap_proj[:, 0],umap_proj[:, 1], c=colors_clusters, alpha=alpha,s=size)
         ax9.set_title("Coloured by Kmeans cluster")
 
-        ax10.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_hydropathy, alpha=alpha, s=30)
+        ax10.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_hydropathy, alpha=alpha, s=size)
         ax10.set_title("Coloured by Hydrophobicity")
         fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_hydropathy,norm=Normalize(vmin=np.min(hydropathy_scores_unique),vmax=np.max(hydropathy_scores_unique))), ax=ax10)
 
-        ax11.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_volume, alpha=alpha, s=30)
+        ax11.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_volume, alpha=alpha, s=size)
         ax11.set_title("Coloured by Peptide volume")
         fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_volume,norm=Normalize(vmin=np.min(volume_scores_unique),vmax=np.max(volume_scores_unique))), ax=ax11)
 
-        ax13.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_side_chain_pka, alpha=alpha, s=30)
+        ax13.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_side_chain_pka, alpha=alpha, s=size)
         ax13.set_title("Coloured by Side chain pka")
         fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_volume,norm=Normalize(vmin=np.min(side_chain_pka_scores_unique),vmax=np.max(side_chain_pka_scores_unique))), ax=ax13)
 
-        ax14.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_isoelectric, alpha=alpha, s=30)
+        ax14.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_isoelectric, alpha=alpha, s=size)
         ax14.set_title("Coloured by Isoelectric point")
         fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_isoelectric,norm=Normalize(vmin=np.min(isoelectric_scores_unique),vmax=np.max(isoelectric_scores_unique))), ax=ax14)
 
-        ax15.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_aromaticity, alpha=alpha, s=30)
+        ax15.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_aromaticity, alpha=alpha, s=size)
         ax15.set_title("Coloured by aromaticity")
         fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_aromaticity,norm=Normalize(vmin=np.min(aromaticity_scores_unique),vmax=np.max(aromaticity_scores_unique))), ax=ax15)
+
+        ax17.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_lens, alpha=alpha, s=size)
+        ax17.set_title("Coloured by sequence len")
+        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_len,norm=Normalize(vmin=np.min(sequences_lens_unique),vmax=np.max(sequences_lens_unique))), ax=ax17)
+
+        ax18.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_molecular_weight, alpha=alpha, s=size)
+        ax18.set_title("Coloured by molecular weight")
+        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_molecular_weight, norm=Normalize(vmin=np.min(molecular_weight_scores_unique),vmax=np.max(molecular_weight_scores_unique))),ax=ax18)
+
+        ax19.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_bulkiness, alpha=alpha, s=size)
+        ax19.set_title("Coloured by bulkiness")
+        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_bulkiness,
+                                           norm=Normalize(vmin=np.min(bulkiness_scores_unique),
+                                                          vmax=np.max(bulkiness_scores_unique))), ax=ax19)
     else:
         ax9.axis("off")
         ax10.axis("off")
@@ -941,11 +1072,15 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
         ax13.axis("off")
         ax14.axis("off")
         ax15.axis("off")
+        ax17.axis("off")
+        ax18.axis("off")
+        ax19.axis("off")
 
     ax4.axis("off")
     ax8.axis("off")
     ax12.axis("off")
     ax16.axis("off")
+    ax20.axis("off")
 
     fig.suptitle("UMAP of {}".format(vector_name))
 
@@ -1344,7 +1479,7 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
                 ax1.set_ylabel('True Positive Rate', fontsize=20)
                 ax1.set_xlabel('False Positive Rate', fontsize=20)
                 ax2.axis("off")
-                ax1.legend(loc='lower right', prop={'size': 8},bbox_to_anchor=(1.3, 0.))
+                ax1.legend(loc='lower right', prop={'size': 6},bbox_to_anchor=(1.5, 0.))
                 fig.suptitle("ROC curve. AUC_micro_ovr_average: {}".format(average_micro_auc/args.num_samples),fontsize=12)
                 plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
                 plt.clf()
@@ -1565,8 +1700,7 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
 
                             fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
                             fig.suptitle("{}. Information shift weights: {}, {}, {}".format(nn_name,sample_mode, data_points, class_type))
-                            plt.savefig(
-                                "{}/{}/{}_information_shift_plots_{}_{}_{}.png".format(results_dir, method, nn_name,sample_mode, data_points, class_type))
+                            plt.savefig("{}/{}/{}_information_shift_plots_{}_{}_{}.png".format(results_dir, method, nn_name,sample_mode, data_points, class_type))
                             plt.clf()
                             plt.close(fig)
 
@@ -1600,3 +1734,73 @@ def plot_logits_entropies(train_dict,valid_dict,epochs_list, mode,results_dir):
     plt.savefig("{}/entropies_{}fold.png".format(results_dir, mode))
     plt.clf()
     plt.close(fig)
+
+def plot_volumetrics(volumetrics_dict,seq_max_len,labels,storage_folder,args,subfolders,tag=""):
+    fig, [[ax1, ax2, ax3],[ax4, ax5, ax6]] = plt.subplots(nrows=2, ncols=3, figsize=(9, 6),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [4.5, 4.5]})
+    if volumetrics_dict["volume"] is not None:
+        #norm = plt.Normalize(0, 1)
+        norm= None
+        cmap = sns.color_palette("rocket", as_cmap=True)
+        cbar = True
+
+        sns.heatmap(volumetrics_dict["volume"], ax=ax1, cbar=cbar, cmap=cmap,norm=norm)
+        ax1.set_xticks(np.arange(1,seq_max_len) + 0.5,labels=["{}".format(i) for i in range(1,seq_max_len)])
+        ax1.spines['left'].set_visible(False)
+        ax1.yaxis.set_ticklabels([])
+        if labels is not None:
+            pearson = np.corrcoef(np.array(labels),volumetrics_dict["volume"].sum(axis=1))
+            pointbiserial = stats.pointbiserialr(np.array(labels),volumetrics_dict["volume"].sum(axis=1))
+            spearman = stats.spearmanr(a= volumetrics_dict["volume"].sum(axis=1), b=np.array(labels),axis=1)
+            ax1.set_title("Volume.\n Pointbiserial : {} \n Spearman: {} \n Pearson: {} ".format(round(pointbiserial.correlation,2),round(spearman.correlation,2),round(pearson[0][1],2)))
+        else:
+            ax1.set_title("Volume")
+
+
+        sns.heatmap(volumetrics_dict["molecular_weights"], ax=ax2, cbar=cbar, cmap=cmap,norm=norm)
+        ax2.set_xticks(np.arange(1,seq_max_len) + 0.5,labels=["{}".format(i) for i in range(1,seq_max_len)])
+        ax2.spines['left'].set_visible(False)
+        ax2.yaxis.set_ticklabels([])
+        if labels is not None:
+            pearson = np.corrcoef(np.array(labels),volumetrics_dict["molecular_weights"].sum(axis=1))
+            pointbiserial = stats.pointbiserialr(np.array(labels), volumetrics_dict["molecular_weights"].sum(axis=1))
+            spearman = stats.spearmanr(a=volumetrics_dict["molecular_weights"].sum(axis=1), b=np.array(labels), axis=1)
+            ax2.set_title("Molecular weights.\n Pointbiserial : {}\n Spearman: {} \n Pearson: {}".format(round(pointbiserial.correlation,2),round(spearman.correlation,2),round(pearson[0][1],2)))
+        else:
+            ax2.set_title("Molecular weights")
+
+        sns.heatmap(volumetrics_dict["radius"], ax=ax4, cbar=cbar, cmap=cmap,norm=norm)
+        ax4.set_xticks(np.arange(1,seq_max_len) + 0.5,labels=["{}".format(i) for i in range(1,seq_max_len)])
+        ax4.spines['left'].set_visible(False)
+        ax4.yaxis.set_ticklabels([])
+        if labels is not None:
+            pearson = np.corrcoef(np.array(labels),volumetrics_dict["radius"].sum(axis=1))
+            pointbiserial = stats.pointbiserialr(np.array(labels), volumetrics_dict["radius"].sum(axis=1))
+            spearman = stats.spearmanr(a=volumetrics_dict["radius"].sum(axis=1), b=np.array(labels), axis=1)
+            ax4.set_title("Radius.\n Pointbiserial : {}\n Spearman: {} \n Pearson: {}".format(round(pointbiserial.correlation,2),round(spearman.correlation,2),round(pearson[0][1],2)))
+        else:
+            ax4.set_title("Radius")
+
+
+        sns.heatmap(volumetrics_dict["bulkiness"], ax=ax5, cbar=cbar, cmap=cmap,norm=norm)
+        ax5.set_xticks(np.arange(1,seq_max_len) + 0.5,labels=["{}".format(i) for i in range(1,seq_max_len)])
+        ax5.spines['left'].set_visible(False)
+        ax5.yaxis.set_ticklabels([])
+        if labels is not None:
+            pearson = np.corrcoef(np.array(labels),volumetrics_dict["bulkiness"].sum(axis=1))
+            pointbiserial = stats.pointbiserialr(np.array(labels), volumetrics_dict["bulkiness"].sum(axis=1))
+            spearman = stats.spearmanr(a=volumetrics_dict["bulkiness"].sum(axis=1), b=np.array(labels), axis=1)
+            ax5.set_title("Bulkiness. \n Pointbiserial : {}\n Spearman: {} \n Pearson: {}".format(round(pointbiserial.correlation,2),round(spearman.correlation,2),round(pearson[0][1],2)))
+        else:
+            ax5.set_title("Bulkiness")
+
+        ax3.axis("off")
+        ax6.axis("off")
+
+
+        fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.2)
+
+        fig.suptitle("Volumetrics")
+
+        plt.savefig("{}/{}/similarities/{}/HEATMAP_volumetrics{}.png".format(storage_folder,args.dataset_name,subfolders,tag))
+        plt.clf()
+        plt.close(fig)

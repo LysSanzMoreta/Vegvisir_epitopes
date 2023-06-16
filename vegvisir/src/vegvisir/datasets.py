@@ -6,6 +6,7 @@ Vegvisir :
 """
 import json
 import os,random
+import pickle
 import time,datetime
 import warnings
 import dill
@@ -38,7 +39,7 @@ plt.style.use('ggplot')
 DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_array_raw","data_array_int","data_array_int_mask",
                                         "data_array_blosum_encoding","data_array_blosum_encoding_mask","data_array_onehot_encoding","data_array_blosum_norm","blosum",
                                         "n_data","seq_max_len","max_len","corrected_aa_types","input_dim","positional_weights","positional_weights_mask","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity","features_names"])
-DatasetDivision = namedtuple("DatasetDivision",["all","all_mask","positives","positives_mask","negatives","negatives_mask","high_confidence_negatives","high_confidence_negatives_mask"])
+DatasetDivision = namedtuple("DatasetDivision",["all","all_mask","positives","positives_mask","positives_idx","negatives","negatives_mask","negatives_idx","high_confidence_negatives","high_confidence_negatives_mask"])
 SimilarityResults = namedtuple("SimilarityResults",["positional_weights","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity"])
 
 def available_datasets():
@@ -78,7 +79,7 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     return dataset
 
 def select_filters(args):
-    filters_dict = {"filter_kmers":[False,9,args.sequence_type], #Icore_non_anchor #Highlight: Remmeber to use 8!!
+    filters_dict = {"filter_kmers":[True,9,args.sequence_type], #Icore_non_anchor #Highlight: Remmeber to use 8!!
                     "group_alleles":[True],
                     "filter_alleles":[False], #if True keeps the most common allele
                     "filter_ntested":[False,10],
@@ -184,6 +185,7 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
     data_species = pd.read_csv("{}/{}/dataset_species.tsv".format(storage_folder,args.dataset_name),sep="\t")
     data_species = data_species.dropna(axis=1)
+
     data_species = data_species[["Icore","allele","org_name"]]
     filters_dict,analysis_mode = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
@@ -192,7 +194,6 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     if filters_dict["filter_alleles"][0]:
         data = data[data["allele"] == most_common_allele]
-
 
     if filters_dict["group_alleles"][0]:
         # Group data by Icore, therefore the alleles are grouped
@@ -212,6 +213,12 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
     data = pd.merge(data,data_species, on=['Icore'], how='left')
+
+    unique_values = pd.unique(data["org_name"])
+    org_name_dict = dict(zip(list(range(len(unique_values))),unique_values))
+    org_name_dict_reverse = dict(zip(unique_values,list(range(len(unique_values)))))
+    pickle.dump(org_name_dict,open('{}/{}/org_name_dict.pkl'.format(storage_folder,args.dataset_name), 'wb'))
+    data = data.replace({"org_name":org_name_dict_reverse})
 
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
@@ -283,6 +290,12 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
     data = pd.merge(data,data_species, on=['Icore'], how='left')
 
+    unique_values = pd.unique(data["org_name"])
+    org_name_dict = dict(zip(list(range(len(unique_values))),unique_values))
+    org_name_dict_reverse = dict(zip(unique_values,list(range(len(unique_values)))))
+    pickle.dump(org_name_dict,open('{}/{}/org_name_dict.pkl'.format(storage_folder,args.dataset_name), 'wb'))
+    data = data.replace({"org_name":org_name_dict_reverse})
+
     name_suffix = "__".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
     VegvisirPlots.plot_features_histogram(data,features_names,"{}/{}".format(storage_folder,args.dataset_name),name_suffix)
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,features_names=features_names)
@@ -352,6 +365,12 @@ def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data.loc[mask2,"confidence_score"] = 0.6
     data.loc[mask2,"immunodominance_score"] = np.nan
     data = pd.merge(data,data_species, on=['Icore'], how='left')
+
+    unique_values = pd.unique(data["org_name"])
+    org_name_dict = dict(zip(list(range(len(unique_values))),unique_values))
+    org_name_dict_reverse = dict(zip(unique_values,list(range(len(unique_values)))))
+    pickle.dump(org_name_dict,open('{}/{}/org_name_dict.pkl'.format(storage_folder,args.dataset_name), 'wb'))
+    data = data.replace({"org_name":org_name_dict_reverse})
 
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
@@ -451,6 +470,12 @@ def viral_dataset6(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data.loc[(data["target"] == 2), "target_corrected"] = 2
     data.loc[(data["target"] == 2), "confidence_score"] = 0
     data = pd.merge(data,data_species, on=['Icore'], how='left')
+
+    unique_values = pd.unique(data["org_name"])
+    org_name_dict = dict(zip(list(range(len(unique_values))), unique_values))
+    org_name_dict_reverse = dict(zip(unique_values, list(range(len(unique_values)))))
+    pickle.dump(org_name_dict,open('{}/{}/org_name_dict.pkl'.format(storage_folder,args.dataset_name), 'wb'))
+    data = data.replace({"org_name": org_name_dict_reverse})
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
@@ -534,6 +559,12 @@ def viral_dataset7(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
     data = pd.merge(data,data_species, on=['Icore'], how='left')
+
+    unique_values = pd.unique(data["org_name"])
+    org_name_dict = dict(zip(list(range(len(unique_values))), unique_values))
+    org_name_dict_reverse = dict(zip(unique_values, list(range(len(unique_values)))))
+    pickle.dump(org_name_dict,open('{}/{}/org_name_dict.pkl'.format(storage_folder,args.dataset_name), 'wb'))
+    data = data.replace({"org_name": org_name_dict_reverse})
 
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
@@ -635,15 +666,21 @@ def viral_dataset8(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data.loc[(data["target"] == 2), "target_corrected"] = 2
     data.loc[(data["target"] == 2), "confidence_score"] = 0
     data = pd.merge(data,data_species, on=['Icore'], how='left')
+
+    unique_values = pd.unique(data["org_name"])
+    org_name_dict = dict(zip(list(range(len(unique_values))),unique_values))
+    org_name_dict_reverse = dict(zip(unique_values,list(range(len(unique_values)))))
+    pickle.dump(org_name_dict,open('{}/{}/org_name_dict.pkl'.format(storage_folder,args.dataset_name), 'wb'))
+    data = data.replace({"org_name":org_name_dict_reverse})
+
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
     return data_info
 
-
 def data_class_division(array,array_mask,idx,labels,confidence_scores):
     """
-
+    Divide the dataset onto data points from positive, negative or high confident negatives
     :param array: epitopes_array_int, apitopes_array_blosum, epitopes_array_blosum_norm_group, epitopes_array_aa_group
     :param idx: training or test idx
     :return:
@@ -670,11 +707,14 @@ def data_class_division(array,array_mask,idx,labels,confidence_scores):
                                        all_mask = mask_,
                                        positives=positives_arr,
                                        positives_mask=positives_arr_mask,
+                                       positives_idx = labels_ == 1,
                                        negatives=negatives_arr,
                                        negatives_mask=negatives_arr_mask,
+                                       negatives_idx=labels_ == 0,
                                        high_confidence_negatives=high_conf_negatives_arr,
                                        high_confidence_negatives_mask=high_conf_negatives_arr_mask)
     return data_subdivision
+
 def build_exploration_folders(args,storage_folder,filters_dict):
 
     for mode in ["All","Train", "Test"]:
@@ -709,6 +749,60 @@ def sample_datapoints_mi(a,b):
     idx_sample = np.sort(idx_sample,axis=0)
     idx_sample = (idx_longest[..., None] == idx_sample).any(-1)
     return idx_sample,dict_counts[longest]
+
+def data_volumetrics(seq_max_len,epitopes_list,data,epitopes_array_mask,storage_folder,args,filters_dict,analysis_mode,plot_volumetrics=True):
+    if not os.path.exists("{}/{}/similarities/{}".format(storage_folder, args.dataset_name, args.sequence_type)):
+        build_exploration_folders(args, storage_folder, filters_dict)
+        # /home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/viral_dataset3/similarities
+    else:
+        print("Folder structure existing")
+
+    labels_arr = np.array(data[["target_corrected"]].values.tolist()).squeeze()
+    training = data[["training"]].values.tolist()
+    training = np.array(training).squeeze(-1)
+    confidence_scores = np.array(data["confidence_score"].values.tolist())
+    immunodominance_scores = np.array(data["immunodominance_score"].values.tolist())
+    epitopes_array_raw = np.array(epitopes_list)
+
+    epitopes_array_raw_division_train = data_class_division(epitopes_array_raw,
+                                                                         epitopes_array_mask, training, labels_arr,
+                                                                         confidence_scores)
+    epitopes_array_raw_division_test = data_class_division(epitopes_array_raw, epitopes_array_mask,
+                                                                        np.invert(training), labels_arr,
+                                                                        confidence_scores)
+    if plot_volumetrics:
+        print("Plotting volumetrics analysis")
+        #Highlight: Train
+        volumetrics_dict_all_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.all.tolist(),storage_folder).volumetrics_summary()
+        subfolders = "{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode)
+        VegvisirPlots.plot_volumetrics(volumetrics_dict_all_train,seq_max_len,immunodominance_scores[training],storage_folder,args,subfolders,tag="_immunodominance_scores")
+        VegvisirPlots.plot_volumetrics(volumetrics_dict_all_train,seq_max_len,labels_arr[training],storage_folder,args,subfolders,tag="_labels")
+        volumetrics_dict_positives_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.positives.tolist(),storage_folder).volumetrics_summary()
+        subfolders = "{}/Train/{}/neighbours1/positives".format(args.sequence_type, analysis_mode)
+        VegvisirPlots.plot_volumetrics(volumetrics_dict_positives_train, seq_max_len,None,storage_folder, args, subfolders)
+        volumetrics_dict_negatives_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.negatives.tolist(),storage_folder).volumetrics_summary()
+        subfolders = "{}/Train/{}/neighbours1/negatives".format(args.sequence_type, analysis_mode)
+        VegvisirPlots.plot_volumetrics(volumetrics_dict_negatives_train, seq_max_len,None, storage_folder, args, subfolders)
+        volumetrics_dict_high_confidence_negatives_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.high_confidence_negatives.tolist(),storage_folder).volumetrics_summary()
+        subfolders = "{}/Train/{}/neighbours1/highconfnegatives".format(args.sequence_type, analysis_mode)
+        VegvisirPlots.plot_volumetrics(volumetrics_dict_high_confidence_negatives_train, seq_max_len, None,storage_folder, args, subfolders)
+
+        #Highlight: Test
+        volumetrics_dict_all_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.all.tolist(),storage_folder).volumetrics_summary()
+        subfolders = "{}/Test/{}/neighbours1/all".format(args.sequence_type, analysis_mode)
+        VegvisirPlots.plot_volumetrics(volumetrics_dict_all_test, seq_max_len, immunodominance_scores[np.invert(training)],storage_folder, args, subfolders,tag="_immunodominance_scores")
+        VegvisirPlots.plot_volumetrics(volumetrics_dict_all_test, seq_max_len, labels_arr[np.invert(training)],storage_folder, args, subfolders,tag="_labels")
+        volumetrics_dict_positives_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.positives.tolist(),storage_folder).volumetrics_summary()
+        subfolders = "{}/Test/{}/neighbours1/positives".format(args.sequence_type, analysis_mode)
+        VegvisirPlots.plot_volumetrics(volumetrics_dict_positives_test, seq_max_len, None,storage_folder, args, subfolders)
+        volumetrics_dict_negatives_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.negatives.tolist(),storage_folder).volumetrics_summary()
+        subfolders = "{}/Test/{}/neighbours1/negatives".format(args.sequence_type, analysis_mode)
+        VegvisirPlots.plot_volumetrics(volumetrics_dict_negatives_test, seq_max_len,None, storage_folder, args, subfolders)
+        volumetrics_dict_high_confidence_negatives_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.high_confidence_negatives.tolist(),storage_folder).volumetrics_summary()
+        subfolders = "{}/Test/{}/neighbours1/highconfnegatives".format(args.sequence_type, analysis_mode)
+        VegvisirPlots.plot_volumetrics(volumetrics_dict_high_confidence_negatives_test, seq_max_len,None, storage_folder, args, subfolders)
+
+    exit()
 def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_array_mask,aa_dict,aa_list,blosum_norm,seq_max_len,storage_folder,args,corrected_aa_types,analysis_mode,filters_dict):
 
     if not os.path.exists("{}/{}/similarities/{}".format(storage_folder,args.dataset_name,args.sequence_type)):
@@ -718,6 +812,8 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
         print("Folder structure existing")
     plot_mi,plot_frequencies,plot_cosine_similarity = False,False,False
     #plot_mi,plot_frequencies,plot_cosine_similarity = True,True,True
+    #Highlight: Encode amino acid raw
+
     #Highlight: Encode amino acid by chemical group
     aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict,aa_by_groups_dict = VegvisirUtils.aminoacids_groups(aa_dict)
     aa_groups = len(groups_names_colors_dict.keys())
@@ -1116,7 +1212,6 @@ def process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,sequences_
                                                                                    include_zero_characters=False)
 
     return sequences_padded,sequences_padded_mask,aa_dict,blosum_array,blosum_dict,blosum_array_dict
-    
 
 def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,features_names=None,plot_blosum=False,plot_umap=False):
     """
@@ -1132,30 +1227,30 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     seq_max_len = len(max(epitopes_list, key=len))
     epitopes_lens = np.array(list(map(len, epitopes_list)))
     unique_lens = list(set(epitopes_lens))
+
     corrected_aa_types = len(set().union(*epitopes_list))
     corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
 
     epitopes_padded, epitopes_padded_mask, aa_dict, blosum_array, blosum_dict, blosum_array_dict = process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,epitopes_list,data)
-
-
-    epitopes_array = np.array(epitopes_padded)
+    epitopes_array_raw = np.array(epitopes_padded)
     if args.seq_padding == "replicated_borders":  # I keep it separately to avoid doing the np vectorized loop twice
-        epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
+        epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array_raw)
         epitopes_array_mask = np.array(epitopes_padded_mask)
         epitopes_array_int_mask = np.vectorize(aa_dict.get)(epitopes_array_mask)
         epitopes_mask = epitopes_array_int_mask.astype(bool)
     else:
-        epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array)
+        epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array_raw)
         if len(unique_lens) > 1: #there are some paddings, that equal 0, therefore we can set them to False
             epitopes_mask = epitopes_array_int.astype(bool)
         else: #there is no padding, therefore number 0 equals an amino acid
             epitopes_mask = np.ones_like(epitopes_array_int).astype(bool)
     if args.subset_data != "no":
         print("WARNING : Using a subset of the data of {}".format(args.subset_data))
-        epitopes_array = epitopes_array[:args.subset_data]
+        epitopes_array_raw = epitopes_array_raw[:args.subset_data]
         epitopes_mask = epitopes_mask[:args.subset_data]
-    blosum_norm = np.linalg.norm(blosum_array[1:, 1:], axis=0)
 
+    n_data = epitopes_array_raw.shape[0]
+    blosum_norm = np.linalg.norm(blosum_array[1:, 1:], axis=0)
     aa_list = [val for key, val in aa_dict.items() if val in list(blosum_array[:, 0])]
     blosum_norm_dict = dict(zip(aa_list,blosum_norm.tolist()))
     epitopes_array_blosum_norm = np.vectorize(blosum_norm_dict.get)(epitopes_array_int)
@@ -1164,8 +1259,12 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
 
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
-    n_data = epitopes_array.shape[0]
+
+    data_volumetrics(seq_max_len,epitopes_list, data, epitopes_mask, storage_folder, args, filters_dict,analysis_mode,
+                     plot_volumetrics=True)
+
     if args.dataset_name not in  ["viral_dataset6","viral_dataset8"]:
+
         all_sim_results = data_exploration(data, epitopes_array_blosum, epitopes_array_int, epitopes_mask, aa_dict, aa_list,
                          blosum_norm, seq_max_len, storage_folder, args, corrected_aa_types,analysis_mode,filters_dict)
         positional_weights = all_sim_results.positional_weights
@@ -1186,6 +1285,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     training = data[["training"]].values.tolist()
     confidence_scores = data["confidence_score"].values.tolist()
     immunodominance_scores = data[["immunodominance_score"]].values.tolist()
+    org_name = data[["org_name"]].values.tolist()
 
      #TODO : make a function?
     if features_names is not None:
@@ -1198,10 +1298,10 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
         identifiers_labels_array[:, 0, 3] = np.array(training).squeeze(-1).astype(int)
         identifiers_labels_array[:, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
         identifiers_labels_array[:, 0, 5] = np.array(confidence_scores)
-        #identifiers_labels_array[:, 0, 6] = np.array(species)
+        identifiers_labels_array[:, 0, 6] = np.array(org_name).squeeze(-1)
 
 
-        epitopes_array = np.concatenate([epitopes_array,features_scores],axis=1)
+        epitopes_array = np.concatenate([epitopes_array_raw,features_scores],axis=1)
         epitopes_array_int = np.concatenate([epitopes_array_int,features_scores],axis=1)
         epitopes_array_blosum_norm = np.concatenate([epitopes_array_blosum_norm,features_scores],axis=1)
 
@@ -1216,7 +1316,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
         identifiers_labels_array_blosum[:, 0, 0, 3] = np.array(training).squeeze(-1).astype(int)
         identifiers_labels_array_blosum[:, 0, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
         identifiers_labels_array_blosum[:, 0, 0, 5] = np.array(confidence_scores)
-        #identifiers_labels_array_blosum[:, 0, 0, 6] = np.array(species)
+        identifiers_labels_array_blosum[:, 0, 0, 6] = np.array(org_name).squeeze(-1)
 
 
 
@@ -1236,11 +1336,9 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
         identifiers_labels_array[:, 0, 3] = np.array(training).squeeze(-1).astype(int)
         identifiers_labels_array[:, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
         identifiers_labels_array[:, 0, 5] = np.array(confidence_scores)
-        #identifiers_labels_array[:, 0, 6] = np.array(species)
+        identifiers_labels_array[:, 0, 6] = np.array(org_name).squeeze(-1)
 
-
-
-        data_array_raw = np.concatenate([identifiers_labels_array, epitopes_array[:,None]], axis=1)
+        data_array_raw = np.concatenate([identifiers_labels_array, epitopes_array_raw[:,None]], axis=1)
         data_array_int = np.concatenate([identifiers_labels_array, epitopes_array_int[:,None]], axis=1)
         data_array_blosum_norm = np.concatenate([identifiers_labels_array, epitopes_array_blosum_norm[:,None]], axis=1)
 
@@ -1251,12 +1349,13 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
         identifiers_labels_array_blosum[:, 0, 0, 3] = np.array(training).squeeze(-1).astype(int)
         identifiers_labels_array_blosum[:, 0, 0, 4] = np.array(immunodominance_scores).squeeze(-1)
         identifiers_labels_array_blosum[:, 0, 0, 5] = np.array(confidence_scores)
-        #identifiers_labels_array_blosum[:, 0, 0, 6] = np.array(species)
+        identifiers_labels_array_blosum[:, 0, 0, 6] = np.array(org_name).squeeze(-1)
 
 
 
         data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:,None]], axis=1)
         data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:,None]], axis=1)
+
 
     data_array_blosum_encoding_mask = np.broadcast_to(epitopes_mask[:, None, :, None], (n_data, 2, seq_max_len,corrected_aa_types))  # I do it like this in case the padding is not represented as 0, otherwise just use bool. Note: The first row of the second dimension is a dummy
     #distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
@@ -1299,6 +1398,7 @@ def prepare_nnalign_no_test(args,storage_folder,data,column_names):
     data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
     data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name), sep="\t",index=False,header=None) #TODO: Header None?
     VegvisirNNalign.run_nnalign(args,storage_folder)
+
 def prepare_nnalign(args,storage_folder,data,column_names,no_test=True):
 
     if no_test:
@@ -1322,6 +1422,7 @@ def prepare_nnalign(args,storage_folder,data,column_names,no_test=True):
 
     exit()
     VegvisirNNalign.run_nnalign(args,storage_folder)
+
 def set_confidence_score(data):
 
     nmax_tested = data["Assay_number_of_subjects_tested"].max()

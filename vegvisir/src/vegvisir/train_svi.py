@@ -1162,7 +1162,7 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                                            {"latent_space": train_latent_space,
                                             "predictions_dict":train_predictions_dict,
                                             "summary_dict": train_summary_dict})
-                Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_valid.p".format(results_dir),
+                Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_{}.p".format(results_dir,mode.lower()),
                                            {"latent_space": valid_latent_space,
                                             "predictions_dict": valid_predictions_dict,
                                             "summary_dict": valid_summary_dict})
