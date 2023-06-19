@@ -79,7 +79,7 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     return dataset
 
 def select_filters(args):
-    filters_dict = {"filter_kmers":[True,9,args.sequence_type], #Icore_non_anchor #Highlight: Remmeber to use 8!!
+    filters_dict = {"filter_kmers":[False,9,args.sequence_type], #Icore_non_anchor #Highlight: Remmeber to use 8!!
                     "group_alleles":[True],
                     "filter_alleles":[False], #if True keeps the most common allele
                     "filter_ntested":[False,10],
@@ -802,7 +802,6 @@ def data_volumetrics(seq_max_len,epitopes_list,data,epitopes_array_mask,storage_
         subfolders = "{}/Test/{}/neighbours1/highconfnegatives".format(args.sequence_type, analysis_mode)
         VegvisirPlots.plot_volumetrics(volumetrics_dict_high_confidence_negatives_test, seq_max_len,None, storage_folder, args, subfolders)
 
-    exit()
 def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_array_mask,aa_dict,aa_list,blosum_norm,seq_max_len,storage_folder,args,corrected_aa_types,analysis_mode,filters_dict):
 
     if not os.path.exists("{}/{}/similarities/{}".format(storage_folder,args.dataset_name,args.sequence_type)):
@@ -1232,7 +1231,9 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
 
     epitopes_padded, epitopes_padded_mask, aa_dict, blosum_array, blosum_dict, blosum_array_dict = process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,epitopes_list,data)
+
     epitopes_array_raw = np.array(epitopes_padded)
+
     if args.seq_padding == "replicated_borders":  # I keep it separately to avoid doing the np vectorized loop twice
         epitopes_array_int = np.vectorize(aa_dict.get)(epitopes_array_raw)
         epitopes_array_mask = np.array(epitopes_padded_mask)
@@ -1260,8 +1261,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
 
-    data_volumetrics(seq_max_len,epitopes_list, data, epitopes_mask, storage_folder, args, filters_dict,analysis_mode,
-                     plot_volumetrics=True)
+    #data_volumetrics(seq_max_len,epitopes_list, data, epitopes_mask, storage_folder, args, filters_dict,analysis_mode,plot_volumetrics=True)
 
     if args.dataset_name not in  ["viral_dataset6","viral_dataset8"]:
 

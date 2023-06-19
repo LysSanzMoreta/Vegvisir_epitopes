@@ -120,7 +120,7 @@ def redefine_class_proportions(dataset,n_positives,n_negatives,positives_proport
 
     return dataset
 
-def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitions"):
+def trainevaltest_split_kfolds(data,args,results_dir,seq_max_len,max_len,features_names,partition_test,method="predefined_partitions"):
     """Perform kfolds partitions division and test split"""
 
     warnings.warn("Feature Scaling has not been implemented for k-fold cross validation, please remember to do so")
@@ -129,11 +129,50 @@ def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitio
     else:
         idx_select = lambda x,n: x[:,0,n]
 
-    if method == "predefined_partitions":
-        #traineval_data, test_data = data[data[:, 0,0, 3] == 1.], data[data[:, 0,0, 3] == 0.]
+    if method == "random_stratified":
+        data_labels = idx_select(data,0)
+        traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
+        dataset_proportions(traineval_data,results_dir)
+        dataset_proportions(test_data,results_dir, type="Test")
+        kfolds = StratifiedShuffleSplit(n_splits=args.k_folds, random_state=13, test_size=0.2).split(traineval_data,idx_select(traineval_data,0))
+        warnings.warn("This code likely contains errors")
+        return traineval_data,test_data,kfolds
+    elif method == "stratified_group_partitions":
+        traineval_data,test_data = data[idx_select(data,3) == 1.], data[idx_select(data,3) == 0.]
+        dataset_proportions(traineval_data,results_dir)
+        dataset_proportions(test_data,results_dir,type="Test")
+        kfolds = StratifiedGroupKFold(n_splits=args.k_folds).split(traineval_data, idx_select(traineval_data,0), idx_select(traineval_data,2))
+        warnings.warn("This code likely contains errors")
+        return traineval_data,test_data,kfolds
+
+    elif method == "predefined_partitions_discard_test":
+        """Discard the test dataset (hard case) and use one of the partitions as the test instead. The rest of the dataset is used for the kfold partitions"""
+        warnings.warn("No test selected. If you wish to use a test dataset please select <predefined_partitions>")
+        #partition_idx = np.random.randint(0, 5)  # random selection of a partition as the test
+        # train_data = data[idx_select(data,2) != partition_idx]
+        # test_data = data[idx_select(data,2) == partition_idx]  # data[data[:, 0, 0, 3] == 1.],
+        #
+        traineval_data, test_data = data[idx_select(data,3) == 1.], data[idx_select(data,3) == 0.]
+        dataset_proportions(traineval_data, results_dir,type="Train-Valid")
+        dataset_proportions(test_data, results_dir, type="Test")
+        partitions = idx_select(traineval_data,2)
+        unique_partitions = np.unique(partitions)
+        assert args.k_folds <= len(unique_partitions), "kfold number is too high, please select a number lower than {}".format(len(unique_partitions))
+        i = 1
+        kfolds = []
+        for part_num in unique_partitions:
+            train_idx = ((idx_select(data,2)[..., None] != part_num) & (idx_select(data,3)[..., None] == 1)).any(-1)
+            valid_idx = ((idx_select(data,2)[..., None] == part_num) &  (idx_select(data,3)[..., None] == 1)).any(-1)
+            kfolds.append((train_idx, valid_idx))
+            if args.k_folds <= i:
+                break
+            else:
+                i += 1
+        return traineval_data, None, kfolds
+    elif method == "predefined_partitions":
         traineval_data, test_data = data[idx_select(data,3) == 1.], data[idx_select(data,3) == 0.]
 
-        dataset_proportions(traineval_data, results_dir)
+        dataset_proportions(traineval_data, results_dir,type="Train-Valid")
         dataset_proportions(test_data, results_dir, type="Test")
         #partitions = traineval_data[:, 0,0, 2]
         partitions = idx_select(traineval_data,2)
@@ -142,51 +181,14 @@ def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitio
         i = 1
         kfolds = []
         for part_num in unique_partitions:
-            #train_idx = (traineval_data[:, 0,0, 2][..., None] != part_num).any(-1)
-            train_idx = (idx_select(traineval_data,2)[..., None] != part_num).any(-1)
-            #valid_idx = (traineval_data[:, 0,0, 2][..., None] == part_num).any(-1)
-            valid_idx = (idx_select(traineval_data,2)[..., None] == part_num).any(-1)
+            train_idx = ((idx_select(data,2)[..., None] != part_num) & (idx_select(data,3)[..., None] == 1)).any(-1)
+            valid_idx = ((idx_select(data,2)[..., None] == part_num) &  (idx_select(data,3)[..., None] == 1)).any(-1)
             kfolds.append((train_idx, valid_idx))
             if args.k_folds <= i :
                 break
             else:
                 i+=1
         return traineval_data, test_data, kfolds
-    elif method == "stratified_group_partitions":
-        traineval_data,test_data = data[idx_select(data,3) == 1.], data[idx_select(data,3) == 0.]
-        dataset_proportions(traineval_data,results_dir)
-        dataset_proportions(test_data,results_dir,type="Test")
-        kfolds = StratifiedGroupKFold(n_splits=args.k_folds).split(traineval_data, idx_select(traineval_data,0), idx_select(traineval_data,2))
-        return traineval_data,test_data,kfolds
-    elif method == "random_stratified":
-        data_labels = idx_select(data,0)
-        traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
-        dataset_proportions(traineval_data,results_dir)
-        dataset_proportions(test_data,results_dir, type="Test")
-        kfolds = StratifiedShuffleSplit(n_splits=args.k_folds, random_state=13, test_size=0.2).split(traineval_data,idx_select(traineval_data,0))
-        return traineval_data,test_data,kfolds
-    elif method == "predefined_partitions_discard_test":
-        """Discard the test dataset (hard case) and use one of the partitions as the test instead. The rest of the dataset is used for the kfold partitions"""
-        partition_idx = np.random.randint(0, 4)  # random selection of a partition as the test
-        train_data = data[idx_select(data,2) != partition_idx]
-        test_data = data[idx_select(data,2) == partition_idx]  # data[data[:, 0, 0, 3] == 1.],
-        dataset_proportions(train_data, results_dir)
-        dataset_proportions(test_data, results_dir, type="Test")
-        partitions = idx_select(train_data,2)
-        unique_partitions = np.unique(partitions)
-        assert args.kfolds <= len(unique_partitions), "kfold number is too high, please select a number lower than {}".format(len(unique_partitions))
-        i = 1
-        kfolds = []
-        for part_num in unique_partitions:
-            # train_idx = traineval_data[traineval_data[:,0,2] != part_num]
-            train_idx = (idx_select(train_data,2)[..., None] != part_num).any(-1)
-            valid_idx = (idx_select(train_data,2)[..., None] == part_num).any(-1)
-            kfolds.append((train_idx, valid_idx))
-            if args.k_folds <= i:
-                break
-            else:
-                i += 1
-        return train_data, test_data, kfolds
 
     else:
         raise ValueError("train test split method <{}> not available".format(method))
@@ -194,20 +196,28 @@ def trainevaltest_split_kfolds(data,args,results_dir,method="predefined_partitio
 def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names,partition_test,method="predefined_partitions_discard_test"):
     """Perform train-valid-test split"""
     info_file = open("{}/dataset_info.txt".format(results_dir),"a+")
+    if data.ndim == 4: #TODO:not sure why the list comprehesion does not work with lambda
+        idx_select = lambda x,n: x[:,0,0,n] #TODO: Use ellipsis? so far not working, this is best
+    else:
+        idx_select = lambda x,n: x[:,0,n]
     if method == "random_stratified":
         data_labels = data[:,0,0,0]
         traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
-        traineval_labels = traineval_data[:,0,0,0]
+        #traineval_labels = traineval_data[:,0,0,0]
+        traineval_labels = idx_select(traineval_data,0)
         train_data, valid_data = train_test_split(data, test_size=0.1, random_state=13, stratify=traineval_labels,shuffle=True)
         dataset_proportions(train_data,results_dir, type="Train")
         dataset_proportions(valid_data,results_dir, type="Valid")
         dataset_proportions(test_data,results_dir, type="Test")
     elif method == "random_stratified_discard_test":
         """Discard the predefined test dataset"""
-        data = data[data[:,0,0,3] == 1] #pick only the pre assigned training data
-        data_labels = data[:,0,0,0]
+        #data = data[data[:,0,0,3] == 1] #pick only the pre assigned training data
+        data = data[idx_select(data,3) == 1] #pick only the pre assigned training data
+        #data_labels = data[:,0,0,0]
+        data_labels = idx_select(data,0)
         traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
-        traineval_labels = traineval_data[:,0,0,0]
+        #traineval_labels = traineval_data[:,0,0,0]
+        traineval_labels = idx_select(traineval_data,0)
         train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13, stratify=traineval_labels,shuffle=True)
         dataset_proportions(train_data,results_dir, type="Train")
         dataset_proportions(valid_data,results_dir, type="Valid")
@@ -215,17 +225,23 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
     elif method == "predefined_partitions_discard_test":
         """Discard the test dataset (because it seems a hard case) and use one of the partitions as the test instead. 
         The rest of the dataset is used for the training, and a portion for validation"""
-        traineval_data = data[data[:, 0, 0, 3] == 1]
+        #traineval_data = data[data[:, 0, 0, 3] == 1]
+        traineval_data = data[idx_select(data,3) == 1]
+
         if partition_test is not None:
             partition_idx = partition_test
         else:
             partition_idx = np.random.randint(0,5) #random selection of a partition as the test
         if args.dataset_name == "viral_dataset_california":
-            traineval_labels = traineval_data[:,0,0,0]
+            #traineval_labels = traineval_data[:,0,0,0]
+            traineval_labels = idx_select(traineval_data,0)
             train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
         else:
-            train_data = traineval_data[traineval_data[:, 0, 0, 2] != partition_idx]
-            valid_data = traineval_data[traineval_data[:, 0, 0, 2] == partition_idx]  # data[data[:, 0, 0, 3] == 1.]
+            #train_data = traineval_data[traineval_data[:, 0, 0, 2] != partition_idx]
+            train_data = traineval_data[idx_select(traineval_data,2) != partition_idx]
+            #valid_data = traineval_data[traineval_data[:, 0, 0, 2] == partition_idx]  # data[data[:, 0, 0, 3] == 1.]
+            valid_data = traineval_data[idx_select(traineval_data,2) == partition_idx]  # data[data[:, 0, 0, 3] == 1.]
+
         test_data = valid_data
         dataset_proportions(train_data, results_dir, type="Train")
         dataset_proportions(valid_data, results_dir, type="Valid")
@@ -239,8 +255,10 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
             partition_idx = partition_test
         else:
             partition_idx = np.random.randint(0,5) #random selection of a partition as the test
-        train_data = data[data[:, 0, 0, 2] != partition_idx]
-        valid_data = data[data[:, 0, 0, 2] == partition_idx]
+        #train_data = data[data[:, 0, 0, 2] != partition_idx]
+        train_data = data[idx_select(data,2) != partition_idx]
+        #valid_data = data[data[:, 0, 0, 2] == partition_idx]
+        valid_data = data[idx_select(data,2) == partition_idx]
         test_data = valid_data #the test dataset will be the validation again, since the test has been merged onto the train and validation
 
         dataset_proportions(train_data, results_dir, type="Train")
@@ -252,8 +270,10 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
     elif method == "predefined_partitions":
         """Use the test data as intended. The train and validation datasets are split using the pre-given partitions"""
 
-        traineval_data = data[data[:, 0, 0, 3] == 1]
-        test_data = data[data[:, 0, 0, 3] == 0] #data[data[:, 0, 0, 3] == 1.]
+        #traineval_data = data[data[:, 0, 0, 3] == 1]
+        traineval_data = data[idx_select(data,3) == 1]
+        #test_data = data[data[:, 0, 0, 3] == 0] #data[data[:, 0, 0, 3] == 1.]
+        test_data = data[idx_select(data,3) == 0] #data[data[:, 0, 0, 3] == 1.]
 
         if partition_test is not None:
             partition_idx = partition_test
@@ -261,13 +281,16 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
             partition_idx = np.random.randint(0,5) #random selection of a partition as the validation
 
         if args.dataset_name == "viral_dataset_california":
+            #traineval_labels = traineval_data[:,0,0,0]
+            traineval_labels = idx_select(traineval_data,0)
 
-            traineval_data = data[data[:, 0, 0, 3] == 1]
-            traineval_labels = traineval_data[:,0,0,0]
             train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
         else:
-            train_data = traineval_data[traineval_data[:, 0, 0, 2] != partition_idx] #Highlight: was using data before #TODO: Check that data points are not mixed or lost
-            valid_data = traineval_data[traineval_data[:, 0, 0, 2] == partition_idx] #data[data[:, 0, 0, 3] == 1.]
+            #train_data = traineval_data[traineval_data[:, 0, 0, 2] != partition_idx] #Highlight: was using data before #TODO: Check that data points are not mixed or lost
+            train_data = traineval_data[idx_select(traineval_data,2) != partition_idx] #Highlight: was using data before #TODO: Check that data points are not mixed or lost
+            #valid_data = traineval_data[traineval_data[:, 0, 0, 2] == partition_idx] #data[data[:, 0, 0, 3] == 1.]
+            valid_data = traineval_data[idx_select(traineval_data,2) == partition_idx] #data[data[:, 0, 0, 3] == 1.]
+
 
         dataset_proportions(train_data, results_dir, type="Train")
         dataset_proportions(valid_data, results_dir, type="Valid")

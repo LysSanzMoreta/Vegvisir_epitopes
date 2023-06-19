@@ -177,7 +177,7 @@ def create_blosum(aa_types,subs_matrix_name,zero_characters=[],include_zero_char
 
     if zero_characters:
         index_gap = aa_list.index("#")
-        aa_list[index_gap] = "*" #in the blosum matrix gaps are represanted as *
+        aa_list[index_gap] = "*" #in the blosum matrix gaps are represented as *
 
     subs_dict = defaultdict()
     subs_array = np.zeros((len(aa_list) , len(aa_list) ))
