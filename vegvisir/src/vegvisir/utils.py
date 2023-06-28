@@ -1160,6 +1160,23 @@ class CalculatePeptideFeatures(object):
 
         return molecular_weight,volume,radius,bulkiness
 
+    def calculate_features(self,seq,seq_max_len):
+        """Calculates molecular weight, volume, radius, isoelectric point, side chain pka, hydropathy of each residue in a protein sequence"""
+        seq = "".join(seq).replace("#", "")
+
+        pads = [0] *(seq_max_len-len(seq))
+        molecular_weight = calculate_molecular_weight(seq)
+        volume = sum(list( map(lambda aa: self.volume_dict[aa], list(seq))) +  pads)
+        radius = sum(list( map(lambda aa: self.radius_dict[aa], list(seq))) + pads)
+        bulkiness = sum(list( map(lambda aa: self.bulkiness_dict[aa], list(seq))) + pads)
+        isoelectric = calculate_isoelectric(seq)
+        hydropathy = calculate_hydropathy(seq)
+        side_chain_pka = sum(list( map(lambda aa: self.side_chain_pka_dict[aa], list(seq))) + pads)/len(seq)
+        aromaticity = calculate_aromaticity(seq)
+
+        return molecular_weight,volume,radius,bulkiness,isoelectric,hydropathy,side_chain_pka,aromaticity
+
+
     def volumetrics_summary(self):
 
         if self.list_sequences:
@@ -1177,6 +1194,32 @@ class CalculatePeptideFeatures(object):
 
         return volumetrics_dict
 
+    def features_summary(self):
+
+        if self.list_sequences:
+            results = list(map(lambda seq: self.calculate_features(seq,self.seq_max_len), self.list_sequences))
+            zipped_results = list(zip(*results))
+            volumetrics_dict = {"molecular_weights":np.array(zipped_results[0]),
+                                "volume":np.array(zipped_results[1]),
+                                "radius":np.array(zipped_results[2]),
+                                "bulkiness":np.array(zipped_results[3]),
+                                "isoelectric":np.array(zipped_results[4]),
+                                "hydropathy":np.array(zipped_results[5]),
+                                "side_chain_pka":np.array(zipped_results[6]),
+                                "aromaticity":np.array(zipped_results[7])
+                                }
+        else:
+            volumetrics_dict = {"molecular_weights":None,
+                                "volume":None,
+                                "radius":None,
+                                "bulkiness":None,
+                                "isoelectric": None,
+                                "hydropathy": None,
+                                "side_chain_pka": None,
+                                "aromaticity":None,
+                                }
+
+        return volumetrics_dict
 
 
 

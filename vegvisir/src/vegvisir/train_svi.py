@@ -1,3 +1,4 @@
+import gc
 import json
 import warnings
 
@@ -25,8 +26,6 @@ import vegvisir.guides as VegvisirGuides
 
 ModelLoad = namedtuple("ModelLoad",["args","max_len","seq_max_len","n_data","input_dim","aa_types","blosum","class_weights"])
 
-def batch_loop():
-    """"""
 
 def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
     """Regular batch training
@@ -97,14 +96,14 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
         reconstruction_logits_batch = sampling_output["sequences_logits"].squeeze(0).detach().cpu()
         reconstruction_logits.append(reconstruction_logits_batch)
 
-        latent_space = sampling_output["latent_z"].squeeze(0).squeeze(0).detach()
-        true_labels_batch = batch_data["blosum"][:, 0, 0, 0]
+        latent_space = sampling_output["latent_z"].squeeze(0).squeeze(0).detach().cpu()
+        true_labels_batch = batch_data["blosum"][:, 0, 0, 0].detach().cpu()
 
-        identifiers = batch_data["blosum"][:, 0, 0, 1]
-        partitions = batch_data["blosum"][:, 0, 0, 2]
-        training = batch_data["blosum"][:, 0, 0, 3]
-        immunodominace_score = batch_data["blosum"][:, 0, 0, 4]
-        confidence_score = batch_data["blosum"][:, 0, 0, 5]
+        identifiers = batch_data["blosum"][:, 0, 0, 1].detach().cpu()
+        partitions = batch_data["blosum"][:, 0, 0, 2].detach().cpu()
+        training = batch_data["blosum"][:, 0, 0, 3].detach().cpu()
+        immunodominace_score = batch_data["blosum"][:, 0, 0, 4].detach().cpu()
+        confidence_score = batch_data["blosum"][:, 0, 0, 5].detach().cpu()
         latent_space = torch.column_stack(
             [true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score, latent_space])
         encoder_final_hidden= torch.column_stack(
@@ -114,8 +113,8 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
         encoder_final_hidden_states.append(encoder_final_hidden.numpy())
         decoder_final_hidden_states.append(decoder_final_hidden.numpy())
 
-        mask_seq = batch_mask[:, 1:,:,0].squeeze(1)
-        equal_aa = torch.Tensor((batch_data_int[:,1,:model_load.seq_max_len] == reconstructed_sequences.long())*mask_seq)
+        mask_seq = batch_mask[:, 1:,:,0].squeeze(1).detach().cpu()
+        equal_aa = torch.Tensor((batch_data_int[:,1,:model_load.seq_max_len].detach().cpu() == reconstructed_sequences.long())*mask_seq)
         reconstruction_accuracy = (equal_aa.sum(dim=1))/mask_seq.sum(dim=1)
 
         reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
@@ -147,7 +146,6 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
     decoder_hidden_arr = np.concatenate(decoder_hidden_states,axis=0)
     encoder_final_hidden_arr = np.concatenate(encoder_final_hidden_states,axis=0)
     decoder_final_hidden_arr = np.concatenate(decoder_final_hidden_states,axis=0)
-    target_accuracy = 100 * ((true_labels_arr == binary_predictions_arr).sum() / true_labels_arr.shape[0])
 
     reconstruction_accuracies_arr = np.concatenate(reconstruction_accuracies)
     reconstruction_logits_arr = np.concatenate(reconstruction_logits,axis=0)
@@ -158,10 +156,14 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
 
     if args.num_classes == args.num_obs_classes:
         observed_labels = true_labels_arr
+        target_accuracy = 100 * ((true_labels_arr == binary_predictions_arr).sum() / true_labels_arr.shape[0])
+
     else:
-        confidence_mask = (true_labels_arr[..., None] != 2).any(-1) #Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
+        confidence_mask = (true_labels_arr[..., None] != 2).any(-1) #Highlight: unlabelled data has been assigned labelled 2
         observed_labels = true_labels_arr.copy()
-        observed_labels[~confidence_mask] = 0
+        observed_labels[~confidence_mask] = 0 #fake class 0 for unobserved data,will be ignored
+        target_accuracy = 100 * ((true_labels_arr[confidence_mask] == binary_predictions_arr[confidence_mask]).sum() / true_labels_arr[confidence_mask].shape[0])
+
     true_onehot = np.zeros((true_labels_arr.shape[0],args.num_obs_classes))
     true_onehot[np.arange(0,true_labels_arr.shape[0]),observed_labels.astype(int)] = 1
     predictions_dict = {"data_int":data_int_arr,
@@ -247,13 +249,13 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
             reconstructed_sequences = sampling_output["sequences"].squeeze(0).squeeze(0).squeeze(0).detach().cpu()
             reconstruction_logits_batch = sampling_output["sequences_logits"].squeeze(0).detach().cpu()
             reconstruction_logits.append(reconstruction_logits_batch)
-            latent_space = sampling_output["latent_z"].squeeze(0).squeeze(0).detach()
-            true_labels_batch = batch_data["blosum"][:, 0, 0, 0]
-            identifiers = batch_data["blosum"][:, 0, 0, 1]
-            partitions = batch_data["blosum"][:,0,0,2]
-            training = batch_data["blosum"][:,0,0,3]
-            immunodominace_score = batch_data["blosum"][:, 0, 0, 4]
-            confidence_score = batch_data["blosum"][:, 0, 0, 5]
+            latent_space = sampling_output["latent_z"].squeeze(0).squeeze(0).detach().cpu()
+            true_labels_batch = batch_data["blosum"][:, 0, 0, 0].detach().cpu()
+            identifiers = batch_data["blosum"][:, 0, 0, 1].detach().cpu()
+            partitions = batch_data["blosum"][:,0,0,2].detach().cpu()
+            training = batch_data["blosum"][:,0,0,3].detach().cpu()
+            immunodominace_score = batch_data["blosum"][:, 0, 0, 4].detach().cpu()
+            confidence_score = batch_data["blosum"][:, 0, 0, 5].detach().cpu()
             # latent_space = torch.column_stack(
             #     [identifiers, true_labels_batch, confidence_score, immunodominace_score, latent_space])
             latent_space = torch.column_stack(
@@ -266,8 +268,8 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
                  decoder_final_hidden])
             encoder_final_hidden_states.append(encoder_final_hidden.numpy())
             decoder_final_hidden_states.append(decoder_final_hidden.numpy())
-            mask_seq = batch_mask[:, 1:, :, 0].squeeze(1)
-            equal_aa = torch.Tensor((batch_data_int[:, 1, :model_load.seq_max_len] == reconstructed_sequences) * mask_seq)
+            mask_seq = batch_mask[:, 1:, :, 0].squeeze(1).detach().cpu()
+            equal_aa = torch.Tensor((batch_data_int[:, 1, :model_load.seq_max_len].detach().cpu() == reconstructed_sequences) * mask_seq)
             reconstruction_accuracy = (equal_aa.sum(dim=1)) / mask_seq.sum(dim=1)
             reconstruction_accuracies.append(reconstruction_accuracy.detach().cpu().numpy())
             latent_spaces.append(latent_space.cpu().detach().numpy())
@@ -296,7 +298,6 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
     decoder_hidden_arr = np.concatenate(decoder_hidden_states,axis=0)
     encoder_final_hidden_arr = np.concatenate(encoder_final_hidden_states,axis=0)
     decoder_final_hidden_arr = np.concatenate(decoder_final_hidden_states,axis=0)
-    target_accuracy= 100 * ((true_labels_arr == binary_predictions_arr).sum()/true_labels_arr.shape[0])
     reconstruction_accuracies_arr = np.concatenate(reconstruction_accuracies)
     reconstruction_logits_arr= np.concatenate(reconstruction_logits,axis=0)
     reconstruction_entropy = VegvisirUtils.compute_sites_entropies(reconstruction_logits_arr, true_labels_arr) #Highlight: first term is the label, then the entropy per position
@@ -305,10 +306,14 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
                                       "entropies": np.mean(reconstruction_entropy[:,1:],axis=0)}
     if args.num_classes == args.num_obs_classes:
         observed_labels = true_labels_arr
+        target_accuracy = 100 * ((true_labels_arr == binary_predictions_arr).sum() / true_labels_arr.shape[0])
+
     else:
         confidence_mask = (true_labels_arr[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
         observed_labels = true_labels_arr.copy()
         observed_labels[~confidence_mask] = 0
+        target_accuracy = 100 * ((true_labels_arr[confidence_mask] == binary_predictions_arr[confidence_mask]).sum() / true_labels_arr[confidence_mask].shape[0])
+
     true_onehot = np.zeros((true_labels_arr.shape[0],args.num_obs_classes))
     true_onehot[np.arange(0,true_labels_arr.shape[0]),observed_labels.astype(int)] = 1
     predictions_dict = {"data_int": data_int_arr ,
@@ -393,12 +398,12 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load,epoch): #TODO: remo
 
             reconstructed_sequences = sampling_output["sequences"].squeeze(0).detach()
             latent_space = sampling_output["latent_space"].squeeze(0).squeeze(0).detach()
-            true_labels_batch = batch_data["blosum"][:, 0, 0, 0]
-            identifiers = batch_data["blosum"][:, 0, 0, 1]
-            partitions = batch_data["blosum"][:,0,0,2]
-            training = batch_data["blosum"][:,0,0,3]
-            immunodominace_score = batch_data["blosum"][:, 0, 0, 4]
-            confidence_score = batch_data["blosum"][:, 0, 0, 5]
+            true_labels_batch = batch_data["blosum"][:, 0, 0, 0].detach().cpu()
+            identifiers = batch_data["blosum"][:, 0, 0, 1].detach().cpu()
+            partitions = batch_data["blosum"][:,0,0,2].detach().cpu()
+            training = batch_data["blosum"][:,0,0,3].detach().cpu()
+            immunodominace_score = batch_data["blosum"][:, 0, 0, 4].detach().cpu()
+            confidence_score = batch_data["blosum"][:, 0, 0, 5].detach().cpu()
             latent_space = torch.column_stack(
                 [true_labels_batch,identifiers, partitions, immunodominace_score,confidence_score, latent_space])
             encoder_final_hidden = torch.column_stack(
@@ -441,15 +446,17 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load,epoch): #TODO: remo
     decoder_hidden_arr = np.concatenate(decoder_hidden_states,axis=0)
     encoder_final_hidden_arr = np.concatenate(encoder_final_hidden_states,axis=0)
     decoder_final_hidden_arr = np.concatenate(decoder_final_hidden_states,axis=0)
-    target_accuracy = 100 * ((true_labels_arr == binary_predictions_arr).sum() / true_labels_arr.shape[0])
     reconstruction_accuracies = np.concatenate(reconstruction_accuracies)
     reconstruction_accuracies_dict = {"mean":reconstruction_accuracies.mean(),"std":reconstruction_accuracies.std()}
     if args.num_classes == args.num_obs_classes:
         observed_labels = true_labels_arr
+        target_accuracy = 100 * ((true_labels_arr == binary_predictions_arr).sum() / true_labels_arr.shape[0])
     else:
         confidence_mask = (true_labels_arr[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
         observed_labels = true_labels_arr.copy()
         observed_labels[~confidence_mask] = 0
+        target_accuracy = 100 * ((true_labels_arr[confidence_mask] == binary_predictions_arr[confidence_mask]).sum() / true_labels_arr[confidence_mask].shape[0])
+
     true_onehot = np.zeros((true_labels_arr.shape[0],args.num_obs_classes))
     true_onehot[np.arange(0,true_labels_arr.shape[0]),true_labels_arr.astype(int)] = 1
     predictions_dict = {"data_int":data_int_arr,
@@ -538,15 +545,15 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             decoder_final_hidden = decoder_final_hidden.mean(dim=1)
 
             if sampling_output["latent_z"].ndim == 4:
-                latent_space = sampling_output["latent_z"].squeeze(1).detach().permute(1,0,2)[:,0,:]
+                latent_space = sampling_output["latent_z"].squeeze(1).detach().permute(1,0,2)[:,0,:].detach().cpu()
             else:
-                latent_space = sampling_output["latent_z"].detach().permute(1,0,2)[:,0,:]
-            true_labels_batch = batch_data["blosum"][:, 0, 0, 0]
-            identifiers = batch_data["blosum"][:, 0, 0, 1]
-            partitions = batch_data["blosum"][:, 0, 0, 2]
-            training = batch_data["blosum"][:, 0, 0, 3]
-            immunodominace_score = batch_data["blosum"][:, 0, 0, 4]
-            confidence_score = batch_data["blosum"][:, 0, 0, 5]
+                latent_space = sampling_output["latent_z"].detach().permute(1,0,2)[:,0,:].detach().cpu()
+            true_labels_batch = batch_data["blosum"][:, 0, 0, 0].detach().cpu()
+            identifiers = batch_data["blosum"][:, 0, 0, 1].detach().cpu()
+            partitions = batch_data["blosum"][:, 0, 0, 2].detach().cpu()
+            training = batch_data["blosum"][:, 0, 0, 3].detach().cpu()
+            immunodominace_score = batch_data["blosum"][:, 0, 0, 4].detach().cpu()
+            confidence_score = batch_data["blosum"][:, 0, 0, 5].detach().cpu()
             latent_space = torch.column_stack(
                 [true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score, latent_space])
             encoder_final_hidden = torch.column_stack(
@@ -641,6 +648,7 @@ def select_quide(Vegvisir,model_load,n_data,choice="autodelta"):
     #return poutine.scale(guide[choice],scale=1.0/n_data) #Scale the ELBo to the data size
 def select_model(model_load,results_dir,fold,args):
     """Select among the available models at models.py"""
+    print(args.learning_type )
     if model_load.seq_max_len == model_load.max_len:
         if args.learning_type == "supervised":
             vegvisir_model = VegvisirModels.VegvisirModel5a_supervised(model_load)
@@ -648,7 +656,11 @@ def select_model(model_load,results_dir,fold,args):
             vegvisir_model = VegvisirModels.VegvisirModel5a_unsupervised(model_load)
         elif args.learning_type == "semisupervised":
             vegvisir_model = VegvisirModels.VegvisirModel5a_semisupervised(model_load)
+        elif args.learning_type == "supervised_no_decoder":
+            vegvisir_model = VegvisirModels.VegvisirModel5a_supervised_no_decoder(model_load)
     else:
+        print("Here4")
+
         vegvisir_model = VegvisirModels.VegvisirModel5a_supervised(model_load)
     if fold == 0 or fold == "all":
         text_file = open("{}/Hyperparameters.txt".format(results_dir), "a")
@@ -696,6 +708,9 @@ def init_weights(m):
         nn.init.kaiming_normal_(m.weight,nonlinearity="leaky_relu")
         if m.bias is not None:
             nn.init.zeros_(m.bias)
+def reset_weights(m):
+    if isinstance(m, nn.Module) and hasattr(m, 'weight') and not (isinstance(m,nn.BatchNorm1d)):
+        m.reset_parameters()
 def clip_backprop(model, clip_value):
     "Norm Clip the gradients of the model parameters to orient them towards the minimum"
     handles = []
@@ -707,169 +722,11 @@ def clip_backprop(model, clip_value):
             handle = p.register_hook(func)
             handles.append(handle)
     return handles
-def kfold_crossvalidation_old(dataset_info,additional_info,args):
-    """Set up k-fold cross validation and the training loop"""
-    print("Loading dataset into model...")
-    data_blosum = dataset_info.data_array_blosum_encoding
-    data_int = dataset_info.data_array_int
-    data_onehot = dataset_info.data_array_onehot_encoding
-    data_blosum_norm = dataset_info.data_array_blosum_norm
-    seq_max_len = dataset_info.seq_max_len
-
-    n_data = data_blosum.shape[0]
-    data_array_blosum_encoding_mask = dataset_info.data_array_blosum_encoding_mask
-    results_dir = additional_info.results_dir
-    kwargs = {'num_workers': 0, 'pin_memory': args.use_cuda}  # pin-memory has to do with transferring CPU tensors to GPU
-    #TODO: Detect and correct batch_size automatically?
-    #Highlight: Train- Test split and kfold generator
-    #TODO: Develop method to partition sequences, sequences in train and test must differ. Partitions must have similar distributions (Tree based on distance matrix?
-    # In the loop computer another cosine similarity among the vectors of cos sim of each sequence?)
-    traineval_data_blosum,test_data_blosum,kfolds = VegvisirLoadUtils.trainevaltest_split_kfolds(data_blosum,args,results_dir,seq_max_len,dataset_info.max_len,dataset_info.features_names,method="predefined_partitions_discard_test")
-
-    #Highlight:Also split the rest of arrays
-    traineval_idx = (data_blosum[:,0,0,1][..., None] == traineval_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
-    traineval_mask = data_array_blosum_encoding_mask[traineval_idx]
-    test_mask = data_array_blosum_encoding_mask[~traineval_idx]
-    traineval_data_int = data_int[traineval_idx]
-    test_data_int = data_int[~traineval_idx]
-    traineval_data_onehot = data_onehot[traineval_idx]
-    test_data_onehot = data_onehot[~traineval_idx]
-    traineval_data_norm = data_blosum_norm[traineval_idx]
-    test_data_norm = data_blosum_norm[~traineval_idx]
-    #Split the rest of the data (train_data) for train and validation
-    batch_size = args.batch_size
-    check_point_epoch = [5 if args.num_epochs < 100 else int(args.num_epochs / 50)][0]
-    model_load = ModelLoad(args=args,
-                           max_len =dataset_info.max_len,
-                           seq_max_len=seq_max_len,
-                           n_data = dataset_info.n_data,
-                           input_dim = dataset_info.input_dim,
-                           aa_types = dataset_info.corrected_aa_types,
-                           blosum = dataset_info.blosum,
-                           class_weights=VegvisirLoadUtils.calculate_class_weights(traineval_data_blosum, args))
-
-    valid_predictions_fold = None
-    train_predictions_fold = None
-    valid_accuracy = None
-    train_accuracy=None
-    for fold, (train_idx, valid_idx) in enumerate(kfolds): #returns k-splits for train and validation
-        # #Highlight: Minmax scale the confidence scores #TODO: function or for loop?
-        fold_train_data_blosum = traineval_data_blosum[train_idx]
-        fold_train_data_int = traineval_data_int[train_idx]
-        fold_train_data_onehot = traineval_data_onehot[train_idx]
-        # #Highlight: valid
-        fold_valid_data_blosum = traineval_data_blosum[valid_idx]
-        fold_valid_data_int = traineval_data_int[valid_idx]
-        fold_valid_data_onehot = traineval_data_onehot[valid_idx]
-        print("---------------------------------------------------------------------")
-        print('Fold number : {}'.format(fold))
-        print('\t Number train data points: {}; Proportion: {}'.format(fold_train_data_blosum.shape[0],(fold_train_data_blosum.shape[0]*100)/traineval_data_blosum.shape[0]))
-        print('\t Number valid data points: {}; Proportion: {}'.format(fold_valid_data_blosum.shape[0],(fold_valid_data_blosum.shape[0]*100)/traineval_data_blosum.shape[0]))
-
-        custom_dataset_train = VegvisirLoadUtils.CustomDataset(fold_train_data_blosum,
-                                                               fold_train_data_int,
-                                                               fold_train_data_onehot,
-                                                               traineval_data_norm[train_idx],
-                                                                traineval_mask[train_idx])
-        custom_dataset_valid = VegvisirLoadUtils.CustomDataset(fold_valid_data_blosum,
-                                                               fold_valid_data_int,
-                                                               fold_valid_data_onehot,
-                                                               traineval_data_norm[valid_idx],
-                                                               traineval_mask[valid_idx])
-        train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffled_Ibel? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
-        valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device),**kwargs)
-
-
-        #Restart the model each fold
-        Vegvisir = select_model(model_load, additional_info.results_dir,fold)
-        params_config = config_build(args,results_dir)
-        if args.optimizer_name == "Adam":
-            adam_args = {"lr":params_config["lr"],
-                        "betas": (params_config["beta1"], params_config["beta2"]),
-                        "eps": params_config["eps"],
-                        "weight_decay": params_config["weight_decay"]}
-            optimizer = pyro.optim.Adam(adam_args)
-        elif args.optimizer_name == "ClippedAdam":
-            clippedadam_args = {"lr": params_config["lr"],
-                            "betas": (params_config["beta1"], params_config["beta2"]),
-                            "eps": params_config["eps"],
-                            "weight_decay": params_config["weight_decay"],
-                            "clip_norm": params_config["clip_norm"],
-                            "lrd": params_config["lrd"]}
-            optimizer = pyro.optim.ClippedAdam(clippedadam_args)
-        else:
-            raise ValueError("selected optimizer {} not implemented".format(args.optimizer_name))
-        loss_func = Vegvisir.loss()
-        guide = select_quide(Vegvisir,model_load,n_data,args.guide)
-        #svi = SVI(poutine.scale(Vegvisir.model,scale=1.0/n_data), guide, optimizer, loss_func)
-        svi = SVI(Vegvisir.model, guide, optimizer, loss_func)
-
-        #TODO: Dictionary that gathers the results from each fold
-        train_loss = []
-        valid_loss = []
-        epochs_list = []
-        train_accuracies = []
-        valid_accuracies= []
-        train_auc = []
-        valid_auc = []
-        train_auk = []
-        valid_auk = []
-        epoch = 0.
-        gradient_norms = defaultdict(list)
-        while epoch <= args.num_epochs:
-            start = time.time()
-            #svi,Vegvisir,guide,data_loader, args
-            train_epoch_loss,train_accuracy,train_predictions,train_reconstruction_accuracies_dict = train_loop(svi,Vegvisir,guide, train_loader, args,model_load,epoch)
-            stop = time.time()
-            memory_usage_mib = torch.cuda.max_memory_allocated() * 9.5367 * 1e-7  # convert byte to MiB
-            print("[epoch %03d]  average training loss: %.4f %.5g time/epoch %.2f MiB/epoch" % (epoch, train_epoch_loss, stop - start, memory_usage_mib))
-            train_loss.append(train_epoch_loss)
-            train_accuracies.append(train_accuracy)
-            if (check_point_epoch > 0 and epoch > 0 and epoch % check_point_epoch == 0) or epoch == args.num_epochs :
-                for name_i, value in pyro.get_param_store().named_parameters(): #TODO: https://stackoverflow.com/questions/68634707/best-way-to-detect-vanishing-exploding-gradient-in-pytorch-via-tensorboard
-                    value.register_hook(lambda g, name_i=name_i: gradient_norms[name_i].append(g.norm().detach().item()))
-                valid_epoch_loss,valid_accuracy,valid_predictions,valid_reconstruction_accuracies_dict = valid_loop(svi,Vegvisir,guide, valid_loader, args,model_load,epoch)
-                valid_loss.append(valid_epoch_loss)
-                epochs_list.append(epoch)
-                valid_accuracies.append(valid_accuracy)
-                train_auc_score = roc_auc_score(y_true=fold_train_data_blosum[:,0,0,0], y_score=train_predictions)
-                train_auk_score = VegvisirUtils.AUK(probabilities= train_predictions,labels=fold_train_data_blosum[:,0,0,0].numpy()).calculate_auk()
-                train_auk.append(train_auk_score)
-                train_auc.append(train_auc_score)
-                valid_auc_score = roc_auc_score(y_true=fold_valid_data_blosum[:,0,0,0], y_score=valid_predictions)
-                valid_auk_score = VegvisirUtils.AUK(probabilities= valid_predictions,labels = fold_valid_data_blosum[:,0,0,0].numpy()).calculate_auk()
-                valid_auk.append(valid_auk_score)
-                valid_auc.append(valid_auc_score)
-                VegvisirPlots.plot_loss(train_loss,valid_loss,epochs_list,fold,additional_info.results_dir)
-                VegvisirPlots.plot_accuracy(train_accuracies,valid_accuracies,epochs_list,fold,additional_info.results_dir)
-                VegvisirPlots.plot_classification_score(train_auc,valid_auc,epochs_list,fold,additional_info.results_dir,method="AUC")
-                VegvisirPlots.plot_classification_score(train_auk,valid_auk,epochs_list,fold,additional_info.results_dir,method="AUK")
-                Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer)
-                if epoch == args.num_epochs:
-                    print("Calculating Monte Carlo estimate of the posterior predictive")
-                    train_predictions_fold = sample_loop(Vegvisir, guide, train_loader, args)
-                    valid_predictions_fold = sample_loop(Vegvisir, guide, valid_loader, args)
-                    train_predictions_fold_mode = stats.mode(train_predictions_fold.cpu().numpy(), axis=1,
-                                                        keepdims=True).mode.squeeze(-1)
-                    valid_predictions_fold_mode = stats.mode(valid_predictions_fold.cpu().numpy(), axis=1,
-                                                        keepdims=True).mode.squeeze(-1)
-                    VegvisirPlots.plot_gradients(gradient_norms, results_dir, fold)
-                    Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer)
-                    # params = vegvisir_model.capture_parameters([name for name,val in vegvisir_model.named_parameters()])
-                    # gradients = vegvisir_model.capture_gradients([name for name,val in vegvisir_model.named_parameters()])
-                    # activations = vegvisir_model.attach_hooks([name for name,val in vegvisir_model.named_parameters() if name.starstwith("a")])
-
-            torch.cuda.empty_cache()
-            epoch += 1 #TODO: early stop?
-        #predictions_fold,labels,accuracy,fold,results_dir
-        VegvisirUtils.fold_auc(valid_predictions_fold_mode,fold_valid_data_blosum[:,0,0,0],valid_accuracy,fold,results_dir,mode="Valid")
-        VegvisirUtils.fold_auc(train_predictions_fold_mode,fold_train_data_blosum[:,0,0,0],train_accuracy,fold,results_dir,mode="Train")
-        pyro.clear_param_store()
 def kfold_loop(kfolds,dataset_info, args, additional_info):
     """"""
     for fold, (train_idx, valid_idx) in enumerate(kfolds): #returns k-splits for train and validation
         epoch_loop(train_idx, valid_idx, dataset_info, args, additional_info, mode="Valid_fold_{}".format(fold),fold="_fold_{}".format(fold))
-
+        torch.cuda.empty_cache()
 def kfold_crossvalidation(dataset_info,additional_info,args):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
@@ -906,10 +763,8 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         else:
             print("Training & testing (No Kfold cross validation) ...")
         epoch_loop(traineval_idx, test_idx, dataset_info, args, additional_info,mode="Test")
-
-
 def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid",fold=""):
-
+    print("Remaining objects: {}".format(len(gc.get_objects())))
     #Split the rest of the data (train_data) for train and validation
     data_blosum = dataset_info.data_array_blosum_encoding
     data_int = dataset_info.data_array_int
@@ -985,10 +840,10 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     else:
         raise ValueError("selected optimizer <{}> not implemented with <{}> clip gradients".format(args.optimizer_name,args.clip_gradients))
     loss_func = Vegvisir.loss()
-    if args.learning_type in ["semisupervised","unsupervised"]:
-        guide = config_enumerate(select_quide(Vegvisir,model_load,n_data,args.guide))
-    else:
-        guide = select_quide(Vegvisir,model_load,n_data,args.guide)
+    # if args.learning_type in ["semisupervised","unsupervised"]:
+    #     guide = config_enumerate(select_quide(Vegvisir,model_load,n_data,args.guide))
+    # else:
+    guide = select_quide(Vegvisir,model_load,n_data,args.guide)
     #svi = SVI(poutine.scale(Vegvisir.model,scale=1.0/n_data), poutine.scale(guide,scale=1.0/n_data), optimizer, loss_func)
     n = 50
     data_args_0 = {"blosum":train_data_blosum.to(args.device)[:n],
@@ -1078,19 +933,19 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
             valid_auk.append(valid_auk_score)
             valid_auc.append(valid_micro_roc_auc_ovr)
 
-            VegvisirPlots.plot_loss(train_loss,valid_loss,epochs_list,"Train_{}{}".format(mode,fold),results_dir)
-            VegvisirPlots.plot_accuracy(train_accuracies,valid_accuracies,epochs_list,"Train_{}{}_single_sample".format(mode,fold),results_dir)
-            VegvisirPlots.plot_accuracy(train_reconstruction_dict,valid_reconstruction_dict,epochs_list,"Train_{}{}_single_sample".format(mode,fold),results_dir)
-            VegvisirPlots.plot_logits_entropies(train_reconstruction_dict,valid_reconstruction_dict,epochs_list,"Train_{}{}_single_sample".format(mode,fold),results_dir)
-            VegvisirPlots.plot_classification_score(train_auc,valid_auc,epochs_list,"Train_{}{}".format(mode,fold),additional_info.results_dir,method="AUC")
-            VegvisirPlots.plot_classification_score(train_auk,valid_auk,epochs_list,"Train_{}{}".format(mode,fold),additional_info.results_dir,method="AUK")
+            VegvisirPlots.plot_loss(train_loss,valid_loss,epochs_list,"Train_{}".format(mode),results_dir)
+            VegvisirPlots.plot_accuracy(train_accuracies,valid_accuracies,epochs_list,"Train_{}_single_sample".format(mode),results_dir)
+            VegvisirPlots.plot_accuracy(train_reconstruction_dict,valid_reconstruction_dict,epochs_list,"Train_{}_single_sample".format(mode),results_dir)
+            VegvisirPlots.plot_logits_entropies(train_reconstruction_dict,valid_reconstruction_dict,epochs_list,"Train_{}_single_sample".format(mode),results_dir)
+            VegvisirPlots.plot_classification_score(train_auc,valid_auc,epochs_list,"Train_{}".format(mode),additional_info.results_dir,method="AUC")
+            VegvisirPlots.plot_classification_score(train_auk,valid_auk,epochs_list,"Train_{}".format(mode),additional_info.results_dir,method="AUK")
             Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir), optimizer,guide)
-            Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_train.p".format(results_dir),
-                                       {"latent_space": train_latent_space,
-                                        "predictions_dict":train_predictions_dict})
-            Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_valid.p".format(results_dir),
-                                       {"latent_space": valid_latent_space,
-                                        "predictions_dict":valid_predictions_dict})
+            # Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_train{}.p".format(results_dir,fold),
+            #                            {"latent_space": train_latent_space,
+            #                             "predictions_dict":train_predictions_dict})
+            # Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_{}.p".format(results_dir,mode.lower()),
+            #                            {"latent_space": valid_latent_space,
+            #                             "predictions_dict":valid_predictions_dict})
             if epoch == args.num_epochs:
                 print("Calculating Monte Carlo estimate of the posterior predictive")
                 train_predictive_samples_loss, train_predictive_samples_accuracy, train_predictive_samples_dict, train_predictive_samples_latent_space,\
@@ -1101,23 +956,23 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                     svi, Vegvisir, guide, valid_loader, args, model_load)
                 train_summary_dict = VegvisirUtils.manage_predictions(train_predictive_samples_dict,args,train_predictions_dict)
                 valid_summary_dict = VegvisirUtils.manage_predictions(valid_predictive_samples_dict,args,valid_predictions_dict)
-                # VegvisirPlots.plot_gradients(gradient_norms, results_dir, "Train_{}{}".format(mode,fold))
-                # VegvisirPlots.plot_latent_space(dataset_info,train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
-                # VegvisirPlots.plot_latent_space(dataset_info,valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
-                # VegvisirPlots.plot_latent_space(dataset_info,train_predictive_samples_latent_space, train_summary_dict, "samples",results_dir, method="Train{}".format(fold))
-                # VegvisirPlots.plot_latent_space(dataset_info,valid_predictive_samples_latent_space,valid_summary_dict, "samples",results_dir, method=mode)
-                #
-                # VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
-                # VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
-                #
-                # VegvisirPlots.plot_attention_weights(train_summary_dict,dataset_info,results_dir,method="Train{}".format(fold))
-                # VegvisirPlots.plot_attention_weights(valid_summary_dict,dataset_info,results_dir,method=mode)
-                #
-                # VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir,args, method="Train{}".format(fold))
-                # VegvisirPlots.plot_hidden_dimensions(valid_summary_dict, dataset_info, results_dir,args, method=mode)
+                if args.plot_all:
+                    VegvisirPlots.plot_gradients(gradient_norms, results_dir, "Train_{}".format(mode))
+                    VegvisirPlots.plot_latent_space(dataset_info,train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
+                    VegvisirPlots.plot_latent_space(dataset_info,valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
+                    VegvisirPlots.plot_latent_space(dataset_info,train_predictive_samples_latent_space, train_summary_dict, "samples",results_dir, method="Train{}".format(fold))
+                    VegvisirPlots.plot_latent_space(dataset_info,valid_predictive_samples_latent_space,valid_summary_dict, "samples",results_dir, method=mode)
+                    #VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
+                    #VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
+
+                    VegvisirPlots.plot_attention_weights(train_summary_dict,dataset_info,results_dir,method="Train{}".format(fold))
+                    VegvisirPlots.plot_attention_weights(valid_summary_dict,dataset_info,results_dir,method=mode)
+
+                    VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir,args, method="Train{}".format(fold))
+                    VegvisirPlots.plot_hidden_dimensions(valid_summary_dict, dataset_info, results_dir,args, method=mode)
 
                 Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer,guide)
-                Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_train.p".format(results_dir),
+                Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_train{}.p".format(results_dir,fold),
                                            {"latent_space": train_latent_space,
                                             "predictions_dict":train_predictions_dict,
                                             "summary_dict": train_summary_dict})
@@ -1128,8 +983,12 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
 
         torch.cuda.empty_cache()
         epoch += 1 #TODO: early stop?
+
+
     VegvisirPlots.plot_classification_metrics(args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold))
     VegvisirPlots.plot_classification_metrics(args,valid_summary_dict,"all",results_dir,mode=mode)
+    #VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold))
+    #VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,valid_summary_dict,"all",results_dir,mode=mode)
     if args.dataset_name == "viral_dataset7": #Highlight: Sectioning out the old test data points to calculate the AUC isolated
         #Highlight: Extract the predictions of the test dataset from train and validation and calculate ROC
         print("Calculating classification metrics for old test dataset....")
@@ -1137,10 +996,30 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
         VegvisirPlots.plot_classification_metrics(args, test_train_summary_dict, "viral_dataset3_test_in_train", results_dir,mode="Test")
         VegvisirPlots.plot_classification_metrics(args, test_valid_summary_dict, "viral_dataset3_test_in_valid", results_dir,mode="Test")
         VegvisirPlots.plot_classification_metrics(args, test_all_summary_dict, "viral_dataset3_test_in_train_and_valid", results_dir,mode="Test")
-
-
     stop = time.time()
     print('Final timing: {}'.format(str(datetime.timedelta(seconds=stop-start))))
+    print("Clearing CPU , GPU memory allocations. Clearing Pyro parameter store")
+    print("Remaining objects: {}".format(len(gc.get_objects())))
+    del train_predictive_samples_dict,valid_predictive_samples_dict,train_predictions_dict,train_summary_dict,valid_predictions_dict,valid_summary_dict,train_latent_space,valid_latent_space
+    del train_predictive_samples_loss, train_predictive_samples_accuracy, train_predictive_samples_latent_space,train_predictive_samples_reconstruction_accuracy_dict
+    del valid_predictive_samples_loss, valid_predictive_samples_accuracy,valid_predictive_samples_latent_space, valid_predictive_samples_reconstruction_accuracy_dict
+    del gradient_norms
+    del epochs_list ,train_loss ,train_accuracies ,train_reconstruction_dict,valid_reconstruction_dict ,train_auc ,train_auk ,valid_loss,valid_accuracies ,valid_auc ,valid_auk
+    pyro.clear_param_store()
+    Vegvisir.cpu()
+    guide.cpu()
+    Vegvisir.apply(reset_weights)
+    del Vegvisir
+    del guide
+    del optimizer
+    del loss_func
+    del data_args_0,data_args_1,train_data_blosum,valid_data_blosum
+    del train_loader,valid_loader,custom_dataset_train,custom_dataset_valid
+    del data_blosum,data_int,data_onehot,data_blosum_norm,data_array_blosum_encoding_mask,data_positional_weights_mask
+    torch.cuda.empty_cache()
+    print(torch.cuda.memory_summary(device=None, abbreviated=False))
+    gc.collect()
+    print("Remaining objects AFTER clearing: {}".format(len(gc.get_objects())))
 def train_model(dataset_info,additional_info,args):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
@@ -1148,16 +1027,15 @@ def train_model(dataset_info,additional_info,args):
     seq_max_len = dataset_info.seq_max_len
     results_dir = additional_info.results_dir
     #Highlight: Train- Test split and kfold generator
-    partitioning_method = ["predefined_partitions" if args.test else"predefined_partitions_discard_test"][0]
+    partitioning_method = "predefined_partitions" if args.test else"predefined_partitions_discard_test"
     if args.dataset_name in ["viral_dataset6","viral_dataset7"]:
-        partitioning_method = "predefined_partitions_diffused_test"
+        partitioning_method = "predefined_partitions_diffused_test_create_new_test" if args.test else "predefined_partitions_diffused_test"
 
     train_data_blosum,valid_data_blosum,test_data_blosum = VegvisirLoadUtils.trainevaltest_split(data_blosum,
                                                                                                  args,results_dir,
                                                                                                  seq_max_len,dataset_info.max_len,
                                                                                                  dataset_info.features_names,
                                                                                                  None,method=partitioning_method)
-
 
     #Highlight:Also split the rest of arrays
     train_idx = (data_blosum[:,0,0,1][..., None] == train_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
@@ -1170,7 +1048,7 @@ def train_model(dataset_info,additional_info,args):
         print("Only Training & Validation")
         epoch_loop( train_idx, valid_idx, dataset_info, args, additional_info)
     else:
-        if args.dataset_name == "viral_dataset7":
+        if args.dataset_name == "viral_dataset7" and not args.test:
             warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
         else:
             print("Training & testing...")

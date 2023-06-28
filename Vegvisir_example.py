@@ -21,21 +21,29 @@ else:#pip installed module
      import vegvisir
 from vegvisir import str2bool,str2None
 import vegvisir.utils as VegvisirUtils
-#os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+import vegvisir.plots as VegvisirPlots
+
+if "CUDA_VISIBLE_DEVICES" in os.environ:
+    pass
+else:
+    print("Cuda device has not been specified in your environment variables, setting it to cuda 0")
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
 print("Loading Vegvisir module from {}".format(vegvisir.__file__))
 now = datetime.datetime.now()
 
 def define_suffix(args):
+    kmers = "_9mers" if args.filter_kmers else ""
     if args.shuffle_sequence:
         if args.test:
-            suffix = "_shuffled_TESTING"
+            suffix = "_shuffled_TESTING{}".format(kmers)
         else:
-            suffix = "_shuffled"
+            suffix = "_shuffled{}".format(kmers)
     elif args.random_sequences:
         if args.test:
-            suffix = "_random_TESTING"
+            suffix = "_random_TESTING{}".format(kmers)
         else:
-            suffix = "_random"
+            suffix = "_random{}".format(kmers)
     elif args.num_mutations > 0:
         if args.test:
             suffix = "_{}_mutations_positions_{}_TESTING".format(args.num_mutations,
@@ -44,27 +52,29 @@ def define_suffix(args):
             suffix = "_{}_mutations_positions_{}".format(args.num_mutations,args.idx_mutations if args.idx_mutations is not None else "random")
     else:
         if args.test:
-            suffix = "_TESTING"
+            suffix = "_TESTING{}".format(kmers)
         else:
-            suffix = ""
+            suffix = "{}".format(kmers)
     return suffix
 def main():
     """Executes nnalignpy:
     1) Select the train/validation/test dataset
+    2) Process the data and perform exploratory analysis
     2) Execute Vegvisir"""
 
     suffix = define_suffix(args)
     results_dir = "{}/PLOTS_Vegvisir_{}_{}_{}epochs_{}_{}{}".format(script_dir, args.dataset_name, now.strftime("%Y_%m_%d_%Hh%Mmin%Ss%fms"),args.num_epochs,args.learning_type,args.sequence_type,suffix)
     VegvisirUtils.folders(ntpath.basename(results_dir), script_dir)
-    if args.k_folds >= 1:
+    if args.k_folds > 1:
         for kfold in range(args.k_folds):
             VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Train_fold_{}".format(kfold)), script_dir)
             VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Valid_fold_{}".format(kfold)), script_dir)
+            if args.test:
+                VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Test_fold_{}".format(kfold)), script_dir)
     else:
         VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Train"), script_dir)
         VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Valid"), script_dir)
-
-    VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Test"), script_dir)
+        VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Test"), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Vegvisir_checkpoints"), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Scripts"), script_dir)
 
@@ -77,10 +87,19 @@ def main():
     vegvisir.run(vegvisir_dataset,results_dir,args)
 
 
+def analysis_models():
+    """"""
+    assert args.dataset_name in ["viral_dataset8","viral_dataset6"], "In order to analyse the semi supervised performance we need to set num_obs_classes correctly, please select viral_dataset8 or viral_dataset6"
+    dict_results = {"supervised_no_decoder":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/PLOTS_Vegvisir_viral_dataset3_2023_06_22_00h13min16s710339ms_40epochs_supervised_no_decoder_Icore",
+                    "supervised":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/PLOTS_Vegvisir_viral_dataset3_2023_06_22_15h29min16s825785ms_40epochs_supervised_Icore",
+                    #"semisupervised_all_unobserved":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/PLOTS_Vegvisir_viral_dataset8_2023_06_23_01h21min21s400218ms_50epochs_semisupervised_Icore",
+                    "semisupervised_subset":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/PLOTS_Vegvisir_viral_dataset8_2023_06_21_18h16min24s444089ms_40epochs_semisupervised_Icore"}
+    VegvisirPlots.plot_comparisons(args,script_dir,dict_results)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
-                        default="viral_dataset3",
+                        default="viral_dataset7",
                         help='Dataset project name, look at nnalignpy.available_datasets(). The data should be always located at nnalignpy/src/nnalignpy/data \n'
                              'viral_dataset3 : Only sequences, partitioned into train,validation and test \n'
                              'viral_dataset4 : viral_dataset3 sequences + Features \n '
@@ -93,14 +112,16 @@ if __name__ == "__main__":
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=1, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
-    parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=False, help='True: Use GPU; False: Use CPU')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=20, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
 
     #TODO: include more blosum matrix types?
     parser.add_argument('-subs_matrix', default="BLOSUM62", type=str,
                         help='blosum matrix to create blosum embeddings, choose one from /home/lys/anaconda3/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data')
 
-    parser.add_argument('-k-folds', type=int, nargs='?', default=2, help='Number of k-fold for k-fold cross validation')
+    parser.add_argument('-k-folds', type=int, nargs='?', default=1, help='Number of k-folds for k-fold cross validation.\n '
+                                                                         'If set to 1 is a single run where 1 of the partitions is selected randomly'
+                                                                         'as the validation')
     parser.add_argument('-batch-size', type=int, nargs='?', default=100, help='Batch size')
     parser.add_argument('-num-unobserved', type=int, nargs='?', default=5000, help='Use with datasets: <viral_dataset6> or <viral_dataset8>. \n'
                                                                                    'It establishes the number of unobserved(unlabelled) datapoints to use')
@@ -120,9 +141,12 @@ if __name__ == "__main__":
 
     parser.add_argument('-guide', type=str, nargs='?', default="custom", help='<custom>: See guides.py \n'
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
-    parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
+    parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
+    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=True, help='Plots all UMAPs and computationally expensive plots')
 
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. If the sequence contains gaps, the script will use 20 aa + 1 gap character ')
+    parser.add_argument('-filter-kmers', type=str2bool, nargs='?', default=False, help="Filters the dataset to 9-mers only")
+
     parser.add_argument('-st','--sequence-type', type=str, nargs='?', default="Icore", help='Define the type of peptide sequence to use:\n'
                                                                                 'Icore: Full peptide '
                                                                                 'Icore_non_anchor: Peptide without the anchoring points marked by NetMHCPan 4.1')
@@ -131,6 +155,7 @@ if __name__ == "__main__":
                                                                                     '<borders>: The sequences are padded at the beginning and the end. Random choice when the pad is an even number'
                                                                                     '<replicated_borders>: Padds by replicating the borders of the sequence'
                                                                                     '<random>: random insertion of 0 along the sequence')
+
     parser.add_argument('-shuffle','--shuffle_sequence', type=str2bool, nargs='?', default=False, help='Shuffling the sequence prior to padding for model stress-testing')
     parser.add_argument('-random','--random_sequences', type=str2bool, nargs='?', default=False, help='Create completely random peptide sequences for model stress-testing')
     parser.add_argument('-mutations','--num_mutations', type=int, nargs='?', default=0, help='Mutate the original sequences n times for model stress-testing')
@@ -140,10 +165,11 @@ if __name__ == "__main__":
     parser.add_argument('-beta-scale', type=int, nargs='?', default=1, help='Scaling the KL (p(z) | p(z \mid x)) of the variational autoencoder')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=40, help='Embedding dimensions, use with self-attention')
-    parser.add_argument('-lt','--learning-type', type=str, nargs='?', default="supervised", help='<unsupervised> Unsupervised learning. The class is inferred directly from the latent representation and via amortized inference \n'
-                                                                                        '<semisupervised> Semi-supervised model/learning. The likelihood of the class (p(c | z)) is only computed and maximized using the most confident scores. \n '
+    parser.add_argument('-lt','--learning-type', type=str, nargs='?', default="supervised", help='<supervised_no_decoder> simpler model architecture with an encoder and a classifier'
+                                                                                                 '<unsupervised> Unsupervised learning. The class is inferred directly from the latent representation and via amortized inference \n'
+                                                                                                 '<semisupervised> Semi-supervised model/learning. The likelihood of the class (p(c | z)) is only computed and maximized using the most confident scores. \n '
                                                                                                             'The non confident data points are inferred by the guide \n'
-                                                                                        '<supervised> Supervised model. All target observations are used to compute the likelihood of the class given the latent representation')
+                                                                                                 '<supervised> Supervised model. All target observations are used to compute the likelihood of the class given the latent representation')
 
     parser.add_argument('-glitch','--glitch', type=str2bool, nargs='?', default=True, help='<True>: Applies a random noise distortion (via rotations) to the encoded vector within the conserved positions of the sequences  \n'
                                                                                            '<False>: The blosum encodings are left untouched')
@@ -181,3 +207,4 @@ if __name__ == "__main__":
     pyro.enable_validation(False)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     main()
+    #analysis_models()

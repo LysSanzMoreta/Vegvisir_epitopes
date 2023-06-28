@@ -4,11 +4,14 @@
 Vegvisir :
 =======================
 """
+import gc
 import json
 import operator
+import pickle
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import scipy
 from matplotlib.colors import Normalize
 import  matplotlib
 import seaborn as sns
@@ -24,11 +27,15 @@ from joblib import Parallel, delayed
 import multiprocessing
 import os
 from scipy import stats
+import vegvisir.similarities as VegvisirSimilarities
+from collections import namedtuple
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
 colors_dict = {0: "green", 1: "red",2:"navajowhite"}
 colors_cluster_dict = {0: "seagreen", 1: "crimson",2:"gold",3:"mediumslateblue"}
 colors_dict_labels = {0: "mediumaquamarine", 1: "orangered",2:"navajowhite"}
+colors_dict_labels_cmap = {key:sns.light_palette("{}".format(val), as_cmap=True)for key,val in colors_dict_labels.items()}
+
 labels_dict = {0:"negative",1:"positive",2:"unobserved"}
 colors_list_aa = ["black", "plum", "lime", "navy", "turquoise", "peachpuff", "palevioletred", "red", "darkorange",
                "yellow", "green",
@@ -36,6 +43,7 @@ colors_list_aa = ["black", "plum", "lime", "navy", "turquoise", "peachpuff", "pa
                "goldenrod", "chocolate", "cornflowerblue", "pink", "darkgrey", "indianred",
                "mediumspringgreen"]
 
+PlotSettings = namedtuple("PlotSettings",["colormap_unique","colors_feature","unique_values"])
 
 def plot_data_information(data, filters_dict, storage_folder, args, name_suffix):
     """"""
@@ -615,8 +623,10 @@ def plot_latent_vector(latent_space,predictions_dict,fold,results_dir,method):
     plt.savefig("{}/{}/zvector_fold{}".format(results_dir,method,fold))
     plt.clf()
     plt.close(fig)
+    del latent_vectors,confidence_scores
+    gc.collect()
 
-def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method):
+def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method,vector_name):
     """
     Notes:
         - https://www.researchgate.net/publication/15556561_Global_Fold_Determination_from_a_Small_Number_of_Distance_Restraints/figures?lo=1
@@ -633,7 +643,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
 
     """
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
-    features_dicts = VegvisirUtils.CalculatePeptideFeatures(storage_folder).return_dicts()
+    features_dicts = VegvisirUtils.CalculatePeptideFeatures(dataset_info.seq_max_len,[],storage_folder).return_dicts()
     hydropathy_dict = features_dicts.hydropathy_dict
     volume_dict = features_dicts.volume_dict
     radius_dict = features_dicts.radius_dict
@@ -689,7 +699,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
 
     side_chain_pka_scores = np.vectorize(side_chain_pka_dict.get)(sequences)
     side_chain_pka_scores = np.ma.masked_array(side_chain_pka_scores, mask=sequences_mask, fill_value=0)
-    side_chain_pka_scores = np.ma.sum(side_chain_pka_scores, axis=1)
+    side_chain_pka_scores = np.ma.mean(side_chain_pka_scores, axis=1) #Highlight: before I was doing just the sum
 
     isoelectric_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_list)))
     aromaticity_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_list)))
@@ -712,6 +722,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     all_molecular_weights = []
     all_bulkiness = []
     all_colors = []
+    all_dict_true_labels = []
     label_locations = []
     for cluster in range(n_clusters):
         idx_cluster = (cluster_assignments[..., None] == cluster).any(-1)
@@ -719,6 +730,8 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
         idx_observed = (data_int_cluster[:, 0, 0][..., None] != 2).any(-1)
         for mode,idx in zip(["observed","unobserved"],[idx_observed,np.invert(idx_observed)]):
             sequences_cluster = data_int_cluster[idx][:, 1:].squeeze(1)
+            true_labels_cluster =  data_int_cluster[idx][:, 0,0]
+
             if sequences_cluster.size != 0:
                 sequences_raw_cluster = np.vectorize(aminoacids_dict_reversed.get)(sequences_cluster)
                 sequences_cluster_list = sequences_raw_cluster.tolist()
@@ -747,7 +760,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 
                 side_chain_pka = np.vectorize(side_chain_pka_dict.get)(sequences_cluster)
                 side_chain_pka = np.ma.masked_array(side_chain_pka,mask=sequences_mask,fill_value=0)
-                side_chain_pka = np.ma.sum(side_chain_pka,axis=1)
+                side_chain_pka = np.ma.mean(side_chain_pka,axis=1) #Highlight: before I was doing just the sum
 
                 # isoelectric = np.vectorize(isoelectric_dict.get)(sequences_cluster)
                 # isoelectric = np.ma.masked_array(isoelectric,mask=sequences_mask,fill_value=0)
@@ -755,16 +768,16 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 isoelectric = np.array(list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_cluster_list)))
                 molecular_weight = np.array(list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_cluster_list)))
 
-
                 clusters_info["Cluster_{}".format(cluster)][mode]["hydrophobicity"] = hydropathy.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["volumes"] = volumes.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["radius"] = radius.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["side_chain_pka"] = side_chain_pka.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["isoelectric"] = isoelectric.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["aromaticity"] = aromaticity.mean()
-                clusters_info["Cluster_{}".format(cluster)][mode]["lengths"] = sequences_lens.mean()
+                clusters_info["Cluster_{}".format(cluster)][mode]["lengths"] = sequences_lens.mean() #TODO: Change to mode
                 clusters_info["Cluster_{}".format(cluster)][mode]["molecular_weights"] = molecular_weight.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["bulkiness_scores"] = bulkiness.mean()
+                clusters_info["Cluster_{}".format(cluster)][mode]["true_labels"] = true_labels_cluster.mean()
 
 
                 all_side_chain_pka.append(side_chain_pka)
@@ -776,10 +789,17 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 all_molecular_weights.append(molecular_weight)
                 all_bulkiness.append(bulkiness)
                 all_colors.append(colors_cluster_dict[cluster])
-                unique,counts = np.unique(sequences_len,return_counts=True)
-                len_dict = dict(zip(unique,counts))
+
+                unique_len,counts_len = np.unique(sequences_len,return_counts=True)
+                len_dict = dict(zip(unique_len,counts_len))
                 len_dict =  dict(sorted(len_dict.items(), key=operator.itemgetter(1), reverse=True))
                 all_dict_lens.append(len_dict)
+
+                unique_true_labels,counts_true_labels = np.unique(true_labels_cluster,return_counts=True)
+                true_labels_dict = dict(zip(unique_true_labels,counts_true_labels))
+                true_labels_dict =  dict(sorted(true_labels_dict.items(), key=operator.itemgetter(1), reverse=True))
+                all_dict_true_labels.append(true_labels_dict)
+
                 labels.append("Cluster {}, \n {}".format(cluster,mode))
                 label_locations.append(i + 0.2)
                 i+=0.4
@@ -830,15 +850,25 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
 
     i = 0
     j = 0
-    hist_labels = []
-    hist_labels_locations = []
-    for color,label,cluster_dict in zip(all_colors,labels,all_dict_lens):
-        for seq_len,count in cluster_dict.items():
-            hist_labels_locations.append(i+j)
+    k= 0
+    hist_labels_lens = []
+    hist_labels_locations_lens = []
+    hist_labels_true = []
+    hist_labels_locations_true = []
+    for color,label,cluster_dict_lens,cluster_dict_true in zip(all_colors,labels,all_dict_lens,all_dict_true_labels):
+        for seq_len,count in cluster_dict_lens.items():
+            hist_labels_locations_lens.append(i+j)
             ax8.bar(i+j,count,label=seq_len, color=color, width=0.3, edgecolor='white')
             i += 0.4
-            hist_labels.append(seq_len)
+            hist_labels_lens.append(seq_len)
+        for true_label,count in cluster_dict_true.items():
+            hist_labels_locations_true.append(i+k)
+            ax9.bar(i+k,count,label=true_label, color=color, width=0.3, edgecolor='white')
+            k += 0.4
+            hist_labels_true.append(true_label)
         j = i + 0.1
+        k = i + 0.1
+
         
     # fill with colors
     #colors = ['pink', 'lightblue', 'lightgreen',"gold"]
@@ -865,14 +895,16 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     ax5.set_xticklabels(rotation=90,labels=labels)
     ax6.set_xticklabels(rotation=90,labels=labels)
     ax7.set_xticklabels(rotation=90,labels=labels)
-    ax8.set_xticks(hist_labels_locations)
-    ax8.set_xticklabels(rotation=90,labels=hist_labels)
+    ax8.set_xticks(hist_labels_locations_lens)
+    ax8.set_xticklabels(rotation=90,labels=hist_labels_lens)
+    ax9.set_xticks(hist_labels_locations_true)
+    ax9.set_xticklabels(rotation=90,labels=hist_labels_true)
 
 
     #ax1.set_xticks(label_locations)
     #ax1.set_xticklabels(labels=labels1,rotation=45,fontsize=8)
     #plt.legend(handles=[negative_patch,positive_patch], prop={'size': 20},loc= 'center right',bbox_to_anchor=(1,0.5),ncol=1)
-    plt.savefig("{}/{}/clusters_features_{}".format(results_dir,method,sample_mode))
+    plt.savefig("{}/{}/clusters_features_{}_{}".format(results_dir,method,vector_name,sample_mode))
     plt.clf()
     plt.close(fig)
     
@@ -889,192 +921,267 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     
     return features_dict
 
-def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4):
+def define_colormap(feature,cmap_name):
+    """"""
 
-    print("Plotting UMAP of {}...".format(vector_name))
-    reducer = umap.UMAP()
-    umap_proj = reducer.fit_transform(latent_space[:, 5:])
+    unique_values = np.unique(feature)
+    feature, unique_values = VegvisirUtils.replace_nan(feature, unique_values)
+    colormap_unique = matplotlib.cm.get_cmap(cmap_name, len(unique_values.tolist()))
 
-    if vector_name == "latent_space_z":
-        cluster_assignments = MiniBatchKMeans(n_clusters=n_clusters, random_state=0, batch_size=100, max_iter=10, reassignment_ratio=0,n_init="auto").fit_predict(umap_proj)
-        colors_clusters = np.vectorize(colors_cluster_dict.get)(cluster_assignments)
+    colors_dict = dict(zip(unique_values, colormap_unique.colors))
+    colors_feature = np.vectorize(colors_dict.get, signature='()->(n)')(feature)
 
-        #hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,aromaticity_scores,sequences_lens,clusters_info=plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
-        features_dict = plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
+    return PlotSettings(colormap_unique=colormap_unique,
+                        colors_feature=colors_feature,
+                        unique_values=unique_values)
 
-        #Highlight: Sequences lens
-        sequences_lens = features_dict["sequences_lens"]
-        sequences_lens_unique = np.unique(sequences_lens)
-        sequences_lens, sequences_lens_unique = VegvisirUtils.replace_nan(sequences_lens,sequences_lens_unique)
-        colormap_len = matplotlib.cm.get_cmap('viridis', len(sequences_lens_unique.tolist()))
-        colors_dict = dict(zip(sequences_lens_unique, colormap_len.colors))
-        colors_lens = np.vectorize(colors_dict.get, signature='()->(n)')(sequences_lens)
+def plot_preprocessing(umap_proj,dataset_info,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4):
+    print("Preparing UMAP plots of {}...".format(vector_name))
 
-        #Highlight: Hydropathy
-        hydropathy_scores = features_dict["hydropathy_scores"]
-        hydropathy_scores_unique = np.unique(hydropathy_scores)
-        hydropathy_scores, hydropathy_scores_unique = VegvisirUtils.replace_nan(hydropathy_scores,hydropathy_scores_unique)
-        colormap_hydropathy = matplotlib.cm.get_cmap('viridis', len(hydropathy_scores_unique.tolist()))
-        colors_dict = dict(zip(hydropathy_scores_unique, colormap_hydropathy.colors))
-        colors_hydropathy = np.vectorize(colors_dict.get, signature='()->(n)')(hydropathy_scores)
-        # Highlight: Peptide volumes
-        volume_scores = features_dict["volume_scores"]
-        volume_scores_unique = np.unique(volume_scores)
-        volume_scores, volume_scores_unique = VegvisirUtils.replace_nan(volume_scores,volume_scores_unique)
-        colormap_volume = matplotlib.cm.get_cmap('magma', len(volume_scores_unique.tolist()))
-        colors_dict = dict(zip(volume_scores_unique, colormap_volume.colors))
-        colors_volume = np.vectorize(colors_dict.get, signature='()->(n)')(volume_scores)
-        #Highlight: Radius
-        radius_scores = features_dict["radius_scores"]
-        radius_scores_unique = np.unique(radius_scores)
-        radius_scores, radius_scores_unique = VegvisirUtils.replace_nan(radius_scores,radius_scores_unique)
-        colormap_radius = matplotlib.cm.get_cmap('magma', len(radius_scores_unique.tolist()))
-        colors_dict = dict(zip(radius_scores_unique, colormap_radius.colors))
-        colors_radius = np.vectorize(colors_dict.get, signature='()->(n)')(radius_scores)
+    # if vector_name == "latent_space_z":
+    cluster_assignments = MiniBatchKMeans(n_clusters=n_clusters, random_state=0, batch_size=100, max_iter=10,
+                                          reassignment_ratio=0, n_init="auto").fit_predict(umap_proj)
+    colors_clusters = np.vectorize(colors_cluster_dict.get)(cluster_assignments)
 
-        #Highlight: Side chain Pka
-        side_chain_pka_scores = features_dict["side_chain_pka_scores"]
-        side_chain_pka_scores_unique = np.unique(side_chain_pka_scores)
-        side_chain_pka_scores, side_chain_pka_scores_unique = VegvisirUtils.replace_nan(side_chain_pka_scores,side_chain_pka_scores_unique)
-        colormap_side_chain_pka = matplotlib.cm.get_cmap('magma', len(side_chain_pka_scores_unique.tolist()))
-        colors_dict = dict(zip(side_chain_pka_scores_unique, colormap_side_chain_pka.colors))
-        colors_side_chain_pka = np.vectorize(colors_dict.get, signature='()->(n)')(side_chain_pka_scores)
+    # hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,aromaticity_scores,sequences_lens,clusters_info=plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
+    features_dict = plot_clusters_features_distributions(dataset_info, cluster_assignments, n_clusters,
+                                                         predictions_dict, sample_mode, results_dir, method,
+                                                         vector_name)
+    sequences_lens_settings = define_colormap(features_dict["sequences_lens"],cmap_name="viridis")
+    hydropathy_scores_settings = define_colormap(features_dict["hydropathy_scores"],cmap_name="viridis")
+    volume_scores_settings = define_colormap(features_dict["volume_scores"],cmap_name="viridis")
+    radius_scores_settings = define_colormap(features_dict["radius_scores"],cmap_name="viridis")
+    side_chain_pka_settings = define_colormap(features_dict["side_chain_pka_scores"],cmap_name="magma")
+    isoelectric_scores_settings = define_colormap(features_dict["isoelectric_scores"],cmap_name="magma")
+    aromaticity_scores_settings = define_colormap(features_dict["aromaticity_scores"],cmap_name="cividis")
+    molecular_weights_settings = define_colormap(features_dict["molecular_weights"],cmap_name="cividis")
+    bulkiness_scores_settings = define_colormap(features_dict["bulkiness_scores"],cmap_name="magma")
 
-        #Highlight: Isoelectric scores
-        isoelectric_scores = features_dict["isoelectric_scores"]
-        isoelectric_scores_unique = np.unique(isoelectric_scores)
-        isoelectric_scores, isoelectric_scores_unique = VegvisirUtils.replace_nan(isoelectric_scores,isoelectric_scores_unique)
-        colormap_isoelectric = matplotlib.cm.get_cmap('magma', len(isoelectric_scores_unique.tolist()))
-        colors_dict = dict(zip(isoelectric_scores_unique, colormap_isoelectric.colors))
-        colors_isoelectric = np.vectorize(colors_dict.get, signature='()->(n)')(isoelectric_scores)
-        
-        #Highlight: aromaticity scores
-        aromaticity_scores = features_dict["aromaticity_scores"]
-        aromaticity_scores_unique = np.unique(aromaticity_scores)
-        aromaticity_scores, aromaticity_scores_unique = VegvisirUtils.replace_nan(aromaticity_scores,aromaticity_scores_unique)
-        colormap_aromaticity = matplotlib.cm.get_cmap('cividis', len(aromaticity_scores_unique.tolist()))
-        colors_dict = dict(zip(aromaticity_scores_unique, colormap_aromaticity.colors))
-        colors_aromaticity = np.vectorize(colors_dict.get, signature='()->(n)')(aromaticity_scores)
-        
-        #Highlight: molecular_weight scores
-        molecular_weight_scores = features_dict["molecular_weights"]
-        molecular_weight_scores_unique = np.unique(molecular_weight_scores)
-        molecular_weight_scores, molecular_weight_scores_unique = VegvisirUtils.replace_nan(molecular_weight_scores,molecular_weight_scores_unique)
-        colormap_molecular_weight = matplotlib.cm.get_cmap('cividis', len(molecular_weight_scores_unique.tolist()))
-        colors_dict = dict(zip(molecular_weight_scores_unique, colormap_molecular_weight.colors))
-        colors_molecular_weight = np.vectorize(colors_dict.get, signature='()->(n)')(molecular_weight_scores)
-        
-        #Highlight: bulkiness scores
-        bulkiness_scores = features_dict["bulkiness_scores"]
-        bulkiness_scores_unique = np.unique(bulkiness_scores)
-        bulkiness_scores, bulkiness_scores_unique = VegvisirUtils.replace_nan(bulkiness_scores,bulkiness_scores_unique)
-        colormap_bulkiness = matplotlib.cm.get_cmap('magma', len(bulkiness_scores_unique.tolist()))
-        colors_dict = dict(zip(bulkiness_scores_unique, colormap_bulkiness.colors))
-        colors_bulkiness = np.vectorize(colors_dict.get, signature='()->(n)')(bulkiness_scores)
+    return {"features_dict":features_dict,
+            "cluster_assignments":cluster_assignments,
+            "colors_clusters":colors_clusters,
+            "sequence_lens_settings":sequences_lens_settings,
+            "hydropathy_scores_settings":hydropathy_scores_settings,
+            "volume_scores_settings":volume_scores_settings,
+            "radius_scores_settings":radius_scores_settings,
+            "side_chain_pka_settings":side_chain_pka_settings,
+            "isoelectric_scores_settings":isoelectric_scores_settings,
+            "aromaticity_scores_settings":aromaticity_scores_settings,
+            "molecular_weights_settings":molecular_weights_settings,
+            "bulkiness_scores_settings":bulkiness_scores_settings
+            }
 
-    colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:,0])
+
+#if vector_name == "latent_space_z":
+# cluster_assignments = MiniBatchKMeans(n_clusters=n_clusters, random_state=0, batch_size=100, max_iter=10,
+#                                       reassignment_ratio=0, n_init="auto").fit_predict(umap_proj)
+# colors_clusters = np.vectorize(colors_cluster_dict.get)(cluster_assignments)
+#
+# # hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,aromaticity_scores,sequences_lens,clusters_info=plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
+# features_dict = plot_clusters_features_distributions(dataset_info, cluster_assignments, n_clusters,
+#                                                      predictions_dict, sample_mode, results_dir, method,vector_name)
+
+# # Highlight: Sequences lens
+# sequences_lens = features_dict["sequences_lens"]
+# sequences_lens_unique = np.unique(sequences_lens)
+# sequences_lens, sequences_lens_unique = VegvisirUtils.replace_nan(sequences_lens, sequences_lens_unique)
+# colormap_len = matplotlib.cm.get_cmap('viridis', len(sequences_lens_unique.tolist()))
+# colors_dict = dict(zip(sequences_lens_unique, colormap_len.colors))
+# colors_lens = np.vectorize(colors_dict.get, signature='()->(n)')(sequences_lens)
+#
+#
+# # Highlight: Hydropathy
+# hydropathy_scores = features_dict["hydropathy_scores"]
+# hydropathy_scores_unique = np.unique(hydropathy_scores)
+# hydropathy_scores, hydropathy_scores_unique = VegvisirUtils.replace_nan(hydropathy_scores,
+#                                                                         hydropathy_scores_unique)
+# colormap_hydropathy = matplotlib.cm.get_cmap('viridis', len(hydropathy_scores_unique.tolist()))
+# colors_dict = dict(zip(hydropathy_scores_unique, colormap_hydropathy.colors))
+# colors_hydropathy = np.vectorize(colors_dict.get, signature='()->(n)')(hydropathy_scores)
+# # Highlight: Peptide volumes
+# volume_scores = features_dict["volume_scores"]
+# volume_scores_unique = np.unique(volume_scores)
+# volume_scores, volume_scores_unique = VegvisirUtils.replace_nan(volume_scores, volume_scores_unique)
+# colormap_volume = matplotlib.cm.get_cmap('magma', len(volume_scores_unique.tolist()))
+# colors_dict = dict(zip(volume_scores_unique, colormap_volume.colors))
+# colors_volume = np.vectorize(colors_dict.get, signature='()->(n)')(volume_scores)
+# # Highlight: Radius
+# radius_scores = features_dict["radius_scores"]
+# radius_scores_unique = np.unique(radius_scores)
+# radius_scores, radius_scores_unique = VegvisirUtils.replace_nan(radius_scores, radius_scores_unique)
+# colormap_radius = matplotlib.cm.get_cmap('magma', len(radius_scores_unique.tolist()))
+# colors_dict = dict(zip(radius_scores_unique, colormap_radius.colors))
+# colors_radius = np.vectorize(colors_dict.get, signature='()->(n)')(radius_scores)
+#
+# # Highlight: Side chain Pka
+# side_chain_pka_scores = features_dict["side_chain_pka_scores"]
+# side_chain_pka_scores_unique = np.unique(side_chain_pka_scores)
+# side_chain_pka_scores, side_chain_pka_scores_unique = VegvisirUtils.replace_nan(side_chain_pka_scores,
+#                                                                                 side_chain_pka_scores_unique)
+# colormap_side_chain_pka = matplotlib.cm.get_cmap('magma', len(side_chain_pka_scores_unique.tolist()))
+# colors_dict = dict(zip(side_chain_pka_scores_unique, colormap_side_chain_pka.colors))
+# colors_side_chain_pka = np.vectorize(colors_dict.get, signature='()->(n)')(side_chain_pka_scores)
+#
+# # Highlight: Isoelectric scores
+# isoelectric_scores = features_dict["isoelectric_scores"]
+# isoelectric_scores_unique = np.unique(isoelectric_scores)
+# isoelectric_scores, isoelectric_scores_unique = VegvisirUtils.replace_nan(isoelectric_scores,
+#                                                                           isoelectric_scores_unique)
+# colormap_isoelectric = matplotlib.cm.get_cmap('magma', len(isoelectric_scores_unique.tolist()))
+# colors_dict = dict(zip(isoelectric_scores_unique, colormap_isoelectric.colors))
+# colors_isoelectric = np.vectorize(colors_dict.get, signature='()->(n)')(isoelectric_scores)
+#
+# # Highlight: aromaticity scores
+# aromaticity_scores = features_dict["aromaticity_scores"]
+# aromaticity_scores_unique = np.unique(aromaticity_scores)
+# aromaticity_scores, aromaticity_scores_unique = VegvisirUtils.replace_nan(aromaticity_scores,
+#                                                                           aromaticity_scores_unique)
+# colormap_aromaticity = matplotlib.cm.get_cmap('cividis', len(aromaticity_scores_unique.tolist()))
+# colors_dict = dict(zip(aromaticity_scores_unique, colormap_aromaticity.colors))
+# colors_aromaticity = np.vectorize(colors_dict.get, signature='()->(n)')(aromaticity_scores)
+#
+# # Highlight: molecular_weight scores
+# molecular_weight_scores = features_dict["molecular_weights"]
+# molecular_weight_scores_unique = np.unique(molecular_weight_scores)
+# molecular_weight_scores, molecular_weight_scores_unique = VegvisirUtils.replace_nan(molecular_weight_scores,
+#                                                                                     molecular_weight_scores_unique)
+# colormap_molecular_weight = matplotlib.cm.get_cmap('cividis', len(molecular_weight_scores_unique.tolist()))
+# colors_dict = dict(zip(molecular_weight_scores_unique, colormap_molecular_weight.colors))
+# colors_molecular_weight = np.vectorize(colors_dict.get, signature='()->(n)')(molecular_weight_scores)
+#
+# # Highlight: bulkiness scores
+# bulkiness_scores = features_dict["bulkiness_scores"]
+# bulkiness_scores_unique = np.unique(bulkiness_scores)
+# bulkiness_scores, bulkiness_scores_unique = VegvisirUtils.replace_nan(bulkiness_scores, bulkiness_scores_unique)
+# colormap_bulkiness = matplotlib.cm.get_cmap('magma', len(bulkiness_scores_unique.tolist()))
+# colors_dict = dict(zip(bulkiness_scores_unique, colormap_bulkiness.colors))
+# colors_bulkiness = np.vectorize(colors_dict.get, signature='()->(n)')(bulkiness_scores)
+
+def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
+    print("Plotting scatter UMAP of {}...".format(vector_name))
+
+    colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:, 0])
     if method == "_single_sample":
-        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_dict["class_binary_prediction_single_sample"])
+        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
+            predictions_dict["class_binary_prediction_single_sample"])
     else:
-        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_dict["class_binary_predictions_samples_mode"])
+        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
+            predictions_dict["class_binary_predictions_samples_mode"])
 
-    #Highlight: Confidence scores colors
-    confidence_scores = latent_space[:,4]
+    # Highlight: Confidence scores colors
+    confidence_scores = latent_space[:, 4]
     confidence_scores_unique = np.unique(confidence_scores).tolist()
     colormap_confidence = matplotlib.cm.get_cmap('plasma_r', len(confidence_scores_unique))
     colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
     colors_confidence = np.vectorize(colors_dict.get, signature='()->(n)')(confidence_scores)
-    #Highlight: Immunodominance scores colors
-    immunodominance_scores = latent_space[:,3]
+    # Highlight: Immunodominance scores colors
+    immunodominance_scores = latent_space[:, 3]
     immunodominance_scores_unique = np.unique(immunodominance_scores)
-    immunodominance_scores,immunodominance_scores_unique = VegvisirUtils.replace_nan(immunodominance_scores,immunodominance_scores_unique)
+    immunodominance_scores, immunodominance_scores_unique = VegvisirUtils.replace_nan(immunodominance_scores,
+                                                                                      immunodominance_scores_unique)
     colormap_immunodominance = matplotlib.cm.get_cmap('plasma_r', len(immunodominance_scores_unique.tolist()))
     colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
     colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
-    #Highlight: Frequency scores per class: https://stackoverflow.com/questions/65927253/linearsegmentedcolormap-to-list
-    frequency_class0_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:,0]).tolist()
-    colormap_frequency_class0 = matplotlib.cm.get_cmap('BuGn', len(frequency_class0_unique)) #This one is  a LinearSegmentedColor map and works slightly different
-    colormap_frequency_class0_array =  np.array([colormap_frequency_class0(i) for i in range(colormap_frequency_class0.N)])
+    # Highlight: Frequency scores per class: https://stackoverflow.com/questions/65927253/linearsegmentedcolormap-to-list
+    frequency_class0_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 0]).tolist()
+    colormap_frequency_class0 = matplotlib.cm.get_cmap('BuGn',
+                                                       len(frequency_class0_unique))  # This one is  a LinearSegmentedColor map and works slightly different
+    colormap_frequency_class0_array = np.array(
+        [colormap_frequency_class0(i) for i in range(colormap_frequency_class0.N)])
     colors_dict = dict(zip(frequency_class0_unique, colormap_frequency_class0_array))
-    colors_frequency_class0 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_binary_prediction_samples_frequencies"][:,0])
-    frequency_class1_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:,1]).tolist()
+    colors_frequency_class0 = np.vectorize(colors_dict.get, signature='()->(n)')(
+        predictions_dict["class_binary_prediction_samples_frequencies"][:, 0])
+    frequency_class1_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 1]).tolist()
     colormap_frequency_class1 = matplotlib.cm.get_cmap('OrRd', len(frequency_class1_unique))
-    colormap_frequency_class1_array =  np.array([colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
+    colormap_frequency_class1_array = np.array(
+        [colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
     colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
-    colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_binary_prediction_samples_frequencies"][:,1])
-    alpha = 0.6
-    size = 20
-    fig, [[ax1, ax2, ax3,ax4],[ax5,ax6,ax7,ax8],[ax9,ax10,ax11,ax12],[ax13,ax14,ax15,ax16],[ax17,ax18,ax19,ax20]] = plt.subplots(5, 4,figsize=(17, 12),gridspec_kw={'width_ratios': [4.5,4.5,4.5,1],'height_ratios': [4,4,4,4,4]})
-    fig.suptitle('UMAP projections',fontsize=20)
-    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:,2], alpha=alpha,s=size)
-    ax1.set_title("True labels",fontsize=20)
+    colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(
+        predictions_dict["class_binary_prediction_samples_frequencies"][:, 1])
+    alpha = 0.7
+    size = 5
+    fig, [[ax1, ax2, ax3, ax4], [ax5, ax6, ax7, ax8], [ax9, ax10, ax11, ax12], [ax13, ax14, ax15, ax16],
+          [ax17, ax18, ax19, ax20]] = plt.subplots(5, 4, figsize=(17, 12),
+                                                   gridspec_kw={'width_ratios': [4.5, 4.5, 4.5, 1],
+                                                                'height_ratios': [4, 4, 4, 4, 4]})
+    fig.suptitle('UMAP projections', fontsize=20)
+    #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax1, cmap="Blues", n_levels=30, fill=True, thresh=0.05,alpha=0.5)  # cmap='Blues'
+    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:, 2], alpha=alpha, s=size)
+
+    ax1.set_title("True labels", fontsize=20)
     if method == "_single_sample":
-        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha,s=size)
-        ax2.set_title("Predicted labels \n (single sample)",fontsize=20)
+        #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax2, cmap="Blues", n_levels=30, fill=True,thresh=0.05, alpha=0.5)  # cmap='Blues'
+        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha, s=size)
+        ax2.set_title("Predicted labels \n (single sample)", fontsize=20)
     else:
-        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha,s=size)
-        ax2.set_title("Predicted binary labels \n (samples mode)",fontsize=20)
+        #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax2, cmap="Blues", n_levels=30, fill=True,thresh=0.05, alpha=0.5)  # cmap='Blues'
+        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha, s=size)
+        ax2.set_title("Predicted binary labels \n (samples mode)", fontsize=20)
 
     ax3.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=alpha, s=size)
     ax3.set_title("Confidence scores", fontsize=20)
-    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence),ax=ax3)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence), ax=ax3)
     ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class0, alpha=alpha, s=size)
     ax5.set_title("Probability class 0 \n (frequency argmax)", fontsize=20)
-    fig.colorbar(plt.cm.ScalarMappable( norm = Normalize(0,1),cmap=colormap_frequency_class0),ax=ax5)
+    fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(0, 1), cmap=colormap_frequency_class0), ax=ax5)
     ax6.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=alpha, s=size)
     ax6.set_title("Probability class 1 \n (frequency argmax)", fontsize=20)
-    fig.colorbar(plt.cm.ScalarMappable( cmap=colormap_frequency_class1),ax=ax6)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_frequency_class1), ax=ax6)
     ax7.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=alpha, s=size)
     ax7.set_title("Immunodominance scores", fontsize=20)
-    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance),ax=ax7)
-    if vector_name == "latent_space_z":
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance), ax=ax7)
 
-        ax9.scatter(umap_proj[:, 0],umap_proj[:, 1], c=colors_clusters, alpha=alpha,s=size)
-        ax9.set_title("Coloured by Kmeans cluster")
+    ax9.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["colors_clusters"], alpha=alpha, s=size)
+    ax9.set_title("Coloured by Kmeans cluster")
 
-        ax10.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_hydropathy, alpha=alpha, s=size)
-        ax10.set_title("Coloured by Hydrophobicity")
-        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_hydropathy,norm=Normalize(vmin=np.min(hydropathy_scores_unique),vmax=np.max(hydropathy_scores_unique))), ax=ax10)
+    ax10.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["hydropathy_scores_settings"].colors_feature, alpha=alpha, s=size)
+    ax10.set_title("Coloured by Hydrophobicity")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["hydropathy_scores_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["hydropathy_scores_settings"].unique_values),
+                                                      vmax=np.max(settings["hydropathy_scores_settings"].unique_values))), ax=ax10)
 
-        ax11.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_volume, alpha=alpha, s=size)
-        ax11.set_title("Coloured by Peptide volume")
-        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_volume,norm=Normalize(vmin=np.min(volume_scores_unique),vmax=np.max(volume_scores_unique))), ax=ax11)
+    ax11.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["volume_scores_settings"].colors_feature, alpha=alpha, s=size)
+    ax11.set_title("Coloured by Peptide volume")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["volume_scores_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["volume_scores_settings"].unique_values),
+                                                     vmax=np.max(settings["volume_scores_settings"].unique_values))),
+                 ax=ax11)
 
-        ax13.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_side_chain_pka, alpha=alpha, s=size)
-        ax13.set_title("Coloured by Side chain pka")
-        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_volume,norm=Normalize(vmin=np.min(side_chain_pka_scores_unique),vmax=np.max(side_chain_pka_scores_unique))), ax=ax13)
+    ax13.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["side_chain_pka_settings"].colors_feature, alpha=alpha, s=size)
+    ax13.set_title("Coloured by Side chain pka")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["side_chain_pka_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["side_chain_pka_settings"].unique_values),
+                                                      vmax=np.max(settings["side_chain_pka_settings"].unique_values))), ax=ax13)
 
-        ax14.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_isoelectric, alpha=alpha, s=size)
-        ax14.set_title("Coloured by Isoelectric point")
-        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_isoelectric,norm=Normalize(vmin=np.min(isoelectric_scores_unique),vmax=np.max(isoelectric_scores_unique))), ax=ax14)
+    ax14.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["isoelectric_scores_settings"].colors_feature, alpha=alpha, s=size)
+    ax14.set_title("Coloured by Isoelectric point")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["isoelectric_scores_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["isoelectric_scores_settings"].unique_values),
+                                                      vmax=np.max(settings["isoelectric_scores_settings"].unique_values))), ax=ax14)
 
-        ax15.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_aromaticity, alpha=alpha, s=size)
-        ax15.set_title("Coloured by aromaticity")
-        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_aromaticity,norm=Normalize(vmin=np.min(aromaticity_scores_unique),vmax=np.max(aromaticity_scores_unique))), ax=ax15)
+    ax15.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["aromaticity_scores_settings"].colors_feature, alpha=alpha, s=size)
+    ax15.set_title("Coloured by aromaticity")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["isoelectric_scores_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["isoelectric_scores_settings"].unique_values),
+                                                      vmax=np.max(settings["isoelectric_scores_settings"].unique_values))), ax=ax15)
 
-        ax17.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_lens, alpha=alpha, s=size)
-        ax17.set_title("Coloured by sequence len")
-        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_len,norm=Normalize(vmin=np.min(sequences_lens_unique),vmax=np.max(sequences_lens_unique))), ax=ax17)
+    ax17.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["sequence_lens_settings"].colors_feature, alpha=alpha, s=size)
+    ax17.set_title("Coloured by sequence len")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["sequence_lens_settings"].colormap_unique, norm=Normalize(vmin=np.min(settings["sequence_lens_settings"].unique_values),
+                                                                         vmax=np.max(settings["sequence_lens_settings"].unique_values))),ax=ax17)
 
-        ax18.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_molecular_weight, alpha=alpha, s=size)
-        ax18.set_title("Coloured by molecular weight")
-        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_molecular_weight, norm=Normalize(vmin=np.min(molecular_weight_scores_unique),vmax=np.max(molecular_weight_scores_unique))),ax=ax18)
+    ax18.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["molecular_weights_settings"].colors_feature, alpha=alpha, s=size)
+    ax18.set_title("Coloured by molecular weight")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["molecular_weights_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["molecular_weights_settings"].unique_values),
+                                                      vmax=np.max(settings["molecular_weights_settings"].unique_values))), ax=ax18)
 
-        ax19.scatter(umap_proj[:, 0], umap_proj[:, 1], c=colors_bulkiness, alpha=alpha, s=size)
-        ax19.set_title("Coloured by bulkiness")
-        fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_bulkiness,
-                                           norm=Normalize(vmin=np.min(bulkiness_scores_unique),
-                                                          vmax=np.max(bulkiness_scores_unique))), ax=ax19)
-    else:
-        ax9.axis("off")
-        ax10.axis("off")
-        ax11.axis("off")
-        ax13.axis("off")
-        ax14.axis("off")
-        ax15.axis("off")
-        ax17.axis("off")
-        ax18.axis("off")
-        ax19.axis("off")
+    ax19.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["bulkiness_scores_settings"].colors_feature, alpha=alpha, s=size)
+    ax19.set_title("Coloured by bulkiness")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["bulkiness_scores_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["bulkiness_scores_settings"].unique_values),
+                                                      vmax=np.max(settings["bulkiness_scores_settings"].unique_values))), ax=ax19)
+
 
     ax4.axis("off")
     ax8.axis("off")
@@ -1087,10 +1194,282 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
     negative_patch = mpatches.Patch(color=colors_dict_labels[0], label='Class 0')
     positive_patch = mpatches.Patch(color=colors_dict_labels[1], label='Class 1')
     fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
-    plt.legend(handles=[negative_patch,positive_patch], prop={'size': 20},loc= 'center right',bbox_to_anchor=(1.5,2.5),ncol=1)
-    plt.savefig("{}/{}/umap_{}_{}".format(results_dir,method,vector_name,sample_mode))
+    plt.legend(handles=[negative_patch, positive_patch], prop={'size': 20}, loc='center right',
+               bbox_to_anchor=(1.5, 2.5), ncol=1)
+    plt.savefig("{}/{}/umap_SCATTER_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=600)
     plt.clf()
     plt.close(fig)
+
+    #del confidence_scores,immunodominance_scores,hydropathy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
+    #gc.collect()
+
+
+def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
+    print("Plotting scatter (quantiles) UMAP of {}...".format(vector_name))
+
+    colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:, 0])
+    if method == "_single_sample":
+        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
+            predictions_dict["class_binary_prediction_single_sample"])
+    else:
+        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
+            predictions_dict["class_binary_predictions_samples_mode"])
+    features_dict = settings["features_dict"]
+    # Highlight: Confidence scores colors
+    confidence_scores = latent_space[:, 4]
+    confidence_scores_unique = np.unique(confidence_scores).tolist()
+    colormap_confidence = matplotlib.cm.get_cmap('plasma_r', len(confidence_scores_unique))
+    colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
+    colors_confidence = np.vectorize(colors_dict.get, signature='()->(n)')(confidence_scores)
+    # Highlight: Immunodominance scores colors
+    immunodominance_scores = latent_space[:, 3]
+    immunodominance_scores_unique = np.unique(immunodominance_scores)
+    immunodominance_scores, immunodominance_scores_unique = VegvisirUtils.replace_nan(immunodominance_scores,
+                                                                                      immunodominance_scores_unique)
+    colormap_immunodominance = matplotlib.cm.get_cmap('plasma_r', len(immunodominance_scores_unique.tolist()))
+    colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
+    colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
+    # Highlight: Frequency scores per class: https://stackoverflow.com/questions/65927253/linearsegmentedcolormap-to-list
+    frequency_class0_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 0]).tolist()
+    colormap_frequency_class0 = matplotlib.cm.get_cmap('BuGn',
+                                                       len(frequency_class0_unique))  # This one is  a LinearSegmentedColor map and works slightly different
+    colormap_frequency_class0_array = np.array(
+        [colormap_frequency_class0(i) for i in range(colormap_frequency_class0.N)])
+    colors_dict = dict(zip(frequency_class0_unique, colormap_frequency_class0_array))
+    colors_frequency_class0 = np.vectorize(colors_dict.get, signature='()->(n)')(
+        predictions_dict["class_binary_prediction_samples_frequencies"][:, 0])
+    frequency_class1_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 1]).tolist()
+    colormap_frequency_class1 = matplotlib.cm.get_cmap('OrRd', len(frequency_class1_unique))
+    colormap_frequency_class1_array = np.array(
+        [colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
+    colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
+    colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(
+        predictions_dict["class_binary_prediction_samples_frequencies"][:, 1])
+    alpha = 0.7
+    size = 5
+    fig, [[ax1, ax2, ax3, ax4], [ax5, ax6, ax7, ax8], [ax9, ax10, ax11, ax12], [ax13, ax14, ax15, ax16],
+          [ax17, ax18, ax19, ax20]] = plt.subplots(5, 4, figsize=(17, 12),
+                                                   gridspec_kw={'width_ratios': [4.5, 4.5, 4.5, 1],
+                                                                'height_ratios': [4, 4, 4, 4, 4]})
+    fig.suptitle('UMAP projections', fontsize=20)
+    #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax1, cmap="Blues", n_levels=30, fill=True, thresh=0.05,alpha=0.5)  # cmap='Blues'
+    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:, 2], alpha=alpha, s=size)
+
+    ax1.set_title("True labels", fontsize=20)
+    if method == "_single_sample":
+        #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax2, cmap="Blues", n_levels=30, fill=True,thresh=0.05, alpha=0.5)  # cmap='Blues'
+        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha, s=size)
+        ax2.set_title("Predicted labels \n (single sample)", fontsize=20)
+    else:
+        #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax2, cmap="Blues", n_levels=30, fill=True,thresh=0.05, alpha=0.5)  # cmap='Blues'
+        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha, s=size)
+        ax2.set_title("Predicted binary labels \n (samples mode)", fontsize=20)
+
+    ax3.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=alpha, s=size)
+    ax3.set_title("Confidence scores", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_confidence), ax=ax3)
+    ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class0, alpha=alpha, s=size)
+    ax5.set_title("Probability class 0 \n (frequency argmax)", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(0, 1), cmap=colormap_frequency_class0), ax=ax5)
+    ax6.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=alpha, s=size)
+    ax6.set_title("Probability class 1 \n (frequency argmax)", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_frequency_class1), ax=ax6)
+    ax7.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=alpha, s=size)
+    ax7.set_title("Immunodominance scores", fontsize=20)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance), ax=ax7)
+
+    ax9.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["colors_clusters"], alpha=alpha, s=size)
+    ax9.set_title("Coloured by Kmeans cluster")
+    quantiles = [0.1,0.9]
+    quantiles_hydropathy = np.quantile(features_dict["hydropathy_scores"],quantiles)
+
+    quantile_hydropathy_idx = (features_dict["hydropathy_scores"][...,None] < quantiles_hydropathy[0]).any(-1), (features_dict["hydropathy_scores"][...,None] > quantiles_hydropathy[1]).any(-1)
+    hydropathy_colors = settings["hydropathy_scores_settings"].colors_feature
+    hydropathy_colors = hydropathy_colors[quantile_hydropathy_idx[0] | quantile_hydropathy_idx[1]]
+    hydropathy_umap = umap_proj[quantile_hydropathy_idx[0] | quantile_hydropathy_idx[1]]
+
+    ax10.scatter(hydropathy_umap[:,0],hydropathy_umap[:,1], c=hydropathy_colors, alpha=alpha, s=size)
+    ax10.set_title("Coloured by Hydrophobicity")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["hydropathy_scores_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["hydropathy_scores_settings"].unique_values),
+                                                      vmax=np.max(settings["hydropathy_scores_settings"].unique_values))), ax=ax10)
+
+
+    
+    quantiles_volume = np.quantile(features_dict["volume_scores"],quantiles)
+    quantile_volume_idx = (features_dict["volume_scores"][...,None] < quantiles_volume[0]).any(-1), (features_dict["volume_scores"][...,None] > quantiles_volume[1]).any(-1)
+    volume_colors = settings["volume_scores_settings"].colors_feature
+    volume_colors = volume_colors[quantile_volume_idx[0] | quantile_volume_idx[1]]
+    volume_umap = umap_proj[quantile_volume_idx[0] | quantile_volume_idx[1]]
+    ax11.scatter(volume_umap[:, 0], volume_umap[:, 1], c=volume_colors, alpha=alpha, s=size)
+    ax11.set_title("Coloured by Peptide volume")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["volume_scores_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["volume_scores_settings"].unique_values),
+                                                     vmax=np.max(settings["volume_scores_settings"].unique_values))),ax=ax11)
+    
+    
+    
+    
+    quantiles_side_chain_pka = np.quantile(features_dict["side_chain_pka_scores"],quantiles)
+    quantile_side_chain_pka_idx = (features_dict["side_chain_pka_scores"][...,None] < quantiles_side_chain_pka[0]).any(-1), (features_dict["side_chain_pka_scores"][...,None] > quantiles_side_chain_pka[1]).any(-1)
+    side_chain_pka_colors = settings["side_chain_pka_settings"].colors_feature
+    side_chain_pka_colors = side_chain_pka_colors[quantile_side_chain_pka_idx[0] | quantile_side_chain_pka_idx[1]]
+    side_chain_pka_umap = umap_proj[quantile_side_chain_pka_idx[0] | quantile_side_chain_pka_idx[1]]
+
+    ax13.scatter(side_chain_pka_umap[:, 0], side_chain_pka_umap[:, 1], c=side_chain_pka_colors, alpha=alpha, s=size)
+    ax13.set_title("Coloured by Side chain pka")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["side_chain_pka_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["side_chain_pka_settings"].unique_values),
+                                                      vmax=np.max(settings["side_chain_pka_settings"].unique_values))), ax=ax13)
+
+    quantiles_isoelectric = np.quantile(features_dict["isoelectric_scores"], quantiles)
+    quantile_isoelectric_idx = (features_dict["isoelectric_scores"][..., None] < quantiles_isoelectric[0]).any(-1), (
+                features_dict["isoelectric_scores"][..., None] > quantiles_isoelectric[1]).any(-1)
+    isoelectric_colors = settings["isoelectric_scores_settings"].colors_feature
+    isoelectric_colors = isoelectric_colors[quantile_isoelectric_idx[0] | quantile_isoelectric_idx[1]]
+    isoelectric_umap = umap_proj[quantile_isoelectric_idx[0] | quantile_isoelectric_idx[1]]
+
+    ax14.scatter(isoelectric_umap[: , 0], isoelectric_umap[: , 1], c=isoelectric_colors, alpha=alpha, s=size)
+    ax14.set_title("Coloured by Isoelectric point")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["isoelectric_scores_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["isoelectric_scores_settings"].unique_values),
+                                                      vmax=np.max(settings["isoelectric_scores_settings"].unique_values))), ax=ax14)
+    
+    quantiles_aromaticity = np.quantile(features_dict["aromaticity_scores"],quantiles)
+    quantile_aromaticity_idx = (features_dict["aromaticity_scores"][...,None] < quantiles_aromaticity[0]).any(-1), (features_dict["aromaticity_scores"][...,None] > quantiles_aromaticity[1]).any(-1)
+    aromaticity_colors = settings["aromaticity_scores_settings"].colors_feature
+    aromaticity_colors = aromaticity_colors[quantile_aromaticity_idx[0] | quantile_aromaticity_idx[1]]
+    aromaticity_umap = umap_proj[quantile_aromaticity_idx[0] | quantile_aromaticity_idx[1]]
+
+    ax15.scatter(aromaticity_umap[:, 0], aromaticity_umap[:, 1], c=aromaticity_colors, alpha=alpha, s=size)
+    ax15.set_title("Coloured by aromaticity")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["isoelectric_scores_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["isoelectric_scores_settings"].unique_values),
+                                                      vmax=np.max(settings["isoelectric_scores_settings"].unique_values))), ax=ax15)
+
+    quantiles_sequence_lens = np.quantile(features_dict["sequences_lens"], quantiles)
+    quantile_sequence_lens_idx = (features_dict["sequences_lens"][..., None] < quantiles_sequence_lens[0]).any(-1), (
+                features_dict["sequences_lens"][..., None] > quantiles_sequence_lens[1]).any(-1)
+    sequence_lens_colors = settings["sequence_lens_settings"].colors_feature
+    sequence_lens_colors = sequence_lens_colors[quantile_sequence_lens_idx[0] | quantile_sequence_lens_idx[1]]
+    sequence_lens_umap = umap_proj[quantile_sequence_lens_idx[0] | quantile_sequence_lens_idx[1]]
+
+    ax17.scatter(sequence_lens_umap[:, 0], sequence_lens_umap[:, 1], c=sequence_lens_colors, alpha=alpha, s=size)
+    ax17.set_title("Coloured by sequence len")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["sequence_lens_settings"].colormap_unique, norm=Normalize(vmin=np.min(settings["sequence_lens_settings"].unique_values),
+                                                                         vmax=np.max(settings["sequence_lens_settings"].unique_values))),ax=ax17)
+    
+    quantiles_molecular_weights = np.quantile(features_dict["molecular_weights"],quantiles)
+    quantile_molecular_weights_idx = (features_dict["molecular_weights"][...,None] < quantiles_molecular_weights[0]).any(-1), (features_dict["molecular_weights"][...,None] > quantiles_molecular_weights[1]).any(-1)
+    molecular_weights_colors = settings["molecular_weights_settings"].colors_feature
+    molecular_weights_colors = molecular_weights_colors[quantile_molecular_weights_idx[0] | quantile_molecular_weights_idx[1]]
+    molecular_weights_umap = umap_proj[quantile_molecular_weights_idx[0] | quantile_molecular_weights_idx[1]]
+
+    ax18.scatter(molecular_weights_umap[:, 0], molecular_weights_umap[:, 1], c=molecular_weights_colors, alpha=alpha, s=size)
+    ax18.set_title("Coloured by molecular weight")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["molecular_weights_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["molecular_weights_settings"].unique_values),
+                                                      vmax=np.max(settings["molecular_weights_settings"].unique_values))), ax=ax18)
+
+    quantiles_bulkiness = np.quantile(features_dict["bulkiness_scores"], quantiles)
+    quantile_bulkiness_idx = (features_dict["bulkiness_scores"][..., None] < quantiles_bulkiness[0]).any(-1), (
+                features_dict["bulkiness_scores"][..., None] > quantiles_bulkiness[1]).any(-1)
+    bulkiness_colors = settings["bulkiness_scores_settings"].colors_feature
+    bulkiness_colors = bulkiness_colors[quantile_bulkiness_idx[0] | quantile_bulkiness_idx[1]]
+    bulkiness_umap = umap_proj[quantile_bulkiness_idx[0] | quantile_bulkiness_idx[1]]
+
+    ax19.scatter(bulkiness_umap[:, 0], bulkiness_umap[:, 1], c=bulkiness_colors, alpha=alpha, s=size)
+    ax19.set_title("Coloured by bulkiness")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["bulkiness_scores_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["bulkiness_scores_settings"].unique_values),
+                                                      vmax=np.max(settings["bulkiness_scores_settings"].unique_values))), ax=ax19)
+
+
+    ax4.axis("off")
+    ax8.axis("off")
+    ax12.axis("off")
+    ax16.axis("off")
+    ax20.axis("off")
+    fig.suptitle("UMAP of {}".format(vector_name))
+
+    negative_patch = mpatches.Patch(color=colors_dict_labels[0], label='Class 0')
+    positive_patch = mpatches.Patch(color=colors_dict_labels[1], label='Class 1')
+    fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
+    plt.legend(handles=[negative_patch, positive_patch], prop={'size': 20}, loc='center right',
+               bbox_to_anchor=(1.5, 2.5), ncol=1)
+    plt.savefig("{}/{}/umap_SCATTER_quantiles_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=600)
+    plt.clf()
+    plt.close(fig)
+
+
+def plot_latent_correlations(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name):
+    """
+    :param umap_proj:
+    :param dataset_info:
+    :param latent_space:
+    :param predictions_dict:
+    :param sample_mode:
+    :param results_dir:
+    :param method:
+    :param vector_name:
+    :return:
+
+    -Notes: https://medium.com/@outside2SDs/an-overview-of-correlation-measures-between-categorical-and-continuous-variables-4c7f85610365
+    """
+    print("Latent space distances")
+    fig, [ax1,ax2,ax3]= plt.subplots(1, 3, figsize=(15, 12),dpi=100,gridspec_kw={'width_ratios': [4.5,4.5,1]})
+
+    immunodominance_scores = latent_space[:,3]
+    #TODO: Filter by high immunodominance?
+    true_labels = latent_space[:,0]
+    class_0_idx = (true_labels[...,None] == 0).any(-1)
+    class_1_idx = (true_labels[...,None] == 1).any(-1)
+
+    cosine_dist = 1- VegvisirSimilarities.cosine_similarity(umap_proj[:,None], umap_proj[:,None], correlation_matrix=False, parallel=False).squeeze(-1).squeeze(-1)
+    euclidean = np.linalg.norm(umap_proj[:,None]-umap_proj[None,:],axis=-1)
+
+    def compute(distance,ax):
+        average_sim_class_0_class_0 = np.mean(distance[class_0_idx][:,class_0_idx],axis=1)
+        average_sim_class_0_class_1 = np.mean(distance[class_0_idx][:,class_1_idx],axis=1)
+        average_sim_class_1_class_1 = np.mean(distance[class_1_idx][:,class_1_idx],axis=1)
+        average_sim_class_1_class_0 = np.mean(distance[class_1_idx][:,class_0_idx],axis=1)
+
+        all_distances = [average_sim_class_0_class_0,average_sim_class_0_class_1,average_sim_class_1_class_1,average_sim_class_1_class_0]
+        all_labels = ["average_sim_class_0_class_0","average_sim_class_0_class_1","average_sim_class_1_class_1","average_sim_class_1_class_0"]
+        boxplot = ax.boxplot(all_distances,
+                               vert=True,  # vertical box alignment
+                               patch_artist=True,  # fill with color
+                               labels=all_labels
+                               )  # olor=colors_cluster_dict[cluster])  # color=colors_cluster_dict[cluster]
+        ax.set_xticklabels(rotation=90,labels=all_labels)
+
+        return boxplot
+
+    boxplot1 = compute(cosine_dist,ax1)
+    boxplot2 = compute(euclidean,ax2)
+
+    all_colors = [colors_dict[0], "plum", colors_dict[1], "bisque"]
+    for boxplot in (boxplot1,boxplot2):
+        for patch, color in zip(boxplot['boxes'], all_colors):
+            patch.set_facecolor(color)
+    plt.savefig("{}/{}/Latent_quantitative_analysis_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=600)
+    plt.clf()
+    plt.close(fig)
+
+def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4):
+    """
+    -Notes on UMAP: https://www.arxiv-vanity.com/papers/2009.12981/
+    """
+    reducer = umap.UMAP()
+    umap_proj = reducer.fit_transform(latent_space[:, 5:])
+    settings =plot_preprocessing(umap_proj, dataset_info, predictions_dict, sample_mode, results_dir, method,
+                       vector_name="latent_space_z", n_clusters=4)
+
+    plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
+    plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
+
+    del umap_proj
+    gc.collect()
 
 def plot_gradients(gradient_norms,results_dir,mode):
     print("Plotting gradients")
@@ -1289,7 +1668,7 @@ def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,resul
     # display.plot()
     # _ = display.ax_.set_title("Micro-averaged over all classes")
 
-def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name):
+def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name,save=True):
     # Compute ROC curve and ROC area for each class
     fpr = dict()
     tpr = dict()
@@ -1298,7 +1677,6 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     onehot_targets = onehot_labels[idx]
     target_scores = predictions_dict[stats_name][idx]
     fig = plt.figure()
-
     # ROC AUC per class
     for i in range(args.num_obs_classes):
         fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
@@ -1327,9 +1705,13 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     plt.ylabel('True Positive Rate', fontsize=20)
     plt.xlabel('False Positive Rate', fontsize=20)
     plt.title("ROC curves")
-    plt.savefig("{}/{}/ROC_curves_fold{}_{}".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
+    if save:
+        print("{}/{}/ROC_curves_fold{}_{}.png".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
+        plt.savefig("{}/{}/ROC_curves_fold{}_{}.png".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
     plt.clf()
     plt.close(fig)
+
+    return fpr,tpr,roc_auc
 
 def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Train",per_sample=False):
     """
@@ -1351,8 +1733,6 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
 
     for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
         labels = predictions_dict["true_{}".format(sample_mode)]
-        # onehot_labels = np.zeros((labels.shape[0],args.num_classes))
-        # onehot_labels[np.arange(0,labels.shape[0]),labels.astype(int)] = 1
         onehot_labels = predictions_dict["true_onehot_{}".format(sample_mode)]
         confidence_scores = predictions_dict["confidence_scores_{}".format(sample_mode)]
         idx_all = np.ones_like(labels).astype(bool)
@@ -1485,6 +1865,174 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
                 plt.clf()
                 plt.close(fig)
 
+def plot_classification_metrics_per_species(dataset_info,args,predictions_dict,fold,results_dir,mode="Train",per_sample=False):
+    """
+    Notes:
+        -http://www.med.mcgill.ca/epidemiology/hanley/software/Hanley_McNeil_Radiology_82.pdf
+        -https://jorgetendeiro.github.io/SHARE-UMCG-14-Nov-2019/Part2
+        -Avoid AUC: https://onlinelibrary.wiley.com/doi/10.1111/j.1466-8238.2007.00358.x
+        - "Can Micro-Average ROC AUC score be larger than Class ROC AUC scores
+        - https://arxiv.org/pdf/2107.13171.pdf
+        - Find optimal treshold: https://machinelearningmastery.com/threshold-moving-for-imbalanced-classification/
+        - Interpretation: https://glassboxmedicine.com/2020/07/14/the-complete-guide-to-auc-and-average-precision-simulations-and-visualizations/#:~:text=the%20PR%20curve.-,Average%20precision%20indicates%20whether%20your%20model%20can%20correctly%20identify%20all,to%201.0%20(perfect%20model).
+    :param predictions_dict: {"mode": tensor of (N,), "frequencies": tensor of (N, num_classes)}
+    :param labels:
+    :param fold:
+    :param results_dir:
+    :param mode:
+    :return:
+    """
+    species_dict = pickle.load(open('{}/{}/org_name_dict.pkl'.format(dataset_info.storage_folder,args.dataset_name),"rb"))
+    for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
+        data_int = predictions_dict["data_int_{}".format(sample_mode)]
+        org_name = data_int[:,0,6]
+        unique_org_name,counts = np.unique(org_name,return_counts=True)
+        labels = predictions_dict["true_{}".format(sample_mode)]
+        onehot_labels = predictions_dict["true_onehot_{}".format(sample_mode)]
+        confidence_scores = predictions_dict["confidence_scores_{}".format(sample_mode)]
+        idx_all = np.ones_like(labels).astype(bool)
+        if args.num_classes > args.num_obs_classes:
+            idx_all = (labels[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
+        #idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
+        fig = plt.figure()
+        for species in unique_org_name:
+            idx = (org_name[...,None] == species).any(-1)
+            idx *= idx_all #TODO: Check
+            idx_name = str(int(species))
+            species_labels = labels[idx]
+            if species_labels.shape[0] > 100:
+                print("Number data points: \n  class 0 : {} \n class 1:{}".format(species_labels.shape[0]-species_labels.sum(),species_labels.sum()))
+                print("---------------- species number {} ----------------\n ".format(species))
+                print("---------------- species number {} ----------------\n ".format(species),file=open("{}/AUC_out.txt".format(results_dir), "a"))
+
+                if predictions_dict[prob_mode] is not None:
+                    #fpr, tpr, threshold = roc_curve(y_true=onehot_labels[idx], y_score=predictions_dict[stats_name][idx])
+                    micro_roc_auc_ovr = roc_auc_score(
+                        onehot_labels[idx],
+                        predictions_dict[prob_mode][idx],
+                        multi_class="ovr",
+                        average="micro",
+                    )
+                    micro_roc_auc_ovo = roc_auc_score(
+                        onehot_labels[idx],
+                        predictions_dict[prob_mode][idx],
+                        multi_class="ov0",
+                        average="micro",
+                    )
+                    try:
+                        macro_roc_auc_ovr = roc_auc_score(
+                            onehot_labels[idx],
+                            predictions_dict[prob_mode][idx],
+                            multi_class="ovr",
+                            average="macro",
+                        )
+                    except:
+                        macro_roc_auc_ovr = None
+                    try:
+                        macro_roc_auc_ovo = roc_auc_score(
+                            onehot_labels[idx],
+                            predictions_dict[prob_mode][idx],
+                            multi_class="ovo",
+                            average="macro",
+                        )
+                    except:
+                        macro_roc_auc_ovo = None
+                    try:
+                        weighted_roc_auc_ovr = roc_auc_score(
+                            onehot_labels[idx],
+                            predictions_dict[prob_mode][idx],
+                            multi_class="ovr",
+                            average="weighted",
+                        )
+                    except:
+                        weighted_roc_auc_ovr = None
+                    try:
+                        weighted_roc_auc_ovo = roc_auc_score(
+                            onehot_labels[idx],
+                            predictions_dict[prob_mode][idx],
+                            multi_class="ovo",
+                            average="weighted",
+                        )
+                    except:
+                        weighted_roc_auc_ovo = None
+                    if predictions_dict[binary_mode] is not None:
+                        try:
+                            auk_score_binary = VegvisirUtils.AUK(predictions_dict[binary_mode][idx],
+                                                                 labels[idx]).calculate_auk()
+                        except:
+                            auk_score_binary = None
+                    else:
+                        auk_score_binary = None
+
+
+                    fpr,tpr,roc_auc = plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name,save=False)
+                    for i in range(args.num_obs_classes):
+                        plt.plot(fpr[i], tpr[i], label='({})AUC_{}: {}'.format(species_dict[species],i, roc_auc[i]), c=colors_dict[i])
+
+                    plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name)
+
+                    print("---------------- {} ----------------\n".format(prob_mode))
+                    print("---------------- {} ----------------\n ".format(prob_mode),file=open("{}/AUC_out.txt".format(results_dir), "a"))
+                    scores_dict = {"micro_roc_auc_ovr":micro_roc_auc_ovr,
+                                   "micro_roc_auc_ovo": micro_roc_auc_ovo,
+                                   "macro_roc_auc_ovr": macro_roc_auc_ovr,
+                                   "macro_roc_auc_ovo": macro_roc_auc_ovo,
+                                   "weighted_roc_auc_ovr": weighted_roc_auc_ovr,
+                                   "weighted_roc_auc_ovo": weighted_roc_auc_ovo,
+                                   "auk_score_binary":auk_score_binary}
+
+                    json.dump(scores_dict, open("{}/AUC_out.txt".format(results_dir), "a"), indent=2)
+
+                #for key_name_2,stats_name_2 in zip(["samples_mode","single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
+                if predictions_dict[binary_mode] is not None:
+                    targets = labels[idx]
+                    scores = predictions_dict[binary_mode][idx]
+                    try:
+                        #TODO: Change to https://scikit-learn.org/stable/modules/generated/sklearn.metrics.multilabel_confusion_matrix.html
+                        tn, fp, fn, tp = confusion_matrix(y_true=targets, y_pred=scores).ravel()
+                        confusion_matrix_df = pd.DataFrame([[tp, fp],
+                                                            [fn, tn]],
+                                                        index=["Positive\n(Pred)", "Negative\n(Pred)"],
+                                                        columns=["Positive\n(True)", "Negative\n(True)"])
+                        recall = tp/(tp + fn)
+                        precision = tp/(tp + fp)
+                        f1score = 2*tp/(2*tp + fp + fn)
+                        tnr = tn/(tn + fp)
+                        mcc_custom = (tp*tn - fp*fn)/np.sqrt([(tp + tp)*(tp + fn)*(tn + fp)*(tn + fn)])[0]
+                        mcc = matthews_corrcoef(targets,scores)
+                        accuracy = 100*((scores == targets).sum()/targets.shape[0])
+                        performance_metrics = {"recall/tpr":recall,"precision/ppv":precision,"accuracy":accuracy,"f1score":f1score,"tnr":tnr,"samples\naverage\naccuracy":predictions_dict["samples_average_accuracy"],
+                                               "Matthew CC":mcc, "AUK":auk_score_binary}
+                        plot_confusion_matrix(confusion_matrix_df,performance_metrics,"{}/{}".format(results_dir,mode),fold,"{}_{}".format(sample_mode,idx_name))
+                    except:
+                        print("Only one class found, not plotting confusion matrix")
+
+                if per_sample:
+                    #Calculate metrics for every individual samples
+                    samples_results = Parallel(n_jobs=MAX_WORKERs)(delayed(micro_auc)(args,onehot_labels, sample, idx) for sample in np.transpose(predictions_dict["class_probs_predictions_samples"],(1,0,2)))
+                    average_micro_auc = 0
+                    fig, [ax1, ax2] = plt.subplots(1, 2,figsize=(17, 12),gridspec_kw={'width_ratios': [6, 2]})
+                    for i in range(args.num_samples):
+                        micro_roc_auc_ovr, fprs, tprs, roc_aucs = samples_results[i]
+                        average_micro_auc += micro_roc_auc_ovr
+                        for j in range(args.num_classes):
+                            ax1.plot(fprs[j], tprs[j], label='AUC_{}: {} MicroAUC: {}'.format(i, roc_aucs[j],micro_roc_auc_ovr), c=colors_dict[j])
+                    ax1.plot([0, 1], [0, 1], 'r--')
+                    ax1.set_xlim([0, 1])
+                    ax1.set_ylim([0, 1])
+                    ax1.set_ylabel('True Positive Rate', fontsize=20)
+                    ax1.set_xlabel('False Positive Rate', fontsize=20)
+                    ax2.axis("off")
+                    ax1.legend(loc='lower right', prop={'size': 6},bbox_to_anchor=(1.5, 0.))
+                    fig.suptitle("ROC curve. AUC_micro_ovr_average: {}".format(average_micro_auc/args.num_samples),fontsize=12)
+                    plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
+                    plt.clf()
+                    plt.close(fig)
+        plt.title("ROC curves per species")
+        plt.savefig("{}/{}/ROC_curves_per_species_fold{}_{}.png".format(results_dir, mode, fold, sample_mode))
+        plt.clf()
+        plt.close(fig)
+
 def plot_attention_weights(summary_dict,dataset_info,results_dir,method="Train"):
     """
 
@@ -1573,6 +2121,8 @@ def plot_attention_weights(summary_dict,dataset_info,results_dir,method="Train")
                     plt.savefig("{}/{}/Attention_plots_{}_{}_{}.png".format(results_dir,method,sample_mode,data_points,class_type))
                     plt.clf()
                     plt.close(fig)
+    del data_int,attention_weights,confidence_scores,aminoacids,aminoacids_masked
+    gc.collect()
 
 def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method="Train"):
     """"""
@@ -1611,9 +2161,9 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
         idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
         encoder_final_hidden_state = summary_dict["encoder_final_hidden_state_{}".format(sample_mode)]
         decoder_final_hidden_state = summary_dict["decoder_final_hidden_state_{}".format(sample_mode)]
-
-        plot_latent_space(dataset_info,encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden state")
-        plot_latent_space(dataset_info,decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden state")
+        print("Plotting Hidden dimensions latent space")
+        plot_latent_space(dataset_info,encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden_state")
+        plot_latent_space(dataset_info,decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden_state")
 
         for data_points,idx_conf in zip(["all","high_confidence"],[idx_all,idx_highconfidence]):
             true_labels = summary_dict["true_{}".format(sample_mode)][idx_conf]
@@ -1626,21 +2176,21 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
                     #Highlight: Compute the cosine similarity measure (distance = 1 - similarity) among the hidden states of the sequence
                     if sample_mode == "single_sample":
                         # Highlight: Encoder
-                        encoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                        encoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs,backend='loky')(
                             delayed(VegvisirUtils.information_shift)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
                             zip(encoder_hidden_states,data_mask_seq))
                         encoder_information_shift_weights = np.concatenate(encoder_information_shift_weights,axis=0)
                         #Highlight: Decoder
-                        decoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                        decoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs,backend='loky')(
                             delayed(VegvisirUtils.information_shift)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in
                             zip(decoder_hidden_states,data_mask_seq))
                         decoder_information_shift_weights = np.concatenate(decoder_information_shift_weights,axis=0)
                     else:
-                        encoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                        encoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs,backend='loky')(
                             delayed(VegvisirUtils.information_shift_samples)(encoder_hidden_states[:, sample_idx],
                                                                             data_mask_seq, diag_idx_maxlen,dataset_info.seq_max_len) for sample_idx in range(args.num_samples))
 
-                        decoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs)(
+                        decoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs,backend='loky')(
                             delayed(VegvisirUtils.information_shift_samples)(decoder_hidden_states[:, sample_idx],
                                                                             data_mask_seq, diag_idx_maxlen,
                                                                             dataset_info.seq_max_len) for sample_idx in range(args.num_samples))
@@ -1649,7 +2199,6 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
                         encoder_information_shift_weights = encoder_information_shift_weights.mean(axis=1)
                         decoder_information_shift_weights = np.concatenate(decoder_information_shift_weights,axis=1) #N,samples, L
                         decoder_information_shift_weights = decoder_information_shift_weights.mean(axis=1)
-
                     aminoacids = data_int[idx_conf][idx_class]
                     for nn_name,weights in zip(["Encoder","Decoder"],[encoder_information_shift_weights,decoder_information_shift_weights]):
                         #Highlight: Start figure
@@ -1703,10 +2252,15 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
                             plt.savefig("{}/{}/{}_information_shift_plots_{}_{}_{}.png".format(results_dir, method, nn_name,sample_mode, data_points, class_type))
                             plt.clf()
                             plt.close(fig)
+                            del aminoacids_masked
 
 
                 else:
                     print("Not data points available for {}/{}/{}/{}".format(sample_mode, data_points,class_type,nn_name))
+
+    del aminoacids,encoder_information_shift_weights,decoder_information_shift_weights,encoder_hidden_states,decoder_hidden_states
+    del data_mask,data_int,data_mask_seq,idx_all,idx_highconfidence
+    gc.collect()
 
 def plot_logits_entropies(train_dict,valid_dict,epochs_list, mode,results_dir):
     """Plot positional entropies calculated from logits"""
@@ -1740,7 +2294,7 @@ def plot_volumetrics(volumetrics_dict,seq_max_len,labels,storage_folder,args,sub
     if volumetrics_dict["volume"] is not None:
         #norm = plt.Normalize(0, 1)
         norm= None
-        cmap = sns.color_palette("rocket", as_cmap=True)
+        cmap = sns.color_palette("rocket_r", as_cmap=True)
         cbar = True
 
         sns.heatmap(volumetrics_dict["volume"], ax=ax1, cbar=cbar, cmap=cmap,norm=norm)
@@ -1804,3 +2358,166 @@ def plot_volumetrics(volumetrics_dict,seq_max_len,labels,storage_folder,args,sub
         plt.savefig("{}/{}/similarities/{}/HEATMAP_volumetrics{}.png".format(storage_folder,args.dataset_name,subfolders,tag))
         plt.clf()
         plt.close(fig)
+
+def plot_features_covariance(features_dict,seq_max_len,labels,storage_folder,args,subfolders,tag=""):
+    """
+    :param labels: immunodominance scores or true labels
+    """
+    fig, [ax1, ax2] = plt.subplots(nrows=1, ncols=2, figsize=(9, 6),gridspec_kw={'width_ratios': [4.5,1]})
+    if features_dict["volume"] is not None:
+
+        features_names = list(features_dict.keys()) + [tag.replace("_","")]
+        features_matrix = np.array(list(features_dict.values()))
+        features_matrix = np.vstack([features_matrix,labels[None,:]])
+        features_covariance = np.cov(features_matrix)
+
+
+        #norm = plt.Normalize(0, 1)
+        norm= None
+        cmap = sns.color_palette("rocket_r", as_cmap=True)
+        cbar = True
+
+        sns.heatmap(features_covariance, ax=ax1, cbar=cbar, cmap=cmap,norm=norm,annot=True,annot_kws={"fontsize":"small"})
+        ax1.set_xticks(np.arange(len(features_names)) ,labels=features_names,rotation=45)
+        ax1.spines['left'].set_visible(False)
+        #ax1.yaxis.set_ticklabels([])
+        ax1.set_yticks(np.arange(len(features_names)) + 0.5,labels=features_names,rotation=360)
+
+        ax1.set_title("Covariance matrix features")
+
+        ax2.axis("off")
+        fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.2)
+        fig.suptitle("Features covariance")
+        plt.savefig("{}/{}/similarities/{}/HEATMAP_features_covariance{}.png".format(storage_folder,args.dataset_name,subfolders,tag))
+        plt.clf()
+        plt.close(fig)
+
+def plot_comparisons(args,script_dir,dict_results,kfolds=5):
+    """Compares average ROC AUC"""
+
+    metrics_results_train = defaultdict(lambda :defaultdict())
+    metrics_results_valid = defaultdict(lambda :defaultdict())
+    fig, [[ax1, ax2,ax3],[ax4, ax5,ax6]] = plt.subplots(nrows=2, ncols=3, figsize=(9, 6),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [6,2]})
+
+    #f = open("{}/Benchmark/AUC_results.png","r+")
+    i = 0
+    names = []
+    positions = []
+    patches_list_train = []
+    patches_list_valid = []
+
+    for name,folder in dict_results.items():
+        print("-------------NAME {}--------------".format(name))
+        train_folds_fpr,train_folds_tpr,train_folds_roc_auc_class_0,train_folds_roc_auc_class_1 = [],[],[],[]
+        valid_folds_fpr,valid_folds_tpr,valid_folds_roc_auc_class_0,valid_folds_roc_auc_class_1 = [],[],[],[]
+
+        for fold in range(kfolds):
+            print("-------------FOLD {}--------------".format(fold))
+            train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_fold_{}.p".format(folder,fold))["summary_dict"]
+            valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(folder,fold))["summary_dict"]
+
+            for mode,summary_dict in zip(["train","valid"],[train_out,valid_out]):
+                labels = summary_dict["true_samples"]
+                onehot_labels = summary_dict["true_onehot_samples"]
+                #confidence_scores = summary_dict["confidence_scores_samples"]
+                prob_mode = "class_probs_predictions_samples_average"
+                idx_all = np.ones_like(labels).astype(bool)
+                if args.num_classes > args.num_obs_classes:
+                    idx_all = (labels[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2,
+                idx_name = "all"
+                sample_mode = "samples"
+                fpr,tpr,roc_auc = plot_ROC_curves(labels, onehot_labels, summary_dict, args, script_dir, mode, fold, sample_mode,
+                                prob_mode, idx_all, idx_name,save=False)
+                print(mode)
+                print(roc_auc)
+                if mode == "train":
+                    train_folds_fpr.append(fpr)
+                    train_folds_tpr.append(tpr)
+                    train_folds_roc_auc_class_0.append(roc_auc[0])
+                    train_folds_roc_auc_class_1.append(roc_auc[1])
+
+                else:
+                    valid_folds_fpr.append(fpr)
+                    valid_folds_tpr.append(tpr)
+                    valid_folds_roc_auc_class_0.append(roc_auc[0])
+                    valid_folds_roc_auc_class_1.append(roc_auc[1])
+
+
+        metrics_results_train[name]["fpr"] = train_folds_fpr
+        metrics_results_train[name]["tpr"] = train_folds_tpr
+        metrics_results_train[name]["roc_auc_class_0"] = train_folds_roc_auc_class_0
+        metrics_results_train[name]["roc_auc_class_1"] = train_folds_roc_auc_class_1
+
+        
+        metrics_results_valid[name]["fpr"] = valid_folds_fpr
+        metrics_results_valid[name]["tpr"] = valid_folds_tpr
+        metrics_results_valid[name]["roc_auc_class_0"] = valid_folds_roc_auc_class_0
+        metrics_results_valid[name]["roc_auc_class_1"] = valid_folds_roc_auc_class_1
+
+
+        bar1_0 = ax1.bar(i,np.mean(train_folds_roc_auc_class_0),yerr=np.std(train_folds_roc_auc_class_0), width= 0.5,color="steelblue")
+        bar1_1 = ax1.bar(i + 0.6 ,np.mean(train_folds_roc_auc_class_1),yerr=np.std(train_folds_roc_auc_class_1), width= 0.5,color="steelblue")
+
+        bar2_0 = ax2.bar(i,np.mean(valid_folds_roc_auc_class_0),yerr=np.std(valid_folds_roc_auc_class_0),width= 0.5,color="coral")
+        bar2_1 = ax2.bar(i + 0.6,np.mean(valid_folds_roc_auc_class_1),yerr=np.std(valid_folds_roc_auc_class_1),width= 0.5,color="coral")
+
+
+        for bar in bar1_0.patches:
+            ax1.annotate(format(bar.get_height(), '.2f'),
+                         (bar.get_x() + bar.get_width() / 2,
+                          bar.get_height()), ha='center', va='center',
+                         size=10, xytext=(0, 8),
+                         textcoords='offset points')
+        for bar in bar1_1.patches:
+            ax1.annotate(format(bar.get_height(), '.2f'),
+                         (bar.get_x() + bar.get_width() / 2,
+                          bar.get_height()), ha='center', va='center',
+                         size=10, xytext=(0, 8),
+                         textcoords='offset points')
+        for bar in bar2_0.patches:
+            ax2.annotate(format(bar.get_height(), '.2f'),
+                         (bar.get_x() + bar.get_width() / 2,
+                          bar.get_height()), ha='center', va='center',
+                         size=10, xytext=(0, 8),
+                         textcoords='offset points')
+        for bar in bar2_1.patches:
+            ax2.annotate(format(bar.get_height(), '.2f'),
+                         (bar.get_x() + bar.get_width() / 2,
+                          bar.get_height()), ha='center', va='center',
+                         size=10, xytext=(0, 8),
+                         textcoords='offset points')
+        patches_list_train.append(bar1_0.patches[0])
+        patches_list_train.append(bar1_1.patches[0])
+        patches_list_valid.append(bar2_0.patches[0])
+        patches_list_valid.append(bar2_1.patches[0])
+
+
+        names.append("{}_class_0".format(name))
+        names.append("{}_class_1".format(name))
+
+        positions.append(i)
+        positions.append(i + 0.6)
+
+        i += 1.5
+
+
+    ax1.set_xticks(positions,labels=names,rotation=45,fontsize=8)
+    ax2.set_xticks(positions,labels=names,rotation=45,fontsize=8)
+    ax1.set_ylim(0,1)
+    ax2.set_ylim(0,1)
+    ax1.set_title("Train")
+    ax2.set_title("Valid")
+    ax3.axis("off")
+    ax4.axis("off")
+    ax5.axis("off")
+    ax6.axis("off")
+
+    fig.suptitle("Model comparison")
+    plt.savefig("{}/Benchmark/methods_comparison.png".format(script_dir),dpi=600)
+
+
+
+
+
+
+

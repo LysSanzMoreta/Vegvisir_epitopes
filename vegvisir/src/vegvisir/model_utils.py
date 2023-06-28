@@ -216,7 +216,7 @@ class Attention5(nn.Module):
 
     def forward(self, encoder_hidden_states,decoder_hidden_states,decoder_final_hidden_state,latent_z_seq, mask=None):
         src_len = latent_z_seq.shape[1]
-        decoder_final_hidden_state = decoder_final_hidden_state.unsqueeze(1).repeat(1, src_len, 1)   # repeat decoder final hidden state src_len times
+        #decoder_final_hidden_state = decoder_final_hidden_state.unsqueeze(1).repeat(1, src_len, 1)   # repeat decoder final hidden state src_len times
         k = torch.matmul(encoder_hidden_states,self.weight_k)
         q = torch.matmul(decoder_hidden_states,self.weight_q)
         v = torch.matmul(latent_z_seq,self.weight_v)
@@ -870,9 +870,8 @@ class RNN_model6(nn.Module):
         forward_hidden_states,backward_hidden_states = decoder_hidden_states[:,:,:self.gru_hidden_dim],decoder_hidden_states[:,:,self.gru_hidden_dim:]
         decoder_hidden_states = forward_hidden_states + backward_hidden_states
         decoder_hidden_states_bidirectional = torch.concatenate([forward_hidden_states[:,None],backward_hidden_states[:,None]],dim=1)
-        decoder_final_hidden= decoder_hidden_states[seq_idx,seq_sizes-1] #TODO: Visualize hidden states and & calculate attention in some other way? (encoderxlatent)xdecoder or
+        decoder_final_hidden= decoder_hidden_states[seq_idx,seq_sizes-1]
 
-        #TODO: Rotate encoder hidden states?
 
         z_attn_weighted, attn_weights= self.attention(encoder_hidden_states,decoder_hidden_states,decoder_final_hidden,z,mask=mask)
 
@@ -959,11 +958,9 @@ class RNN_model7(nn.Module):
         forward_hidden_states,backward_hidden_states = decoder_hidden_states[:,:,:self.gru_hidden_dim],decoder_hidden_states[:,:,self.gru_hidden_dim:]
         decoder_hidden_states = forward_hidden_states + backward_hidden_states
         decoder_hidden_states_bidirectional = torch.concatenate([forward_hidden_states[:,None],backward_hidden_states[:,None]],dim=1)
-        decoder_final_hidden= decoder_hidden_states[seq_idx,seq_sizes-1] #TODO: Visualize hidden states and & calculate attention in some other way? (encoderxlatent)xdecoder or
+        decoder_final_hidden= decoder_hidden_states[seq_idx,seq_sizes-1]
 
-        #TODO: Rotate encoder hidden states?
-
-        z_attn_weighted, attn_weights= self.attention(encoder_hidden_states,decoder_hidden_states,decoder_final_hidden,z,mask=mask)
+        z_attn_weighted, attn_weights= self.attention(encoder_hidden_states,decoder_hidden_states,decoder_final_hidden,z,mask=mask) #Not very important
 
         c = torch.concatenate([decoder_hidden_states,z_attn_weighted],dim=2)
 
@@ -1094,7 +1091,8 @@ class RNN_guide2(nn.Module):
         rnn_hidden_states = self.bnn(rnn_hidden_states)
 
         rnn_final_hidden_state_bidirectional = rnn_hidden_states[seq_idx,seq_sizes-1]
-        rnn_final_hidden_state_bidirectional = torch.concatenate([rnn_final_hidden_state_bidirectional[:,:self.gru_hidden_dim][None,:],rnn_final_hidden_state_bidirectional[:,self.gru_hidden_dim:][None,:]],dim=0)
+        rnn_final_hidden_state_bidirectional = torch.concatenate([rnn_final_hidden_state_bidirectional[:,:self.gru_hidden_dim][None,:],rnn_final_hidden_state_bidirectional[:,self.gru_hidden_dim:][None,:]],dim=0) #Highlight: Equivalent to rnn_hidden, prior to normalization
+
 
         forward_out_r,backward_out_r = rnn_hidden_states[:,:,:self.gru_hidden_dim],rnn_hidden_states[:,:,self.gru_hidden_dim:]
         rnn_hidden_states = forward_out_r + backward_out_r

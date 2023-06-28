@@ -472,7 +472,7 @@ def fill_array_map(array_fixed,ij_arrays,starts,ends,starts_i,ends_i):
      results = list(map(lambda ij,start,end,start_i,end_i: fill_array(array_fixed,ij,start,end,start_i,end_i),ij_arrays,starts,ends,starts_i,ends_i))
      return results[0]
 
-def calculate_similarity_matrix_parallel(array, max_len, array_mask, storage_folder,args,analysis_mode,batch_size=50, ksize=3):
+def calculate_similarities_parallel(array, max_len, array_mask, storage_folder,args,analysis_mode,batch_size=50, ksize=3):
     """Batched method to calculate the cosine similarity and percent identity/pairwise distance between the blosum encoded sequences.
     :param numpy array: Blosum encoded sequences [n,max_len,aa_types] NOTE: TODO fix to make it work with: Integer representation [n,max_len] ?
     NOTE: Use smaller batches for faster results ( obviously to certain extent, check into balancing the batch size and the number of for loops)
@@ -981,7 +981,7 @@ def test_one():
     #a,b,c,d = calculate_similarity_matrix(sequences_blosum,max_len,sequences_mask,batch_size=2)
     storage_folder = "/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/tests"
     #array, max_len, array_mask, storage_folder,args,analysis_mode,batch_size=50, ksize=3
-    #results = calculate_similarity_matrix_parallel(sequences_blosum,max_len,sequences_mask,storage_folder,None,"Testing",batch_size=50)
+    #results = calculate_similarities_parallel(sequences_blosum,max_len,sequences_mask,storage_folder,None,"Testing",batch_size=50)
     r = calculate_similarity_matrix(sequences_blosum, max_len, sequences_mask, batch_size=50, ksize=3)
 
 if __name__ == '__main__':  # <- prevent RuntimeError for 'spawn'

@@ -13,7 +13,8 @@ def cosine_similarity(a,b,correlation_matrix=False,parallel=False): #TODO: impor
     """Calculates the cosine similarity between matrices of k-mers.
     :param numpy array a: (max_len,aa_types) or (num_seq,max_len, aa_types)
     :param numpy array b: (max_len,aa_types) or (num_seq,max_len, aa_types)
-    :param bool:Calculate matrix correlation(as in numpy coorcoef)"""
+    :param bool:Calculate matrix correlation(as in numpy coorcoef)
+    :param bool parallel: Indicates if parallel mode is been used"""
     n_a = a.shape[0]
     n_b = b.shape[0]
     diff_sizes = False
@@ -302,7 +303,7 @@ def calculate_masked_mean(iterables_args,fixed_args):
     #print(positional_weights)
     return positional_weights #[batch_size,max_len]
 
-def importance_weight(hotspots,nkmers,ksize,max_len,positional_mask,overlapping_kmers,batch_size,neighbours):
+def importance_weight(hotspots,max_len,positional_mask,batch_size,neighbours):
     """Weighting cosine similarities across neighbouring aminoacids to find which positions in the sequence are more conserved
     :param hotspots  = kmers_matrix_cosine_diag_ij : [N,N,nkmers,nkmers,ksize]
     """
@@ -333,7 +334,7 @@ def importance_weight(hotspots,nkmers,ksize,max_len,positional_mask,overlapping_
     args_iterables = {"splits":splits,
                       "positional_idxs": positional_idxs,
                       "diag_idx_1":diag_idx_1}
-    args_fixed = max_len,positional_mask
+    args_fixed = max_len,positional_mask,neighbours
     with multiprocessing.Pool(multiprocessing.cpu_count() - 1) as pool:
         results = MaskedMeanParallel(args_iterables,args_fixed).run(pool)
         #zipped_results =list(zip(*results))
@@ -458,7 +459,7 @@ def fill_array_map(array_fixed,ij_arrays,starts,ends,starts_i,ends_i):
      results = list(map(lambda ij,start,end,start_i,end_i: fill_array(array_fixed,ij,start,end,start_i,end_i),ij_arrays,starts,ends,starts_i,ends_i))
      return results[0]
 
-def calculate_similarity_matrix_parallel(array, max_len, array_mask, storage_folder,args,analysis_mode,batch_size=50, ksize=3,neighbours = 1):
+def calculate_similarities_parallel(array, max_len, array_mask, storage_folder,args,analysis_mode,batch_size=50, ksize=3,neighbours = 1):
     """Batched method to calculate the cosine similarity and percent identity/pairwise distance between the blosum encoded sequences.
     :param numpy array: Blosum encoded sequences [n,max_len,aa_types] NOTE: TODO fix to make it work with: Integer representation [n,max_len] ?
     NOTE: Use smaller batches for faster results ( obviously to certain extent, check into balancing the batch size and the number of for loops)
@@ -584,7 +585,7 @@ def calculate_similarity_matrix_parallel(array, max_len, array_mask, storage_fol
         #kmers_cosine_similarity_matrix_diag = np.maximum(kmers_cosine_similarity_matrix_diag, kmers_cosine_similarity_matrix_diag.transpose(1,0,2,3,4))
         cosine_sim_pairwise_matrix = np.maximum(cosine_sim_pairwise_matrix, cosine_sim_pairwise_matrix.transpose(1,0,2,3))
         #positional_weights = importance_weight_kmers(kmers_cosine_similarity_matrix_diag,nkmers,ksize,max_len,array_mask,overlapping_kmers,batch_size)
-        positional_weights = importance_weight(cosine_sim_pairwise_matrix,nkmers,ksize,max_len,array_mask,overlapping_kmers,batch_size,neighbours)
+        positional_weights = importance_weight(cosine_sim_pairwise_matrix,max_len,array_mask,batch_size,neighbours)
         percent_identity_mean = np.maximum(percent_identity_mean, percent_identity_mean.transpose())
         cosine_similarity_mean = np.maximum(cosine_similarity_mean, cosine_similarity_mean.transpose())
         kmers_pid_similarity = np.maximum(kmers_pid_similarity, kmers_pid_similarity.transpose())
