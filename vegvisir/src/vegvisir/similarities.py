@@ -473,6 +473,14 @@ def calculate_similarities_parallel(array, max_len, array_mask, storage_folder,a
     n_data = array.shape[0]
     if array.size == 0:
         print("Empty array")
+    elif array.shape[0] > 15000:
+        print("Dataset too big, skipping. Setting dummy data")
+        similarity_results = SimilarityResults(positional_weights=np.ones((n_data, max_len)),
+                                               percent_identity_mean=None,
+                                               cosine_similarity_mean=None,
+                                               kmers_pid_similarity=None,
+                                               kmers_cosine_similarity_mean=None)
+        return similarity_results
     else:
         array_mask = array_mask[:n_data]
         assert array_mask.shape == (n_data,max_len)

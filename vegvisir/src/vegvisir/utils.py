@@ -1224,7 +1224,11 @@ class CalculatePeptideFeatures(object):
 
 
 
-
+def merge_in_left_order(x, y, on=None):
+    x = x.copy()
+    x["Order"] = np.arange(len(x))
+    z = x.merge(y, how='left', on=on).set_index("Order").loc[np.arange(len(x)), :]
+    return z
 
 
 

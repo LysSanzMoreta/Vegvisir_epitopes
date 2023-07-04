@@ -99,20 +99,21 @@ def analysis_models():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
-                        default="viral_dataset7",
+                        default="viral_dataset3",
                         help='Dataset project name, look at nnalignpy.available_datasets(). The data should be always located at nnalignpy/src/nnalignpy/data \n'
                              'viral_dataset3 : Only sequences, partitioned into train,validation and test \n'
                              'viral_dataset4 : viral_dataset3 sequences + Features \n '
                              'viral_dataset5: Contains additional artificially generated negative data points in the test dataset \n'
-                             'viral_dataset6: Contains additional artificially generated negative and positive data points for semi supervised learning. Train, validation and test are mixed \n'
+                             'viral_dataset6: Contains additional artificially generated negative and positive data points for semi supervised learning. Train, validation and test are mixed. If test is selected, then 1 partition is selected as test \n'
                              'viral_dataset7: Same dataset as viral_dataset3, where the test dataset is mixed with the train and validation datasets \n'
-                             'viral_dataset8: Same dataset as viral_dataset6, where the original test dataset is left out from the training')
+                             'viral_dataset8: Same dataset as viral_dataset6, where the original test dataset is left out from the training (not mixed in)'
+                             'viral_dataset9: Same as viral_dataset7 with a new test dataset (OLD test,train and validation are mixed). New test available when using args.test=True ')
     parser.add_argument('-subset_data', type=str, default="no",
                         help="Pick only the first <n> datapoints (epitopes) for testing the pipeline\n"
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=20, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=1, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
 
     #TODO: include more blosum matrix types?
@@ -141,7 +142,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-guide', type=str, nargs='?', default="custom", help='<custom>: See guides.py \n'
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
-    parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
+    parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
     parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=True, help='Plots all UMAPs and computationally expensive plots')
 
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. If the sequence contains gaps, the script will use 20 aa + 1 gap character ')
@@ -156,7 +157,7 @@ if __name__ == "__main__":
                                                                                     '<replicated_borders>: Padds by replicating the borders of the sequence'
                                                                                     '<random>: random insertion of 0 along the sequence')
 
-    parser.add_argument('-shuffle','--shuffle_sequence', type=str2bool, nargs='?', default=False, help='Shuffling the sequence prior to padding for model stress-testing')
+    parser.add_argument('-shuffle','--shuffle_sequence', type=str2bool, nargs='?', default=True, help='Shuffling the sequence prior to padding for model stress-testing')
     parser.add_argument('-random','--random_sequences', type=str2bool, nargs='?', default=False, help='Create completely random peptide sequences for model stress-testing')
     parser.add_argument('-mutations','--num_mutations', type=int, nargs='?', default=0, help='Mutate the original sequences n times for model stress-testing')
     parser.add_argument('-idx-mutations','--idx_mutations', type=str, nargs='?', default=None, help='Positions where to perform the mutations for model stress-testing. Set to None otherwise')

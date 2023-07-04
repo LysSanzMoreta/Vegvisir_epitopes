@@ -250,8 +250,6 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
         info_file.write("\n Using as valid/test partition: {}".format(partition_idx))
         warnings.warn("Test dataset == Valid dataset, since the test has been discarded. If you want to use the test dataset please select args.test == True to activate <prededined_partitions> or <predefined_partitions_diffused_test> ")
     elif method == "predefined_partitions_diffused_test":
-        print("Here")
-        exit()
         """Diffuse/divide/transfers the test dataset to the train and validation datasets. The test has been assigned onto training partitions"""
         if partition_test is not None:
             partition_idx = partition_test
@@ -352,7 +350,8 @@ class SequencePadding(object):
         self.seq_max_len = seq_max_len
         self.method = method
         self.shuffle = shuffle
-        self.random_seeds = list(range(len(sequences)))
+        self.random_seeds = np.array(list(range(len(sequences)))) + 0
+        self.random_seeds = self.random_seeds.tolist()
 
     def run(self):
 
@@ -528,7 +527,6 @@ class SequenceRandomGeneration(object):
         np.random.seed(seed)
         seq = self.aminoacids_list[np.random.choice(len(self.aminoacids_list),len(seq))]
         return (list(seq),list(seq))
-
 
     def ends_padding(self,seq,seed,max_len):
         np.random.seed(seed)

@@ -659,7 +659,7 @@ def select_model(model_load,results_dir,fold,args):
         elif args.learning_type == "supervised_no_decoder":
             vegvisir_model = VegvisirModels.VegvisirModel5a_supervised_no_decoder(model_load)
     else:
-        print("Here4")
+        print("Setting to default supervised mode")
 
         vegvisir_model = VegvisirModels.VegvisirModel5a_supervised(model_load)
     if fold == 0 or fold == "all":
@@ -958,10 +958,11 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                 valid_summary_dict = VegvisirUtils.manage_predictions(valid_predictive_samples_dict,args,valid_predictions_dict)
                 if args.plot_all:
                     VegvisirPlots.plot_gradients(gradient_norms, results_dir, "Train_{}".format(mode))
-                    VegvisirPlots.plot_latent_space(dataset_info,train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
-                    VegvisirPlots.plot_latent_space(dataset_info,valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
+                    ##VegvisirPlots.plot_latent_space(dataset_info,train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
+                    ##VegvisirPlots.plot_latent_space(dataset_info,valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
                     VegvisirPlots.plot_latent_space(dataset_info,train_predictive_samples_latent_space, train_summary_dict, "samples",results_dir, method="Train{}".format(fold))
                     VegvisirPlots.plot_latent_space(dataset_info,valid_predictive_samples_latent_space,valid_summary_dict, "samples",results_dir, method=mode)
+
                     #VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
                     #VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
 
@@ -1037,6 +1038,7 @@ def train_model(dataset_info,additional_info,args):
                                                                                                  dataset_info.features_names,
                                                                                                  None,method=partitioning_method)
 
+
     #Highlight:Also split the rest of arrays
     train_idx = (data_blosum[:,0,0,1][..., None] == train_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
     valid_idx = (data_blosum[:,0,0,1][..., None] == valid_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
@@ -1051,7 +1053,7 @@ def train_model(dataset_info,additional_info,args):
         if args.dataset_name == "viral_dataset7" and not args.test:
             warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
         else:
-            print("Training & testing...")
+            print("Joining Training & validation datasets to perform testing...")
         train_idx = (train_idx.int() + valid_idx.int()).bool()
         epoch_loop(train_idx, test_idx, dataset_info, args, additional_info,mode="Test")
 def load_model(dataset_info,additional_info,args):

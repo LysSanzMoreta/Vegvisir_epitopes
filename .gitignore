@@ -28,3 +28,5 @@ vegvisir/src/vegvisir/tests/utils/vae_plots.py
 run0.sh
 
 run1.sh
+
+vegvisir/src/vegvisir/tests/plot_computational_complexity.py

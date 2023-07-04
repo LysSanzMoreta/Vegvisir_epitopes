@@ -4,6 +4,7 @@
 Vegvisir :
 =======================
 """
+import functools
 import gc
 import json
 import operator
@@ -919,7 +920,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 "sequences_lens":sequences_lens,
                 "clusters_info":clusters_info}
     
-    return features_dict
+    return features_dict,sequences_raw
 
 def define_colormap(feature,cmap_name):
     """"""
@@ -944,7 +945,7 @@ def plot_preprocessing(umap_proj,dataset_info,predictions_dict,sample_mode,resul
     colors_clusters = np.vectorize(colors_cluster_dict.get)(cluster_assignments)
 
     # hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,aromaticity_scores,sequences_lens,clusters_info=plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
-    features_dict = plot_clusters_features_distributions(dataset_info, cluster_assignments, n_clusters,
+    features_dict,sequences_raw = plot_clusters_features_distributions(dataset_info, cluster_assignments, n_clusters,
                                                          predictions_dict, sample_mode, results_dir, method,
                                                          vector_name)
     sequences_lens_settings = define_colormap(features_dict["sequences_lens"],cmap_name="viridis")
@@ -958,6 +959,7 @@ def plot_preprocessing(umap_proj,dataset_info,predictions_dict,sample_mode,resul
     bulkiness_scores_settings = define_colormap(features_dict["bulkiness_scores"],cmap_name="magma")
 
     return {"features_dict":features_dict,
+            "sequences_raw":sequences_raw,
             "cluster_assignments":cluster_assignments,
             "colors_clusters":colors_clusters,
             "sequence_lens_settings":sequences_lens_settings,
@@ -970,92 +972,6 @@ def plot_preprocessing(umap_proj,dataset_info,predictions_dict,sample_mode,resul
             "molecular_weights_settings":molecular_weights_settings,
             "bulkiness_scores_settings":bulkiness_scores_settings
             }
-
-
-#if vector_name == "latent_space_z":
-# cluster_assignments = MiniBatchKMeans(n_clusters=n_clusters, random_state=0, batch_size=100, max_iter=10,
-#                                       reassignment_ratio=0, n_init="auto").fit_predict(umap_proj)
-# colors_clusters = np.vectorize(colors_cluster_dict.get)(cluster_assignments)
-#
-# # hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,aromaticity_scores,sequences_lens,clusters_info=plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
-# features_dict = plot_clusters_features_distributions(dataset_info, cluster_assignments, n_clusters,
-#                                                      predictions_dict, sample_mode, results_dir, method,vector_name)
-
-# # Highlight: Sequences lens
-# sequences_lens = features_dict["sequences_lens"]
-# sequences_lens_unique = np.unique(sequences_lens)
-# sequences_lens, sequences_lens_unique = VegvisirUtils.replace_nan(sequences_lens, sequences_lens_unique)
-# colormap_len = matplotlib.cm.get_cmap('viridis', len(sequences_lens_unique.tolist()))
-# colors_dict = dict(zip(sequences_lens_unique, colormap_len.colors))
-# colors_lens = np.vectorize(colors_dict.get, signature='()->(n)')(sequences_lens)
-#
-#
-# # Highlight: Hydropathy
-# hydropathy_scores = features_dict["hydropathy_scores"]
-# hydropathy_scores_unique = np.unique(hydropathy_scores)
-# hydropathy_scores, hydropathy_scores_unique = VegvisirUtils.replace_nan(hydropathy_scores,
-#                                                                         hydropathy_scores_unique)
-# colormap_hydropathy = matplotlib.cm.get_cmap('viridis', len(hydropathy_scores_unique.tolist()))
-# colors_dict = dict(zip(hydropathy_scores_unique, colormap_hydropathy.colors))
-# colors_hydropathy = np.vectorize(colors_dict.get, signature='()->(n)')(hydropathy_scores)
-# # Highlight: Peptide volumes
-# volume_scores = features_dict["volume_scores"]
-# volume_scores_unique = np.unique(volume_scores)
-# volume_scores, volume_scores_unique = VegvisirUtils.replace_nan(volume_scores, volume_scores_unique)
-# colormap_volume = matplotlib.cm.get_cmap('magma', len(volume_scores_unique.tolist()))
-# colors_dict = dict(zip(volume_scores_unique, colormap_volume.colors))
-# colors_volume = np.vectorize(colors_dict.get, signature='()->(n)')(volume_scores)
-# # Highlight: Radius
-# radius_scores = features_dict["radius_scores"]
-# radius_scores_unique = np.unique(radius_scores)
-# radius_scores, radius_scores_unique = VegvisirUtils.replace_nan(radius_scores, radius_scores_unique)
-# colormap_radius = matplotlib.cm.get_cmap('magma', len(radius_scores_unique.tolist()))
-# colors_dict = dict(zip(radius_scores_unique, colormap_radius.colors))
-# colors_radius = np.vectorize(colors_dict.get, signature='()->(n)')(radius_scores)
-#
-# # Highlight: Side chain Pka
-# side_chain_pka_scores = features_dict["side_chain_pka_scores"]
-# side_chain_pka_scores_unique = np.unique(side_chain_pka_scores)
-# side_chain_pka_scores, side_chain_pka_scores_unique = VegvisirUtils.replace_nan(side_chain_pka_scores,
-#                                                                                 side_chain_pka_scores_unique)
-# colormap_side_chain_pka = matplotlib.cm.get_cmap('magma', len(side_chain_pka_scores_unique.tolist()))
-# colors_dict = dict(zip(side_chain_pka_scores_unique, colormap_side_chain_pka.colors))
-# colors_side_chain_pka = np.vectorize(colors_dict.get, signature='()->(n)')(side_chain_pka_scores)
-#
-# # Highlight: Isoelectric scores
-# isoelectric_scores = features_dict["isoelectric_scores"]
-# isoelectric_scores_unique = np.unique(isoelectric_scores)
-# isoelectric_scores, isoelectric_scores_unique = VegvisirUtils.replace_nan(isoelectric_scores,
-#                                                                           isoelectric_scores_unique)
-# colormap_isoelectric = matplotlib.cm.get_cmap('magma', len(isoelectric_scores_unique.tolist()))
-# colors_dict = dict(zip(isoelectric_scores_unique, colormap_isoelectric.colors))
-# colors_isoelectric = np.vectorize(colors_dict.get, signature='()->(n)')(isoelectric_scores)
-#
-# # Highlight: aromaticity scores
-# aromaticity_scores = features_dict["aromaticity_scores"]
-# aromaticity_scores_unique = np.unique(aromaticity_scores)
-# aromaticity_scores, aromaticity_scores_unique = VegvisirUtils.replace_nan(aromaticity_scores,
-#                                                                           aromaticity_scores_unique)
-# colormap_aromaticity = matplotlib.cm.get_cmap('cividis', len(aromaticity_scores_unique.tolist()))
-# colors_dict = dict(zip(aromaticity_scores_unique, colormap_aromaticity.colors))
-# colors_aromaticity = np.vectorize(colors_dict.get, signature='()->(n)')(aromaticity_scores)
-#
-# # Highlight: molecular_weight scores
-# molecular_weight_scores = features_dict["molecular_weights"]
-# molecular_weight_scores_unique = np.unique(molecular_weight_scores)
-# molecular_weight_scores, molecular_weight_scores_unique = VegvisirUtils.replace_nan(molecular_weight_scores,
-#                                                                                     molecular_weight_scores_unique)
-# colormap_molecular_weight = matplotlib.cm.get_cmap('cividis', len(molecular_weight_scores_unique.tolist()))
-# colors_dict = dict(zip(molecular_weight_scores_unique, colormap_molecular_weight.colors))
-# colors_molecular_weight = np.vectorize(colors_dict.get, signature='()->(n)')(molecular_weight_scores)
-#
-# # Highlight: bulkiness scores
-# bulkiness_scores = features_dict["bulkiness_scores"]
-# bulkiness_scores_unique = np.unique(bulkiness_scores)
-# bulkiness_scores, bulkiness_scores_unique = VegvisirUtils.replace_nan(bulkiness_scores, bulkiness_scores_unique)
-# colormap_bulkiness = matplotlib.cm.get_cmap('magma', len(bulkiness_scores_unique.tolist()))
-# colors_dict = dict(zip(bulkiness_scores_unique, colormap_bulkiness.colors))
-# colors_bulkiness = np.vectorize(colors_dict.get, signature='()->(n)')(bulkiness_scores)
 
 def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
     print("Plotting scatter UMAP of {}...".format(vector_name))
@@ -1196,13 +1112,12 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
     fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
     plt.legend(handles=[negative_patch, positive_patch], prop={'size': 20}, loc='center right',
                bbox_to_anchor=(1.5, 2.5), ncol=1)
-    plt.savefig("{}/{}/umap_SCATTER_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=600)
+    plt.savefig("{}/{}/umap_SCATTER_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=500)
     plt.clf()
     plt.close(fig)
 
     #del confidence_scores,immunodominance_scores,hydropathy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
     #gc.collect()
-
 
 def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
     print("Plotting scatter (quantiles) UMAP of {}...".format(vector_name))
@@ -1397,10 +1312,9 @@ def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,
     fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
     plt.legend(handles=[negative_patch, positive_patch], prop={'size': 20}, loc='center right',
                bbox_to_anchor=(1.5, 2.5), ncol=1)
-    plt.savefig("{}/{}/umap_SCATTER_quantiles_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=600)
+    plt.savefig("{}/{}/umap_SCATTER_quantiles_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=500)
     plt.clf()
     plt.close(fig)
-
 
 def plot_latent_correlations(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name):
     """
@@ -1452,11 +1366,113 @@ def plot_latent_correlations(umap_proj,dataset_info,latent_space,predictions_dic
     for boxplot in (boxplot1,boxplot2):
         for patch, color in zip(boxplot['boxes'], all_colors):
             patch.set_facecolor(color)
-    plt.savefig("{}/{}/Latent_quantitative_analysis_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=600)
+    plt.savefig("{}/{}/Latent_quantitative_analysis_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=500)
     plt.clf()
     plt.close(fig)
 
-def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4):
+def plot_latent_correlations_1d(umap_proj_1d,settings,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name,plot_scatter_correlations=False,plot_covariance=True):
+    """
+    :param umap_proj:
+    :param dataset_info:
+    :param latent_space:
+    :param predictions_dict:
+    :param sample_mode:
+    :param results_dir:
+    :param method:
+    :param vector_name:
+    :return:
+
+    -Notes: https://medium.com/@outside2SDs/an-overview-of-correlation-measures-between-categorical-and-continuous-variables-4c7f85610365
+    """
+    print("Latent space correlations")
+
+    features_dict = settings["features_dict"]
+    features_dict.pop('clusters_info', None)
+    features_dict["immunodominance_scores"] = latent_space[:,3]
+    sequences_raw = settings["sequences_raw"] #the sequences are following the order from the data loader
+    sequences_raw  = list(map(lambda seq: "".join(seq).replace("#",""),sequences_raw))
+    sequences_raw = pd.DataFrame({"Icore":sequences_raw})
+    true_labels = latent_space[:,0]
+
+    # #Highlight: Bring the pre-calculate peptide features back. PRESERVING THE ORDER OF THE SEQUENCES!
+    all_feats = pd.read_csv("{}/common_files/dataset_all_features.tsv".format(dataset_info.storage_folder),sep="\s+",index_col=0)
+    peptide_feats_cols = all_feats.columns[(all_feats.columns.str.contains("Icore")) | (all_feats.columns.str.contains(pat = 'pep_'))]
+    peptide_feats = all_feats[peptide_feats_cols]
+    sequences_feats = VegvisirUtils.merge_in_left_order(sequences_raw, peptide_feats, "Icore")
+    sequences_feats = sequences_feats.groupby('Icore', as_index=False, sort=False)[peptide_feats_cols].agg(lambda x: sum(list(x)) / len(list(x))) #sort Falsse to not mess up the order in which the sequences come out from the model
+
+    sequences_feats = sequences_feats.to_dict(orient="list")
+    sequences_feats.pop('Icore', None)
+
+    #Highlight: Merge both features dict
+    features_dict = {**features_dict, **sequences_feats}
+    pearson_correlations = list(map(lambda feat1,feat2: round(np.corrcoef(feat1,feat2,rowvar=False)[0][1],2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
+    pearson_correlations = np.array(pearson_correlations)
+    pearson_corr_idx = np.argwhere((pearson_correlations >= 0.1) | (pearson_correlations <-0.1))
+    pearson_correlations=pearson_correlations[pearson_corr_idx]
+
+    spearman_correlations = list(map(lambda feat1,feat2: round(stats.spearmanr(feat1,feat2,axis=1).correlation,2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
+    spearman_correlations = np.array(spearman_correlations)
+    #spearman_corr_idx = np.argwhere((spearman_correlations >= 0.1) | (spearman_correlations <-0.1))
+    spearman_correlations = spearman_correlations[pearson_corr_idx]
+
+    features_dict_new = defaultdict()
+    for idx,(key,val) in enumerate(features_dict.items()):
+        if idx in pearson_corr_idx:
+            features_dict_new[key] = val
+
+    if features_dict_new:
+        if plot_scatter_correlations:
+            ncols = int(len(features_dict_new.keys())/2)
+            nrows = [int(len(features_dict_new.keys())/ncols) + 1 if len(features_dict_new.keys())/ncols % 2 != 0 else int(len(features_dict_new.keys())/ncols)][0]
+            fig, axs= plt.subplots(nrows, ncols, figsize=(40, 30),dpi=500)
+            axs = axs.ravel()
+            i= 0
+            for feature,pearson_corr,spearman_corr,color in zip(features_dict_new.keys(),pearson_correlations,spearman_correlations,colors_list_aa):
+                axs[i].scatter(umap_proj_1d,features_dict_new[feature],color=color,s=10)
+                axs[i].set_title("{}: \n Pearson: {} \n Spearman: {}".format(feature,pearson_corr.item(),spearman_corr.item()),fontsize=22)
+                axs[i].tick_params(axis='both', which='major', labelsize=15,width=0.1)
+                axs[i].tick_params(axis='both', which='minor', labelsize=15,width=0.1)
+                i += 1
+
+            plt.margins(0.5)
+            plt.subplots_adjust(bottom=0.15,hspace=0.25)
+            plt.savefig("{}/{}/Latent_features_correlations_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=500)
+            plt.clf()
+            plt.close(fig)
+        if plot_covariance:
+            fig, [ax1, ax2] = plt.subplots(nrows=1, ncols=2, figsize=(9, 6), gridspec_kw={'width_ratios': [4.5, 1]})
+            features_names = ["UMAP-1D"] + list(features_dict.keys())
+            features_matrix = np.array(list(features_dict.values()))
+            features_matrix = np.vstack([umap_proj_1d[None, :],features_matrix])
+            features_covariance = np.cov(features_matrix)
+
+            # norm = plt.Normalize(0, 1)
+            norm = None
+            cmap = sns.color_palette("rocket_r", as_cmap=True)
+            cbar = True
+
+            sns.heatmap(features_covariance, ax=ax1, cbar=cbar, cmap=cmap, norm=norm, annot=True,
+                        annot_kws={"fontsize": "small"})
+            ax1.set_xticks(np.arange(len(features_names)), labels=features_names, rotation=45)
+            ax1.spines['left'].set_visible(False)
+            # ax1.yaxis.set_ticklabels([])
+            ax1.set_yticks(np.arange(len(features_names)) + 0.5, labels=features_names, rotation=360)
+
+            ax1.set_title("Covariance matrix features")
+
+            ax2.axis("off")
+            fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.2)
+            fig.suptitle("Features covariance")
+            plt.savefig(
+                "{}/{}/HEATMAP_features_UMAP_1D_covariance_{}_{}.png".format(results_dir,method,vector_name,sample_mode))
+            plt.clf()
+            plt.close(fig)
+
+    else:
+        print("No latent space-features correlations found")
+
+def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4,plot_correlations=True):
     """
     -Notes on UMAP: https://www.arxiv-vanity.com/papers/2009.12981/
     """
@@ -1467,7 +1483,11 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
 
     plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
     plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
-
+    if plot_correlations and vector_name == "latent_space_z":
+        reducer = umap.UMAP(n_components=1)
+        umap_proj_1d = reducer.fit_transform(latent_space[:, 5:]).squeeze(-1)
+        plot_latent_correlations_1d(umap_proj_1d, settings,dataset_info, latent_space, predictions_dict, sample_mode, results_dir, method,
+                                 vector_name)
     del umap_proj
     gc.collect()
 
@@ -1520,7 +1540,7 @@ def plot_blosum_cosine(blosum_array,storage_folder,args):
                 xticklabels=blosum_cosine_df.columns.values,
                 yticklabels=blosum_cosine_df.columns.values, annot=True, annot_kws={"size": 8}, fmt=".2f")
     plt.title("Amino acids blosum vector cosine similarity", fontsize=10)
-    plt.savefig('{}/{}/blosum_cosine.png'.format(storage_folder, args.dataset_name), dpi=600)
+    plt.savefig('{}/{}/blosum_cosine.png'.format(storage_folder, args.dataset_name), dpi=500)
     plt.clf()
     plt.close(fig)
 
@@ -1587,7 +1607,7 @@ def plot_mutual_information(full_data,full_labels,feature_names,results_dir):
     # pos = fig.get_position()
     # fig.set_position([pos.x0, pos.y0, pos.width * 0.9, pos.height])
     plt.legend(handles=patches, prop={'size': 10},loc= 'center right',bbox_to_anchor=(1.37,0.5))
-    plt.savefig("{}/mi_feature_importance".format(results_dir),dpi=600)
+    plt.savefig("{}/mi_feature_importance".format(results_dir),dpi=500)
     plt.clf()
     plt.close(fig)
 
@@ -1637,36 +1657,29 @@ def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,resul
     precision = dict()
     recall = dict()
     average_precision = dict()
-    for i in range(args.num_obs_classes):
-        precision[i], recall[i], _ = precision_recall_curve(onehot_targets[:, i], target_scores[:, i])
-        average_precision[i] = average_precision_score(onehot_targets[:, i], target_scores[:, i])
+    try:
+        for i in range(args.num_obs_classes):
+            precision[i], recall[i], _ = precision_recall_curve(onehot_targets[:, i], target_scores[:, i])
+            average_precision[i] = average_precision_score(onehot_targets[:, i], target_scores[:, i])
 
-    # A "micro-average": quantifying score on all classes jointly
-    precision["micro"], recall["micro"], _ = precision_recall_curve(
-        onehot_targets.ravel(), target_scores.ravel()
-    )
-    average_precision["micro"] = average_precision_score(onehot_targets, target_scores, average="micro")
-    fig = plt.figure()
-    plt.plot(recall["micro"],precision["micro"], label="Average Precision (AP): {}".format(average_precision["micro"]))
-    plt.xlim([0, 1])
-    plt.ylim([0, 1])
-    plt.ylabel('Precision', fontsize=20)
-    plt.xlabel('Recall', fontsize=20)
-    plt.legend(loc='lower right', prop={'size': 15})
-    plt.title("Average Precision curves")
-    plt.savefig("{}/{}/PrecisionRecall_curves_fold{}_{}".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
-    plt.clf()
-    plt.close(fig)
-
-
-
-    # display = PrecisionRecallDisplay(
-    #     recall=recall["micro"],
-    #     precision=precision["micro"],
-    #     average_precision=average_precision["micro"],
-    # )
-    # display.plot()
-    # _ = display.ax_.set_title("Micro-averaged over all classes")
+        # A "micro-average": quantifying score on all classes jointly
+        precision["micro"], recall["micro"], _ = precision_recall_curve(
+            onehot_targets.ravel(), target_scores.ravel()
+        )
+        average_precision["micro"] = average_precision_score(onehot_targets, target_scores, average="micro")
+        fig = plt.figure()
+        plt.plot(recall["micro"],precision["micro"], label="Average Precision (AP): {}".format(average_precision["micro"]))
+        plt.xlim([0, 1])
+        plt.ylim([0, 1])
+        plt.ylabel('Precision', fontsize=20)
+        plt.xlabel('Recall', fontsize=20)
+        plt.legend(loc='lower right', prop={'size': 15})
+        plt.title("Average Precision curves")
+        plt.savefig("{}/{}/PrecisionRecall_curves_fold{}_{}".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
+        plt.clf()
+        plt.close(fig)
+    except:
+        print("Could not calculate AUC, only one class found")
 
 def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name,save=True):
     # Compute ROC curve and ROC area for each class
@@ -1676,40 +1689,44 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     labels = labels[idx]
     onehot_targets = onehot_labels[idx]
     target_scores = predictions_dict[stats_name][idx]
-    fig = plt.figure()
-    # ROC AUC per class
-    for i in range(args.num_obs_classes):
-        fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
-        roc_auc[i] = auc(fpr[i], tpr[i])
-        plt.plot(fpr[i], tpr[i], label='ROC curve (AUC_{}: {})'.format(i, roc_auc[i]), c=colors_dict[i])
-    # Micro ROC AUC
-    fpr["micro"], tpr["micro"], _ = roc_curve(onehot_targets.ravel(), target_scores.ravel())
-    roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
-    plt.plot(fpr["micro"], tpr["micro"], label="micro-average ROC curve (area : {})".format(roc_auc["micro"]),
-             linestyle="-.", color="magenta")
-    # Macro ROC AUC
-    all_fpr = np.unique(np.concatenate([fpr[i] for i in range(args.num_obs_classes)]))
-    fpr["macro"] = all_fpr
-    mean_tpr = np.zeros_like(all_fpr)
-    for i in range(args.num_obs_classes):
-        mean_tpr += np.interp(all_fpr, fpr[i], tpr[i]) #linear interpolation of data points
-    tpr["macro"] = mean_tpr / args.num_obs_classes
-    roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
-    plt.plot(fpr["macro"], tpr["macro"], label="macro-average ROC curve (area : {})".format(roc_auc["macro"]),
-             linestyle="-.", color="blue")
+    try:
+        fig,[ax1,ax2] = plt.subplots(1,2,figsize=(9, 6),gridspec_kw={'width_ratios': [4.5,1]})
+        # ROC AUC per class
+        for i in range(args.num_obs_classes):
+            fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
+            roc_auc[i] = auc(fpr[i], tpr[i])
+            ax1.plot(fpr[i], tpr[i], label='Class {} AUC : {}'.format(i, round(roc_auc[i],3)), c=colors_dict[i])
+        # Micro ROC AUC
+        fpr["micro"], tpr["micro"], _ = roc_curve(onehot_targets.ravel(), target_scores.ravel())
+        roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
+        #ax1.plot(fpr["micro"], tpr["micro"], label="micro-average AUC : {}".format(round(roc_auc["micro"],3)),linestyle="-.", color="magenta")
+        # Macro ROC AUC
+        all_fpr = np.unique(np.concatenate([fpr[i] for i in range(args.num_obs_classes)]))
+        fpr["macro"] = all_fpr
+        mean_tpr = np.zeros_like(all_fpr)
+        for i in range(args.num_obs_classes):
+            mean_tpr += np.interp(all_fpr, fpr[i], tpr[i]) #linear interpolation of data points
+        tpr["macro"] = mean_tpr / args.num_obs_classes
+        roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
+        #ax1.plot(fpr["macro"], tpr["macro"], label="macro-average AUC : {}".format(round(roc_auc["macro"],3)),linestyle="-.", color="blue")
+        ax1.plot([0, 1], [0, 1], 'r--')
+        fig.legend( bbox_to_anchor=(0.71, 0.35), prop={'size': 15}) #loc='lower right'
+        ax1.set_xlim([0, 1])
+        ax1.set_ylim([0, 1])
+        plt.margins(1)
+        ax1.set_ylabel('True Positive Rate', fontsize=20)
+        ax1.set_xlabel('False Positive Rate', fontsize=20)
+        fig.suptitle("ROC curves",fontsize=20)
+        ax2.axis("off")
 
-    plt.legend(loc='lower right', prop={'size': 15})
-    plt.plot([0, 1], [0, 1], 'r--')
-    plt.xlim([0, 1])
-    plt.ylim([0, 1])
-    plt.ylabel('True Positive Rate', fontsize=20)
-    plt.xlabel('False Positive Rate', fontsize=20)
-    plt.title("ROC curves")
-    if save:
-        print("{}/{}/ROC_curves_fold{}_{}.png".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
-        plt.savefig("{}/{}/ROC_curves_fold{}_{}.png".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
-    plt.clf()
-    plt.close(fig)
+        if save:
+            print("{}/{}/ROC_curves_fold{}_{}.png".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
+            plt.savefig("{}/{}/ROC_curves_fold{}_{}.png".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
+
+        plt.clf()
+        plt.close(fig)
+    except:
+        print("Could not calculate AUC, only one class found")
 
     return fpr,tpr,roc_auc
 
@@ -1748,18 +1765,25 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
             #for key_name_1,stats_name_1 in zip(["samples_average_prob","single_sample_prob"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"]):
             if predictions_dict[prob_mode] is not None:
                 #fpr, tpr, threshold = roc_curve(y_true=onehot_labels[idx], y_score=predictions_dict[stats_name][idx])
-                micro_roc_auc_ovr = roc_auc_score(
-                    onehot_labels[idx],
-                    predictions_dict[prob_mode][idx],
-                    multi_class="ovr",
-                    average="micro",
-                )
-                micro_roc_auc_ovo = roc_auc_score(
-                    onehot_labels[idx],
-                    predictions_dict[prob_mode][idx],
-                    multi_class="ov0",
-                    average="micro",
-                )
+                try:
+                    micro_roc_auc_ovr = roc_auc_score(
+                        onehot_labels[idx],
+                        predictions_dict[prob_mode][idx],
+                        multi_class="ovr",
+                        average="micro",
+                    )
+                except:
+                    micro_roc_auc_ovr = None
+                try:
+                    micro_roc_auc_ovo = roc_auc_score(
+                        onehot_labels[idx],
+                        predictions_dict[prob_mode][idx],
+                        multi_class="ov0",
+                        average="micro",
+                    )
+                except:
+                    micro_roc_auc_ovo = None
+
                 try:
                     macro_roc_auc_ovr = roc_auc_score(
                         onehot_labels[idx],
@@ -2513,7 +2537,7 @@ def plot_comparisons(args,script_dir,dict_results,kfolds=5):
     ax6.axis("off")
 
     fig.suptitle("Model comparison")
-    plt.savefig("{}/Benchmark/methods_comparison.png".format(script_dir),dpi=600)
+    plt.savefig("{}/Benchmark/methods_comparison.png".format(script_dir),dpi=500)
 
 
 
