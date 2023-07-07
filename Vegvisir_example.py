@@ -89,25 +89,35 @@ def main():
 
 def analysis_models():
     """"""
-    assert args.dataset_name in ["viral_dataset8","viral_dataset6"], "In order to analyse the semi supervised performance we need to set num_obs_classes correctly, please select viral_dataset8 or viral_dataset6"
+    #assert args.dataset_name in ["viral_dataset8","viral_dataset6"], "In order to analyse the semi supervised performance we need to set num_obs_classes correctly, please select viral_dataset8 or viral_dataset6"
     dict_results = {"supervised_no_decoder":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/PLOTS_Vegvisir_viral_dataset3_2023_06_22_00h13min16s710339ms_40epochs_supervised_no_decoder_Icore",
                     "supervised":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/PLOTS_Vegvisir_viral_dataset3_2023_06_22_15h29min16s825785ms_40epochs_supervised_Icore",
-                    #"semisupervised_all_unobserved":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/PLOTS_Vegvisir_viral_dataset8_2023_06_23_01h21min21s400218ms_50epochs_semisupervised_Icore",
-                    "semisupervised_subset":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/PLOTS_Vegvisir_viral_dataset8_2023_06_21_18h16min24s444089ms_40epochs_semisupervised_Icore"}
-    VegvisirPlots.plot_comparisons(args,script_dir,dict_results)
+                    "semisupervised_all_unobserved":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/PLOTS_Vegvisir_viral_dataset8_2023_06_23_01h21min21s400218ms_50epochs_semisupervised_Icore",
+                    #"semisupervised_subset":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/PLOTS_Vegvisir_viral_dataset8_2023_06_21_18h16min24s444089ms_40epochs_semisupervised_Icore"
+                    }
+    #VegvisirPlots.plot_comparisons(args,script_dir,dict_results,results_folder = "Benchmark")
+
+    dict_results2 = {
+                    "random-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_12h46min41s436283ms_60epochs_supervised_Icore_random_9mers",
+                     "random-variable-lenght":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_12h06min25s239318ms_60epochs_supervised_Icore_random",
+                     "shuffled-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_13h21min20s846448ms_60epochs_supervised_Icore_shuffled",
+                     "non-shuffled-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_14h48min35s690376ms_60epochs_supervised_Icore"
+    }
+    VegvisirPlots.plot_comparisons(args,script_dir,dict_results2,results_folder = "A_Stress_testing")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
-                        default="viral_dataset3",
+                        default="viral_dataset7",
                         help='Dataset project name, look at nnalignpy.available_datasets(). The data should be always located at nnalignpy/src/nnalignpy/data \n'
                              'viral_dataset3 : Only sequences, partitioned into train,validation and test \n'
                              'viral_dataset4 : viral_dataset3 sequences + Features \n '
                              'viral_dataset5: Contains additional artificially generated negative data points in the test dataset \n'
-                             'viral_dataset6: Contains additional artificially generated negative and positive data points for semi supervised learning. Train, validation and test are mixed. If test is selected, then 1 partition is selected as test \n'
-                             'viral_dataset7: Same dataset as viral_dataset3, where the test dataset is mixed with the train and validation datasets \n'
+                             'viral_dataset6: Contains additional unobserved negative and positive data points for semi supervised learning. Train, validation and test are mixed. If args.test = True, then 1 partition is selected as test \n'
+                             'viral_dataset7: Same dataset as viral_dataset3, but the test dataset is mixed with the train and validation datasets \n'
                              'viral_dataset8: Same dataset as viral_dataset6, where the original test dataset is left out from the training (not mixed in)'
-                             'viral_dataset9: Same as viral_dataset7 with a new test dataset (OLD test,train and validation are mixed). New test available when using args.test=True ')
+                             'viral_dataset9: Same as viral_dataset7 with a new test dataset (OLD test,train and validation are mixed). New test dataset available when using args.test=True'
+                             'viral_dataset10: Same as viral_dataset6 (unobserved) with a new test dataset (OLD test,train and validation are mixed). New test available when using args.test=True')
     parser.add_argument('-subset_data', type=str, default="no",
                         help="Pick only the first <n> datapoints (epitopes) for testing the pipeline\n"
                              "<no>: Keep all \n"
@@ -142,7 +152,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-guide', type=str, nargs='?', default="custom", help='<custom>: See guides.py \n'
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
-    parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
+    parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
     parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=True, help='Plots all UMAPs and computationally expensive plots')
 
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. If the sequence contains gaps, the script will use 20 aa + 1 gap character ')
@@ -157,17 +167,17 @@ if __name__ == "__main__":
                                                                                     '<replicated_borders>: Padds by replicating the borders of the sequence'
                                                                                     '<random>: random insertion of 0 along the sequence')
 
-    parser.add_argument('-shuffle','--shuffle_sequence', type=str2bool, nargs='?', default=True, help='Shuffling the sequence prior to padding for model stress-testing')
+    parser.add_argument('-shuffle','--shuffle_sequence', type=str2bool, nargs='?', default=False, help='Shuffling the sequence prior to padding for model stress-testing')
     parser.add_argument('-random','--random_sequences', type=str2bool, nargs='?', default=False, help='Create completely random peptide sequences for model stress-testing')
     parser.add_argument('-mutations','--num_mutations', type=int, nargs='?', default=0, help='Mutate the original sequences n times for model stress-testing')
-    parser.add_argument('-idx-mutations','--idx_mutations', type=str, nargs='?', default=None, help='Positions where to perform the mutations for model stress-testing. Set to None otherwise')
+    parser.add_argument('-idx-mutations','--idx_mutations', type=str, nargs='?', default=None, help='Positions where to perform the mutations for model stress-testing. Indicated as string of format [2,5,3], Set to None otherwise')
 
     parser.add_argument('-z-dim','--z-dim', type=int, nargs='?', default=30, help='Latent space dimension')
     parser.add_argument('-beta-scale', type=int, nargs='?', default=1, help='Scaling the KL (p(z) | p(z \mid x)) of the variational autoencoder')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=40, help='Embedding dimensions, use with self-attention')
     parser.add_argument('-lt','--learning-type', type=str, nargs='?', default="supervised", help='<supervised_no_decoder> simpler model architecture with an encoder and a classifier'
-                                                                                                 '<unsupervised> Unsupervised learning. The class is inferred directly from the latent representation and via amortized inference \n'
+                                                                                                 '<unsupervised> Unsupervised learning. No classification is performed \n'
                                                                                                  '<semisupervised> Semi-supervised model/learning. The likelihood of the class (p(c | z)) is only computed and maximized using the most confident scores. \n '
                                                                                                             'The non confident data points are inferred by the guide \n'
                                                                                                  '<supervised> Supervised model. All target observations are used to compute the likelihood of the class given the latent representation')
@@ -192,7 +202,7 @@ if __name__ == "__main__":
     else:
         torch.set_default_tensor_type(torch.DoubleTensor)
         parser.add_argument('--device', type=str, default="cpu", nargs='?',help='Device choice (cpu, cuda:0, cuda:1), linked to use_cuda')
-    if args.dataset_name in ["viral_dataset6","viral_dataset8"]:
+    if args.dataset_name in ["viral_dataset6","viral_dataset8","viral_dataset10"]:
         parser.add_argument('-num_classes', type=int, nargs='?', default=3,help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')
         parser.add_argument('-num_obs_classes', type=int, nargs='?', default=2,help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')
 

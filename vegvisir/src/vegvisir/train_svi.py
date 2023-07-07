@@ -736,7 +736,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
     #Highlight: Train- Test split and kfold generator
     partitioning_method = ["predefined_partitions" if args.test else"predefined_partitions_discard_test"][0]
     if args.dataset_name in ["viral_dataset6","viral_dataset7"]:
-        partitioning_method = "predefined_partitions_diffused_test"
+        partitioning_method = "predefined_partitions_diffused_test_create_new_test" if args.test else "predefined_partitions_diffused_test"
 
     traineval_data_blosum,test_data_blosum,kfolds = VegvisirLoadUtils.trainevaltest_split_kfolds(data_blosum,
                                                                                                  args,results_dir,
@@ -958,11 +958,10 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                 valid_summary_dict = VegvisirUtils.manage_predictions(valid_predictive_samples_dict,args,valid_predictions_dict)
                 if args.plot_all:
                     VegvisirPlots.plot_gradients(gradient_norms, results_dir, "Train_{}".format(mode))
-                    ##VegvisirPlots.plot_latent_space(dataset_info,train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
-                    ##VegvisirPlots.plot_latent_space(dataset_info,valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
-                    VegvisirPlots.plot_latent_space(dataset_info,train_predictive_samples_latent_space, train_summary_dict, "samples",results_dir, method="Train{}".format(fold))
-                    VegvisirPlots.plot_latent_space(dataset_info,valid_predictive_samples_latent_space,valid_summary_dict, "samples",results_dir, method=mode)
-
+                    ##VegvisirPlots.plot_latent_space(args,dataset_info,train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
+                    ##VegvisirPlots.plot_latent_space(args,dataset_info,valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
+                    VegvisirPlots.plot_latent_space(args,dataset_info,train_predictive_samples_latent_space, train_summary_dict, "samples",results_dir, method="Train{}".format(fold))
+                    VegvisirPlots.plot_latent_space(args,dataset_info,valid_predictive_samples_latent_space,valid_summary_dict, "samples",results_dir, method=mode)
                     #VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
                     #VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
 
@@ -985,11 +984,16 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
         torch.cuda.empty_cache()
         epoch += 1 #TODO: early stop?
 
+    total_number_parameters = []
+    for param in Vegvisir.model.parameters():
+        total_number_parameters += param.numel()
+    info_file.write("Total number parameters: {}".format(total_number_parameters))
 
     VegvisirPlots.plot_classification_metrics(args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold))
     VegvisirPlots.plot_classification_metrics(args,valid_summary_dict,"all",results_dir,mode=mode)
-    #VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold))
-    #VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,valid_summary_dict,"all",results_dir,mode=mode)
+    VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold))
+    VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,valid_summary_dict,"all",results_dir,mode=mode)
+
     if args.dataset_name == "viral_dataset7": #Highlight: Sectioning out the old test data points to calculate the AUC isolated
         #Highlight: Extract the predictions of the test dataset from train and validation and calculate ROC
         print("Calculating classification metrics for old test dataset....")

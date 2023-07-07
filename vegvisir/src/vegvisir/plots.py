@@ -7,6 +7,7 @@ Vegvisir :
 import functools
 import gc
 import json
+import math
 import operator
 import pickle
 from collections import defaultdict
@@ -674,6 +675,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
 
     data_int = predictions_dict["data_int_{}".format(sample_mode)]
     sequences = data_int[:,1:].squeeze(1)
+    sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(sequences)
     if dataset_info.corrected_aa_types == 20:
         sequences_mask=np.zeros_like(sequences).astype(bool)
     else:
@@ -1370,7 +1372,7 @@ def plot_latent_correlations(umap_proj,dataset_info,latent_space,predictions_dic
     plt.clf()
     plt.close(fig)
 
-def plot_latent_correlations_1d(umap_proj_1d,settings,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name,plot_scatter_correlations=False,plot_covariance=True):
+def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name,plot_scatter_correlations=False,plot_covariance=True):
     """
     :param umap_proj:
     :param dataset_info:
@@ -1389,23 +1391,34 @@ def plot_latent_correlations_1d(umap_proj_1d,settings,dataset_info,latent_space,
     features_dict = settings["features_dict"]
     features_dict.pop('clusters_info', None)
     features_dict["immunodominance_scores"] = latent_space[:,3]
-    sequences_raw = settings["sequences_raw"] #the sequences are following the order from the data loader
-    sequences_raw  = list(map(lambda seq: "".join(seq).replace("#",""),sequences_raw))
-    sequences_raw = pd.DataFrame({"Icore":sequences_raw})
     true_labels = latent_space[:,0]
 
     # #Highlight: Bring the pre-calculate peptide features back. PRESERVING THE ORDER OF THE SEQUENCES!
-    all_feats = pd.read_csv("{}/common_files/dataset_all_features.tsv".format(dataset_info.storage_folder),sep="\s+",index_col=0)
-    peptide_feats_cols = all_feats.columns[(all_feats.columns.str.contains("Icore")) | (all_feats.columns.str.contains(pat = 'pep_'))]
-    peptide_feats = all_feats[peptide_feats_cols]
-    sequences_feats = VegvisirUtils.merge_in_left_order(sequences_raw, peptide_feats, "Icore")
-    sequences_feats = sequences_feats.groupby('Icore', as_index=False, sort=False)[peptide_feats_cols].agg(lambda x: sum(list(x)) / len(list(x))) #sort Falsse to not mess up the order in which the sequences come out from the model
 
-    sequences_feats = sequences_feats.to_dict(orient="list")
-    sequences_feats.pop('Icore', None)
+    if (not args.shuffle_sequence) or (not args.random_sequences) or (args.mutations != 0):
+        if (args.num_classes == args.num_obs_classes):
+            print("Here")
+            sequences_raw = settings["sequences_raw"]  # the sequences are following the order from the data loader
+            sequences_raw = list(map(lambda seq: "".join(seq).replace("#", ""), sequences_raw))
+            sequences_raw = pd.DataFrame({"Icore": sequences_raw})
+            all_feats = pd.read_csv("{}/common_files/dataset_all_features.tsv".format(dataset_info.storage_folder),sep="\s+",index_col=0)
+            peptide_feats_cols = all_feats.columns[(all_feats.columns.str.contains("Icore")) | (all_feats.columns.str.contains(pat = 'pep_'))]
+            peptide_feats = all_feats[peptide_feats_cols]
+            sequences_feats = VegvisirUtils.merge_in_left_order(sequences_raw, peptide_feats, "Icore")
+            sequences_feats = sequences_feats.groupby('Icore', as_index=False, sort=False)[peptide_feats_cols[peptide_feats_cols != "Icore"]].agg(lambda x: sum(list(x)) / len(list(x))) #sort Falsse to not mess up the order in which the sequences come out from the model
+            sequences_feats = sequences_feats[~sequences_feats[peptide_feats_cols[1]].isna()]
 
-    #Highlight: Merge both features dict
-    features_dict = {**features_dict, **sequences_feats}
+            sequences_feats = sequences_feats.to_dict(orient="list")
+            sequences_feats.pop('Icore', None)
+
+            #Highlight: Merge both features dict if there is useful information
+            if sequences_feats[peptide_feats_cols[1]]:
+                features_dict = {**features_dict, **sequences_feats}
+    for k,v in features_dict.items():
+        print(k)
+        print(len(v))
+        print("-----------------")
+    print("#####################################3")
     pearson_correlations = list(map(lambda feat1,feat2: round(np.corrcoef(feat1,feat2,rowvar=False)[0][1],2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
     pearson_correlations = np.array(pearson_correlations)
     pearson_corr_idx = np.argwhere((pearson_correlations >= 0.1) | (pearson_correlations <-0.1))
@@ -1441,7 +1454,7 @@ def plot_latent_correlations_1d(umap_proj_1d,settings,dataset_info,latent_space,
             plt.clf()
             plt.close(fig)
         if plot_covariance:
-            fig, [ax1, ax2] = plt.subplots(nrows=1, ncols=2, figsize=(9, 6), gridspec_kw={'width_ratios': [4.5, 1]})
+            fig, ax1 = plt.subplots(nrows=1, ncols=1, figsize=(25, 20))
             features_names = ["UMAP-1D"] + list(features_dict.keys())
             features_matrix = np.array(list(features_dict.values()))
             features_matrix = np.vstack([umap_proj_1d[None, :],features_matrix])
@@ -1453,7 +1466,7 @@ def plot_latent_correlations_1d(umap_proj_1d,settings,dataset_info,latent_space,
             cbar = True
 
             sns.heatmap(features_covariance, ax=ax1, cbar=cbar, cmap=cmap, norm=norm, annot=True,
-                        annot_kws={"fontsize": "small"})
+                        annot_kws={"fontsize": "small"},fmt=".1f")
             ax1.set_xticks(np.arange(len(features_names)), labels=features_names, rotation=45)
             ax1.spines['left'].set_visible(False)
             # ax1.yaxis.set_ticklabels([])
@@ -1461,18 +1474,17 @@ def plot_latent_correlations_1d(umap_proj_1d,settings,dataset_info,latent_space,
 
             ax1.set_title("Covariance matrix features")
 
-            ax2.axis("off")
             fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.2)
+            plt.margins(0.6)
             fig.suptitle("Features covariance")
-            plt.savefig(
-                "{}/{}/HEATMAP_features_UMAP_1D_covariance_{}_{}.png".format(results_dir,method,vector_name,sample_mode))
+            plt.savefig("{}/{}/HEATMAP_features_UMAP_1D_covariance_{}_{}.png".format(results_dir,method,vector_name,sample_mode),dpi=600)
             plt.clf()
             plt.close(fig)
 
     else:
         print("No latent space-features correlations found")
 
-def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4,plot_correlations=True):
+def plot_latent_space(args,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4,plot_correlations=True):
     """
     -Notes on UMAP: https://www.arxiv-vanity.com/papers/2009.12981/
     """
@@ -1486,7 +1498,7 @@ def plot_latent_space(dataset_info,latent_space,predictions_dict,sample_mode,res
     if plot_correlations and vector_name == "latent_space_z":
         reducer = umap.UMAP(n_components=1)
         umap_proj_1d = reducer.fit_transform(latent_space[:, 5:]).squeeze(-1)
-        plot_latent_correlations_1d(umap_proj_1d, settings,dataset_info, latent_space, predictions_dict, sample_mode, results_dir, method,
+        plot_latent_correlations_1d(umap_proj_1d,args, settings,dataset_info, latent_space, predictions_dict, sample_mode, results_dir, method,
                                  vector_name)
     del umap_proj
     gc.collect()
@@ -1695,7 +1707,7 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
         for i in range(args.num_obs_classes):
             fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
             roc_auc[i] = auc(fpr[i], tpr[i])
-            ax1.plot(fpr[i], tpr[i], label='Class {} AUC : {}'.format(i, round(roc_auc[i],3)), c=colors_dict[i])
+            ax1.plot(fpr[i], tpr[i], label='Class {} AUC : {}'.format(i, round(roc_auc[i],2)), c=colors_dict_labels[i])
         # Micro ROC AUC
         fpr["micro"], tpr["micro"], _ = roc_curve(onehot_targets.ravel(), target_scores.ravel())
         roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
@@ -2007,7 +2019,6 @@ def plot_classification_metrics_per_species(dataset_info,args,predictions_dict,f
 
                     json.dump(scores_dict, open("{}/AUC_out.txt".format(results_dir), "a"), indent=2)
 
-                #for key_name_2,stats_name_2 in zip(["samples_mode","single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
                 if predictions_dict[binary_mode] is not None:
                     targets = labels[idx]
                     scores = predictions_dict[binary_mode][idx]
@@ -2047,7 +2058,7 @@ def plot_classification_metrics_per_species(dataset_info,args,predictions_dict,f
                     ax1.set_ylabel('True Positive Rate', fontsize=20)
                     ax1.set_xlabel('False Positive Rate', fontsize=20)
                     ax2.axis("off")
-                    ax1.legend(loc='lower right', prop={'size': 6},bbox_to_anchor=(1.5, 0.))
+                    fig.legend(bbox_to_anchor=(0.71, 0.35), prop={'size': 15})  # loc='lower right'
                     fig.suptitle("ROC curve. AUC_micro_ovr_average: {}".format(average_micro_auc/args.num_samples),fontsize=12)
                     plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
                     plt.clf()
@@ -2186,8 +2197,8 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
         encoder_final_hidden_state = summary_dict["encoder_final_hidden_state_{}".format(sample_mode)]
         decoder_final_hidden_state = summary_dict["decoder_final_hidden_state_{}".format(sample_mode)]
         print("Plotting Hidden dimensions latent space")
-        plot_latent_space(dataset_info,encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden_state")
-        plot_latent_space(dataset_info,decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden_state")
+        plot_latent_space(args,dataset_info,encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden_state")
+        plot_latent_space(args,dataset_info,decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden_state")
 
         for data_points,idx_conf in zip(["all","high_confidence"],[idx_all,idx_highconfidence]):
             true_labels = summary_dict["true_{}".format(sample_mode)][idx_conf]
@@ -2383,11 +2394,30 @@ def plot_volumetrics(volumetrics_dict,seq_max_len,labels,storage_folder,args,sub
         plt.clf()
         plt.close(fig)
 
-def plot_features_covariance(features_dict,seq_max_len,labels,storage_folder,args,subfolders,tag=""):
+def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,storage_folder,args,subfolders,tag=""):
     """
     :param labels: immunodominance scores or true labels
     """
-    fig, [ax1, ax2] = plt.subplots(nrows=1, ncols=2, figsize=(9, 6),gridspec_kw={'width_ratios': [4.5,1]})
+
+    fig, [ax1, ax2] = plt.subplots(nrows=1, ncols=2, figsize=(25, 20),gridspec_kw={'width_ratios': [4.5,1]})
+    if not args.shuffle_sequence or not args.random_sequences or args.mutations != 0:
+        sequences_raw = list(map(lambda seq: "".join(seq).replace("#", ""), sequences_raw))
+        sequences_raw = pd.DataFrame({"Icore": sequences_raw})
+        all_feats = pd.read_csv("{}/common_files/dataset_all_features.tsv".format(storage_folder),sep="\s+",index_col=0)
+        peptide_feats_cols = all_feats.columns[(all_feats.columns.str.contains("Icore")) | (all_feats.columns.str.contains(pat = 'pep_'))]
+        peptide_feats = all_feats[peptide_feats_cols]
+        sequences_feats = VegvisirUtils.merge_in_left_order(sequences_raw, peptide_feats, "Icore")
+        sequences_feats = sequences_feats.groupby('Icore', as_index=False, sort=False)[peptide_feats_cols[peptide_feats_cols != "Icore"]].agg(lambda x: sum(list(x)) / len(list(x))) #sort Falsse to not mess up the order in which the sequences come out from the model
+        sequences_feats = sequences_feats[~sequences_feats[peptide_feats_cols[1]].isna()]
+
+        sequences_feats = sequences_feats.to_dict(orient="list")
+        sequences_feats.pop('Icore', None)
+
+        #Highlight: Merge both features dict
+        if sequences_feats[peptide_feats_cols[1]]:
+            features_dict = {**features_dict, **sequences_feats}
+
+
     if features_dict["volume"] is not None:
 
         features_names = list(features_dict.keys()) + [tag.replace("_","")]
@@ -2406,24 +2436,25 @@ def plot_features_covariance(features_dict,seq_max_len,labels,storage_folder,arg
         ax1.spines['left'].set_visible(False)
         #ax1.yaxis.set_ticklabels([])
         ax1.set_yticks(np.arange(len(features_names)) + 0.5,labels=features_names,rotation=360)
-
-        ax1.set_title("Covariance matrix features")
+        ymax=len(features_names)-1
+        xpos=0
+        ax1.add_patch(matplotlib.patches.Rectangle((ymax, xpos), 1, len(features_names), fill=False, edgecolor='green', lw=3))
+        ax1.set_title("Covariance matrix features ({})".format(subfolders.replace("/",",")))
 
         ax2.axis("off")
         fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.2)
-        fig.suptitle("Features covariance")
+        #fig.suptitle("Features covariance")
         plt.savefig("{}/{}/similarities/{}/HEATMAP_features_covariance{}.png".format(storage_folder,args.dataset_name,subfolders,tag))
         plt.clf()
         plt.close(fig)
 
-def plot_comparisons(args,script_dir,dict_results,kfolds=5):
+def plot_comparisons(args,script_dir,dict_results,kfolds=5,overwrite=True,results_folder="Benchmark"):
     """Compares average ROC AUC"""
 
-    metrics_results_train = defaultdict(lambda :defaultdict())
-    metrics_results_valid = defaultdict(lambda :defaultdict())
-    fig, [[ax1, ax2,ax3],[ax4, ax5,ax6]] = plt.subplots(nrows=2, ncols=3, figsize=(9, 6),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [6,2]})
+    metrics_results_train = defaultdict()
+    metrics_results_valid = defaultdict()
+    fig, [[ax1, ax2,ax3],[ax4, ax5,ax6]] = plt.subplots(nrows=2, ncols=3, figsize=(9, 6),gridspec_kw={'width_ratios': [4.5,4.5,1],'height_ratios': [6,3]})
 
-    #f = open("{}/Benchmark/AUC_results.png","r+")
     i = 0
     names = []
     positions = []
@@ -2432,51 +2463,65 @@ def plot_comparisons(args,script_dir,dict_results,kfolds=5):
 
     for name,folder in dict_results.items():
         print("-------------NAME {}--------------".format(name))
-        train_folds_fpr,train_folds_tpr,train_folds_roc_auc_class_0,train_folds_roc_auc_class_1 = [],[],[],[]
-        valid_folds_fpr,valid_folds_tpr,valid_folds_roc_auc_class_0,valid_folds_roc_auc_class_1 = [],[],[],[]
 
-        for fold in range(kfolds):
-            print("-------------FOLD {}--------------".format(fold))
-            train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_fold_{}.p".format(folder,fold))["summary_dict"]
-            valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(folder,fold))["summary_dict"]
+        if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder)) and overwrite:
+            print("Loading pre-computed ROC-AUC values")
+            metrics_results_train = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder),"rb"))
+            metrics_results_valid = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder),"rb"))
 
-            for mode,summary_dict in zip(["train","valid"],[train_out,valid_out]):
-                labels = summary_dict["true_samples"]
-                onehot_labels = summary_dict["true_onehot_samples"]
-                #confidence_scores = summary_dict["confidence_scores_samples"]
-                prob_mode = "class_probs_predictions_samples_average"
-                idx_all = np.ones_like(labels).astype(bool)
-                if args.num_classes > args.num_obs_classes:
-                    idx_all = (labels[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2,
-                idx_name = "all"
-                sample_mode = "samples"
-                fpr,tpr,roc_auc = plot_ROC_curves(labels, onehot_labels, summary_dict, args, script_dir, mode, fold, sample_mode,
-                                prob_mode, idx_all, idx_name,save=False)
-                print(mode)
-                print(roc_auc)
-                if mode == "train":
-                    train_folds_fpr.append(fpr)
-                    train_folds_tpr.append(tpr)
-                    train_folds_roc_auc_class_0.append(roc_auc[0])
-                    train_folds_roc_auc_class_1.append(roc_auc[1])
+            train_folds_fpr,train_folds_tpr,train_folds_roc_auc_class_0,train_folds_roc_auc_class_1 = metrics_results_train["fpr"],metrics_results_train["tpr"],metrics_results_train["roc_auc_class_0"],metrics_results_train["roc_auc_class_1"]
+            valid_folds_fpr,valid_folds_tpr,valid_folds_roc_auc_class_0,valid_folds_roc_auc_class_1 = metrics_results_valid["fpr"],metrics_results_valid["tpr"],metrics_results_valid["roc_auc_class_0"],metrics_results_valid["roc_auc_class_1"]
+        else:
+            print("calculating ROC-AUC values")
+            train_folds_fpr,train_folds_tpr,train_folds_roc_auc_class_0,train_folds_roc_auc_class_1 = [],[],[],[]
+            valid_folds_fpr,valid_folds_tpr,valid_folds_roc_auc_class_0,valid_folds_roc_auc_class_1 = [],[],[],[]
 
-                else:
-                    valid_folds_fpr.append(fpr)
-                    valid_folds_tpr.append(tpr)
-                    valid_folds_roc_auc_class_0.append(roc_auc[0])
-                    valid_folds_roc_auc_class_1.append(roc_auc[1])
+            for fold in range(kfolds):
+                print("-------------FOLD {}--------------".format(fold))
+                train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_fold_{}.p".format(folder,fold))["summary_dict"]
+                valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(folder,fold))["summary_dict"]
+
+                for mode,summary_dict in zip(["train","valid"],[train_out,valid_out]):
+                    labels = summary_dict["true_samples"]
+                    onehot_labels = summary_dict["true_onehot_samples"]
+                    #confidence_scores = summary_dict["confidence_scores_samples"]
+                    prob_mode = "class_probs_predictions_samples_average"
+                    idx_all = np.ones_like(labels).astype(bool)
+                    if args.num_classes > args.num_obs_classes:
+                        idx_all = (labels[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2,
+                    idx_name = "all"
+                    sample_mode = "samples"
+                    fpr,tpr,roc_auc = plot_ROC_curves(labels, onehot_labels, summary_dict, args, script_dir, mode, fold, sample_mode,
+                                    prob_mode, idx_all, idx_name,save=False)
+                    print(mode)
+                    print(roc_auc)
+                    if mode == "train":
+                        train_folds_fpr.append(fpr)
+                        train_folds_tpr.append(tpr)
+                        train_folds_roc_auc_class_0.append(roc_auc[0])
+                        train_folds_roc_auc_class_1.append(roc_auc[1])
+
+                    else:
+                        valid_folds_fpr.append(fpr)
+                        valid_folds_tpr.append(tpr)
+                        valid_folds_roc_auc_class_0.append(roc_auc[0])
+                        valid_folds_roc_auc_class_1.append(roc_auc[1])
 
 
-        metrics_results_train[name]["fpr"] = train_folds_fpr
-        metrics_results_train[name]["tpr"] = train_folds_tpr
-        metrics_results_train[name]["roc_auc_class_0"] = train_folds_roc_auc_class_0
-        metrics_results_train[name]["roc_auc_class_1"] = train_folds_roc_auc_class_1
+            metrics_results_train["fpr"] = train_folds_fpr
+            metrics_results_train["tpr"] = train_folds_tpr
+            metrics_results_train["roc_auc_class_0"] = train_folds_roc_auc_class_0
+            metrics_results_train["roc_auc_class_1"] = train_folds_roc_auc_class_1
 
-        
-        metrics_results_valid[name]["fpr"] = valid_folds_fpr
-        metrics_results_valid[name]["tpr"] = valid_folds_tpr
-        metrics_results_valid[name]["roc_auc_class_0"] = valid_folds_roc_auc_class_0
-        metrics_results_valid[name]["roc_auc_class_1"] = valid_folds_roc_auc_class_1
+
+            metrics_results_valid["fpr"] = valid_folds_fpr
+            metrics_results_valid["tpr"] = valid_folds_tpr
+            metrics_results_valid["roc_auc_class_0"] = valid_folds_roc_auc_class_0
+            metrics_results_valid["roc_auc_class_1"] = valid_folds_roc_auc_class_1
+
+            pickle.dump(metrics_results_train,open("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder),"wb"))
+            pickle.dump(metrics_results_valid,open("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder),"wb"))
+
 
 
         bar1_0 = ax1.bar(i,np.mean(train_folds_roc_auc_class_0),yerr=np.std(train_folds_roc_auc_class_0), width= 0.5,color="steelblue")
@@ -2525,8 +2570,8 @@ def plot_comparisons(args,script_dir,dict_results,kfolds=5):
         i += 1.5
 
 
-    ax1.set_xticks(positions,labels=names,rotation=45,fontsize=8)
-    ax2.set_xticks(positions,labels=names,rotation=45,fontsize=8)
+    ax1.set_xticks(positions,labels=names,rotation=90,fontsize=8)
+    ax2.set_xticks(positions,labels=names,rotation=90,fontsize=8)
     ax1.set_ylim(0,1)
     ax2.set_ylim(0,1)
     ax1.set_title("Train")
@@ -2535,9 +2580,8 @@ def plot_comparisons(args,script_dir,dict_results,kfolds=5):
     ax4.axis("off")
     ax5.axis("off")
     ax6.axis("off")
-
     fig.suptitle("Model comparison")
-    plt.savefig("{}/Benchmark/methods_comparison.png".format(script_dir),dpi=500)
+    plt.savefig("{}/{}/methods_comparison.png".format(script_dir,results_folder),dpi=500)
 
 
 

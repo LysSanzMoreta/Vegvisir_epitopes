@@ -50,7 +50,8 @@ def available_datasets():
                 3:"viral_dataset6",
                 4:"viral_dataset7",
                 5:"viral_dataset8",
-                6:"viral_dataset9"}
+                6:"viral_dataset9",
+                7:"viral_dataset10"}
     return datasets
 
 def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
@@ -65,12 +66,13 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
                  "viral_dataset6": viral_dataset6,
                  "viral_dataset7":viral_dataset7,
                  "viral_dataset8":viral_dataset8,
-                 "viral_dataset9":viral_dataset9}
+                 "viral_dataset9":viral_dataset9,
+                 "viral_dataset10":viral_dataset10}
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
     if args.learning_type == "semisupervised":
         if args.dataset_name in ["viral_dataset3","viral_dataset7","viral_dataset9"]:
-            raise ValueError("Please select viral_dataset6 or viral_dataset8 for semisupervised learning, else select supervised learning")
-    if args.dataset_name in ["viral_dataset6","viral_dataset8"]:
+            raise ValueError("Please select viral_dataset6 or viral_dataset8 or viral_dataset8 for semisupervised learning, else select supervised learning")
+    if args.dataset_name in ["viral_dataset6","viral_dataset8","viral_dataset10"]:
         assert args.learning_type == "semisupervised", "Please select semisupervised learning for dataset {}".format(args.dataset_name)
 
     dataset_load_fx = lambda f,dataset_name,current_path,storage_folder,args,results_dir,update: lambda dataset_name,current_path,storage_folder,args,results_dir,update: f(dataset_name,current_path,storage_folder,args,results_dir,update)
@@ -81,7 +83,15 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     return dataset
 
 def select_filters(args):
-    filters_dict = {"filter_kmers":[args.filter_kmers,9,args.sequence_type], #Icore_non_anchor #Highlight: Remmeber to use 8!!
+    if args.filter_kmers:
+        if args.sequence_type == "Icore_non_anchor":
+            kmer_size = 8
+        else:
+            kmer_size = 9
+    else:
+        kmer_size = 9
+
+    filters_dict = {"filter_kmers":[args.filter_kmers,kmer_size,args.sequence_type], #Icore_non_anchor #Highlight: Remmeber to use 8!!
                     "group_alleles":[True],
                     "filter_alleles":[False], #if True keeps the most common allele
                     "filter_ntested":[False,10],
@@ -100,7 +110,7 @@ def select_filters(args):
 def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,unobserved=False,no_subjects_test=False):
     """Filters, groups and prepares the files from the viral_dataset*() functions
     :param bool unobserved: Indicates the presence of unlabelled/unobserved data , which is missing the number of patients tested
-    :param bool no_subjects: Boolean to circumvent that some of the labelled data is missing the information on the number of tested people"""
+    :param bool no_subjects_test: Boolean to circumvent that some of the labelled data is missing the information on the number of tested people (no_subjects)"""
     if filters_dict["filter_ntested"][0]:
         # Highlight: Filter the points with low subject count and only keep if all "negative"
         threshold = filters_dict["filter_ntested"][1]
@@ -132,6 +142,9 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,uno
         data.loc[(data["immunodominance_score_scaled"] <= 0.) & (data["target_corrected"] != 2), "target_corrected"] = 0  # ["target"] = 0. #Strict target reassignment
         # print(data_a.sort_values(by="immunodominance_score", ascending=True)[["immunodominance_score","target"]])
         data.loc[(data["immunodominance_score_scaled"] > 0.) & (data["target_corrected"] != 2), "target_corrected"] = 1.
+        if no_subjects_test:
+            data.loc[(data["training"] == False), "target_corrected"] = data["target"]  # No re-assignment for the test data
+
     elif no_subjects_test:
         data.loc[(data["training"] == True) & (data["immunodominance_score_scaled"] <= 0.), "target_corrected"] = 0  # ["target"] = 0. #Strict target reassignment
         # print(data_a.sort_values(by="immunodominance_score", ascending=True)[["immunodominance_score","target"]])
@@ -731,7 +744,7 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
     #Highlight: Replace the training and partition columns for the new ones
 
     data = data.merge(new_partitions, on=['Icore', 'allele'], how='left',suffixes=('_old', '_new'))
-    data = data.loc[:, ~data.columns.str.endswith('_old') | (data.columns == 'partition_old')  ] #remove all columns ending with _old
+    data = data.loc[:, ~data.columns.str.endswith('_old')] #remove all columns ending with _old
     data = data.rename(columns={"Icore_non_anchor_new": "Icore_non_anchor", "target_new": "target","partition_new":"partition"})
 
     #Highlight: add species
@@ -763,9 +776,9 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
 
     data["training"] = True #Highlight: This time we do not keep track of the training data
-    #TODO: Filtered only virus
     data = pd.merge(data,new_test_dataset, on=['Icore',"allele","training","target"], how='outer',suffixes=('_a', '_b'))
     data = data.drop("kingdom",axis=1)
+
 
     filters_dict,analysis_mode = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
@@ -777,11 +790,24 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     if filters_dict["group_alleles"][0]:
         # Group data by Icore, therefore the alleles are grouped
+        print("Here1")
+        print(data.columns)
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
-        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition","partition_old", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training","org_name"]].agg(lambda x: max(set(list(x)), key=list(x).count))
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
+        print("Here2")
+        print(data.columns)
         data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
+        # print(data[data["org_name"].isna()].shape)
+        # print(data_species[data_species["org_name"].isna()].shape)
+        data = data.set_index('Icore').combine_first(data_species.set_index('Icore'))
+        #data = pd.merge(data, data_species, on=['Icore'], how='left') #9108
+        data = data.groupby('Icore', as_index=False)[["allele"]].agg(lambda x: list(x)[0])
+        print(data)
+        print(data.shape)
+        print(data[data["org_name"].isna()].shape)
+        exit()
 
     else:
         allele_counts_dict = data["allele"].value_counts().to_dict()
@@ -789,8 +815,14 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
         data["allele_encoded"] = data["allele"]
         data.replace({"allele_encoded": allele_dict},inplace=True)
 
+
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,no_subjects_test=True)
-    data = pd.merge(data,data_species, on=['Icore'], how='left')
+
+    data = pd.merge(data,data_species, on=['Icore'], how='left',suffixes=('_a', '_b'))
+    print(data["org_name"].tolist())
+    #print(data["org_name_b"].tolist())
+
+    exit()
     data.loc[(data["training"] == False), "confidence_score"] = 0
 
     unique_values = pd.unique(data["org_name"])
@@ -800,7 +832,135 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data = data.replace({"org_name": org_name_dict_reverse})
     # nan_rows = data[data["confidence_score"].isna()]
     # print(nan_rows[["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"]])
-    # exit()
+    exit()
+    data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
+    return data_info
+
+def viral_dataset10(dataset_name,script_dir,storage_folder,args,results_dir,update):
+    """
+    Collects IEDB data and creates artificially generated epitopes. The artificial epitopes are designed by randomly chopping viral proteins onto peptides and then checking binding to MHC with NetMHC-pan
+
+    ####################
+    #HEADER DESCRIPTIONS#
+    ####################
+    allele
+    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
+    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
+    Number of Subjects Responded
+    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
+    training
+    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
+    partition
+
+    return
+          :param pandas dataframe: Results pandas dataframe with the following structure:
+                  Icore:Interaction peptide core
+                  allele: MHC allele
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  training: True assign data point to train , else assign to Test (given)
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  target: Pre-assigned target (given)
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+    """
+
+    dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
+    data_observed = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    data_observed.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
+    data_observed = data_observed.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
+    filters_dict,analysis_mode = select_filters(args)
+    json.dump(filters_dict, dataset_info_file, indent=2)
+    data_species = pd.read_csv("{}/common_files/dataset_species.tsv".format(storage_folder),sep="\t")
+    data_species = data_species.dropna(axis=1)
+    data_species = data_species[["Icore","allele","org_name"]]
+
+    data_unobserved = pd.read_csv("{}/{}/dataset_artificial_peptides_from_proteins_partitioned_hla.tsv".format(storage_folder,args.dataset_name),sep = "\s+") #Highlight: The sequences from the labelled dataset have been filtered for some reason
+    data_unobserved.columns = ["Icore", "target", "partition", "source","allele"]
+    data_unobserved_partition = data_unobserved[["Icore","partition","source"]]
+    data_unobserved = data_unobserved[(data_unobserved["source"] == "artificial")]
+    #data_unobserved = data_unobserved.sample(n=args.num_unobserved,replace=False)
+    unique_partitions = data_unobserved["partition"].value_counts()
+    if args.num_unobserved < data_unobserved.shape[0]:
+        data_unobserved_list = []
+        for partition in unique_partitions.keys():
+            data_unobserved_i = data_unobserved.loc[(data_unobserved["partition"] == partition)]
+            data_unobserved_list.append(data_unobserved_i.sample(n=int((args.num_unobserved/len(unique_partitions.keys()))),replace=False))
+        data_unobserved = pd.concat(data_unobserved_list,axis=0)
+    data = data_observed.merge(data_unobserved, on=['Icore', 'allele'], how='outer',suffixes=('_observed', '_unobserved'))
+    data = data.drop(["target_unobserved","partition_observed","partition_unobserved"],axis=1)
+    data = data.merge(data_unobserved_partition,on=["Icore"],how="left",suffixes=('_observed', '_unobserved'))
+    data = data.drop(["source_observed"],axis=1)
+    data = data.rename(columns={"target_observed": "target","source_unobserved":"source"})
+    data.loc[(data["source"] == "artificial"), "target"] = 2
+
+    #Filter peptides/Icores with unknown aminoacids "X"
+    data = data[~data['Icore'].str.contains("X")]
+
+    # anchors_per_allele = pd.read_csv("{}/anchor_info_content/anchors_per_allele_average.txt".format(storage_folder),sep="\s+",header=0)
+    # anchors_per_allele=anchors_per_allele[anchors_per_allele[["allele"]].isin(data_allele_types).any(axis=1)]
+    # allele_anchors_dict = dict(zip(anchors_per_allele["allele"],anchors_per_allele["anchors"]))
+    allele_counts = data.value_counts("allele")
+    most_common_allele = allele_counts.index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
+    #data_allele_types = allele_counts.index.tolist() #alleles present in this dataset
+
+
+    #Highlight: Add new test dataset
+
+    #/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/viral_dataset9/NEW_pMHC_test.csv
+    new_test_dataset = pd.read_csv("{}/{}/NEW_pMHC_test.csv".format(storage_folder,args.dataset_name),sep = ",")
+
+    test_mode_dict = {0:"test_virus",
+                      1:"test_bacteria",
+                      2:"test_cancer"}
+
+    new_test_dataset["training"] = False
+    new_test_dataset["target_corrected"]  = new_test_dataset["target"]
+    test_mode = test_mode_dict[0]
+    if test_mode=="test_virus":
+        #new_test_dataset = new_test_dataset[(new_test_dataset['org_name'].str.contains("virus")) | (new_test_dataset['org_name'].str.contains("SARS-CoV2"))]
+        new_test_dataset = new_test_dataset[(new_test_dataset['kingdom'].str.contains("Viruses"))]
+
+    elif test_mode == "test_bacteria":
+        warnings.warn("Using epitopes from bacteria as test")
+        new_test_dataset = new_test_dataset[(new_test_dataset['kingdom'].str.contains("Bacteria"))]
+    elif test_mode == "test_cancer":
+        new_test_dataset = new_test_dataset[(new_test_dataset['kingdom'].str.contains("Eukaryota"))]
+    data["training"] = True #Highlight: This time we do not keep track of the training data
+    data = pd.merge(data,new_test_dataset, on=['Icore',"allele","training","target"], how='outer',suffixes=('_a', '_b'))
+    data = data.drop("kingdom",axis=1)
+    if filters_dict["filter_alleles"][0]:
+        data = data[data["allele"] == most_common_allele]
+
+    if filters_dict["group_alleles"][0]:
+        print("Grouping alleles")
+        # Group data by Icore, therefore, the alleles are grouped
+        data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
+        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        # Reattach info on training
+        data = pd.merge(data_a, data_b, on='Icore', how='outer')
+        data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
+
+    else:
+        allele_counts_dict = data["allele"].value_counts().to_dict()
+        allele_dict = dict(zip(allele_counts_dict.keys(),list(range(len(allele_counts_dict.keys())))))
+        data["allele_encoded"] = data["allele"]
+        data.replace({"allele_encoded": allele_dict},inplace=True)
+
+    data.loc[(data["target"] == 2), "target_corrected"] = 2
+    data.loc[(data["target"] == 2), "confidence_score"] = 0
+    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,unobserved=True,no_subjects_test=True)
+
+    data.loc[(data["target"] == 2), "target_corrected"] = 2
+    data.loc[(data["target"] == 2), "confidence_score"] = 0
+    data = pd.merge(data,data_species, on=['Icore'], how='left')
+    data.loc[(data["training"] == False), "confidence_score"] = 0
+
+    unique_values = pd.unique(data["org_name"])
+    org_name_dict = dict(zip(list(range(len(unique_values))), unique_values))
+    org_name_dict_reverse = dict(zip(unique_values, list(range(len(unique_values)))))
+    pickle.dump(org_name_dict,open('{}/{}/org_name_dict.pkl'.format(storage_folder,args.dataset_name), 'wb'))
+    data = data.replace({"org_name": org_name_dict_reverse})
+    #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
     return data_info
@@ -936,32 +1096,32 @@ def data_volumetrics(seq_max_len,epitopes_list,data,epitopes_array_mask,storage_
         #Highlight: Train
         features_dict_all_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.all.tolist(),storage_folder).features_summary()
         subfolders = "{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode)
-        VegvisirPlots.plot_features_covariance(features_dict_all_train,seq_max_len,immunodominance_scores[training],storage_folder,args,subfolders,tag="_immunodominance_scores")
-        VegvisirPlots.plot_features_covariance(features_dict_all_train,seq_max_len,labels_arr[training],storage_folder,args,subfolders,tag="_labels")
+        VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_train.all.tolist(),features_dict_all_train,seq_max_len,immunodominance_scores[training],storage_folder,args,subfolders,tag="_immunodominance_scores")
+        VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_train.all.tolist(),features_dict_all_train,seq_max_len,labels_arr[training],storage_folder,args,subfolders,tag="_labels")
         features_dict_positives_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.positives.tolist(),storage_folder).features_summary()
         subfolders = "{}/Train/{}/neighbours1/positives".format(args.sequence_type, analysis_mode)
-        VegvisirPlots.plot_features_covariance(features_dict_positives_train, seq_max_len,immunodominance_scores[training][epitopes_array_raw_division_train.positives_idx],storage_folder, args, subfolders,tag="_immunodominance_scores")
+        VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_train.positives.tolist(),features_dict_positives_train, seq_max_len,immunodominance_scores[training][epitopes_array_raw_division_train.positives_idx],storage_folder, args, subfolders,tag="_immunodominance_scores")
         features_dict_negatives_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.negatives.tolist(),storage_folder).features_summary()
         subfolders = "{}/Train/{}/neighbours1/negatives".format(args.sequence_type, analysis_mode)
-        VegvisirPlots.plot_features_covariance(features_dict_negatives_train, seq_max_len,immunodominance_scores[training][epitopes_array_raw_division_train.negatives_idx], storage_folder, args, subfolders,tag="_immunodominance_scores")
+        VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_train.negatives.tolist(),features_dict_negatives_train, seq_max_len,immunodominance_scores[training][epitopes_array_raw_division_train.negatives_idx], storage_folder, args, subfolders,tag="_immunodominance_scores")
         features_dict_high_confidence_negatives_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.high_confidence_negatives.tolist(),storage_folder).features_summary()
         subfolders = "{}/Train/{}/neighbours1/highconfnegatives".format(args.sequence_type, analysis_mode)
-        VegvisirPlots.plot_features_covariance(features_dict_high_confidence_negatives_train, seq_max_len, immunodominance_scores[training][epitopes_array_raw_division_train.high_conf_negatives_idx],storage_folder, args, subfolders,tag="_immunodominance_scores")
+        VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_train.high_confidence_negatives.tolist(),features_dict_high_confidence_negatives_train, seq_max_len, immunodominance_scores[training][epitopes_array_raw_division_train.high_conf_negatives_idx],storage_folder, args, subfolders,tag="_immunodominance_scores")
 
         #Highlight: Test
         features_dict_all_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.all.tolist(),storage_folder).features_summary()
         subfolders = "{}/Test/{}/neighbours1/all".format(args.sequence_type, analysis_mode)
-        VegvisirPlots.plot_features_covariance(features_dict_all_test, seq_max_len, immunodominance_scores[np.invert(training)],storage_folder, args, subfolders,tag="_immunodominance_scores")
-        VegvisirPlots.plot_features_covariance(features_dict_all_test, seq_max_len, labels_arr[np.invert(training)],storage_folder, args, subfolders,tag="_labels")
+        VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_test.all.tolist(),features_dict_all_test, seq_max_len, immunodominance_scores[np.invert(training)],storage_folder, args, subfolders,tag="_immunodominance_scores")
+        VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_test.all.tolist(),features_dict_all_test, seq_max_len, labels_arr[np.invert(training)],storage_folder, args, subfolders,tag="_labels")
         features_dict_positives_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.positives.tolist(),storage_folder).features_summary()
         subfolders = "{}/Test/{}/neighbours1/positives".format(args.sequence_type, analysis_mode)
-        VegvisirPlots.plot_features_covariance(features_dict_positives_test, seq_max_len,immunodominance_scores[np.invert(training)][epitopes_array_raw_division_test.positives_idx],storage_folder, args, subfolders,tag="_immunodominance_scores")
+        VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_test.positives.tolist(),features_dict_positives_test, seq_max_len,immunodominance_scores[np.invert(training)][epitopes_array_raw_division_test.positives_idx],storage_folder, args, subfolders,tag="_immunodominance_scores")
         features_dict_negatives_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.negatives.tolist(),storage_folder).features_summary()
         subfolders = "{}/Test/{}/neighbours1/negatives".format(args.sequence_type, analysis_mode)
-        VegvisirPlots.plot_features_covariance(features_dict_negatives_test, seq_max_len,immunodominance_scores[np.invert(training)][epitopes_array_raw_division_test.negatives_idx], storage_folder, args, subfolders,tag="_immunodominance_scores")
+        VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_test.negatives.tolist(),features_dict_negatives_test, seq_max_len,immunodominance_scores[np.invert(training)][epitopes_array_raw_division_test.negatives_idx], storage_folder, args, subfolders,tag="_immunodominance_scores")
         features_dict_high_confidence_negatives_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.high_confidence_negatives.tolist(),storage_folder).features_summary()
         subfolders = "{}/Test/{}/neighbours1/highconfnegatives".format(args.sequence_type, analysis_mode)
-        VegvisirPlots.plot_features_covariance(features_dict_high_confidence_negatives_test, seq_max_len,immunodominance_scores[np.invert(training)][epitopes_array_raw_division_test.high_conf_negatives_idx], storage_folder, args, subfolders,tag="_immunodominance_scores")
+        VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_test.high_confidence_negatives.tolist(),features_dict_high_confidence_negatives_test, seq_max_len,immunodominance_scores[np.invert(training)][epitopes_array_raw_division_test.high_conf_negatives_idx], storage_folder, args, subfolders,tag="_immunodominance_scores")
 
 def vector_analysis(seq_max_len,data,data_blosum,epitopes_array_mask,storage_folder,args,filters_dict,analysis_mode,analyse = True):
     if not os.path.exists("{}/{}/similarities/{}".format(storage_folder, args.dataset_name, args.sequence_type)):
@@ -1441,20 +1601,20 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
 
     corrected_aa_types = len(set().union(*epitopes_list))
     corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
-
     epitopes_padded, epitopes_padded_mask, aa_dict, blosum_array, blosum_dict, blosum_array_dict = process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,epitopes_list,data)
 
-    intermediate_dataset = pd.DataFrame({"Icore":list(map(lambda seq:"".join(seq).replace("#",""),epitopes_padded)),
-                                         "target_corrected": data["target_corrected"],
-                                         "partitions": data["partition"],
-                                         "training":data["training"],
-                                         "immunodominance_score":data["immunodominance_score"],
-                                         "org_name":data["org_name"],
-                                         "confidence_scores": data["confidence_score"]
-                                         })
 
-    intermediate_dataset.to_csv("{}/shuffled_sequences_{}.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False)
-    exit()
+    # intermediate_dataset = pd.DataFrame({"Icore":list(map(lambda seq:"".join(seq).replace("#",""),epitopes_padded)),
+    #                                      "target_corrected": data["target_corrected"],
+    #                                      "partitions": data["partition"],
+    #                                      "training":data["training"],
+    #                                      "immunodominance_score":data["immunodominance_score"],
+    #                                      "org_name":data["org_name"],
+    #                                      "confidence_scores": data["confidence_score"]
+    #                                      })
+    #
+    # intermediate_dataset.to_csv("{}/shuffled_sequences_{}.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False)
+    # exit()
 
     epitopes_array_raw = np.array(epitopes_padded)
 
@@ -1485,10 +1645,9 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
 
-    data_volumetrics(seq_max_len,epitopes_list, data, epitopes_mask, storage_folder, args, filters_dict,analysis_mode,plot_volumetrics=False,plot_covariance=False)
+    #data_volumetrics(seq_max_len,epitopes_list, data, epitopes_mask, storage_folder, args, filters_dict,analysis_mode,plot_volumetrics=False,plot_covariance=False)
 
-
-    if args.dataset_name not in  ["viral_dataset6","viral_dataset8","viral_dataset9"]: #Highlight: viral_dataset9 has only been calculated with the viral dataset
+    if args.dataset_name not in  ["viral_dataset6","viral_dataset8","viral_dataset9","viral_dataset10"]:
         try:
             all_sim_results = data_exploration(data, epitopes_array_blosum, epitopes_array_int, epitopes_mask, aa_dict, aa_list,
                              blosum_norm, seq_max_len, storage_folder, args, corrected_aa_types,analysis_mode,filters_dict)

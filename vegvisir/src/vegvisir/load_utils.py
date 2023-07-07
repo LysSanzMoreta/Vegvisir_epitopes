@@ -169,6 +169,49 @@ def trainevaltest_split_kfolds(data,args,results_dir,seq_max_len,max_len,feature
             else:
                 i += 1
         return traineval_data, None, kfolds
+    elif method == "predefined_partitions_diffused_test":
+        """Diffuse/divide/transfers the test dataset to the train and validation datasets. The test has been assigned onto training partitions"""
+        traineval_data = data[idx_select(data,3) == 1.]
+        partitions = idx_select(traineval_data,2)
+        unique_partitions = np.unique(partitions)
+        assert args.k_folds <= len(unique_partitions), "kfold number is too high, please select a number lower than {}".format(len(unique_partitions))
+        i = 1
+        kfolds = []
+        for part_num in unique_partitions:
+            train_idx = ((idx_select(data,2)[..., None] != part_num) & (idx_select(data,3)[..., None] == 1)).any(-1)
+            valid_idx = ((idx_select(data,2)[..., None] == part_num) &  (idx_select(data,3)[..., None] == 1)).any(-1)
+            kfolds.append((train_idx, valid_idx))
+            test_data = data[valid_idx] #dummy test data, not used
+            if args.k_folds <= i :
+                break
+            else:
+                i+=1
+        return traineval_data, test_data, kfolds
+    elif method == "predefined_partitions_diffused_test_create_new_test":
+        """Diffuse/divide/transfers the test dataset to the train and validation datasets. The test has been diffused/mixed with the train and validation. 
+        One of the partitions is used as test and one as validation"""
+        if partition_test is not None:
+            partition_idx_test = partition_test
+        else:
+            partition_idx_test = np.random.choice(range(5), replace=False) #random selection of a partition as the test/validation
+
+        traineval_data = data[(idx_select(data,2) != partition_idx_test)]
+        test_data = data[idx_select(data,2) == partition_idx_test]
+        partitions = idx_select(traineval_data,2)
+        unique_partitions = np.unique(partitions)
+        assert args.k_folds <= len(unique_partitions), "kfold number is too high, please select a number lower than {}".format(len(unique_partitions))
+        i = 1
+        kfolds = []
+        for part_num in unique_partitions:
+            train_idx = ((idx_select(data,2)[..., None] != part_num) & (idx_select(data,3)[..., None] == 1)).any(-1)
+            valid_idx = ((idx_select(data,2)[..., None] == part_num) &  (idx_select(data,3)[..., None] == 1)).any(-1)
+            kfolds.append((train_idx, valid_idx))
+            if args.k_folds <= i :
+                break
+            else:
+                i+=1
+        return traineval_data, test_data, kfolds
+
     elif method == "predefined_partitions":
         traineval_data, test_data = data[idx_select(data,3) == 1.], data[idx_select(data,3) == 0.]
 
