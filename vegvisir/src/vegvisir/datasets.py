@@ -790,24 +790,12 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     if filters_dict["group_alleles"][0]:
         # Group data by Icore, therefore the alleles are grouped
-        print("Here1")
-        print(data.columns)
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
         data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training","org_name"]].agg(lambda x: max(set(list(x)), key=list(x).count))
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
-        print("Here2")
-        print(data.columns)
         data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
-        # print(data[data["org_name"].isna()].shape)
-        # print(data_species[data_species["org_name"].isna()].shape)
-        data = data.set_index('Icore').combine_first(data_species.set_index('Icore'))
-        #data = pd.merge(data, data_species, on=['Icore'], how='left') #9108
-        data = data.groupby('Icore', as_index=False)[["allele"]].agg(lambda x: list(x)[0])
-        print(data)
-        print(data.shape)
-        print(data[data["org_name"].isna()].shape)
-        exit()
+
 
     else:
         allele_counts_dict = data["allele"].value_counts().to_dict()
@@ -819,10 +807,10 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,no_subjects_test=True)
 
     data = pd.merge(data,data_species, on=['Icore'], how='left',suffixes=('_a', '_b'))
-    print(data["org_name"].tolist())
+    data["org_name"] = data["org_name_a"].fillna(data["org_name_b"])
+    data.drop(["org_name_b","org_name_a"],axis=1,inplace=True)
     #print(data["org_name_b"].tolist())
 
-    exit()
     data.loc[(data["training"] == False), "confidence_score"] = 0
 
     unique_values = pd.unique(data["org_name"])
@@ -916,10 +904,10 @@ def viral_dataset10(dataset_name,script_dir,storage_folder,args,results_dir,upda
     new_test_dataset["training"] = False
     new_test_dataset["target_corrected"]  = new_test_dataset["target"]
     test_mode = test_mode_dict[0]
+
     if test_mode=="test_virus":
         #new_test_dataset = new_test_dataset[(new_test_dataset['org_name'].str.contains("virus")) | (new_test_dataset['org_name'].str.contains("SARS-CoV2"))]
         new_test_dataset = new_test_dataset[(new_test_dataset['kingdom'].str.contains("Viruses"))]
-
     elif test_mode == "test_bacteria":
         warnings.warn("Using epitopes from bacteria as test")
         new_test_dataset = new_test_dataset[(new_test_dataset['kingdom'].str.contains("Bacteria"))]
@@ -927,6 +915,7 @@ def viral_dataset10(dataset_name,script_dir,storage_folder,args,results_dir,upda
         new_test_dataset = new_test_dataset[(new_test_dataset['kingdom'].str.contains("Eukaryota"))]
     data["training"] = True #Highlight: This time we do not keep track of the training data
     data = pd.merge(data,new_test_dataset, on=['Icore',"allele","training","target"], how='outer',suffixes=('_a', '_b'))
+    print(data.columns)
     data = data.drop("kingdom",axis=1)
     if filters_dict["filter_alleles"][0]:
         data = data[data["allele"] == most_common_allele]
@@ -952,7 +941,9 @@ def viral_dataset10(dataset_name,script_dir,storage_folder,args,results_dir,upda
 
     data.loc[(data["target"] == 2), "target_corrected"] = 2
     data.loc[(data["target"] == 2), "confidence_score"] = 0
-    data = pd.merge(data,data_species, on=['Icore'], how='left')
+    data = pd.merge(data, data_species, on=['Icore'], how='left', suffixes=('_a', '_b'))
+    data["org_name"] = data["org_name_a"].fillna(data["org_name_b"])
+    data.drop(["org_name_b","org_name_a"],axis=1,inplace=True)
     data.loc[(data["training"] == False), "confidence_score"] = 0
 
     unique_values = pd.unique(data["org_name"])

@@ -98,17 +98,20 @@ def analysis_models():
     #VegvisirPlots.plot_comparisons(args,script_dir,dict_results,results_folder = "Benchmark")
 
     dict_results2 = {
+                    "viral-dataset-3-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset3_2023_07_07_17h25min42s331434ms_60epochs_supervised_Icore_9mers",
+                    "viral-dataset-3-variable-lenght":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset3_2023_07_07_16h04min15s977650ms_60epochs_supervised_Icore",
                     "random-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_12h46min41s436283ms_60epochs_supervised_Icore_random_9mers",
                      "random-variable-lenght":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_12h06min25s239318ms_60epochs_supervised_Icore_random",
                      "shuffled-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_13h21min20s846448ms_60epochs_supervised_Icore_shuffled",
-                     "non-shuffled-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_14h48min35s690376ms_60epochs_supervised_Icore"
+                     "non-shuffled-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_14h48min35s690376ms_60epochs_supervised_Icore",
+
     }
     VegvisirPlots.plot_comparisons(args,script_dir,dict_results2,results_folder = "A_Stress_testing")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
-                        default="viral_dataset7",
+                        default="viral_dataset9",
                         help='Dataset project name, look at nnalignpy.available_datasets(). The data should be always located at nnalignpy/src/nnalignpy/data \n'
                              'viral_dataset3 : Only sequences, partitioned into train,validation and test \n'
                              'viral_dataset4 : viral_dataset3 sequences + Features \n '
@@ -153,7 +156,7 @@ if __name__ == "__main__":
     parser.add_argument('-guide', type=str, nargs='?', default="custom", help='<custom>: See guides.py \n'
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
     parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
-    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=True, help='Plots all UMAPs and computationally expensive plots')
+    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=False, help='Plots all UMAPs and computationally expensive plots')
 
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. If the sequence contains gaps, the script will use 20 aa + 1 gap character ')
     parser.add_argument('-filter-kmers', type=str2bool, nargs='?', default=False, help="Filters the dataset to 9-mers only")

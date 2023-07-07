@@ -984,10 +984,11 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
         torch.cuda.empty_cache()
         epoch += 1 #TODO: early stop?
 
-    total_number_parameters = []
-    for param in Vegvisir.model.parameters():
+    total_number_parameters = 0
+    for param in Vegvisir.parameters(): #for name_i, value in pyro.get_param_store().named_parameters()
         total_number_parameters += param.numel()
-    info_file.write("Total number parameters: {}".format(total_number_parameters))
+    info_file.write("\n ------------------------------------- \n ")
+    info_file.write("\n Total number parameters: {} \n ".format(total_number_parameters))
 
     VegvisirPlots.plot_classification_metrics(args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold))
     VegvisirPlots.plot_classification_metrics(args,valid_summary_dict,"all",results_dir,mode=mode)
