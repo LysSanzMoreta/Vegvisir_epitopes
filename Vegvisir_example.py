@@ -68,9 +68,11 @@ def main():
     if args.k_folds > 1:
         for kfold in range(args.k_folds):
             VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Train_fold_{}".format(kfold)), script_dir)
-            VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Valid_fold_{}".format(kfold)), script_dir)
             if args.test:
                 VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Test_fold_{}".format(kfold)), script_dir)
+            else:
+                VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Valid_fold_{}".format(kfold)),script_dir)
+
     else:
         VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Train"), script_dir)
         VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Valid"), script_dir)
@@ -97,14 +99,18 @@ def analysis_models():
                     }
     #VegvisirPlots.plot_comparisons(args,script_dir,dict_results,results_folder = "Benchmark")
 
-    dict_results2 = {
-                    "viral-dataset-3-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset3_2023_07_07_17h25min42s331434ms_60epochs_supervised_Icore_9mers",
-                    "viral-dataset-3-variable-lenght":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset3_2023_07_07_16h04min15s977650ms_60epochs_supervised_Icore",
-                    "random-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_12h46min41s436283ms_60epochs_supervised_Icore_random_9mers",
-                     "random-variable-lenght":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_12h06min25s239318ms_60epochs_supervised_Icore_random",
-                     "shuffled-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_13h21min20s846448ms_60epochs_supervised_Icore_shuffled",
-                     "non-shuffled-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_14h48min35s690376ms_60epochs_supervised_Icore",
-
+    dict_results2 = {r"viral-dataset-3-\textbf{shuffled}-\textbf{icore-non-anchor}":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset3_2023_07_07_19h49min55s442352ms_60epochs_supervised_Icore_non_anchor_shuffled",
+                     r"viral-dataset-3-\textbf{icore-non-anchor}":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset3_2023_07_07_19h02min23s150029ms_60epochs_supervised_Icore_non_anchor",
+                     r"viral-dataset-3-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset3_2023_07_07_17h25min42s331434ms_60epochs_supervised_Icore_9mers",
+                     r"viral-dataset-3-variable-lenght":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset3_2023_07_07_16h04min15s977650ms_60epochs_supervised_Icore",
+                     r"viral-dataset-7-\textbf{RANDOM}-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_12h46min41s436283ms_60epochs_supervised_Icore_random_9mers",
+                     r"viral-dataset-7-\textbf{RANDOM}-variable-lenght":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_12h06min25s239318ms_60epochs_supervised_Icore_random",
+                     r"viral-dataset-7-\textbf{shuffled}-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_13h21min20s846448ms_60epochs_supervised_Icore_shuffled",
+                     r"viral-dataset-7-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_14h48min35s690376ms_60epochs_supervised_Icore",
+                     r"viral-dataset-7-\textbf{shuffled}-\textbf{icore-non-anchor}": "/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_19h49min40s650208ms_60epochs_supervised_Icore_non_anchor_shuffled",
+                     r"viral-dataset-7-\textbf{icore-non-anchor}": "/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset7_2023_07_07_19h08min11s420747ms_60epochs_supervised_Icore_non_anchor",
+                     r"viral-dataset-9-variable-lenght": "/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset9_2023_07_07_21h24min46s326451ms_60epochs_supervised_Icore_TESTING",
+                     r"viral-dataset-9-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset9_2023_07_10_14h59min45s816727ms_60epochs_supervised_Icore_TESTING_9mers",
     }
     VegvisirPlots.plot_comparisons(args,script_dir,dict_results2,results_folder = "A_Stress_testing")
 
@@ -133,7 +139,7 @@ if __name__ == "__main__":
     parser.add_argument('-subs_matrix', default="BLOSUM62", type=str,
                         help='blosum matrix to create blosum embeddings, choose one from /home/lys/anaconda3/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data')
 
-    parser.add_argument('-k-folds', type=int, nargs='?', default=1, help='Number of k-folds for k-fold cross validation.\n '
+    parser.add_argument('-k-folds', type=int, nargs='?', default=5, help='Number of k-folds for k-fold cross validation.\n '
                                                                          'If set to 1 is a single run where 1 of the partitions is selected randomly'
                                                                          'as the validation')
     parser.add_argument('-batch-size', type=int, nargs='?', default=100, help='Batch size')
@@ -220,5 +226,6 @@ if __name__ == "__main__":
     #torch.manual_seed(0)
     pyro.enable_validation(False)
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    main()
-    #analysis_models()
+    #main()
+    analysis_models()
+

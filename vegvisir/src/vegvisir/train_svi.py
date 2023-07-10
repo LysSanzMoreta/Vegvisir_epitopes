@@ -761,8 +761,9 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
         if args.dataset_name == "viral_dataset7":
             warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
         else:
-            print("Training & testing (No Kfold cross validation) ...")
-        epoch_loop(traineval_idx, test_idx, dataset_info, args, additional_info,mode="Test")
+            print("Training & testing  ...")
+        for fold in range(args.k_folds):
+            epoch_loop(traineval_idx, test_idx, dataset_info, args, additional_info,mode="Test_fold_{}".format(fold),fold="_fold_{}".format(fold))
 def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid",fold=""):
     print("Remaining objects: {}".format(len(gc.get_objects())))
     #Split the rest of the data (train_data) for train and validation
@@ -992,8 +993,8 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
 
     VegvisirPlots.plot_classification_metrics(args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold))
     VegvisirPlots.plot_classification_metrics(args,valid_summary_dict,"all",results_dir,mode=mode)
-    VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold))
-    VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,valid_summary_dict,"all",results_dir,mode=mode)
+    VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold),per_sample=False)
+    VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,valid_summary_dict,"all",results_dir,mode=mode,per_sample=False)
 
     if args.dataset_name == "viral_dataset7": #Highlight: Sectioning out the old test data points to calculate the AUC isolated
         #Highlight: Extract the predictions of the test dataset from train and validation and calculate ROC

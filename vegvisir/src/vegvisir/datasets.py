@@ -576,10 +576,9 @@ def viral_dataset7(dataset_name,script_dir,storage_folder,args,results_dir,updat
         data.replace({"allele_encoded": allele_dict},inplace=True)
 
 
-
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
-    data = pd.merge(data,data_species, on=['Icore'], how='left')
 
+    data = pd.merge(data,data_species, on=['Icore'], how='left',suffixes=("_a","_b"))
     unique_values = pd.unique(data["org_name"])
     org_name_dict = dict(zip(list(range(len(unique_values))), unique_values))
     org_name_dict_reverse = dict(zip(unique_values, list(range(len(unique_values)))))
@@ -820,7 +819,6 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data = data.replace({"org_name": org_name_dict_reverse})
     # nan_rows = data[data["confidence_score"].isna()]
     # print(nan_rows[["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"]])
-    exit()
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
     return data_info
 
@@ -1640,6 +1638,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
 
     if args.dataset_name not in  ["viral_dataset6","viral_dataset8","viral_dataset9","viral_dataset10"]:
         try:
+            print("heheehh")
             all_sim_results = data_exploration(data, epitopes_array_blosum, epitopes_array_int, epitopes_mask, aa_dict, aa_list,
                              blosum_norm, seq_max_len, storage_folder, args, corrected_aa_types,analysis_mode,filters_dict)
             positional_weights = all_sim_results.positional_weights
@@ -1662,6 +1661,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
                                                kmers_cosine_similarity=None)
         positional_weights = np.ones((n_data,seq_max_len))
         positional_weights_mask = np.ones((n_data,seq_max_len)).astype(bool)
+
 
     #Highlight: Reattatch partition, identifier, label, immunodominance score
     labels = data["target_corrected"].values.tolist()
