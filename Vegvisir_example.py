@@ -119,14 +119,14 @@ if __name__ == "__main__":
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
                         default="viral_dataset9",
                         help='Dataset project name, look at nnalignpy.available_datasets(). The data should be always located at nnalignpy/src/nnalignpy/data \n'
-                             'viral_dataset3 : Only sequences, partitioned into train,validation and test \n'
+                             'viral_dataset3 : Only sequences, partitioned into train,validation and (old) test \n'
                              'viral_dataset4 : viral_dataset3 sequences + Features \n '
-                             'viral_dataset5: Contains additional artificially generated negative data points in the test dataset \n'
-                             'viral_dataset6: Contains additional unobserved negative and positive data points for semi supervised learning. Train, validation and test are mixed. If args.test = True, then 1 partition is selected as test \n'
+                             'viral_dataset5: Contains additional artificially generated negative data points in the (old) test dataset \n'
+                             'viral_dataset6: Contains additional unobserved (negative and positive) data points for semi supervised learning. Train, validation and test are mixed. If args.test = True, then 1 partition is selected as test \n'
                              'viral_dataset7: Same dataset as viral_dataset3, but the test dataset is mixed with the train and validation datasets \n'
-                             'viral_dataset8: Same dataset as viral_dataset6, where the original test dataset is left out from the training (not mixed in)'
+                             'viral_dataset8: Same dataset as viral_dataset6 (containing unobserved datapoints), where the original test dataset is left out from the training (not mixed in)'
                              'viral_dataset9: Same as viral_dataset7 with a new test dataset (OLD test,train and validation are mixed). New test dataset available when using args.test=True'
-                             'viral_dataset10: Same as viral_dataset6 (unobserved) with a new test dataset (OLD test,train and validation are mixed). New test available when using args.test=True')
+                             'viral_dataset10: Same as viral_dataset6 (containing unobserved datapoints) with a new test dataset (OLD test,train and validation are mixed). New test available when using args.test=True')
     parser.add_argument('-subset_data', type=str, default="no",
                         help="Pick only the first <n> datapoints (epitopes) for testing the pipeline\n"
                              "<no>: Keep all \n"
