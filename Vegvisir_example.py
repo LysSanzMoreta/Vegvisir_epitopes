@@ -118,7 +118,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
                         default="viral_dataset9",
-                        help='Dataset project name, look at nnalignpy.available_datasets(). The data should be always located at nnalignpy/src/nnalignpy/data \n'
+                        help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data \n'
                              'viral_dataset3 : Only sequences, partitioned into train,validation and (old) test \n'
                              'viral_dataset4 : viral_dataset3 sequences + Features \n '
                              'viral_dataset5: Contains additional artificially generated negative data points in the (old) test dataset \n'
