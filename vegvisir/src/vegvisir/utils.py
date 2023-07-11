@@ -1126,6 +1126,12 @@ def calculate_hydropathy(seq):
     hydropathy = ProteinAnalysis(seq).gravy()
     return hydropathy
 
+def calculate_extintioncoefficient(seq):
+    """Calculates the molar extinction coefficient assuming cysteines (reduced) and cystines residues (Cys-Cys-bond)
+    :param str seq"""
+    seq = "".join(seq).replace("#","")
+    excoef = ProteinAnalysis(seq).molar_extinction_coefficient()[0]
+    return excoef
 class CalculatePeptideFeatures(object):
     def __init__(self,seq_max_len,list_sequences,storage_folder):
         self.storage_folder = storage_folder
@@ -1173,8 +1179,9 @@ class CalculatePeptideFeatures(object):
         hydropathy = calculate_hydropathy(seq)
         side_chain_pka = sum(list( map(lambda aa: self.side_chain_pka_dict[aa], list(seq))) + pads)/len(seq)
         aromaticity = calculate_aromaticity(seq)
+        extintion_coefficient = calculate_extintioncoefficient(seq)
 
-        return molecular_weight,volume,radius,bulkiness,isoelectric,hydropathy,side_chain_pka,aromaticity
+        return molecular_weight,volume,radius,bulkiness,isoelectric,hydropathy,side_chain_pka,aromaticity,extintion_coefficient
 
 
     def volumetrics_summary(self):
@@ -1199,17 +1206,18 @@ class CalculatePeptideFeatures(object):
         if self.list_sequences:
             results = list(map(lambda seq: self.calculate_features(seq,self.seq_max_len), self.list_sequences))
             zipped_results = list(zip(*results))
-            volumetrics_dict = {"molecular_weights":np.array(zipped_results[0]),
+            features_dict = {"molecular_weights":np.array(zipped_results[0]),
                                 "volume":np.array(zipped_results[1]),
                                 "radius":np.array(zipped_results[2]),
                                 "bulkiness":np.array(zipped_results[3]),
                                 "isoelectric":np.array(zipped_results[4]),
                                 "hydropathy":np.array(zipped_results[5]),
                                 "side_chain_pka":np.array(zipped_results[6]),
-                                "aromaticity":np.array(zipped_results[7])
+                                "aromaticity":np.array(zipped_results[7]),
+                                "extintion_coefficient":np.array(zipped_results[8])
                                 }
         else:
-            volumetrics_dict = {"molecular_weights":None,
+            features_dict = {"molecular_weights":None,
                                 "volume":None,
                                 "radius":None,
                                 "bulkiness":None,
@@ -1217,9 +1225,10 @@ class CalculatePeptideFeatures(object):
                                 "hydropathy": None,
                                 "side_chain_pka": None,
                                 "aromaticity":None,
+                                "extintion_coefficient":None
                                 }
 
-        return volumetrics_dict
+        return features_dict
 
 
 

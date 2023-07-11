@@ -659,7 +659,7 @@ def select_model(model_load,results_dir,fold,args):
         elif args.learning_type == "supervised_no_decoder":
             vegvisir_model = VegvisirModels.VegvisirModel5a_supervised_no_decoder(model_load)
     else:
-        print("Setting to default supervised mode")
+        print("Setting to default supervised mode for blosum encoded sequences")
 
         vegvisir_model = VegvisirModels.VegvisirModel5a_supervised(model_load)
     if fold == 0 or fold == "all":
@@ -754,9 +754,20 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                                                                       test_data_blosum.shape[0]))
 
     print('\t Number Train-valid data points: {}; Proportion: {}'.format(traineval_data_blosum.shape[0],(traineval_data_blosum.shape[0]*100)/traineval_data_blosum.shape[0]))
-    if not args.test:
+    if not args.test and args.validate:
         print("K-fold cross validation (Training & Validation)")
         kfold_loop(kfolds, dataset_info, args, additional_info)
+    elif args.test and args.validate:
+        print("Training, Validation and testing")
+        print("FIRST: Training & Validation")
+        kfold_loop(kfolds, dataset_info, args, additional_info)
+        print("SECOND: Training + Validation & Testing")
+        if args.dataset_name == "viral_dataset7" and not args.test:
+            warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
+        else:
+            print("Joining Training & validation datasets to perform testing...")
+        for fold in range(args.k_folds):
+            epoch_loop(traineval_idx, test_idx, dataset_info, args, additional_info,mode="Test_fold_{}".format(fold),fold="_fold_{}".format(fold))
     else:
         if args.dataset_name == "viral_dataset7":
             warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
@@ -772,6 +783,8 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     data_onehot = dataset_info.data_array_onehot_encoding
     data_blosum_norm = dataset_info.data_array_blosum_norm
     data_array_blosum_encoding_mask = dataset_info.data_array_blosum_encoding_mask
+    data_array_onehot_encoding_mask = dataset_info.data_array_onehot_encoding_mask
+
     data_positional_weights_mask = dataset_info.positional_weights_mask
 
     train_data_blosum = data_blosum[train_idx]
@@ -852,7 +865,7 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                    "int":data_int[train_idx].to(args.device)[:n],
                    "onehot":data_onehot[train_idx].to(args.device)[:n],
                    "positional_mask":data_positional_weights_mask[train_idx].to(args.device)[:n]}
-    data_args_1 = data_array_blosum_encoding_mask[train_idx].to(args.device)[:n]
+    data_args_1 = data_array_onehot_encoding_mask[train_idx].to(args.device)[:n] if args.encoding == "onehot" else data_array_blosum_encoding_mask[train_idx].to(args.device)[:n]
     model_trace = pyro.poutine.trace(Vegvisir.model).get_trace(data_args_0,data_args_1,0,None,False)
     info_file = open("{}/dataset_info.txt".format(results_dir),"a+")
     info_file.write("\n ---------TRACE SHAPES------------\n {}".format(str(model_trace.format_shapes())))
@@ -993,8 +1006,8 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
 
     VegvisirPlots.plot_classification_metrics(args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold))
     VegvisirPlots.plot_classification_metrics(args,valid_summary_dict,"all",results_dir,mode=mode)
-    VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold),per_sample=False)
-    VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,valid_summary_dict,"all",results_dir,mode=mode,per_sample=False)
+    #VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold),per_sample=False)
+    #VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,valid_summary_dict,"all",results_dir,mode=mode,per_sample=False)
 
     if args.dataset_name == "viral_dataset7": #Highlight: Sectioning out the old test data points to calculate the AUC isolated
         #Highlight: Extract the predictions of the test dataset from train and validation and calculate ROC
@@ -1052,9 +1065,20 @@ def train_model(dataset_info,additional_info,args):
 
     print('\t Number train data points: {}; Proportion: {}'.format(train_data_blosum.shape[0],(train_data_blosum.shape[0]*100)/train_data_blosum.shape[0]))
     print('\t Number eval data points: {}; Proportion: {}'.format(valid_data_blosum.shape[0],(valid_data_blosum.shape[0]*100)/valid_data_blosum.shape[0]))
-    if not args.test:
+    if not args.test and args.validate:
         print("Only Training & Validation")
         epoch_loop( train_idx, valid_idx, dataset_info, args, additional_info)
+    elif args.test and args.validate:
+        print("Training, Validation and testing")
+        print("FIRST: Training & Validation")
+        epoch_loop( train_idx, valid_idx, dataset_info, args, additional_info,mode="Valid")
+        print("SECOND: Training + Validation & Testing")
+        if args.dataset_name == "viral_dataset7" and not args.test:
+            warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
+        else:
+            print("Joining Training & validation datasets to perform testing...")
+        train_idx = (train_idx.int() + valid_idx.int()).bool()
+        epoch_loop(train_idx, test_idx, dataset_info, args, additional_info, mode="Test")
     else:
         if args.dataset_name == "viral_dataset7" and not args.test:
             warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")

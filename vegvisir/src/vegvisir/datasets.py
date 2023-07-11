@@ -37,7 +37,11 @@ import vegvisir.plots as VegvisirPlots
 import vegvisir.mutual_information as VegvisirMI
 plt.style.use('ggplot')
 DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_array_raw","data_array_int","data_array_int_mask",
-                                        "data_array_blosum_encoding","data_array_blosum_encoding_mask","data_array_onehot_encoding","data_array_blosum_norm","blosum",
+                                        "data_array_blosum_encoding",
+                                        "data_array_blosum_encoding_mask",
+                                        "data_array_onehot_encoding",
+                                        "data_array_onehot_encoding_mask",
+                                        "data_array_blosum_norm","blosum",
                                         "n_data","seq_max_len","max_len","corrected_aa_types","input_dim","positional_weights","positional_weights_mask","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity","features_names"])
 DatasetDivision = namedtuple("DatasetDivision",["all","all_mask","positives","positives_mask","positives_idx","negatives","negatives_mask","negatives_idx","high_confidence_negatives","high_confidence_negatives_mask","high_conf_negatives_idx"])
 SimilarityResults = namedtuple("SimilarityResults",["positional_weights","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity"])
@@ -913,7 +917,7 @@ def viral_dataset10(dataset_name,script_dir,storage_folder,args,results_dir,upda
         new_test_dataset = new_test_dataset[(new_test_dataset['kingdom'].str.contains("Eukaryota"))]
     data["training"] = True #Highlight: This time we do not keep track of the training data
     data = pd.merge(data,new_test_dataset, on=['Icore',"allele","training","target"], how='outer',suffixes=('_a', '_b'))
-    print(data.columns)
+
     data = data.drop("kingdom",axis=1)
     if filters_dict["filter_alleles"][0]:
         data = data[data["allele"] == most_common_allele]
@@ -922,7 +926,8 @@ def viral_dataset10(dataset_name,script_dir,storage_folder,args,results_dir,upda
         print("Grouping alleles")
         # Group data by Icore, therefore, the alleles are grouped
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
-        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training","org_name"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
         data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
@@ -942,8 +947,8 @@ def viral_dataset10(dataset_name,script_dir,storage_folder,args,results_dir,upda
     data = pd.merge(data, data_species, on=['Icore'], how='left', suffixes=('_a', '_b'))
     data["org_name"] = data["org_name_a"].fillna(data["org_name_b"])
     data.drop(["org_name_b","org_name_a"],axis=1,inplace=True)
-    data.loc[(data["training"] == False), "confidence_score"] = 0
 
+    data.loc[(data["training"] == False), "confidence_score"] = 0
     unique_values = pd.unique(data["org_name"])
     org_name_dict = dict(zip(list(range(len(unique_values))), unique_values))
     org_name_dict_reverse = dict(zip(unique_values, list(range(len(unique_values)))))
@@ -1166,7 +1171,6 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
 
     if not os.path.exists("{}/{}/similarities/{}".format(storage_folder,args.dataset_name,args.sequence_type)):
         build_exploration_folders(args, storage_folder,filters_dict)
-        #/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/viral_dataset3/similarities
     else:
         print("Folder structure existing")
     plot_mi,plot_frequencies,plot_cosine_similarity = False,False,False
@@ -1634,7 +1638,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
 
-    #data_volumetrics(seq_max_len,epitopes_list, data, epitopes_mask, storage_folder, args, filters_dict,analysis_mode,plot_volumetrics=False,plot_covariance=False)
+    #data_volumetrics(seq_max_len,epitopes_list, data, epitopes_mask, storage_folder, args, filters_dict,analysis_mode,plot_volumetrics=False,plot_covariance=True)
 
     if args.dataset_name not in  ["viral_dataset6","viral_dataset8","viral_dataset9","viral_dataset10"]:
         try:
@@ -1752,6 +1756,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
                             data_array_blosum_encoding=torch.from_numpy(data_array_blosum_encoding),
                             data_array_blosum_encoding_mask=torch.from_numpy(data_array_blosum_encoding_mask),
                             data_array_onehot_encoding=torch.from_numpy(data_array_onehot_encoding),
+                            data_array_onehot_encoding_mask=torch.from_numpy(data_array_blosum_encoding_mask),
                             data_array_blosum_norm=torch.from_numpy(data_array_blosum_norm),
                             blosum=blosum_array,
                             n_data=n_data,

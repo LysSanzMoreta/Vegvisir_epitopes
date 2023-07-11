@@ -16,7 +16,7 @@ import matplotlib.patches as mpatches
 import scipy
 from matplotlib.colors import Normalize
 import  matplotlib
-matplotlib.rc('text', usetex=True)
+#matplotlib.rc('text', usetex=True)
 import seaborn as sns
 import numpy as np
 import pandas as pd
@@ -711,6 +711,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     aromaticity_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_list)))
     hydropathy_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_list)))
     molecular_weight_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_list)))
+    extintion_coefficient_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq), sequences_list)))
 
     fig, [[ax0,ax1,ax2,ax3,ax4],[ax5,ax6,ax7,ax8,ax9]] = plt.subplots(2, 5,figsize=(26,22))
 
@@ -727,6 +728,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     all_dict_lens = []
     all_molecular_weights = []
     all_bulkiness = []
+    all_extintion_coefficients = []
     all_colors = []
     all_dict_true_labels = []
     label_locations = []
@@ -773,6 +775,8 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 # isoelectric = np.ma.sum(isoelectric,axis=1)
                 isoelectric = np.array(list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_cluster_list)))
                 molecular_weight = np.array(list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_cluster_list)))
+                extintion_coefficient = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq), sequences_cluster_list)))
+
 
                 clusters_info["Cluster_{}".format(cluster)][mode]["hydrophobicity"] = hydropathy.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["volumes"] = volumes.mean()
@@ -783,6 +787,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 clusters_info["Cluster_{}".format(cluster)][mode]["lengths"] = sequences_lens.mean() #TODO: Change to mode
                 clusters_info["Cluster_{}".format(cluster)][mode]["molecular_weights"] = molecular_weight.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["bulkiness_scores"] = bulkiness.mean()
+                clusters_info["Cluster_{}".format(cluster)][mode]["extintion_coefficient"] = extintion_coefficient.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["true_labels"] = true_labels_cluster.mean()
 
 
@@ -794,6 +799,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 all_aromaticity.append(aromaticity)
                 all_molecular_weights.append(molecular_weight)
                 all_bulkiness.append(bulkiness)
+                all_extintion_coefficients.append(extintion_coefficient)
                 all_colors.append(colors_cluster_dict[cluster])
 
                 unique_len,counts_len = np.unique(sequences_len,return_counts=True)
@@ -923,6 +929,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 "molecular_weights":molecular_weight_scores,
                 "bulkiness_scores":bulkiness_scores,
                 "sequences_lens":sequences_lens,
+                "extintion_coefficients":extintion_coefficient_scores,
                 "clusters_info":clusters_info}
     
     return features_dict,sequences_raw
@@ -962,6 +969,8 @@ def plot_preprocessing(umap_proj,dataset_info,predictions_dict,sample_mode,resul
     aromaticity_scores_settings = define_colormap(features_dict["aromaticity_scores"],cmap_name="cividis")
     molecular_weights_settings = define_colormap(features_dict["molecular_weights"],cmap_name="cividis")
     bulkiness_scores_settings = define_colormap(features_dict["bulkiness_scores"],cmap_name="magma")
+    extintion_coefficients_settings = define_colormap(features_dict["extintion_coefficients"],cmap_name="magma")
+
 
     return {"features_dict":features_dict,
             "sequences_raw":sequences_raw,
@@ -975,7 +984,8 @@ def plot_preprocessing(umap_proj,dataset_info,predictions_dict,sample_mode,resul
             "isoelectric_scores_settings":isoelectric_scores_settings,
             "aromaticity_scores_settings":aromaticity_scores_settings,
             "molecular_weights_settings":molecular_weights_settings,
-            "bulkiness_scores_settings":bulkiness_scores_settings
+            "bulkiness_scores_settings":bulkiness_scores_settings,
+            "extintion_coefficients_settings":extintion_coefficients_settings
             }
 
 def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
@@ -1021,10 +1031,14 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
         predictions_dict["class_binary_prediction_samples_frequencies"][:, 1])
     alpha = 0.7
     size = 5
-    fig, [[ax1, ax2, ax3, ax4], [ax5, ax6, ax7, ax8], [ax9, ax10, ax11, ax12], [ax13, ax14, ax15, ax16],
-          [ax17, ax18, ax19, ax20]] = plt.subplots(5, 4, figsize=(17, 12),
+    fig, [[ax1, ax2, ax3, ax4],
+          [ax5, ax6, ax7, ax8],
+          [ax9, ax10, ax11, ax12],
+          [ax13, ax14, ax15, ax16],
+          [ax17, ax18, ax19, ax20],
+          [ax21,ax22,ax23,ax24]] = plt.subplots(6, 4, figsize=(20, 15),
                                                    gridspec_kw={'width_ratios': [4.5, 4.5, 4.5, 1],
-                                                                'height_ratios': [4, 4, 4, 4, 4]})
+                                                                'height_ratios': [4, 4, 4, 4, 4,4]})
     fig.suptitle('UMAP projections', fontsize=20)
     #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax1, cmap="Blues", n_levels=30, fill=True, thresh=0.05,alpha=0.5)  # cmap='Blues'
     ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:, 2], alpha=alpha, s=size)
@@ -1103,12 +1117,22 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
                                        norm=Normalize(vmin=np.min(settings["bulkiness_scores_settings"].unique_values),
                                                       vmax=np.max(settings["bulkiness_scores_settings"].unique_values))), ax=ax19)
 
+    ax21.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["extintion_coefficients_settings"].colors_feature, alpha=alpha, s=size)
+    ax21.set_title("Coloured by extintion_coefficient")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["extintion_coefficients_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["extintion_coefficients_settings"].unique_values),
+                                                      vmax=np.max(settings["extintion_coefficients_settings"].unique_values))), ax=ax21)
+
 
     ax4.axis("off")
     ax8.axis("off")
     ax12.axis("off")
     ax16.axis("off")
     ax20.axis("off")
+    ax22.axis("off")
+    ax23.axis("off")
+    ax24.axis("off")
+
 
     fig.suptitle("UMAP of {}".format(vector_name))
 
@@ -1400,7 +1424,6 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
 
     if (not args.shuffle_sequence) or (not args.random_sequences) or (args.mutations != 0):
         if (args.num_classes == args.num_obs_classes):
-            print("Here")
             sequences_raw = settings["sequences_raw"]  # the sequences are following the order from the data loader
             sequences_raw = list(map(lambda seq: "".join(seq).replace("#", ""), sequences_raw))
             sequences_raw = pd.DataFrame({"Icore": sequences_raw})
@@ -1417,10 +1440,7 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
             #Highlight: Merge both features dict if there is useful information
             if sequences_feats[peptide_feats_cols[1]]:
                 features_dict = {**features_dict, **sequences_feats}
-    for k,v in features_dict.items():
-        print(k)
-        print(len(v))
-        print("-----------------")
+
     print("#####################################3")
     pearson_correlations = list(map(lambda feat1,feat2: round(np.corrcoef(feat1,feat2,rowvar=False)[0][1],2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
     pearson_correlations = np.array(pearson_correlations)
@@ -1733,9 +1753,7 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
         ax1.set_xlabel('False Positive Rate', fontsize=20)
         fig.suptitle("ROC curves",fontsize=20)
         ax2.axis("off")
-
         if save:
-            print("{}/{}/ROC_curves_fold{}_{}.png".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
             plt.savefig("{}/{}/ROC_curves_fold{}_{}.png".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
 
         plt.clf()
@@ -2450,7 +2468,6 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
         plt.savefig("{}/{}/similarities/{}/HEATMAP_features_covariance{}.png".format(storage_folder,args.dataset_name,subfolders,tag))
         plt.clf()
         plt.close(fig)
-
 
 
 def calculate_species_roc_auc_helper(summary_dict,args,script_dir,idx_all,fold,prob_mode,sample_mode,mode="train_species"):

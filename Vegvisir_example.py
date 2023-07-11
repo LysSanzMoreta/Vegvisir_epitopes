@@ -34,27 +34,28 @@ now = datetime.datetime.now()
 
 def define_suffix(args):
     kmers = "_9mers" if args.filter_kmers else ""
+    encoding = "_{}".format(args.encoding)
     if args.shuffle_sequence:
         if args.test:
-            suffix = "_shuffled_TESTING{}".format(kmers)
+            suffix = encoding + "_shuffled_TESTING{}".format(kmers)
         else:
-            suffix = "_shuffled{}".format(kmers)
+            suffix = encoding + "_shuffled{}".format(kmers)
     elif args.random_sequences:
         if args.test:
-            suffix = "_random_TESTING{}".format(kmers)
+            suffix = encoding + "_random_TESTING{}".format(kmers)
         else:
-            suffix = "_random{}".format(kmers)
+            suffix = encoding + "_random{}".format(kmers)
     elif args.num_mutations > 0:
         if args.test:
-            suffix = "_{}_mutations_positions_{}_TESTING".format(args.num_mutations,
+            suffix = encoding + "_{}_mutations_positions_{}_TESTING".format(args.num_mutations,
                                                                  args.idx_mutations if args.idx_mutations is not None else "random")
         else:
-            suffix = "_{}_mutations_positions_{}".format(args.num_mutations,args.idx_mutations if args.idx_mutations is not None else "random")
+            suffix = encoding + "_{}_mutations_positions_{}".format(args.num_mutations,args.idx_mutations if args.idx_mutations is not None else "random")
     else:
         if args.test:
-            suffix = "_TESTING{}".format(kmers)
+            suffix = encoding + "_TESTING{}".format(kmers)
         else:
-            suffix = "{}".format(kmers)
+            suffix = encoding + "{}".format(kmers)
     return suffix
 def main():
     """Executes nnalignpy:
@@ -70,6 +71,10 @@ def main():
             VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Train_fold_{}".format(kfold)), script_dir)
             if args.test:
                 VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Test_fold_{}".format(kfold)), script_dir)
+                if args.validate:
+                    VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Valid_fold_{}".format(kfold)),
+                                          script_dir)
+
             else:
                 VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Valid_fold_{}".format(kfold)),script_dir)
 
@@ -99,7 +104,7 @@ def analysis_models():
                     }
     #VegvisirPlots.plot_comparisons(args,script_dir,dict_results,results_folder = "Benchmark")
 
-    dict_results2 = {r"viral-dataset-3-\textbf{shuffled}-\textbf{icore-non-anchor}":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset3_2023_07_07_19h49min55s442352ms_60epochs_supervised_Icore_non_anchor_shuffled",
+    dict_results_supervised = {r"viral-dataset-3-\textbf{shuffled}-\textbf{icore-non-anchor}":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset3_2023_07_07_19h49min55s442352ms_60epochs_supervised_Icore_non_anchor_shuffled",
                      r"viral-dataset-3-\textbf{icore-non-anchor}":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset3_2023_07_07_19h02min23s150029ms_60epochs_supervised_Icore_non_anchor",
                      r"viral-dataset-3-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset3_2023_07_07_17h25min42s331434ms_60epochs_supervised_Icore_9mers",
                      r"viral-dataset-3-variable-lenght":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset3_2023_07_07_16h04min15s977650ms_60epochs_supervised_Icore",
@@ -112,19 +117,27 @@ def analysis_models():
                      r"viral-dataset-9-variable-lenght": "/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset9_2023_07_07_21h24min46s326451ms_60epochs_supervised_Icore_TESTING",
                      r"viral-dataset-9-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/A_Stress_testing/PLOTS_Vegvisir_viral_dataset9_2023_07_10_14h59min45s816727ms_60epochs_supervised_Icore_TESTING_9mers",
     }
-    VegvisirPlots.plot_comparisons(args,script_dir,dict_results2,results_folder = "A_Stress_testing")
+
+
+
+
+
+    dict_results_supervised2 = {r"":"",
+                                 r"":""}
+
+    VegvisirPlots.plot_comparisons(args,script_dir,dict_results_supervised,results_folder = "A_Stress_testing")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
                         default="viral_dataset9",
                         help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data \n'
-                             'viral_dataset3 : Only sequences, partitioned into train,validation and (old) test \n'
+                             'viral_dataset3 : Only sequences, partitioned into train,validation and (old) test.If args.test = True, then the (old) assigned test is used \n'
                              'viral_dataset4 : viral_dataset3 sequences + Features \n '
                              'viral_dataset5: Contains additional artificially generated negative data points in the (old) test dataset \n'
-                             'viral_dataset6: Contains additional unobserved (negative and positive) data points for semi supervised learning. Train, validation and test are mixed. If args.test = True, then 1 partition is selected as test \n'
+                             'viral_dataset6: Contains additional unobserved (negative and positive) data points for semi supervised learning. Train, validation and (old) test are mixed. If args.test = True, then 1 partition is selected as test \n'
                              'viral_dataset7: Same dataset as viral_dataset3, but the test dataset is mixed with the train and validation datasets \n'
-                             'viral_dataset8: Same dataset as viral_dataset6 (containing unobserved datapoints), where the original test dataset is left out from the training (not mixed in)'
+                             'viral_dataset8: Same dataset as viral_dataset6 (containing unobserved datapoints), where the original test dataset is left out from the training (not mixed in).If args.test = True, then the (old) assigned test is used'
                              'viral_dataset9: Same as viral_dataset7 with a new test dataset (OLD test,train and validation are mixed). New test dataset available when using args.test=True'
                              'viral_dataset10: Same as viral_dataset6 (containing unobserved datapoints) with a new test dataset (OLD test,train and validation are mixed). New test available when using args.test=True')
     parser.add_argument('-subset_data', type=str, default="no",
@@ -134,12 +147,14 @@ if __name__ == "__main__":
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
     parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=1, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
+    parser.add_argument('-encoding', type=str, nargs='?', default="blosum", help='<blosum> Use the matrix selected in args.subs_matrix to encode the sequences as blosum vectors'
+                                                                                 '<onehot> One hot encoding of the sequences  ')
 
     #TODO: include more blosum matrix types?
     parser.add_argument('-subs_matrix', default="BLOSUM62", type=str,
                         help='blosum matrix to create blosum embeddings, choose one from /home/lys/anaconda3/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data')
 
-    parser.add_argument('-k-folds', type=int, nargs='?', default=5, help='Number of k-folds for k-fold cross validation.\n '
+    parser.add_argument('-k-folds', type=int, nargs='?', default=1, help='Number of k-folds for k-fold cross validation.\n '
                                                                          'If set to 1 is a single run where 1 of the partitions is selected randomly'
                                                                          'as the validation')
     parser.add_argument('-batch-size', type=int, nargs='?', default=100, help='Batch size')
@@ -149,7 +164,7 @@ if __name__ == "__main__":
     parser.add_argument('-optimizer_name', type=str, nargs='?', default="Adam", help='Gradient optimizer name \n '
                                                                                      '<ClippedAdam>'
                                                                                      '<Adam>')
-    parser.add_argument('-loss-func', type=str, nargs='?', default="bcelogits", help="Error loss function to be optimized, options are: \n"
+    parser.add_argument('-loss-func', type=str, nargs='?', default="elbo", help="Error loss function to be optimized, options are: \n"
                                                                                          "<bcelogits>: Binary Cross Entropy with logits (no activation in last layer) \n "
                                                                                          "<bceprobs>: Binary Cross Entropy with probabilities (sigmoid activation)\n"
                                                                                          "<weighted_bce>: Weighted Binary Cross Entropy \n"
@@ -161,8 +176,10 @@ if __name__ == "__main__":
 
     parser.add_argument('-guide', type=str, nargs='?', default="custom", help='<custom>: See guides.py \n'
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
+    parser.add_argument('-validate', type=str2bool, nargs='?', default=True, help='Evaluate the model on the validation dataset')
     parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
-    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=False, help='Plots all UMAPs and computationally expensive plots')
+    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=True, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1, it saturates the CPU & GPU memory'
+                                                                                                'False: Only plots the computationally inexpensive ROC curves')
 
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. If the sequence contains gaps, the script will use 20 aa + 1 gap character ')
     parser.add_argument('-filter-kmers', type=str2bool, nargs='?', default=False, help="Filters the dataset to 9-mers only")
@@ -171,10 +188,10 @@ if __name__ == "__main__":
                                                                                 'Icore: Full peptide '
                                                                                 'Icore_non_anchor: Peptide without the anchoring points marked by NetMHCPan 4.1')
     parser.add_argument('-p','--seq-padding', type=str, nargs='?', default="ends", help='Controls how the sequences are padded to the length of the longest sequence \n'
-                                                                                    '<ends>: The sequences are padded at the end'
-                                                                                    '<borders>: The sequences are padded at the beginning and the end. Random choice when the pad is an even number'
-                                                                                    '<replicated_borders>: Padds by replicating the borders of the sequence'
-                                                                                    '<random>: random insertion of 0 along the sequence')
+                                                                                    '<ends>: The sequences are padded at the end \n'
+                                                                                    '<borders>: The sequences are padded at the beginning and the end. Random choice when the pad is an even number \n'
+                                                                                    '<replicated_borders>: Padds by replicating the borders of the sequence \n'
+                                                                                    '<random>: random insertion of 0 along the sequence \n')
 
     parser.add_argument('-shuffle','--shuffle_sequence', type=str2bool, nargs='?', default=False, help='Shuffling the sequence prior to padding for model stress-testing')
     parser.add_argument('-random','--random_sequences', type=str2bool, nargs='?', default=False, help='Create completely random peptide sequences for model stress-testing')
@@ -191,7 +208,8 @@ if __name__ == "__main__":
                                                                                                             'The non confident data points are inferred by the guide \n'
                                                                                                  '<supervised> Supervised model. All target observations are used to compute the likelihood of the class given the latent representation')
 
-    parser.add_argument('-glitch','--glitch', type=str2bool, nargs='?', default=True, help='<True>: Applies a random noise distortion (via rotations) to the encoded vector within the conserved positions of the sequences  \n'
+    parser.add_argument('-glitch','--glitch', type=str2bool, nargs='?', default=True, help='NOT USED'
+                                                                                           '<True>: Applies a random noise distortion (via rotations) to the encoded vector within the conserved positions of the sequences  \n'
                                                                                            '<False>: The blosum encodings are left untouched')
     parser.add_argument('-num-samples','-num_samples', type=int, nargs='?', default=3, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
     parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="None", help='Load the checkpoints (state_dict and optimizer) from a previous run \n'
@@ -226,6 +244,6 @@ if __name__ == "__main__":
     #torch.manual_seed(0)
     pyro.enable_validation(False)
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    #main()
-    analysis_models()
+    main()
+    #analysis_models()
 
