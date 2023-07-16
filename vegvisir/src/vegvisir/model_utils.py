@@ -249,7 +249,8 @@ class Init_Hidden(nn.Module):
         self.leakyrelu = nn.LeakyReLU()
     def forward(self,input):
         output = self.fc1(input)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         return output
 
@@ -266,10 +267,12 @@ class MLP(nn.Module):
     def forward(self,input,mask):
 
         output = self.fc1(input)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc2(output)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         return output
 
@@ -290,13 +293,16 @@ class FCL1(nn.Module):
     def forward(self,input,mask):
 
         output = self.fc1(input)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc2(output)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc3(output)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.logsoftmax(output)
         return output
@@ -317,10 +323,12 @@ class FCL2(nn.Module):
     def forward(self,input,mask):
 
         output = self.fc1(input)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc2(output)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         # U, S, VT = torch.linalg.svd(output)
         # output = output @ VT
         output = self.leakyrelu(output)
@@ -342,10 +350,12 @@ class FCL3(nn.Module):
     def forward(self,input):
 
         output = self.fc1(input)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc2(output)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         return output
 
@@ -370,16 +380,11 @@ class FCL4(nn.Module):
         - https://mane-aajay.medium.com/how-to-calculate-the-svd-from-scratch-with-python-bafcd7fc6945
         -https://towardsdatascience.com/how-to-use-singular-value-decomposition-svd-for-image-classification-in-python-20b1b2ac4990
         - https://www.cs.cmu.edu/afs/cs.cmu.edu/academic/class/15750-s20/www/notebooks/SVD-irises-clustering.html"""
-        # if input.ndim == 3:
-        #     input = input.flatten(start_dim=2)
-        #     output = self.fc1(input)
-        # else:
-        #     input = input.flatten(start_dim=1) #Flattening only has effect if the input latent_space_z
-        #     output = self.fc1(input)
 
         input = input.flatten(start_dim=1)  # Flattening only has effect if the input latent_space_z
         output = self.fc1(input)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         # Singular-value decomposition
         # U, S, VT = svd(A) #left singular, singular (max var), right singular
@@ -387,7 +392,8 @@ class FCL4(nn.Module):
         # U,S,VT = torch.linalg.svd(output)
         # output = output@VT
         output = self.fc2(output)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.relu(output)
         return output
 
@@ -420,10 +426,12 @@ class CNN_FCL(nn.Module):
         output = self.conv1(input)
         output = self.avgpool1(output).squeeze(-1)
         output = self.fc1(output)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc2(output)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.sigmoid(output)
         return output
@@ -489,11 +497,13 @@ class CNN_layers(nn.Module):
         """
         input = input[:,None,:]
         output = self.conv1(self.dropout(input))
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.avgpool1(output)
         output = self.conv2(self.dropout(output))
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.avgpool2(output)
         output = output.permute(0,2,1)[:,-1] #Highlight: Does not seem to matter whether to flatten or take the last output
@@ -607,14 +617,16 @@ class RNN_layers(nn.Module):
         input_reverse = torch.flip(input,(1,))
         output_f, out_hidden = self.rnn1(input,init_h_0_f)
         output_f = self.leakyrelu(output_f)
-        output_f = self.bnn1(output_f)
+        if output_f.shape[0] > 0:
+            output_f = self.bnn1(output_f)
         forward_out,backward_out = output_f[:,:,:self.gru_hidden_dim],output_f[:,:,:self.gru_hidden_dim]
         output_f = forward_out + backward_out
         output_f = output_f[:,-1]
         #Highlight: Results on reversing the sequences
         output_r, out_hidden = self.rnn2(input_reverse,init_h_0_r)
         output_r = self.leakyrelu(output_r)
-        output_r = self.bnn2(output_r)
+        if output_r.shape[0] > 0:
+            output_r = self.bnn2(output_r)
         forward_out_r,backward_out_r = output_r[:,:,:self.gru_hidden_dim],output_r[:,:,:self.gru_hidden_dim]
         output_r = forward_out_r + backward_out_r
         output_r = output_r[:,-1]
@@ -717,7 +729,8 @@ class RNN_model4(nn.Module):
         decoder_rnn_output, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
         #rnn_input = torch.cat((x_attn_weighted, x_embedded), dim=2)
         decoder_rnn_output = self.softplus(decoder_rnn_output)
-        decoder_rnn_output = self.bnn(decoder_rnn_output)
+        if decoder_rnn_output.shape[0] > 0:
+            decoder_rnn_output = self.bnn(decoder_rnn_output)
         forward_out,backward_out = decoder_rnn_output[:,:,:self.gru_hidden_dim],decoder_rnn_output[:,:,self.gru_hidden_dim:]
         decoder_rnn_output = forward_out + backward_out
         z_attn_weighted, attn_weights = self.attention(encoder_rnn_output,decoder_rnn_output, z, mask)
@@ -789,7 +802,8 @@ class RNN_model5(nn.Module):
         decoder_hidden_states, seq_sizes = torch.nn.utils.rnn.pad_packed_sequence(packed_decoder_hidden_states, batch_first=True,total_length=self.max_len)
         #rnn_input = torch.cat((x_attn_weighted, x_embedded), dim=2)
         decoder_hidden_states = self.softplus(decoder_hidden_states)
-        decoder_hidden_states = self.bnn(decoder_hidden_states)
+        if decoder_hidden_states.shape[0] > 1:
+            decoder_hidden_states = self.bnn(decoder_hidden_states)
         forward_hidden_states,backward_hidden_states = decoder_hidden_states[:,:,:self.gru_hidden_dim],decoder_hidden_states[:,:,self.gru_hidden_dim:]
         decoder_hidden_states = forward_hidden_states + backward_hidden_states
 
@@ -866,7 +880,8 @@ class RNN_model6(nn.Module):
         decoder_hidden_states, seq_sizes = torch.nn.utils.rnn.pad_packed_sequence(packed_decoder_hidden_states, batch_first=True,total_length=self.max_len)
         seq_idx = torch.arange(seq_sizes.shape[0])
         decoder_hidden_states = self.softplus(decoder_hidden_states)
-        decoder_hidden_states = self.bnn(decoder_hidden_states)
+        if decoder_hidden_states.shape[0] > 1:
+            decoder_hidden_states = self.bnn(decoder_hidden_states)
         forward_hidden_states,backward_hidden_states = decoder_hidden_states[:,:,:self.gru_hidden_dim],decoder_hidden_states[:,:,self.gru_hidden_dim:]
         decoder_hidden_states = forward_hidden_states + backward_hidden_states
         decoder_hidden_states_bidirectional = torch.concatenate([forward_hidden_states[:,None],backward_hidden_states[:,None]],dim=1)
@@ -948,6 +963,8 @@ class RNN_model7(nn.Module):
         #x_embedded = self.dropout(self.embedding(x_reverse))
         assert not torch.isnan(encoder_rnn_hidden).any(), "found nan in init_h_0"
         assert not torch.isnan(z).any(), "found nan in latent space"
+        print(z)
+        print(x_lens)
         rnn_input_packed = torch.nn.utils.rnn.pack_padded_sequence(z,x_lens.cpu(),batch_first=True,enforce_sorted=False)
 
         packed_decoder_hidden_states, decoder_final_hidden = self.rnn(rnn_input_packed,encoder_rnn_hidden) #Highlight: I switched encoder_final_hidden_bidir to encoder_rnn_hidden
@@ -1005,7 +1022,8 @@ class RNN_guide1a(nn.Module):
         #input = torch.flip(input,(1,))
         rnn_hidden_states, rnn_hidden = self.rnn(input,init_h_0)# Highlight: warning : for biRNN the "final" hidden state only contains the final hidden state of the forward network and the first state of the reverse network
         rnn_hidden_states = self.softplus(rnn_hidden_states)
-        rnn_hidden_states = self.bnn(rnn_hidden_states)
+        if rnn_hidden_states.shape[0] > 1:
+            rnn_hidden_states = self.bnn(rnn_hidden_states)
         rnn_final_hidden_state_bidirectional = rnn_hidden_states[:,-1]
         forward_out_r,backward_out_r = rnn_hidden_states[:,:,:self.gru_hidden_dim],rnn_hidden_states[:,:,self.gru_hidden_dim:]
         rnn_hidden_states = forward_out_r + backward_out_r
@@ -1046,7 +1064,8 @@ class RNN_guide1b(nn.Module):
         input = torch.flip(input,(1,))
         rnn_hidden_states, rnn_hidden = self.rnn(input,init_h_0)# Highlight: warning : for biRNN the "final" hidden state only contains the final hidden state of the forward network and the first state of the reverse network
         rnn_hidden_states = self.softplus(rnn_hidden_states)
-        rnn_hidden_states = self.bnn(rnn_hidden_states)
+        if rnn_hidden_states.shape[0] > 1:
+            rnn_hidden_states = self.bnn(rnn_hidden_states)
         rnn_final_hidden_state = rnn_hidden_states[:,-1] #final hidden state
         output = self.softplus(self.fc1(rnn_final_hidden_state))
         z_mean = self.fc2a(output)
@@ -1088,7 +1107,8 @@ class RNN_guide2(nn.Module):
         rnn_hidden_states, seq_sizes = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
         seq_idx = torch.arange(seq_sizes.shape[0])
         rnn_hidden_states = self.softplus(rnn_hidden_states)
-        rnn_hidden_states = self.bnn(rnn_hidden_states)
+        if rnn_hidden_states.shape[0] > 1:
+            rnn_hidden_states = self.bnn(rnn_hidden_states)
 
         rnn_final_hidden_state_bidirectional = rnn_hidden_states[seq_idx,seq_sizes-1]
         rnn_final_hidden_state_bidirectional = torch.concatenate([rnn_final_hidden_state_bidirectional[:,:self.gru_hidden_dim][None,:],rnn_final_hidden_state_bidirectional[:,self.gru_hidden_dim:][None,:]],dim=0) #Highlight: Equivalent to rnn_hidden, prior to normalization
@@ -1137,7 +1157,8 @@ class RNN_classifier(nn.Module):
         #Highlight: Results on reversing the sequences
         output, out_hidden = self.rnn(input_reverse,init_h_0)
         output = self.softplus(output)
-        output = self.bnn(output)
+        if output.shape[0] > 1:
+            output = self.bnn(output)
         forward_out_r,backward_out_r = output[:,:,:self.gru_hidden_dim],output[:,:,:self.gru_hidden_dim]
         output = forward_out_r + backward_out_r
         # output_r = output_r[:,-1]
@@ -1381,7 +1402,8 @@ class NNAlign(nn.Module):
         #mask_kmers = [mask_kmers[:,:,0,:].squeeze(2) if diff == 2 else mask_kmers[:,0,:,:].squeeze(1)][0]
         #output = output.mean(1) #Highlight: Mask does not seem to be necessary in the second round, since the "padded kmers" have been excluded on the first average
         output = output.flatten(start_dim=1)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc1(output)
         output = self.leakyrelu(output)
@@ -1441,7 +1463,8 @@ class NNAlign2(nn.Module):
         #mask_kmers = [mask_kmers[:,:,0,:].squeeze(2) if diff == 2 else mask_kmers[:,0,:,:].squeeze(1)][0]
         #output = output.mean(1) #Highlight: Mask does not seem to be necessary in the second round, since the "padded kmers" have been excluded on the first average
         output = output.flatten(start_dim=2)
-        output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+        if output.shape[0] > 1:
+            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc1(output)
         output = self.leakyrelu(output)

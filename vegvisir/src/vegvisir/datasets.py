@@ -1585,8 +1585,10 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     :param storage_folder: Data location path
     """
     sequence_column = filters_dict["filter_kmers"][2]
-    epitopes_list = data[[sequence_column]].values.tolist()
-    epitopes_list = functools.reduce(operator.iconcat, epitopes_list, [])  # flatten list of lists
+    data[[sequence_column]] = data[[sequence_column]].fillna('') #Replace nan values when there is some sequence missing
+
+    epitopes_list = data[sequence_column].values.tolist()
+    #epitopes_list = functools.reduce(operator.iconcat, epitopes_list, [])  # flatten list of lists
 
     seq_max_len = len(max(epitopes_list, key=len))
     epitopes_lens = np.array(list(map(len, epitopes_list)))
@@ -1605,9 +1607,10 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     #                                      "org_name":data["org_name"],
     #                                      "confidence_scores": data["confidence_score"]
     #                                      })
-    #
-    # intermediate_dataset.to_csv("{}/shuffled_sequences_{}.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False)
-    # exit()
+    # prefix1 = "shuffled_" if args.shuffle_sequence else ""
+    # prefix2 = "random_" if args.random_sequences else ""
+    # prefix = prefix1 + prefix2
+    # intermediate_dataset.to_csv("{}/benchmarking/{}sequences_{}.tsv".format(storage_folder,prefix,args.dataset_name),sep="\t",index=False)
 
     epitopes_array_raw = np.array(epitopes_padded)
 

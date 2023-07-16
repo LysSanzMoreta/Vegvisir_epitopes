@@ -123,7 +123,7 @@ def redefine_class_proportions(dataset,n_positives,n_negatives,positives_proport
 def trainevaltest_split_kfolds(data,args,results_dir,seq_max_len,max_len,features_names,partition_test,method="predefined_partitions"):
     """Perform kfolds partitions division and test split"""
 
-    warnings.warn("Feature Scaling has not been implemented for k-fold cross validation, please remember to do so")
+    warnings.warn("Feature Scaling has not been implemented for k-fold cross validation, please remember to do so, if viral_dataset4 is used")
     if data.ndim == 4: #TODO:not sure why the list comprehesion does not work with lambda
         idx_select = lambda x,n: x[:,0,0,n] #TODO: Use ellipsis? so far not working, this is best
     else:
@@ -387,7 +387,15 @@ def calculate_class_weights(data,args):
     return class_weights.to(args.device)
 
 class SequencePadding(object):
-    """Performs padding of a list of given sequences to a given len"""
+    """Performs padding of a list of given sequences to a given len
+        :param sequences: list of list of strings (it can be meaningless since they will be overwritten
+        :param int seq_max_len: Maximum sequence length, determines the inserted paddings
+        :param method: Padding method
+                <no_padding>: Use when all the sequences have the same length, since it does ot add paddings (#) -> ATRVS
+                <ends>: padds the sequences at the end -> ATRVS######
+                <random>: Inserts random paddings given  a sequence maximum length -> A#T#RV##S###
+                <borders>: Inserts paddings left and right of the sequence, leaving the sequence centered centered -> ###ATRVS###
+                <replicated_borders>: Replicates the sequences left and right borders to fit a maximum length, some parts of the process are random -> ATRATRVSVS """
     def __init__(self,sequences,seq_max_len,method,shuffle):
         self.sequences = sequences
         self.seq_max_len = seq_max_len
@@ -532,11 +540,19 @@ class SequencePadding(object):
             return (seq,seq)
 
 class SequenceRandomGeneration(object):
-    """Generates random sequences given a sequence length"""
-    def __init__(self,sequences,seq_max_len,method):
+    """Generates random sequences given a sequence length
+        :param sequences: list of list of strings (it can be meaningless since they will be overwritten
+        :param int seq_max_len: Maximum sequence length, determines the inserted paddings
+        :param method: Padding method
+                <no_padding>: Use when all the sequences have the same length, since it does ot add paddings (#) -> ATRVS
+                <ends>: padds the sequences at the end -> ATRVS######
+                <random>: Inserts random paddings given  a sequence maximum length -> A#T#RV##S###
+                <borders>: Inserts paddings left and right of the sequence, leaving the sequence centered centered -> ###ATRVS###
+                <replicated_borders>: Replicates the sequences left and right borders to fit a maximum length, some parts of the process are random -> ATRATRVSVS """
+    def __init__(self,sequences,seq_max_len,padding_method):
         self.sequences = sequences
         self.seq_max_len = seq_max_len
-        self.method = method
+        self.method = padding_method
         self.random_seeds = list(range(len(sequences)))
         self.aminoacids_list = np.array(list(VegvisirUtils.aminoacid_names_dict(20).keys()))
 
@@ -671,7 +687,15 @@ class SequenceRandomGeneration(object):
             return (seq,seq)
 
 class PointMutations(object):
-    """Performs single o several point mutations to the sequences and pads them"""
+    """Performs single o several point mutations to the sequences and pads them
+        :param sequences: list of list of strings (it can be meaningless since they will be overwritten
+        :param int seq_max_len: Maximum sequence length, determines the inserted paddings
+         :param method: Padding method
+                <no_padding>: Use when all the sequences have the same length, since it does ot add paddings (#) -> ATRVS
+                <ends>: padds the sequences at the end -> ATRVS######
+                <random>: Inserts random paddings given  a sequence maximum length -> A#T#RV##S###
+                <borders>: Inserts paddings left and right of the sequence, leaving the sequence centered centered -> ###ATRVS###
+                <replicated_borders>: Replicates the sequences left and right borders to fit a maximum length, some parts of the process are random -> ATRATRVSVS """
     def __init__(self,sequences,seq_max_len,method,n_mutations,idx_mutations):
         self.sequences = sequences
         self.seq_max_len = seq_max_len

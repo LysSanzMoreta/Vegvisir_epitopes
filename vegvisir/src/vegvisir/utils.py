@@ -1132,6 +1132,7 @@ def calculate_extintioncoefficient(seq):
     seq = "".join(seq).replace("#","")
     excoef = ProteinAnalysis(seq).molar_extinction_coefficient()[0]
     return excoef
+
 class CalculatePeptideFeatures(object):
     def __init__(self,seq_max_len,list_sequences,storage_folder):
         self.storage_folder = storage_folder
@@ -1230,8 +1231,43 @@ class CalculatePeptideFeatures(object):
 
         return features_dict
 
+def build_features_dicts(dataset_info):
+    storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
+    features_dicts = CalculatePeptideFeatures(dataset_info.seq_max_len,[],storage_folder).return_dicts()
+    hydropathy_dict = features_dicts.hydropathy_dict
+    volume_dict = features_dicts.volume_dict
+    radius_dict = features_dicts.radius_dict
+    side_chain_pka_dict = features_dicts.side_chain_pka_dict
+    isoelectric_dict = features_dicts.isoelectric_dict
+    bulkiness_dict = features_dicts.bulkiness_dict
 
 
+    if dataset_info.corrected_aa_types == 20:
+        aminoacids_dict = aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=[])
+    else:
+        aminoacids_dict = aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=["#"])
+        hydropathy_dict["#"] = 0
+        volume_dict["#"] = 0
+        radius_dict["#"] = 0
+        side_chain_pka_dict["#"] = 0
+        isoelectric_dict["#"] = 0
+        bulkiness_dict["#"] = 0
+
+    aminoacids_dict_reversed = {val:key for key,val in aminoacids_dict.items()}
+    hydropathy_dict = {aminoacids_dict[key]:value for key,value in hydropathy_dict.items()}
+    volume_dict = {aminoacids_dict[key]:value for key,value in volume_dict.items()}
+    radius_dict = {aminoacids_dict[key]:value for key,value in radius_dict.items()}
+    side_chain_pka_dict = {aminoacids_dict[key]:value for key,value in side_chain_pka_dict.items()}
+    isoelectric_dict = {aminoacids_dict[key]:value for key,value in isoelectric_dict.items()}
+    bulkiness_dict = {aminoacids_dict[key]:value for key,value in bulkiness_dict.items()}
+
+    return {"aminoacids_dict_reversed":aminoacids_dict_reversed,
+            "hydropathy_dict":hydropathy_dict,
+            "volume_dict":volume_dict,
+            "radius_dict":radius_dict,
+            "side_chain_pka_dict":side_chain_pka_dict,
+            "isoelectric_dict":isoelectric_dict,
+            "bulkiness_dict":bulkiness_dict}
 
 def merge_in_left_order(x, y, on=None):
     x = x.copy()
