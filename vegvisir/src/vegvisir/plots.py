@@ -1426,6 +1426,8 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
                 features_dict = {**features_dict, **sequences_feats}
 
     print("#####################################3")
+    print(features_dict)
+
     pearson_correlations = list(map(lambda feat1,feat2: round(np.corrcoef(feat1,feat2,rowvar=False)[0][1],2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
     pearson_correlations = np.array(pearson_correlations)
     pearson_corr_idx = np.argwhere((pearson_correlations >= 0.1) | (pearson_correlations <-0.1))
@@ -2875,13 +2877,16 @@ def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_fo
 
                 for fold in range(kfolds):
                     print("-------------FOLD {}--------------".format(fold))
-                    train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_traintest_fold_{}.p".format(folder, fold))["summary_dict"]
+                    if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold)):
+                        train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold))["summary_dict"]
+                    else:
+                        train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_valid_fold_{}.p".format(folder, fold))["summary_dict"]
                     valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(folder, fold))["summary_dict"]
                     if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold)):
                         test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold))["summary_dict"]
                     else:
                         test_out = None
-
+                    args = train_out["args"]
                     for mode, summary_dict in zip(["train", "valid", "test"], [train_out, valid_out, test_out]):
 
                         if summary_dict is not None:
@@ -3135,9 +3140,18 @@ def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_fo
 
     metrics_results_all = {key.replace(r"\textbf{", "").replace("}", ""): val for key, val in metrics_results_all.items()}
     df = convert_dict(metrics_results_all)
+    #Highlight: https://stackoverflow.com/questions/59769161/python-color-pandas-dataframe-based-on-multiindex
+    colors = {"supervised(Icore)": matplotlib.colors.to_rgba('lavender'), "supervised(Icore_non_anchor)": matplotlib.colors.to_rgba('palegreen'),"semisupervised(Icore)":matplotlib.colors.to_rgba('paleturquoise'),"semisupervised(Icore_non_anchor)":matplotlib.colors.to_rgba('plum')}
+
+    c = {k: matplotlib.colors.rgb2hex(v) for k, v in colors.items()}
+    idx = df.index.get_level_values(0)
+
+
+    css = [{'selector': f'.row{i}.level0', 'props': [('background-color', c[v])]} for i, v in enumerate(idx)]
+
 
     df_styled = df.style.format(na_rep="-", escape="latex").background_gradient(axis=None,
-                                                                                cmap="YlOrBr")  # TODO: Switch to escape="latex-math" for pandas 2.1
+                                                                                cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" for pandas 2.1
 
     dfi.export(df_styled, '{}/{}/methods_comparison_DATAFRAME.png'.format(script_dir, results_folder), max_cols=-1)
 
@@ -3155,7 +3169,7 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
                           "sequences_lens":"Sequences  lengths",
                           "extintion_coefficients":"Extintion coefficients",
                           "immunodominance_scores":"Immunodominance"}
-     overwrite = True
+     overwrite = False
      covariances_all = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict())))
      #covariances_all  = lambda: defaultdict(covariances_all) #unlimited nested dict
      covariances_all_latex = defaultdict(lambda: defaultdict(lambda: defaultdict()))
@@ -3169,6 +3183,7 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
              print("{}".format(name))
              if os.path.exists("{}/Vegvisir_checkpoints/covariances_train.p".format(folder)) and not overwrite:
                 print("Loading pre computed covariance matrices")
+                #Highlight: Dill is an *** , if you change the module's non mutable structures (i.e named tuples), it will complain
                 covariances_dict_train = dill.load(open("{}/Vegvisir_checkpoints/covariances_train.p".format(folder), "rb"))
                 covariances_dict_valid = dill.load(open("{}/Vegvisir_checkpoints/covariances_valid.p".format(folder), "rb"))
                 if os.path.exists("{}/Vegvisir_checkpoints/covariances_test.p".format(folder)):
@@ -3177,12 +3192,18 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
                 for fold in range(kfolds):
                      print("Computing correlation covariances")
                      print("FOLD: {} ------------------------".format(fold))
-                     train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_traintest_fold_{}.p".format(folder, fold))
+                     if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold)):
+                        train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold))
+                     else:
+                        train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_valid_fold_{}.p".format(folder, fold))
+
                      valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(folder, fold))
                      if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold)):
                          test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold))
                      else:
                          test_out = None
+
+                     args = train_out["args"]
                      for mode, summary_dict in zip(["valid", "train", "test"], [train_out, valid_out, test_out]):
                          if summary_dict is not None:
                              latent_space = summary_dict["latent_space"]

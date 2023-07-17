@@ -963,8 +963,7 @@ class RNN_model7(nn.Module):
         #x_embedded = self.dropout(self.embedding(x_reverse))
         assert not torch.isnan(encoder_rnn_hidden).any(), "found nan in init_h_0"
         assert not torch.isnan(z).any(), "found nan in latent space"
-        print(z)
-        print(x_lens)
+
         rnn_input_packed = torch.nn.utils.rnn.pack_padded_sequence(z,x_lens.cpu(),batch_first=True,enforce_sorted=False)
 
         packed_decoder_hidden_states, decoder_final_hidden = self.rnn(rnn_input_packed,encoder_rnn_hidden) #Highlight: I switched encoder_final_hidden_bidir to encoder_rnn_hidden

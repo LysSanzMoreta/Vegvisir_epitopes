@@ -325,13 +325,13 @@ class VEGVISIRGUIDES(EasyGuide):
         confidence_mask = (confidence_scores[..., None] < 0.7).any(-1) #now we try to predict those with a low confidence score
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
         batch_positional_mask = batch_data["positional_mask"]
-        if epoch % 2 != 0:
+        if epoch % 2 != 0:pass
             # print("Rotating ....epoch {}".format(epoch))
             # print("Translating ....epoch {}".format(epoch))
-            batch_positional_mask = torch.ones_like(batch_positional_mask)
-            batch_positional_mask[:, 1] = False
-            batch_positional_mask[:, 3] = False
-            batch_positional_mask[:, 8] = False
+            # batch_positional_mask = torch.ones_like(batch_positional_mask)
+            # batch_positional_mask[:, 1] = False
+            # batch_positional_mask[:, 3] = False
+            # batch_positional_mask[:, 8] = False
             # print("-----------------------------------")
             # print(batch_sequences_blosum[0])
             # positional_mask = torch.tile(batch_positional_mask[:, :, None], (1, 1, batch_sequences_blosum.shape[-1]))

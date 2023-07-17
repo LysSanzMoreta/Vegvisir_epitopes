@@ -79,6 +79,12 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     if args.dataset_name in ["viral_dataset6","viral_dataset8","viral_dataset10"]:
         assert args.learning_type == "semisupervised", "Please select semisupervised learning for dataset {}".format(args.dataset_name)
 
+    if args.dataset_name in ["viral_dataset10"] and  args.sequence_type == "Icore_non_anchor":
+        raise ValueError("Icore_non_anchor are missing for the test datase and unobserved sequences. Please select args.sequence_type == Icore, and wait for the sequences to arrive")
+
+    if args.dataset_name in ["viral_dataset9"] and args.test and args.sequence_type == "Icore_non_anchor":
+        raise ValueError("Icore_non_anchor are missing for the test datase, please set args.validate==True and args.test == False")
+
     dataset_load_fx = lambda f,dataset_name,current_path,storage_folder,args,results_dir,update: lambda dataset_name,current_path,storage_folder,args,results_dir,update: f(dataset_name,current_path,storage_folder,args,results_dir,update)
     data_load_function = dataset_load_fx(func_dict[dataset_name],dataset_name,script_dir,storage_folder,args,results_dir,update)
     dataset = data_load_function(dataset_name,script_dir,storage_folder,args,results_dir,update)
@@ -137,6 +143,7 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,uno
         use_column = filters_dict["filter_kmers"][2]
         kmer_size = filters_dict["filter_kmers"][1]
         nprefilter = data.shape[0]
+        data[[use_column]] = data[[use_column]].fillna('AAAAA')  # Replace nan values when there is some sequence missing (some icore_non_anchor are missing)
         data = data[data[use_column].apply(lambda x: len(x) == kmer_size)]
         nfiltered = data.shape[0]
         dataset_info_file.write("Filter 2: {} whose length is different than 9. Drops {} data points, remaining {} \n".format(use_column,kmer_size,nprefilter-nfiltered,nfiltered))
@@ -1585,7 +1592,6 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     :param storage_folder: Data location path
     """
     sequence_column = filters_dict["filter_kmers"][2]
-    data[[sequence_column]] = data[[sequence_column]].fillna('') #Replace nan values when there is some sequence missing
 
     epitopes_list = data[sequence_column].values.tolist()
     #epitopes_list = functools.reduce(operator.iconcat, epitopes_list, [])  # flatten list of lists
