@@ -61,6 +61,7 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
 
     ############LABELS #############
     unique,counts = np.unique(data["target"].to_numpy(),return_counts=True)
+
     patches_list = []
     position = 0
     position_labels = []
@@ -189,7 +190,7 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     for group in partitions_groups:
         name = group["partition"].iloc[0]
         group_counts = group.value_counts("target_corrected")  # returns a dict
-        group_counts = dict( sorted(group_counts.items(), key=operator.itemgetter(1),reverse=True)) #sort dict by values
+        group_counts = dict( sorted(group_counts.items(), key=operator.itemgetter(1),reverse=True)) #sort dict by value counts
         if group_counts:
             bar_list = []
             for label,count in group_counts.items():
@@ -695,7 +696,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     aromaticity_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_list)))
     hydropathy_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_list)))
     molecular_weight_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_list)))
-    extintion_coefficient_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq), sequences_list)))
+    extintion_coefficient_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[0], sequences_list)))
 
     fig, [[ax0,ax1,ax2,ax3,ax4],[ax5,ax6,ax7,ax8,ax9]] = plt.subplots(2, 5,figsize=(26,22))
 
@@ -759,7 +760,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 # isoelectric = np.ma.sum(isoelectric,axis=1)
                 isoelectric = np.array(list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_cluster_list)))
                 molecular_weight = np.array(list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_cluster_list)))
-                extintion_coefficient = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq), sequences_cluster_list)))
+                extintion_coefficient = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[0], sequences_cluster_list)))
 
 
                 clusters_info["Cluster_{}".format(cluster)][mode]["hydrophobicity"] = hydropathy.mean()
@@ -1175,10 +1176,14 @@ def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,
         predictions_dict["class_binary_prediction_samples_frequencies"][:, 1])
     alpha = 0.7
     size = 5
-    fig, [[ax1, ax2, ax3, ax4], [ax5, ax6, ax7, ax8], [ax9, ax10, ax11, ax12], [ax13, ax14, ax15, ax16],
-          [ax17, ax18, ax19, ax20]] = plt.subplots(5, 4, figsize=(17, 12),
+    fig, [[ax1, ax2, ax3, ax4],
+          [ax5, ax6, ax7, ax8],
+          [ax9, ax10, ax11, ax12],
+          [ax13, ax14, ax15, ax16],
+          [ax17, ax18, ax19, ax20],
+          [ax21, ax22, ax23, ax24]] = plt.subplots(6, 4, figsize=(20, 15),
                                                    gridspec_kw={'width_ratios': [4.5, 4.5, 4.5, 1],
-                                                                'height_ratios': [4, 4, 4, 4, 4]})
+                                                                'height_ratios': [4, 4, 4, 4, 4, 4]})
     fig.suptitle('UMAP projections', fontsize=20)
     #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax1, cmap="Blues", n_levels=30, fill=True, thresh=0.05,alpha=0.5)  # cmap='Blues'
     ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:, 2], alpha=alpha, s=size)
@@ -1311,6 +1316,21 @@ def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,
     fig.colorbar(plt.cm.ScalarMappable(cmap=settings["bulkiness_scores_settings"].colormap_unique,
                                        norm=Normalize(vmin=np.min(settings["bulkiness_scores_settings"].unique_values),
                                                       vmax=np.max(settings["bulkiness_scores_settings"].unique_values))), ax=ax19)
+    
+    
+    
+    quantiles_extintion_coefficients = np.quantile(features_dict["extintion_coefficients_scores"], quantiles)
+    quantile_extintion_coefficients_idx = (features_dict["extintion_coefficients_scores"][..., None] < quantiles_extintion_coefficients[0]).any(-1), (
+                features_dict["extintion_coefficients_scores"][..., None] > quantiles_extintion_coefficients[1]).any(-1)
+    extintion_coefficients_colors = settings["extintion_coefficients_scores_settings"].colors_feature
+    extintion_coefficients_colors = extintion_coefficients_colors[quantile_extintion_coefficients_idx[0] | quantile_extintion_coefficients_idx[1]]
+    extintion_coefficients_umap = umap_proj[quantile_extintion_coefficients_idx[0] | quantile_extintion_coefficients_idx[1]]
+    ax21.scatter(extintion_coefficients_umap[:, 0], extintion_coefficients_umap[:, 1], c=extintion_coefficients_colors, alpha=alpha, s=size)
+    ax21.set_title("Coloured by extintion_coefficient")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["extintion_coefficients_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["extintion_coefficients_settings"].unique_values),
+                                                      vmax=np.max(settings["extintion_coefficients_settings"].unique_values))), ax=ax21)
+
 
 
     ax4.axis("off")
@@ -1318,6 +1338,9 @@ def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,
     ax12.axis("off")
     ax16.axis("off")
     ax20.axis("off")
+    ax22.axis("off")
+    ax23.axis("off")
+    ax24.axis("off")
     fig.suptitle("UMAP of {}".format(vector_name))
 
     negative_patch = mpatches.Patch(color=colors_dict_labels[0], label='Class 0')
@@ -1405,8 +1428,7 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
     true_labels = latent_space[:,0]
 
     # #Highlight: Bring the pre-calculate peptide features back. PRESERVING THE ORDER OF THE SEQUENCES!
-
-    if (not args.shuffle_sequence) or (not args.random_sequences) or (args.mutations != 0):
+    if (not args.shuffle_sequence) and (not args.random_sequences) and (args.num_mutations != 0)  and (args.sequence_type != "Icore"):
         if (args.num_classes == args.num_obs_classes):
             sequences_raw = settings["sequences_raw"]  # the sequences are following the order from the data loader
             sequences_raw = list(map(lambda seq: "".join(seq).replace("#", ""), sequences_raw))
@@ -1426,7 +1448,6 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
                 features_dict = {**features_dict, **sequences_feats}
 
     print("#####################################3")
-    print(features_dict)
 
     pearson_correlations = list(map(lambda feat1,feat2: round(np.corrcoef(feat1,feat2,rowvar=False)[0][1],2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
     pearson_correlations = np.array(pearson_correlations)
@@ -2410,7 +2431,7 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
     """
 
     fig, [ax1, ax2] = plt.subplots(nrows=1, ncols=2, figsize=(25, 20),gridspec_kw={'width_ratios': [4.5,1]})
-    if not args.shuffle_sequence or not args.random_sequences or args.mutations != 0:
+    if not args.shuffle_sequence and not args.random_sequences and args.num_mutations != 0:
         sequences_raw = list(map(lambda seq: "".join(seq).replace("#", ""), sequences_raw))
         sequences_raw = pd.DataFrame({"Icore": sequences_raw})
         all_feats = pd.read_csv("{}/common_files/dataset_all_features.tsv".format(storage_folder),sep="\s+",index_col=0)
@@ -2441,11 +2462,11 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
         cmap = sns.color_palette("rocket_r", as_cmap=True)
         cbar = True
 
-        sns.heatmap(features_covariance, ax=ax1, cbar=cbar, cmap=cmap,norm=norm,annot=True,annot_kws={"fontsize":"small"})
-        ax1.set_xticks(np.arange(len(features_names)) ,labels=features_names,rotation=45)
+        sns.heatmap(features_covariance, ax=ax1, cbar=cbar, cmap=cmap,norm=norm,annot=True,annot_kws={"fontsize":12},fmt=".2f")
+        ax1.set_xticks(np.arange(len(features_names)) ,labels=features_names,rotation=45,fontsize=18)
         ax1.spines['left'].set_visible(False)
         #ax1.yaxis.set_ticklabels([])
-        ax1.set_yticks(np.arange(len(features_names)) + 0.5,labels=features_names,rotation=360)
+        ax1.set_yticks(np.arange(len(features_names)) + 0.5,labels=features_names,rotation=360,fontsize=18)
         ymax=len(features_names)-1
         xpos=0
         ax1.add_patch(matplotlib.patches.Rectangle((ymax, xpos), 1, len(features_names), fill=False, edgecolor='green', lw=3))
@@ -2483,7 +2504,7 @@ def calculate_species_roc_auc_helper(summary_dict,args,script_dir,idx_all,fold,p
 
         #onehot_species_labels = onehot_labels[idx]
 
-        if species_labels.shape[0] > 200: #500 seemed ok
+        if species_labels.shape[0] > 100:
             idx_name = "all"
             sample_mode = "samples"
 
@@ -2493,8 +2514,13 @@ def calculate_species_roc_auc_helper(summary_dict,args,script_dir,idx_all,fold,p
             species_class_0.append(roc_auc[0])
             species_class_1.append(roc_auc[1])
 
-    
-    return sum(species_class_0)/len(species_class_0),sum(species_class_1)/len(species_class_1)
+
+    species_class_0 = np.array(species_class_0)
+    species_class_0 = species_class_0[~np.isnan(species_class_0)]
+    species_class_1 = np.array(species_class_1)
+    species_class_1 = species_class_1[~np.isnan(species_class_1)]
+
+    return np.mean(species_class_0),np.mean(species_class_1)
 
 def plot_kfold_comparisons(args,script_dir,dict_results,kfolds=5,results_folder="Benchmark"):
     """Compares average ROC AUC"""
@@ -2878,7 +2904,9 @@ def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_fo
                 for fold in range(kfolds):
                     print("-------------FOLD {}--------------".format(fold))
                     if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold)):
-                        train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold))["summary_dict"]
+                        train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold))
+                        args = train_out["args"]
+                        train_out = train_out["summary_dict"]
                     else:
                         train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_valid_fold_{}.p".format(folder, fold))["summary_dict"]
                     valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(folder, fold))["summary_dict"]
@@ -2886,7 +2914,7 @@ def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_fo
                         test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold))["summary_dict"]
                     else:
                         test_out = None
-                    args = train_out["args"]
+
                     for mode, summary_dict in zip(["train", "valid", "test"], [train_out, valid_out, test_out]):
 
                         if summary_dict is not None:
@@ -3142,15 +3170,12 @@ def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_fo
     df = convert_dict(metrics_results_all)
     #Highlight: https://stackoverflow.com/questions/59769161/python-color-pandas-dataframe-based-on-multiindex
     colors = {"supervised(Icore)": matplotlib.colors.to_rgba('lavender'), "supervised(Icore_non_anchor)": matplotlib.colors.to_rgba('palegreen'),"semisupervised(Icore)":matplotlib.colors.to_rgba('paleturquoise'),"semisupervised(Icore_non_anchor)":matplotlib.colors.to_rgba('plum')}
-
     c = {k: matplotlib.colors.rgb2hex(v) for k, v in colors.items()}
     idx = df.index.get_level_values(0)
-
-
     css = [{'selector': f'.row{i}.level0', 'props': [('background-color', c[v])]} for i, v in enumerate(idx)]
 
 
-    df_styled = df.style.format(na_rep="-", escape="latex").background_gradient(axis=None,
+    df_styled = df.style.format(na_rep="-", escape="latex",precision=2).background_gradient(axis=None,
                                                                                 cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" for pandas 2.1
 
     dfi.export(df_styled, '{}/{}/methods_comparison_DATAFRAME.png'.format(script_dir, results_folder), max_cols=-1)
@@ -3164,10 +3189,11 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
                           "radius_scores":"Radius",
                           "side_chain_pka_scores":"Side chain Pka",
                           "aromaticity_scores":"Aromaticity",
-                          "molecular_weights":"Molecular weights",
+                          "molecular_weights":"Molecular weight",
                           "bulkiness_scores":"Bulkiness",
                           "sequences_lens":"Sequences  lengths",
-                          "extintion_coefficients":"Extintion coefficients",
+                          "extintion_coefficients_reduced":"Extintion coefficients (reduced)",
+                          "extintion_coefficients_cystines":"Extintion coefficients (oxidized)",
                           "immunodominance_scores":"Immunodominance"}
      overwrite = False
      covariances_all = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict())))
@@ -3182,7 +3208,7 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
          for name, folder in values.items():
              print("{}".format(name))
              if os.path.exists("{}/Vegvisir_checkpoints/covariances_train.p".format(folder)) and not overwrite:
-                print("Loading pre computed covariance matrices")
+                print("Loading pre computed covariance matrices ---------------------------------------")
                 #Highlight: Dill is an *** , if you change the module's non mutable structures (i.e named tuples), it will complain
                 covariances_dict_train = dill.load(open("{}/Vegvisir_checkpoints/covariances_train.p".format(folder), "rb"))
                 covariances_dict_valid = dill.load(open("{}/Vegvisir_checkpoints/covariances_valid.p".format(folder), "rb"))
@@ -3204,6 +3230,7 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
                          test_out = None
 
                      args = train_out["args"]
+
                      for mode, summary_dict in zip(["valid", "train", "test"], [train_out, valid_out, test_out]):
                          if summary_dict is not None:
                              latent_space = summary_dict["latent_space"]
@@ -3248,7 +3275,8 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
                              aromaticity_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_list)))
                              hydropathy_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_list)))
                              molecular_weight_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_list)))
-                             extintion_coefficient_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq), sequences_list)))
+                             extintion_coefficient_reduced_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[0], sequences_list)))
+                             extintion_coefficient_cystines_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[1], sequences_list)))
 
                              settings = {"features_dict": {"hydropathy_scores":hydropathy_scores,
                                                             "isoelectric_scores":isoelectric_scores,
@@ -3259,7 +3287,9 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
                                                             "molecular_weights":molecular_weight_scores,
                                                             "bulkiness_scores":bulkiness_scores,
                                                             "sequences_lens":sequences_lens,
-                                                            "extintion_coefficients":extintion_coefficient_scores},
+                                                            "extintion_coefficients_reduced":extintion_coefficient_reduced_scores,
+                                                            "extintion_coefficients_cystines":extintion_coefficient_cystines_scores,
+                                                           },
                                          "sequences_raw":sequences_raw}
 
                              covariance,features_names = plot_latent_correlations_1d(umap_proj_1d,
@@ -3290,25 +3320,31 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
                 dill.dump(covariances_dict_test,open("{}/Vegvisir_checkpoints/covariances_test.p".format(folder), "wb"))
 
 
-         covariances_all[learning_type][name]["train"] = np.mean([covariance[0] for covariance in covariances_dict_train[learning_type][name]["covariance"]],axis=0)
-         covariances_all[learning_type][name]["valid"] = np.mean([covariance[0] for covariance in covariances_dict_valid[learning_type][name]["covariance"]],axis=0)
-         covariances_all[learning_type][name]["test"] = np.mean([covariance[0] for covariance in covariances_dict_test[learning_type][name]["covariance"]],axis=0)
 
-         if covariances_dict_train[learning_type][name]["features_names"]:
-             features_names = covariances_dict_train[learning_type][name]["features_names"][0]
-             features_names = [new_feature_names[feat] if feat in new_feature_names.keys() else feat for feat in features_names]
-         else:
-             features_names = covariances_dict_train[learning_type][name]["features_names"]
+             covariances_all[learning_type][name]["train"] = np.mean([covariance[0,1:] for covariance in covariances_dict_train[learning_type][name]["covariance"]],axis=0)
+             covariances_all[learning_type][name]["valid"] = np.mean([covariance[0,1:] for covariance in covariances_dict_valid[learning_type][name]["covariance"]],axis=0)
+             covariances_all[learning_type][name]["test"] = np.mean([covariance[0,1:] for covariance in covariances_dict_test[learning_type][name]["covariance"]],axis=0)
+
+             if covariances_dict_train[learning_type][name]["features_names"]:
+                 features_names = covariances_dict_train[learning_type][name]["features_names"][0][1:]
+                 features_names = [new_feature_names[feat] if feat in new_feature_names.keys() else feat for feat in features_names]
+             else:
+                 features_names = covariances_dict_train[learning_type][name]["features_names"]
 
 
+             #
+             # print(covariances_all[learning_type][name]["train"])
+             # print(covariances_all[learning_type][name]["test"])
+             # print(type(covariances_all[learning_type][name]["test"]))
+             #
+             n_feats = len(features_names)
+             covariances_all[learning_type][name]["train"] = dict(zip(features_names,np.round(covariances_all[learning_type][name]["train"],2).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
+             covariances_all[learning_type][name]["valid"] = dict(zip(features_names,np.round(covariances_all[learning_type][name]["valid"],2).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
+             covariances_all[learning_type][name]["test"] = dict(zip(features_names,np.round(covariances_all[learning_type][name]["test"],2).tolist())) if features_names and type(covariances_all[learning_type][name]["test"]) != np.float64 else dict(zip(features_names,[np.nan]*n_feats))
 
-         covariances_all[learning_type][name]["train"] = dict(zip(features_names,np.round(covariances_all[learning_type][name]["train"],2).tolist())) if features_names else dict(zip([""],[""]))
-         covariances_all[learning_type][name]["valid"] = dict(zip(features_names,np.round(covariances_all[learning_type][name]["valid"],2).tolist())) if features_names else dict(zip([""],[""]))
-         covariances_all[learning_type][name]["test"] = dict(zip(features_names,np.round(covariances_all[learning_type][name]["test"],2).tolist())) if features_names else dict(zip([""],[""]))
-
-         # covariances_all_latex[learning_type][name]["train"] = np.mean(covariances_dict_train[learning_type][name]["covariance"]) +"$\pm$" + np.mean(covariances_dict_train[learning_type][name]["covariance"])
-         # covariances_all_latex[learning_type][name]["valid"] = np.mean(covariances_dict_valid[learning_type][name]["covariance"]) +"$\pm$" + np.mean(covariances_dict_valid[learning_type][name]["covariance"])
-         # covariances_all_latex[learning_type][name]["test"] = np.mean(covariances_dict_test[learning_type][name]["covariance"]) +"$\pm$" + np.mean(covariances_dict_test[learning_type][name]["covariance"])
+             # covariances_all_latex[learning_type][name]["train"] = np.mean(covariances_dict_train[learning_type][name]["covariance"]) +"$\pm$" + np.mean(covariances_dict_train[learning_type][name]["covariance"])
+             # covariances_all_latex[learning_type][name]["valid"] = np.mean(covariances_dict_valid[learning_type][name]["covariance"]) +"$\pm$" + np.mean(covariances_dict_valid[learning_type][name]["covariance"])
+             # covariances_all_latex[learning_type][name]["test"] = np.mean(covariances_dict_test[learning_type][name]["covariance"]) +"$\pm$" + np.mean(covariances_dict_test[learning_type][name]["covariance"])
 
 
 
@@ -3316,12 +3352,21 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
      # df_latex.style.format(na_rep="-").to_latex('{}/{}/methods_comparison_LATEX.tex'.format(script_dir, results_folder))
 
      covariances_all = {key.replace(r"\textbf{", "").replace("}", ""): val for key, val in covariances_all.items()}
+
      df = pd.DataFrame.from_dict({(i, j,k): covariances_all[i][j][k] for i in covariances_all.keys() for j in covariances_all[i].keys() for k in covariances_all[i][j]},orient='index')
 
 
+     # Highlight: https://stackoverflow.com/questions/59769161/python-color-pandas-dataframe-based-on-multiindex
+     colors = {"supervised(Icore)": matplotlib.colors.to_rgba('lavender'),
+               "supervised(Icore_non_anchor)": matplotlib.colors.to_rgba('palegreen'),
+               "semisupervised(Icore)": matplotlib.colors.to_rgba('paleturquoise'),
+               "semisupervised(Icore_non_anchor)": matplotlib.colors.to_rgba('plum')}
+     c = {k: matplotlib.colors.rgb2hex(v) for k, v in colors.items()}
+     idx = df.index.get_level_values(0)
+     css = [{'selector': f'.row{i}.level0', 'props': [('background-color', c[v])]} for i, v in enumerate(idx)]
 
-     df_styled = df.style.format(na_rep="-", escape="latex").background_gradient(axis=None,cmap="YlOrBr")  # TODO: Switch to escape="latex-math" when pandas 2.1 arrives
+     df_styled = df.style.format(na_rep="-", escape="latex",precision=2).background_gradient(axis=None,cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" when pandas 2.1 arrives
 
-     dfi.export(df_styled, '{}/{}/Latent_correlations_comparison_DATAFRAME.png'.format(script_dir, results_folder), max_cols=-1)
+     dfi.export(df_styled, '{}/{}/Latent_correlations_comparison_DATAFRAME.png'.format(script_dir, results_folder), max_cols=-1,max_rows=-1)
 
 

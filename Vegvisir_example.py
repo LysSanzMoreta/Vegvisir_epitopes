@@ -128,12 +128,12 @@ def analysis_models():
                                 r"viral-dataset-9-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_17_05h42min43s477701ms_60epochs_supervised_Icore_non_anchor_onehot",
                                 r"viral-dataset-9-onehot-shuffled-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_17_06h33min42s911580ms_60epochs_supervised_Icore_non_anchor_onehot_shuffled",
                                 r"viral-dataset-9-onehot-random-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_17_07h29min36s681020ms_60epochs_supervised_Icore_non_anchor_onehot_random",
-                                #r"viral-dataset-9-blosum-9mers":"",
-                                #r"viral-dataset-9-blosum-shuffled-9mers":"",
-                                # r"viral-dataset-9-blosum-random-9mers":"",
-                                # r"viral-dataset-9-onehot-9mers":"",
-                                # r"viral-dataset-9-onehot-shuffled-9mers":"",
-                                # r"viral-dataset-9-onehot-random-9mers":"",
+                                r"viral-dataset-9-blosum-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_17_18h45min55s543603ms_60epochs_supervised_Icore_non_anchor_blosum_8mers",
+                                r"viral-dataset-9-blosum-shuffled-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_17_19h03min31s838700ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_8mers",
+                                r"viral-dataset-9-blosum-random-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_17_19h20min58s805046ms_60epochs_supervised_Icore_non_anchor_blosum_random_8mers",
+                                r"viral-dataset-9-onehot-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_17_19h38min40s326914ms_60epochs_supervised_Icore_non_anchor_onehot_8mers",
+                                r"viral-dataset-9-onehot-shuffled-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_17_19h56min05s115072ms_60epochs_supervised_Icore_non_anchor_onehot_shuffled_8mers",
+                                r"viral-dataset-9-onehot-random-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_17_20h12min51s125217ms_60epochs_supervised_Icore_non_anchor_onehot_random_8mers",
 
                                },
                                 "semisupervised(Icore)":{
@@ -160,24 +160,25 @@ def analysis_models():
     #assert args.dataset_name in ["viral_dataset8","viral_dataset6"], "In order to analyse the semi supervised performance we need to set num_obs_classes correctly, please select viral_dataset8 or viral_dataset6 and leraning-type to semisupervised"
 
 
-    #VegvisirPlots.plot_kfold_comparisons2(args,script_dir,dict_results_all,kfolds=1,results_folder = "Benchmark")
+    VegvisirPlots.plot_kfold_comparisons2(args,script_dir,dict_results_all,kfolds=5,results_folder = "Benchmark")
 
-
-    VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_all,kfolds=1,results_folder="Benchmark")
+    #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_all,kfolds=5,results_folder="Benchmark")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
-                        default="viral_dataset9",
+                        default="viral_dataset6",
                         help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data \n'
                              'viral_dataset3 : Only sequences, partitioned into train,validation and (old) test.If args.test = True, then the (old) assigned test is used \n'
                              'viral_dataset4 : viral_dataset3 sequences + Features \n '
                              'viral_dataset5: Contains additional artificially generated negative data points in the (old) test dataset \n'
-                             'viral_dataset6: Contains additional unobserved (negative and positive) data points for semi supervised learning. Train, validation and (old) test are mixed. If args.test = True, then 1 partition is selected as test \n'
+                             'viral_dataset6: Contains additional unobserved data points for semi supervised learning. Train, validation and (old) test are mixed. If args.test = True, then 1 partition is selected as test \n'
                              'viral_dataset7: Same dataset as viral_dataset3, but the test dataset is mixed with the train and validation datasets \n'
-                             'viral_dataset8: Same dataset as viral_dataset6 (containing unobserved datapoints), where the original test dataset is left out from the training (not mixed in).If args.test = True, then the (old) assigned test is used'
-                             'viral_dataset9: Same as viral_dataset7 with a new test dataset (OLD test,train and validation are mixed). New test dataset available when using args.test=True'
-                             'viral_dataset10: Same as viral_dataset6 (containing unobserved datapoints) with a new test dataset (OLD test,train and validation are mixed). New test available when using args.test=True')
+                             'viral_dataset8: Same dataset as viral_dataset6 (containing unobserved datapoints), where the original test dataset is left out from the training (not mixed in).If args.test = True, then the (old) assigned test is used \n'
+                             'viral_dataset9: Same as viral_dataset7 with a new test dataset (OLD test,train and validation are mixed). New test dataset available when using args.test=True \n'
+                             'viral_dataset10: Same as viral_dataset6 (containing unobserved datapoints) with a new test dataset (OLD test,train and validation are mixed). New test available when using args.test=True \n'
+                             'viral_dataset11: Mix between viral_dataset6 and viral_dataset8 (containing unobserved datapoints), but the (old) test is incorporated as an unobserved sequence. (old) test available when using args.test=True \n'
+                             )
     parser.add_argument('-subset_data', type=str, default="no",
                         help="Pick only the first <n> datapoints (epitopes) for testing the pipeline\n"
                              "<no>: Keep all \n"
@@ -192,7 +193,7 @@ if __name__ == "__main__":
     parser.add_argument('-subs_matrix', default="BLOSUM62", type=str,
                         help='blosum matrix to create blosum embeddings, choose one from /home/lys/anaconda3/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data')
 
-    parser.add_argument('-k-folds', type=int, nargs='?', default=2, help='Number of k-folds for k-fold cross validation.\n '
+    parser.add_argument('-k-folds', type=int, nargs='?', default=1, help='Number of k-folds for k-fold cross validation.\n '
                                                                          'If set to 1 is a single run where 1 of the partitions is selected randomly'
                                                                          'as the validation')
     parser.add_argument('-batch-size', type=int, nargs='?', default=100, help='Batch size')
@@ -215,17 +216,17 @@ if __name__ == "__main__":
     parser.add_argument('-guide', type=str, nargs='?', default="custom", help='<custom>: See guides.py \n'
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
     parser.add_argument('-validate', type=str2bool, nargs='?', default=True, help='Evaluate the model on the validation dataset')
-    parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
+    parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
     parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=False, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1, it saturates the CPU & GPU memory'
                                                                                                 'False: Only plots the computationally inexpensive ROC curves')
-    parser.add_argument('-train', type=str2bool, nargs='?', default=False, help='<True> Run the model'
+    parser.add_argument('-train', type=str2bool, nargs='?', default=True, help='<True> Run the model'
                                                                                 '<False> Make models comparison ')
 
 
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. If the sequence contains gaps, the script will use 20 aa + 1 gap character ')
-    parser.add_argument('-filter-kmers', type=str2bool, nargs='?', default=True, help="Filters the dataset to 9-mers only")
+    parser.add_argument('-filter-kmers', type=str2bool, nargs='?', default=False, help="Filters the dataset to 9-mers only")
 
-    parser.add_argument('-st','--sequence-type', type=str, nargs='?', default="Icore_non_anchor", help='Define the type of peptide sequence to use:\n'
+    parser.add_argument('-st','--sequence-type', type=str, nargs='?', default="Icore", help='Define the type of peptide sequence to use:\n'
                                                                                 'Icore: Full peptide '
                                                                                 'Icore_non_anchor: Peptide without the anchoring points marked by NetMHCPan 4.1')
     parser.add_argument('-p','--seq-padding', type=str, nargs='?', default="ends", help='Controls how the sequences are padded to the length of the longest sequence \n'
@@ -273,7 +274,7 @@ if __name__ == "__main__":
     else:
         torch.set_default_tensor_type(torch.DoubleTensor)
         parser.add_argument('--device', type=str, default="cpu", nargs='?',help='Device choice (cpu, cuda:0, cuda:1), linked to use_cuda')
-    if args.dataset_name in ["viral_dataset6","viral_dataset8","viral_dataset10"]:
+    if args.dataset_name in ["viral_dataset6","viral_dataset8","viral_dataset10","viral_dataset11"]:
         parser.add_argument('-num_classes', type=int, nargs='?', default=3,help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')
         parser.add_argument('-num_obs_classes', type=int, nargs='?', default=2,help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')
 

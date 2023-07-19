@@ -1130,8 +1130,8 @@ def calculate_extintioncoefficient(seq):
     """Calculates the molar extinction coefficient assuming cysteines (reduced) and cystines residues (Cys-Cys-bond)
     :param str seq"""
     seq = "".join(seq).replace("#","")
-    excoef = ProteinAnalysis(seq).molar_extinction_coefficient()[0]
-    return excoef
+    excoef_reduded, excoef_cystines = ProteinAnalysis(seq).molar_extinction_coefficient()
+    return excoef_reduded,excoef_cystines
 
 class CalculatePeptideFeatures(object):
     def __init__(self,seq_max_len,list_sequences,storage_folder):
@@ -1180,9 +1180,9 @@ class CalculatePeptideFeatures(object):
         hydropathy = calculate_hydropathy(seq)
         side_chain_pka = sum(list( map(lambda aa: self.side_chain_pka_dict[aa], list(seq))) + pads)/len(seq)
         aromaticity = calculate_aromaticity(seq)
-        extintion_coefficient = calculate_extintioncoefficient(seq)
+        extintion_coefficient_reduced,extintion_coefficient_cystines = calculate_extintioncoefficient(seq)
 
-        return molecular_weight,volume,radius,bulkiness,isoelectric,hydropathy,side_chain_pka,aromaticity,extintion_coefficient
+        return molecular_weight,volume,radius,bulkiness,isoelectric,hydropathy,side_chain_pka,aromaticity,extintion_coefficient_reduced,extintion_coefficient_cystines
 
 
     def volumetrics_summary(self):
@@ -1215,7 +1215,8 @@ class CalculatePeptideFeatures(object):
                                 "hydropathy":np.array(zipped_results[5]),
                                 "side_chain_pka":np.array(zipped_results[6]),
                                 "aromaticity":np.array(zipped_results[7]),
-                                "extintion_coefficient":np.array(zipped_results[8])
+                                "extintion_coefficient_reduced":np.array(zipped_results[8]),
+                                "extintion_coefficient_cystines": np.array(zipped_results[9])
                                 }
         else:
             features_dict = {"molecular_weights":None,
@@ -1226,8 +1227,9 @@ class CalculatePeptideFeatures(object):
                                 "hydropathy": None,
                                 "side_chain_pka": None,
                                 "aromaticity":None,
-                                "extintion_coefficient":None
-                                }
+                                "extintion_coefficient_reduced":None,
+                                "extintion_coefficient_cystines": None
+                             }
 
         return features_dict
 
