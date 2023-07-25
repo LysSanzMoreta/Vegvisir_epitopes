@@ -1319,10 +1319,10 @@ def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,
     
     
     
-    quantiles_extintion_coefficients = np.quantile(features_dict["extintion_coefficients_scores"], quantiles)
-    quantile_extintion_coefficients_idx = (features_dict["extintion_coefficients_scores"][..., None] < quantiles_extintion_coefficients[0]).any(-1), (
-                features_dict["extintion_coefficients_scores"][..., None] > quantiles_extintion_coefficients[1]).any(-1)
-    extintion_coefficients_colors = settings["extintion_coefficients_scores_settings"].colors_feature
+    quantiles_extintion_coefficients = np.quantile(features_dict["extintion_coefficients"], quantiles)
+    quantile_extintion_coefficients_idx = (features_dict["extintion_coefficients"][..., None] < quantiles_extintion_coefficients[0]).any(-1), (
+                features_dict["extintion_coefficients"][..., None] > quantiles_extintion_coefficients[1]).any(-1)
+    extintion_coefficients_colors = settings["extintion_coefficients_settings"].colors_feature
     extintion_coefficients_colors = extintion_coefficients_colors[quantile_extintion_coefficients_idx[0] | quantile_extintion_coefficients_idx[1]]
     extintion_coefficients_umap = umap_proj[quantile_extintion_coefficients_idx[0] | quantile_extintion_coefficients_idx[1]]
     ax21.scatter(extintion_coefficients_umap[:, 0], extintion_coefficients_umap[:, 1], c=extintion_coefficients_colors, alpha=alpha, s=size)
@@ -1527,7 +1527,8 @@ def plot_latent_space(args,dataset_info,latent_space,predictions_dict,sample_mod
                        vector_name="latent_space_z", n_clusters=4)
 
     plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
-    plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
+    if vector_name == "latent_space_z":
+        plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
     if plot_correlations and vector_name == "latent_space_z":
         reducer = umap.UMAP(n_components=1)
         umap_proj_1d = reducer.fit_transform(latent_space[:, 5:]).squeeze(-1)
@@ -2462,7 +2463,7 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
         cmap = sns.color_palette("rocket_r", as_cmap=True)
         cbar = True
 
-        sns.heatmap(features_covariance, ax=ax1, cbar=cbar, cmap=cmap,norm=norm,annot=True,annot_kws={"fontsize":12},fmt=".2f")
+        sns.heatmap(features_covariance, ax=ax1, cbar=cbar, cmap=cmap,norm=norm,annot=True,annot_kws={"fontsize":14},fmt=".2f")
         ax1.set_xticks(np.arange(len(features_names)) ,labels=features_names,rotation=45,fontsize=18)
         ax1.spines['left'].set_visible(False)
         #ax1.yaxis.set_ticklabels([])
@@ -2470,7 +2471,7 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
         ymax=len(features_names)-1
         xpos=0
         ax1.add_patch(matplotlib.patches.Rectangle((ymax, xpos), 1, len(features_names), fill=False, edgecolor='green', lw=3))
-        ax1.set_title("Covariance matrix features ({})".format(subfolders.replace("/",",")))
+        ax1.set_title("Covariance matrix features ({})".format(subfolders.replace("/",",")),fontsize=20)
 
         ax2.axis("off")
         fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.2)

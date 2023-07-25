@@ -141,6 +141,7 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,uno
 
     # Highlight: Scale-standarize values . This is done here for visualization purposes, it is done afterwards separately for train, eval and test
     data = VegvisirUtils.minmax_scale(data, column_name="immunodominance_score", suffix="_scaled")
+
     if filters_dict["filter_kmers"][0]:
         #Highlight: Grab only k-mers
         use_column = filters_dict["filter_kmers"][2]
@@ -150,7 +151,6 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,uno
         data = data[data[use_column].apply(lambda x: len(x) == kmer_size)]
         nfiltered = data.shape[0]
         dataset_info_file.write("Filter 2: {} whose length is different than 9. Drops {} data points, remaining {} \n".format(use_column,kmer_size,nprefilter-nfiltered,nfiltered))
-
     #Highlight: Strict target reassignment if immunodominance score is available
     if unobserved:
         data.loc[(data["immunodominance_score_scaled"] <= 0.) & (data["target_corrected"] != 2), "target_corrected"] = 0  # ["target"] = 0. #Strict target reassignment
@@ -188,7 +188,7 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,uno
     if args.run_nnalign:
         prepare_nnalign(args,storage_folder,data,[filters_dict["filter_kmers"][2],"target_corrected","partition"])
 
-    return data
+    return data.copy()
 
 def check_overlap(data):
     train = data[data["training"] == True]
@@ -222,6 +222,7 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
             """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
     data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+
     data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
     data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
     data_species = pd.read_csv("{}/common_files/dataset_species.tsv".format(storage_folder),sep="\t")
@@ -238,8 +239,12 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     if filters_dict["group_alleles"][0]:
         # Group data by Icore, therefore the alleles are grouped
+
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
-        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        #data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count)) # messy when same number of counts
+        #data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].nth(0) #returns first hit
+        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
+ #selects mode and returns first hit in case of equal counts
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
         data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
@@ -252,7 +257,9 @@ def viral_dataset3(dataset_name,script_dir,storage_folder,args,results_dir,updat
         data_species["allele_encoded"] = data_species["allele"]
         data_species.replace({"allele_encoded": allele_dict},inplace=True)
 
+
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
+
     data = pd.merge(data,data_species, on=['Icore'], how='left')
 
     unique_values = pd.unique(data["org_name"])
@@ -318,7 +325,9 @@ def viral_dataset4(dataset_name,script_dir,storage_folder,args,results_dir,updat
         # Group data by Icore
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
         data_b = data.groupby('Icore', as_index=False)[features_names].agg(lambda x: sum(list(x)) / len(list(x)))
-        data_c = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        #data_c = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        data_c = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
+
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
         data = pd.merge(data, data_c, on='Icore', how='outer')
@@ -393,7 +402,8 @@ def viral_dataset5(dataset_name,script_dir,storage_folder,args,results_dir,updat
     if filters_dict["group_alleles"][0]:
         # Group data by Icore only, therefore the alleles are grouped
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
-        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        #data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
         data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
@@ -475,11 +485,17 @@ def viral_dataset6(dataset_name,script_dir,storage_folder,args,results_dir,updat
     #data_unobserved = data_unobserved.sample(n=args.num_unobserved,replace=False)
     unique_partitions = data_unobserved["partition"].value_counts()
     if args.num_unobserved < data_unobserved.shape[0]:
-        data_unobserved_list = []
-        for partition in unique_partitions.keys():
-            data_unobserved_i = data_unobserved.loc[(data_unobserved["partition"] == partition)]
-            data_unobserved_list.append(data_unobserved_i.sample(n=int((args.num_unobserved/len(unique_partitions.keys()))),replace=False))
-        data_unobserved = pd.concat(data_unobserved_list,axis=0)
+        if args.num_unobserved != 0:
+            data_unobserved_list = []
+            for partition in unique_partitions.keys():
+                data_unobserved_i = data_unobserved.loc[(data_unobserved["partition"] == partition)]
+                data_unobserved_list.append(
+                    data_unobserved_i.sample(n=int((args.num_unobserved / len(unique_partitions.keys()))),
+                                             replace=False))
+            data_unobserved = pd.concat(data_unobserved_list, axis=0)
+        else:
+            print("Not using unobserved data points")
+            data_unobserved = pd.DataFrame(columns=data_unobserved.columns)
     data = data_observed.merge(data_unobserved, on=['Icore', 'allele'], how='outer',suffixes=('_observed', '_unobserved'))
     data = data.drop(["target_unobserved","partition_observed","partition_unobserved"],axis=1)
     data = data.merge(data_unobserved_partition,on=["Icore"],how="left",suffixes=('_observed', '_unobserved'))
@@ -508,7 +524,9 @@ def viral_dataset6(dataset_name,script_dir,storage_folder,args,results_dir,updat
         print("Grouping alleles")
         # Group data by Icore, therefore, the alleles are grouped
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
-        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        #data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
+
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
         data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
@@ -605,7 +623,9 @@ def viral_dataset7(dataset_name,script_dir,storage_folder,args,results_dir,updat
     if filters_dict["group_alleles"][0]:
         # Group data by Icore, therefore the alleles are grouped
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
-        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition","partition_old", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        #data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition","partition_old", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
+
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
         data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
@@ -680,11 +700,15 @@ def viral_dataset8(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data_unobserved = data_unobserved[(data_unobserved["source"] == "artificial")]
     unique_partitions = data_unobserved["partition"].value_counts()
     if args.num_unobserved < data_unobserved.shape[0]:
-        data_unobserved_list = []
-        for partition in unique_partitions.keys():#TODO: Assertion of num_unobserved != partition size
-            data_unobserved_i = data_unobserved.loc[(data_unobserved["partition"] == partition)]
-            data_unobserved_list.append(data_unobserved_i.sample(n=int((args.num_unobserved/len(unique_partitions.keys()))),replace=False))
-        data_unobserved = pd.concat(data_unobserved_list,axis=0)
+        if args.num_unobserved != 0:
+            data_unobserved_list = []
+            for partition in unique_partitions.keys():
+                data_unobserved_i = data_unobserved.loc[(data_unobserved["partition"] == partition)]
+                data_unobserved_list.append(data_unobserved_i.sample(n=int((args.num_unobserved/len(unique_partitions.keys()))),replace=False))
+            data_unobserved = pd.concat(data_unobserved_list,axis=0)
+        else:
+            print("Not using unobserved data points")
+            data_unobserved = pd.DataFrame(columns=data_unobserved.columns)
 
     #data_unobserved = data_unobserved.sample(n=args.num_unobserved,replace=False)
     data = data_observed.merge(data_unobserved, on=['Icore', 'allele'], how='outer',suffixes=('_observed', '_unobserved'))
@@ -718,7 +742,8 @@ def viral_dataset8(dataset_name,script_dir,storage_folder,args,results_dir,updat
         print("Grouping alleles")
         # Group data by Icore, therefore, the alleles are grouped
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
-        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        #data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
         data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
@@ -844,7 +869,9 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
     if filters_dict["group_alleles"][0]:
         # Group data by Icore, therefore the alleles are grouped
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
-        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training","org_name"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        #data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training","org_name"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
+
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
         data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
@@ -932,11 +959,16 @@ def viral_dataset10(dataset_name,script_dir,storage_folder,args,results_dir,upda
     #data_unobserved = data_unobserved.sample(n=args.num_unobserved,replace=False)
     unique_partitions = data_unobserved["partition"].value_counts()
     if args.num_unobserved < data_unobserved.shape[0]:
-        data_unobserved_list = []
-        for partition in unique_partitions.keys():
-            data_unobserved_i = data_unobserved.loc[(data_unobserved["partition"] == partition)]
-            data_unobserved_list.append(data_unobserved_i.sample(n=int((args.num_unobserved/len(unique_partitions.keys()))),replace=False))
-        data_unobserved = pd.concat(data_unobserved_list,axis=0)
+        if args.num_unobserved != 0:
+            data_unobserved_list = []
+            for partition in unique_partitions.keys():
+                data_unobserved_i = data_unobserved.loc[(data_unobserved["partition"] == partition)]
+                data_unobserved_list.append(
+                    data_unobserved_i.sample(n=int((args.num_unobserved / len(unique_partitions.keys()))),replace=False))
+            data_unobserved = pd.concat(data_unobserved_list, axis=0)
+        else:
+            print("Not using unobserved data points")
+            data_unobserved = pd.DataFrame(columns=data_unobserved.columns)
     data = data_observed.merge(data_unobserved, on=['Icore', 'allele'], how='outer',suffixes=('_observed', '_unobserved'))
     data = data.drop(["target_unobserved","partition_observed","partition_unobserved"],axis=1)
     data = data.merge(data_unobserved_partition,on=["Icore"],how="left",suffixes=('_observed', '_unobserved'))
@@ -992,7 +1024,8 @@ def viral_dataset10(dataset_name,script_dir,storage_folder,args,results_dir,upda
         print("Grouping alleles")
         # Group data by Icore, therefore, the alleles are grouped
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
-        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training","org_name"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        #data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training","org_name"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
 
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
@@ -1083,11 +1116,16 @@ def viral_dataset11(dataset_name,script_dir,storage_folder,args,results_dir,upda
     #data_unobserved = data_unobserved.sample(n=args.num_unobserved,replace=False)
     unique_partitions = data_unobserved["partition"].value_counts()
     if args.num_unobserved < data_unobserved.shape[0]:
-        data_unobserved_list = []
-        for partition in unique_partitions.keys():
-            data_unobserved_i = data_unobserved.loc[(data_unobserved["partition"] == partition)]
-            data_unobserved_list.append(data_unobserved_i.sample(n=int((args.num_unobserved/len(unique_partitions.keys()))),replace=False))
-        data_unobserved = pd.concat(data_unobserved_list,axis=0)
+        if args.num_unobserved != 0:
+            data_unobserved_list = []
+            for partition in unique_partitions.keys():
+                data_unobserved_i = data_unobserved.loc[(data_unobserved["partition"] == partition)]
+                data_unobserved_list.append(data_unobserved_i.sample(n=int((args.num_unobserved/len(unique_partitions.keys()))),replace=False))
+            data_unobserved = pd.concat(data_unobserved_list,axis=0)
+        else:
+            print("Not using unobserved data points")
+            data_unobserved = pd.DataFrame(columns=data_unobserved.columns)
+
     data = data_observed.merge(data_unobserved, on=['Icore', 'allele'], how='outer',suffixes=('_observed', '_unobserved'))
 
     data = data.drop(["target_unobserved","partition_observed","partition_unobserved"],axis=1)
@@ -1120,14 +1158,17 @@ def viral_dataset11(dataset_name,script_dir,storage_folder,args,results_dir,upda
         print("Grouping alleles")
         # Group data by Icore, therefore, the alleles are grouped
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
-        data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        #data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
         data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
 
         # Group data by Icore, therefore, the alleles are grouped
         test_data_a = test_data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
-        test_data_b = test_data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        #test_data_b = test_data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        test_data_b = test_data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
+
         # Reattach info on training
         test_data = pd.merge(test_data_a, test_data_b, on='Icore', how='outer')
 
@@ -1155,21 +1196,19 @@ def viral_dataset11(dataset_name,script_dir,storage_folder,args,results_dir,upda
     pickle.dump(org_name_dict,open('{}/{}/org_name_dict.pkl'.format(storage_folder,args.dataset_name), 'wb'))
     data = data.replace({"org_name": org_name_dict_reverse})
 
+    #Highlight: Reattaching the test data
+    test_data = group_and_filter(test_data,args,storage_folder,filters_dict,dataset_info_file,unobserved=False,plot_histograms=False)
+    data = pd.concat([data,test_data],axis=0).reset_index(drop=True) #very important to reset the index otherwise it messes up later things
+
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
 
-    test_data = group_and_filter(test_data,args,storage_folder,filters_dict,dataset_info_file,unobserved=False,plot_histograms=False)
-
-
-    data = pd.concat([data,test_data],axis=0)
 
     VegvisirPlots.plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
-
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
     return data_info
-
 
 def data_class_division(array,array_mask,idx,labels,confidence_scores):
     """
@@ -1299,6 +1338,12 @@ def data_volumetrics(seq_max_len,epitopes_list,data,epitopes_array_mask,storage_
 
     if plot_covariance:
         print("Plotting features covariance analysis")
+        #Highlight:
+        features_dict_all = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw.tolist(),storage_folder).features_summary()
+        subfolders = "{}/All/{}/neighbours1/all".format(args.sequence_type,analysis_mode)
+        VegvisirPlots.plot_features_covariance(epitopes_array_raw.tolist(),features_dict_all,seq_max_len,immunodominance_scores,storage_folder,args,subfolders,tag="_immunodominance_scores")
+        VegvisirPlots.plot_features_covariance(epitopes_array_raw.tolist(),features_dict_all,seq_max_len,labels_arr,storage_folder,args,subfolders,tag="_labels")
+
         #Highlight: Train
         features_dict_all_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.all.tolist(),storage_folder).features_summary()
         subfolders = "{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode)
@@ -1740,7 +1785,6 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
         clustering = DBSCAN(eps=0.3, min_samples=1,metric="euclidean",algorithm="auto",p=3).fit(cosine_umap) #eps 4
         #clustering = hdbscan.HDBSCAN(min_cluster_size=1, gen_min_span_tree=True).fit(cosine_similarity_mean)
         labels = np.unique(clustering.labels_,return_counts=True)
-
     return all_sim_results
 
 def process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,sequences_list,data,storage_folder="/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/"):
@@ -1796,6 +1840,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     :param args: Commmand line arguments
     :param storage_folder: Data location path
     """
+
     sequence_column = filters_dict["filter_kmers"][2]
 
     epitopes_list = data[sequence_column].values.tolist()
@@ -1854,9 +1899,8 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
 
     #data_volumetrics(seq_max_len,epitopes_list, data, epitopes_mask, storage_folder, args, filters_dict,analysis_mode,plot_volumetrics=False,plot_covariance=True)
 
-    if args.dataset_name not in  ["viral_dataset6","viral_dataset8","viral_dataset9","viral_dataset10"]:
+    if args.dataset_name not in  ["viral_dataset6","viral_dataset8","viral_dataset9","viral_dataset10","viral_dataset11"]:
         try:
-            print("heheehh")
             all_sim_results = data_exploration(data, epitopes_array_blosum, epitopes_array_int, epitopes_mask, aa_dict, aa_list,
                              blosum_norm, seq_max_len, storage_folder, args, corrected_aa_types,analysis_mode,filters_dict)
             positional_weights = all_sim_results.positional_weights
@@ -1958,7 +2002,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
         data_array_blosum_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_blosum[:,None]], axis=1)
         data_array_onehot_encoding = np.concatenate([identifiers_labels_array_blosum, epitopes_array_onehot_encoding[:,None]], axis=1)
 
-    data_array_blosum_encoding_mask = np.broadcast_to(epitopes_mask[:, None, :, None], (n_data, 2, seq_max_len,corrected_aa_types))  # I do it like this in case the padding is not represented as 0, otherwise just use bool. Note: The first row of the second dimension is a dummy
+    data_array_blosum_encoding_mask = np.broadcast_to(epitopes_mask[:, None, :, None], (n_data, 2, seq_max_len,corrected_aa_types)).copy()  # I do it like this in case the padding is not represented as 0, otherwise just use bool. Note: The first row of the second dimension is a dummy
     #distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
 
 

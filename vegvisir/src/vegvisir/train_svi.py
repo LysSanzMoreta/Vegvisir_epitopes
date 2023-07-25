@@ -800,6 +800,7 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     assert (valid_data_blosum[:,0,0,1] == data_onehot[valid_idx,0,0,1]).all(), "The data is shuffled and the data frames are comparing the wrong things"
     assert (valid_data_blosum[:,0,0,1] == data_blosum_norm[valid_idx,0,1]).all(), "The data is shuffled and the data frames are comparing the wrong things"
 
+
     n_data = data_blosum.shape[0]
     batch_size = args.batch_size
     results_dir = additional_info.results_dir
@@ -1087,7 +1088,6 @@ def train_model(dataset_info,additional_info,args):
                                                                                                  dataset_info.features_names,
                                                                                                  None,method=partitioning_method)
 
-
     #Highlight:Also split the rest of arrays
     train_idx = (data_blosum[:,0,0,1][..., None] == train_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
     valid_idx = (data_blosum[:,0,0,1][..., None] == valid_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
@@ -1095,6 +1095,8 @@ def train_model(dataset_info,additional_info,args):
 
     print('\t Number train data points: {}; Proportion: {}'.format(train_data_blosum.shape[0],(train_data_blosum.shape[0]*100)/train_data_blosum.shape[0]))
     print('\t Number eval data points: {}; Proportion: {}'.format(valid_data_blosum.shape[0],(valid_data_blosum.shape[0]*100)/valid_data_blosum.shape[0]))
+    print('\t Number test data points: {}; Proportion: {}'.format(test_data_blosum.shape[0],(test_data_blosum.shape[0]*100)/test_data_blosum.shape[0]))
+
     if not args.test and args.validate:
         print("Only Training & Validation")
         epoch_loop( train_idx, valid_idx, dataset_info, args, additional_info)

@@ -30,3 +30,7 @@ run0.sh
 run1.sh
 
 vegvisir/src/vegvisir/tests/plot_computational_complexity.py
+
+PRIME-master/*
+
+MixMHCpred-master/*
