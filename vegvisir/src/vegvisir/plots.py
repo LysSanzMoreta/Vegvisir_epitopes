@@ -36,7 +36,7 @@ from scipy import stats
 import vegvisir.similarities as VegvisirSimilarities
 from collections import namedtuple
 import dataframe_image as dfi
-
+import statsmodels.api as sm
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
 colors_dict = {0: "green", 1: "red",2:"navajowhite"}
@@ -1449,10 +1449,10 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
     def calculate_correlations(feat1,feat2,method="pearson"):
         unique_vals = np.unique(feat2)
         if (unique_vals.astype(int) == unique_vals).sum() == len(unique_vals): #if the variable is categorical
-            print("found categorical variable")
-            result =  scipy.stats.pointbiserial(feat1, feat2)
+            #print("found categorical variable")
+            result =  scipy.stats.pointbiserialr(feat1, feat2)
         else:
-            print("continuous variable")
+            #print("continuous variable")
             if method == "pearson":
                 result =  scipy.stats.pearsonr(feat1, feat2)
             else:
@@ -1762,14 +1762,16 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     labels = labels[idx]
     onehot_targets = onehot_labels[idx]
     target_scores = predictions_dict[stats_name][idx]
-    #TODO??: https://scikit-learn.org/stable/modules/generated/sklearn.feature_selection.f_regression.html#sklearn.feature_selection.f_regression
+    #TODO??:
+    # https://scikit-learn.org/stable/modules/generated/sklearn.feature_selection.f_regression.html#sklearn.feature_selection.f_regression
+    # https://www.statalist.org/forums/forum/general-stata-discussion/general/1319291-p-value-for-auc-after-roctab-command
+    # https://stats.stackexchange.com/questions/75050/in-r-how-to-compute-the-p-value-for-area-under-roc
     try:
         fig,[ax1,ax2] = plt.subplots(1,2,figsize=(9, 6),gridspec_kw={'width_ratios': [4.5,1]})
         # ROC AUC per class
         for i in range(args.num_obs_classes):
             fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
             roc_auc[i] = auc(fpr[i], tpr[i])
-            pvals[i] = 0
             ax1.plot(fpr[i], tpr[i], label='Class {} AUC : {}'.format(i, round(roc_auc[i],2)), c=colors_dict_labels[i])
         # Micro ROC AUC
         fpr["micro"], tpr["micro"], _ = roc_curve(onehot_targets.ravel(), target_scores.ravel())
@@ -1799,9 +1801,18 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
         plt.clf()
         plt.close(fig)
     except:
-        print("Could not calculate AUC, only one class found")
-
-    return fpr,tpr,roc_auc
+        print("Could not calculate AUC, only one class found.")
+        roc_auc[0] = np.nan
+        roc_auc[1] = np.nan
+    try:
+        for i in range(args.num_obs_classes):
+            lrm = sm.Logit(onehot_targets[:, i], target_scores[:, i]).fit(disp=0)
+            pvals[i] = lrm.pvalues.item()
+    except:
+        print("Regression failed")
+        pvals[0] = np.nan
+        pvals[1] = np.nan
+    return fpr,tpr,roc_auc,pvals
 
 def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Train",per_sample=False):
     """
@@ -2062,7 +2073,7 @@ def plot_classification_metrics_per_species(dataset_info,args,predictions_dict,f
                         auk_score_binary = None
 
 
-                    fpr,tpr,roc_auc = plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name,save=False)
+                    fpr,tpr,roc_auc,pvals = plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name,save=False)
                     for i in range(args.num_obs_classes):
                         plt.plot(fpr[i], tpr[i], label='({})AUC_{}: {}'.format(species_dict[species],i, roc_auc[i]), c=colors_dict[i])
 
@@ -2523,8 +2534,11 @@ def calculate_species_roc_auc_helper(summary_dict,args,script_dir,idx_all,fold,p
     #     idx_all = (labels[..., None] != 2).any(
     #         -1)  # Highlight: unlabelled data has been assigned labelled 2, we give high confidence to the labelled data (for now)
     # idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
-    species_class_0 = []
-    species_class_1 = []
+    species_auc_class_0 = []
+    species_auc_class_1 = []
+    
+    species_pval_class_0 = []
+    species_pval_class_1 = []
 
     for species in unique_org_name.tolist():
         idx = (org_name[..., None] == species).any(-1)
@@ -2538,335 +2552,35 @@ def calculate_species_roc_auc_helper(summary_dict,args,script_dir,idx_all,fold,p
             idx_name = "all"
             sample_mode = "samples"
 
-            fpr, tpr, roc_auc = plot_ROC_curves(labels, onehot_labels, summary_dict, args, script_dir, mode, fold,
+            fpr, tpr, roc_auc,pvals = plot_ROC_curves(labels, onehot_labels, summary_dict, args, script_dir, mode, fold,
                                                 sample_mode,
                                                 prob_mode, idx, idx_name, save=False) #Highlight: We input labels and not species_labels because it is indexed inside the function again
-            species_class_0.append(roc_auc[0])
-            species_class_1.append(roc_auc[1])
+            species_auc_class_0.append(roc_auc[0])
+            species_auc_class_1.append(roc_auc[1])
+            species_pval_class_0.append(pvals[0])
+            species_pval_class_1.append(pvals[1])
 
 
-    species_class_0 = np.array(species_class_0)
-    species_class_0 = species_class_0[~np.isnan(species_class_0)]
-    species_class_1 = np.array(species_class_1)
-    species_class_1 = species_class_1[~np.isnan(species_class_1)]
+    species_auc_class_0 = np.array(species_auc_class_0)
+    species_auc_class_0 = species_auc_class_0[~np.isnan(species_auc_class_0)]
+    species_auc_class_1 = np.array(species_auc_class_1)
+    species_auc_class_1 = species_auc_class_1[~np.isnan(species_auc_class_1)]
+    
+    species_pval_class_0 = np.array(species_pval_class_0)
+    species_pval_class_0 = species_pval_class_0[~np.isnan(species_pval_class_0)]
+    species_pval_class_1 = np.array(species_pval_class_1)
+    species_pval_class_1 = species_pval_class_1[~np.isnan(species_pval_class_1)]
 
-    return np.mean(species_class_0),np.mean(species_class_1)
-
-def plot_kfold_comparisons(args,script_dir,dict_results,kfolds=5,results_folder="Benchmark"):
-    """Compares average ROC AUC"""
-
-    overwrite =False
-    metrics_results_all = defaultdict(lambda : defaultdict(lambda : defaultdict()))
-    metrics_results_all_latex = defaultdict(lambda : defaultdict(lambda : defaultdict()))
+    return np.mean(species_auc_class_0),np.mean(species_auc_class_1),np.mean(species_pval_class_0),np.mean(species_pval_class_1)
 
 
-    fig, [[ax1, ax2,ax3,ax4],[ax5, ax6,ax7,ax8]] = plt.subplots(nrows=2, ncols=4, figsize=(19, 6),gridspec_kw={'width_ratios': [5,5,5,1],'height_ratios': [6,3.5]})
-
-    i = 0
-    names = []
-    positions = []
-    patches_list_train = []
-    patches_list_valid = []
-    patches_list_test = []
-
-    for name,folder in dict_results.items():
-        print("-------------NAME {}--------------".format(name))
-        metrics_results_train = dict.fromkeys(["fpr","tpr","roc_auc_class_0","roc_auc_class_1"])
-        metrics_results_valid = dict.fromkeys(["fpr","tpr","roc_auc_class_0","roc_auc_class_1"])
-        metrics_results_test = dict.fromkeys(["fpr","tpr","roc_auc_class_0","roc_auc_class_1"])
-        metrics_results_train_species = dict.fromkeys(["fpr","tpr","roc_auc_class_0","roc_auc_class_1"])
-        metrics_results_valid_species = dict.fromkeys(["fpr","tpr","roc_auc_class_0","roc_auc_class_1"])
-        metrics_results_test_species = dict.fromkeys(["fpr","tpr","roc_auc_class_0","roc_auc_class_1"])
-
-        if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder)) and not overwrite:
-            print("Loading pre-computed ROC-AUC values")
-            metrics_results_train = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder),"rb"))
-            train_folds_fpr,train_folds_tpr,train_folds_roc_auc_class_0,train_folds_roc_auc_class_1 = metrics_results_train["fpr"],metrics_results_train["tpr"],metrics_results_train["roc_auc_class_0"],metrics_results_train["roc_auc_class_1"]
-
-            metrics_results_train_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_train_species.p".format(folder),"rb"))
-            train_species_folds_fpr,train_species_folds_tpr,train_species_folds_roc_auc_class_0,train_species_folds_roc_auc_class_1 = metrics_results_train_species["fpr"],metrics_results_train_species["tpr"],metrics_results_train_species["roc_auc_class_0"],metrics_results_train_species["roc_auc_class_1"]
-
-            if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder)):
-
-                metrics_results_valid = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder),"rb"))
-                valid_folds_fpr,valid_folds_tpr,valid_folds_roc_auc_class_0,valid_folds_roc_auc_class_1 = metrics_results_valid["fpr"],metrics_results_valid["tpr"],metrics_results_valid["roc_auc_class_0"],metrics_results_valid["roc_auc_class_1"]
-                metrics_results_valid_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_valid_species.p".format(folder),"rb"))
-                valid_species_folds_fpr,valid_species_folds_tpr,valid_species_folds_roc_auc_class_0,valid_species_folds_roc_auc_class_1 = metrics_results_valid_species["fpr"],metrics_results_valid_species["tpr"],metrics_results_valid_species["roc_auc_class_0"],metrics_results_valid_species["roc_auc_class_1"]
-            
-            
-            if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_test.p".format(folder)):
-
-                metrics_results_test = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_test.p".format(folder), "rb"))
-                test_folds_fpr, test_folds_tpr, test_folds_roc_auc_class_0, test_folds_roc_auc_class_1 = metrics_results_test["fpr"], metrics_results_test["tpr"], metrics_results_test["roc_auc_class_0"], metrics_results_test["roc_auc_class_1"]
-
-                metrics_results_test_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_test_species.p".format(folder), "rb"))
-                test_species_folds_fpr, test_species_folds_tpr, test_species_folds_roc_auc_class_0, test_species_folds_roc_auc_class_1 = metrics_results_test_species["fpr"], metrics_results_test_species["tpr"], metrics_results_test_species["roc_auc_class_0"], metrics_results_test_species["roc_auc_class_1"]
-
-        else:
-            print("calculating ROC-AUC values")
-            train_folds_fpr,train_folds_tpr,train_folds_roc_auc_class_0,train_folds_roc_auc_class_1 = [],[],[],[]
-            valid_folds_fpr,valid_folds_tpr,valid_folds_roc_auc_class_0,valid_folds_roc_auc_class_1 = [],[],[],[]
-            test_folds_fpr,test_folds_tpr,test_folds_roc_auc_class_0,test_folds_roc_auc_class_1 = [],[],[],[]
-            train_species_folds_fpr,train_species_folds_tpr,train_species_folds_roc_auc_class_0,train_species_folds_roc_auc_class_1 = [],[],[],[]
-            valid_species_folds_fpr,valid_species_folds_tpr,valid_species_folds_roc_auc_class_0,valid_species_folds_roc_auc_class_1 = [],[],[],[]
-            test_species_folds_fpr,test_species_folds_tpr,test_species_folds_roc_auc_class_0,test_species_folds_roc_auc_class_1 = [],[],[],[]
-
-            for fold in range(kfolds):
-
-                train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_fold_{}.p".format(folder, fold))["summary_dict"]
-                valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(folder, fold))["summary_dict"]
-                if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold)):
-                    test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold))["summary_dict"]
-                else:
-                    test_out = None
-
-                for mode,summary_dict in zip(["train","valid","test"],[train_out,valid_out,test_out]):
-                    if summary_dict is not None:
-                        labels = summary_dict["true_samples"]
-                        onehot_labels = summary_dict["true_onehot_samples"]
-                        #confidence_scores = summary_dict["confidence_scores_samples"]
-                        prob_mode = "class_probs_predictions_samples_average"
-                        idx_all = np.ones_like(labels).astype(bool)
-                        if args.num_classes > args.num_obs_classes:
-                            idx_all = (labels[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2,
-                        idx_name = "all"
-                        sample_mode = "samples"
-                        
-                        fpr,tpr,roc_auc = plot_ROC_curves(labels, onehot_labels, summary_dict, args, script_dir, mode, fold, sample_mode,
-                                        prob_mode, idx_all, idx_name,save=False)
-
-                        if mode == "train":
-                            train_folds_fpr.append(fpr)
-                            train_folds_tpr.append(tpr)
-                            train_folds_roc_auc_class_0.append(roc_auc[0])
-                            train_folds_roc_auc_class_1.append(roc_auc[1])
-                            species_results = calculate_species_roc_auc_helper(summary_dict, args, script_dir, idx_all, fold, prob_mode,sample_mode, mode="{}_species".format(mode))
-                            train_species_folds_fpr.append(np.nan)
-                            train_species_folds_tpr.append(np.nan)
-                            train_species_folds_roc_auc_class_0.append(species_results[0])
-                            train_species_folds_roc_auc_class_1.append(species_results[1])
-
-                        elif mode == "valid":
-                            valid_folds_fpr.append(fpr)
-                            valid_folds_tpr.append(tpr)
-                            valid_folds_roc_auc_class_0.append(roc_auc[0])
-                            valid_folds_roc_auc_class_1.append(roc_auc[1])
-                            species_results = calculate_species_roc_auc_helper(summary_dict, args, script_dir, idx_all, fold, prob_mode,sample_mode, mode="{}_species".format(mode))
-                            valid_species_folds_fpr.append(np.nan)
-                            valid_species_folds_tpr.append(np.nan)
-                            valid_species_folds_roc_auc_class_0.append(species_results[0])
-                            valid_species_folds_roc_auc_class_1.append(species_results[1])
-                        else:
-                            test_folds_fpr.append(fpr)
-                            test_folds_tpr.append(tpr)
-                            test_folds_roc_auc_class_0.append(roc_auc[0])
-                            test_folds_roc_auc_class_1.append(roc_auc[1])
-                            test_species_folds_fpr.append(np.nan)
-                            test_species_folds_tpr.append(np.nan)
-                            test_species_folds_roc_auc_class_0.append(np.nan)
-                            test_species_folds_roc_auc_class_1.append(np.nan)
-                    else:
-                        if mode == "valid":
-                            valid_folds_fpr.append(np.nan)
-                            valid_folds_tpr.append(np.nan)
-                            valid_folds_roc_auc_class_0.append(np.nan)
-                            valid_folds_roc_auc_class_1.append(np.nan)
-                            valid_species_folds_fpr.append(np.nan)
-                            valid_species_folds_tpr.append(np.nan)
-                            valid_species_folds_roc_auc_class_0.append(np.nan)
-                            valid_species_folds_roc_auc_class_1.append(np.nan)
-                        else:
-                            test_folds_fpr.append(np.nan)
-                            test_folds_tpr.append(np.nan)
-                            test_folds_roc_auc_class_0.append(np.nan)
-                            test_folds_roc_auc_class_1.append(np.nan)
-                            test_species_folds_fpr.append(np.nan)
-                            test_species_folds_tpr.append(np.nan)
-                            test_species_folds_roc_auc_class_0.append(np.nan)
-                            test_species_folds_roc_auc_class_1.append(np.nan)
-                            
-
-
-            metrics_results_train["fpr"] = train_folds_fpr
-            metrics_results_train["tpr"] = train_folds_tpr
-            metrics_results_train["roc_auc_class_0"] = train_folds_roc_auc_class_0
-            metrics_results_train["roc_auc_class_1"] = train_folds_roc_auc_class_1
-
-
-            metrics_results_valid["fpr"] = valid_folds_fpr
-            metrics_results_valid["tpr"] = valid_folds_tpr
-            metrics_results_valid["roc_auc_class_0"] = valid_folds_roc_auc_class_0
-            metrics_results_valid["roc_auc_class_1"] = valid_folds_roc_auc_class_1
-            
-            metrics_results_test["fpr"] = test_folds_fpr
-            metrics_results_test["tpr"] = test_folds_tpr
-            metrics_results_test["roc_auc_class_0"] = test_folds_roc_auc_class_0
-            metrics_results_test["roc_auc_class_1"] = test_folds_roc_auc_class_1
-
-            metrics_results_train_species["fpr"] = train_species_folds_fpr
-            metrics_results_train_species["tpr"] = train_species_folds_tpr
-            metrics_results_train_species["roc_auc_class_0"] = train_species_folds_roc_auc_class_0
-            metrics_results_train_species["roc_auc_class_1"] = train_species_folds_roc_auc_class_1
-
-            metrics_results_valid_species["fpr"] = valid_species_folds_fpr
-            metrics_results_valid_species["tpr"] = valid_species_folds_tpr
-            metrics_results_valid_species["roc_auc_class_0"] = valid_species_folds_roc_auc_class_0
-            metrics_results_valid_species["roc_auc_class_1"] = valid_species_folds_roc_auc_class_1
-
-            metrics_results_test_species["fpr"] = test_species_folds_fpr
-            metrics_results_test_species["tpr"] = test_species_folds_tpr
-            metrics_results_test_species["roc_auc_class_0"] = test_species_folds_roc_auc_class_0
-            metrics_results_test_species["roc_auc_class_1"] = test_species_folds_roc_auc_class_1
-
-            pickle.dump(metrics_results_train,open("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder),"wb"))
-            pickle.dump(metrics_results_valid,open("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder),"wb"))
-            pickle.dump(metrics_results_test,open("{}/Vegvisir_checkpoints/roc_auc_test.p".format(folder),"wb"))
-            
-            pickle.dump(metrics_results_train_species,open("{}/Vegvisir_checkpoints/roc_auc_train_species.p".format(folder),"wb"))
-            pickle.dump(metrics_results_valid_species,open("{}/Vegvisir_checkpoints/roc_auc_valid_species.p".format(folder),"wb"))
-            pickle.dump(metrics_results_test_species,open("{}/Vegvisir_checkpoints/roc_auc_test_species.p".format(folder),"wb"))
-
-        metrics_results_all_latex[name]["train"]["roc_auc_class_0"] = str(np.round(np.mean(np.array(metrics_results_train["roc_auc_class_0"])),2)) + " $\pm$ " + str(np.round(np.std(np.array(metrics_results_train["roc_auc_class_0"])),2))
-        metrics_results_all_latex[name]["train"]["roc_auc_class_1"] = str(np.round(np.mean(np.array(metrics_results_train["roc_auc_class_1"])),2)) + " $\pm$ " + str(np.round(np.std(np.array(metrics_results_train["roc_auc_class_1"])),2))
-        metrics_results_all_latex[name]["valid"]["roc_auc_class_0"] = str(np.round(np.mean(np.array(metrics_results_valid["roc_auc_class_0"])),2)) + " $\pm$ " + str(np.round(np.std(np.array(metrics_results_valid["roc_auc_class_0"])),2))
-        metrics_results_all_latex[name]["valid"]["roc_auc_class_1"] = str(np.round(np.mean(np.array(metrics_results_valid["roc_auc_class_1"])),2)) + " $\pm$ " + str(np.round(np.std(np.array(metrics_results_valid["roc_auc_class_1"])),2))
-        metrics_results_all_latex[name]["test"]["roc_auc_class_0"] =  str(np.round(np.mean(np.array(metrics_results_test["roc_auc_class_0"])),2)) + " $\pm$ " + str(np.round(np.std(np.array(metrics_results_test["roc_auc_class_0"])),2)) if metrics_results_test["roc_auc_class_0"] is not None else metrics_results_test["roc_auc_class_0"]
-        metrics_results_all_latex[name]["test"]["roc_auc_class_1"] = str(np.round(np.mean(np.array(metrics_results_test["roc_auc_class_1"])),2)) + " $\pm$ " + str(np.round(np.std(np.array(metrics_results_test["roc_auc_class_1"])),2)) if metrics_results_test["roc_auc_class_1"] is not None else metrics_results_test["roc_auc_class_1"]
-        metrics_results_all_latex[name]["train-species"]["roc_auc_class_0"] = str(np.round(np.mean(np.array(metrics_results_train_species["roc_auc_class_0"])),2)) + " $\pm$ " + str(np.round(np.std(np.array(metrics_results_train_species["roc_auc_class_0"])),2))
-        metrics_results_all_latex[name]["train-species"]["roc_auc_class_1"] = str(np.round(np.mean(np.array(metrics_results_train_species["roc_auc_class_1"])),2)) + " $\pm$ " + str(np.round(np.std(np.array(metrics_results_train_species["roc_auc_class_1"])),2))
-        metrics_results_all_latex[name]["valid-species"]["roc_auc_class_0"] = str(np.round(np.mean(np.array(metrics_results_valid_species["roc_auc_class_0"])),2)) + " $\pm$ " + str(np.round(np.std(np.array(metrics_results_valid_species["roc_auc_class_0"])),2))
-        metrics_results_all_latex[name]["valid-species"]["roc_auc_class_1"] = str(np.round(np.mean(np.array(metrics_results_valid_species["roc_auc_class_1"])),2)) + " $\pm$ " + str(np.round(np.std(np.array(metrics_results_valid_species["roc_auc_class_1"])),2))
-        metrics_results_all_latex[name]["test-species"]["roc_auc_class_0"] =  str(np.round(np.mean(np.array(metrics_results_test_species["roc_auc_class_0"])),2)) + " $\pm$ " + str(np.round(np.std(np.array(metrics_results_test_species["roc_auc_class_0"])),2)) if metrics_results_test_species["roc_auc_class_0"] is not None else metrics_results_test_species["roc_auc_class_0"]
-        metrics_results_all_latex[name]["test-species"]["roc_auc_class_1"] = str(np.round(np.mean(np.array(metrics_results_test_species["roc_auc_class_1"])),2)) + " $\pm$ " + str(np.round(np.std(np.array(metrics_results_test_species["roc_auc_class_1"])),2)) if metrics_results_test_species["roc_auc_class_1"] is not None else metrics_results_test_species["roc_auc_class_1"]
-
-
-
-
-
-        metrics_results_all[name]["train"]["roc_auc_class_0"] = np.round(np.mean(np.array(metrics_results_train["roc_auc_class_0"])),2)
-        metrics_results_all[name]["train"]["roc_auc_class_1"] = np.round(np.mean(np.array(metrics_results_train["roc_auc_class_1"])),2)
-        metrics_results_all[name]["valid"]["roc_auc_class_0"] = np.round(np.mean(np.array(metrics_results_valid["roc_auc_class_0"])),2)
-        metrics_results_all[name]["valid"]["roc_auc_class_1"] = np.round(np.mean(np.array(metrics_results_valid["roc_auc_class_1"])),2)
-        metrics_results_all[name]["test"]["roc_auc_class_0"] =  np.round(np.mean(np.array(metrics_results_test["roc_auc_class_0"])),2) if metrics_results_test["roc_auc_class_0"] is not None else metrics_results_test["roc_auc_class_0"]
-        metrics_results_all[name]["test"]["roc_auc_class_1"] = np.round(np.mean(np.array(metrics_results_test["roc_auc_class_1"])),2) if metrics_results_test["roc_auc_class_1"] is not None else metrics_results_test["roc_auc_class_1"]
-        metrics_results_all[name]["train-species"]["roc_auc_class_0"] = np.round(np.mean(np.array(metrics_results_train_species["roc_auc_class_0"])), 2)
-        metrics_results_all[name]["train-species"]["roc_auc_class_1"] = np.round(np.mean(np.array(metrics_results_train_species["roc_auc_class_1"])), 2)
-        metrics_results_all[name]["valid-species"]["roc_auc_class_0"] = np.round(np.mean(np.array(metrics_results_valid_species["roc_auc_class_0"])), 2)
-        metrics_results_all[name]["valid-species"]["roc_auc_class_1"] = np.round(np.mean(np.array(metrics_results_valid_species["roc_auc_class_1"])), 2)
-        metrics_results_all[name]["test-species"]["roc_auc_class_0"] = np.round( np.mean(np.array(metrics_results_test_species["roc_auc_class_0"])), 2) if metrics_results_test_species[ "roc_auc_class_0"] is not None else metrics_results_test_species["roc_auc_class_0"]
-        metrics_results_all[name]["test-species"]["roc_auc_class_1"] = np.round(np.mean(np.array(metrics_results_test_species["roc_auc_class_1"])), 2) if metrics_results_test_species["roc_auc_class_1"] is not None else metrics_results_test_species["roc_auc_class_1"]
-
-        bsize = 0.7
-        bar1_0 = ax1.bar(i,np.mean(train_folds_roc_auc_class_0),yerr=np.std(train_folds_roc_auc_class_0), width= bsize,color="steelblue")
-        bar1_1 = ax1.bar(i + 1.2 ,np.mean(train_folds_roc_auc_class_1),yerr=np.std(train_folds_roc_auc_class_1), width= bsize,color="steelblue")
-
-        bar2_0 = ax2.bar(i,np.mean(valid_folds_roc_auc_class_0),yerr=np.std(valid_folds_roc_auc_class_0),width= bsize,color="coral")
-        bar2_1 = ax2.bar(i + 1.2,np.mean(valid_folds_roc_auc_class_1),yerr=np.std(valid_folds_roc_auc_class_1),width= bsize,color="coral")
-
-        bar3_0 = ax3.bar(i,np.mean(test_folds_roc_auc_class_0),yerr=np.std(test_folds_roc_auc_class_0),width= bsize,color="red")
-        bar3_1 = ax3.bar(i + 1.2,np.mean(test_folds_roc_auc_class_1),yerr=np.std(test_folds_roc_auc_class_1),width= bsize,color="red")
-
-        fsize = 6
-        elevation = 0.02
-        for bar in bar1_0.patches:
-            ax1.annotate(format(bar.get_height(), '.2f'),
-                         (bar.get_x() + bar.get_width() / 2,
-                          bar.get_height() + elevation), ha='center', va='center',
-                         size=fsize, xytext=(0, 8),
-                         textcoords='offset points')
-        for bar in bar1_1.patches:
-            ax1.annotate(format(bar.get_height(), '.2f'),
-                         (bar.get_x() + bar.get_width() / 2,
-                          bar.get_height() + elevation), ha='center', va='center',
-                         size=fsize, xytext=(0, 8),
-                         textcoords='offset points')
-        for bar in bar2_0.patches:
-            ax2.annotate(format(bar.get_height(), '.2f'),
-                         (bar.get_x() + bar.get_width() / 2,
-                          bar.get_height() + elevation), ha='center', va='center',
-                         size=fsize, xytext=(0, 8),
-                         textcoords='offset points')
-        for bar in bar2_1.patches:
-            ax2.annotate(format(bar.get_height(), '.2f'),
-                         (bar.get_x() + bar.get_width() / 2,
-                          bar.get_height() + elevation), ha='center', va='center',
-                         size=fsize, xytext=(0, 8),
-                         textcoords='offset points')
-        for bar in bar3_0.patches:
-            ax3.annotate(format(bar.get_height(), '.2f'),
-                         (bar.get_x() + bar.get_width() / 2,
-                          bar.get_height() + elevation), ha='center', va='center',
-                         size=fsize, xytext=(0, 8),
-                         textcoords='offset points')
-        for bar in bar3_1.patches:
-            ax3.annotate(format(bar.get_height(), '.2f'),
-                         (bar.get_x() + bar.get_width() / 2,
-                          bar.get_height() + elevation), ha='center', va='center',
-                         size=fsize, xytext=(0, 8),
-                         textcoords='offset points')
-        patches_list_train.append(bar1_0.patches[0])
-        patches_list_train.append(bar1_1.patches[0])
-        patches_list_valid.append(bar2_0.patches[0])
-        patches_list_valid.append(bar2_1.patches[0])
-        patches_list_test.append(bar3_0.patches[0])
-        patches_list_test.append(bar3_1.patches[0])
-
-
-        names.append("{}_class_0".format(name))
-        names.append("{}_class_1".format(name))
-
-        positions.append(i)
-        positions.append(i + 1)
-
-        i += 2.7
-
-
-    ax1.set_xticks(positions,labels=names,rotation=90,fontsize=8)
-    ax2.set_xticks(positions,labels=names,rotation=90,fontsize=8)
-    ax3.set_xticks(positions,labels=names,rotation=90,fontsize=8)
-
-    ax1.set_ylim(0,1)
-    ax2.set_ylim(0,1)
-    ax3.set_ylim(0,1)
-
-    ax1.set_title("Train")
-    ax2.set_title("Valid")
-    ax3.set_title("Test")
-
-    ax4.axis("off")
-    ax5.axis("off")
-    ax6.axis("off")
-    ax7.axis("off")
-    ax8.axis("off")
-
-    fig.suptitle("Model comparison (5-fold cross validation)")
-    plt.savefig("{}/{}/methods_comparison_HISTOGRAM.png".format(script_dir,results_folder),dpi=600)
-
-    def convert_dict(results_dict):
-        df = pd.DataFrame.from_dict(results_dict, orient="index").stack().to_frame()
-        # to break out the lists into columns
-        df = pd.DataFrame(df[0].values.tolist(), index=df.index,columns= ["roc_auc_class_0","roc_auc_class_1"])
-        df = df.rename(columns={"roc_auc_class_1":"Class 1","roc_auc_class_0":"Class 0"})
-        df = df.stack().unstack(level=1) #transposes
-        return df
-
-    df_latex = convert_dict(metrics_results_all_latex)
-    df_latex.style.format(na_rep = "-").to_latex('{}/{}/methods_comparison_LATEX.tex'.format(script_dir,results_folder))
-
-    metrics_results_all = {key.replace(r"\textbf{","").replace("}",""):val for key,val in metrics_results_all.items()}
-    df = convert_dict(metrics_results_all)
-    # def _custom_formatter(s):
-    #     return s.replace("%", "\\%").replace("&", "\\&")
-
-    df_styled = df.style.format(na_rep = "-",escape="latex").background_gradient(axis=None, cmap="YlOrBr") #TODO: Switch to escape="latex-math" for pandas 2.1
-
-    dfi.export(df_styled, '{}/{}/methods_comparison_DATAFRAME.png'.format(script_dir,results_folder),max_cols=-1)
-
-def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_folder="Benchmark"):
+def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_folder="Benchmark"):
     """Compares average ROC AUC"""
     overwrite=False
     metrics_results_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
+    metrics_pvals_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
     metrics_results_all_latex = defaultdict(lambda: defaultdict(lambda: defaultdict()))
+    metrics_pvals_all_latex = defaultdict(lambda: defaultdict(lambda: defaultdict()))
 
     fig, [[ax1, ax2, ax3, ax4], [ax5, ax6, ax7, ax8]] = plt.subplots(nrows=2, ncols=4, figsize=(19, 6),
                                                                      gridspec_kw={'width_ratios': [5, 5, 5, 1],
@@ -2878,58 +2592,53 @@ def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_fo
     patches_list_train = []
     patches_list_valid = []
     patches_list_test = []
+    metrics_keys = ["fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1","pval_class_0","pval_class_1"]
     for learning_type,values in dict_results.items():
         for name, folder in values.items():
             print("-------------NAME {}--------------".format(name))
-            metrics_results_train = dict.fromkeys(["fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1"])
-            metrics_results_valid = dict.fromkeys(["fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1"])
-            metrics_results_test = dict.fromkeys(["fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1"])
-            metrics_results_train_species = dict.fromkeys(["fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1"])
-            metrics_results_valid_species = dict.fromkeys(["fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1"])
-            metrics_results_test_species = dict.fromkeys(["fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1"])
+            metrics_results_train = dict.fromkeys(metrics_keys)
+            metrics_results_valid = dict.fromkeys(metrics_keys)
+            metrics_results_test = dict.fromkeys(metrics_keys)
+            metrics_results_train_species = dict.fromkeys(metrics_keys)
+            metrics_results_valid_species = dict.fromkeys(metrics_keys)
+            metrics_results_test_species = dict.fromkeys(metrics_keys)
 
             if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder)) and not overwrite:
                 print("Loading pre-computed ROC-AUC values")
                 metrics_results_train = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder), "rb"))
-                train_folds_fpr, train_folds_tpr, train_folds_roc_auc_class_0, train_folds_roc_auc_class_1 = \
-                metrics_results_train["fpr"], metrics_results_train["tpr"], metrics_results_train["roc_auc_class_0"], \
-                metrics_results_train["roc_auc_class_1"]
+                train_folds_fpr, train_folds_tpr, train_folds_roc_auc_class_0, train_folds_roc_auc_class_1,train_folds_pvals_class_0,train_folds_pvals_class_1  = metrics_results_train["fpr"], metrics_results_train["tpr"], metrics_results_train["roc_auc_class_0"], metrics_results_train["roc_auc_class_1"], metrics_results_train["pval_class_0"],metrics_results_train["pval_class_1"]
 
                 metrics_results_train_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_train_species.p".format(folder), "rb"))
-                train_species_folds_fpr, train_species_folds_tpr, train_species_folds_roc_auc_class_0, train_species_folds_roc_auc_class_1 = \
-                metrics_results_train_species["fpr"], metrics_results_train_species["tpr"], metrics_results_train_species[
-                    "roc_auc_class_0"], metrics_results_train_species["roc_auc_class_1"]
+                train_species_folds_fpr, train_species_folds_tpr, train_species_folds_roc_auc_class_0, train_species_folds_roc_auc_class_1,train_species_folds_pvals_class_0,train_species_folds_pvals_class_1 = metrics_results_train_species["fpr"], metrics_results_train_species["tpr"], metrics_results_train_species["roc_auc_class_0"], metrics_results_train_species["roc_auc_class_1"],metrics_results_train_species["pval_class_0"],metrics_results_train_species["pval_class_1"]
 
                 if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder)):
                     metrics_results_valid = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder), "rb"))
-                    valid_folds_fpr, valid_folds_tpr, valid_folds_roc_auc_class_0, valid_folds_roc_auc_class_1 = \
-                    metrics_results_valid["fpr"], metrics_results_valid["tpr"], metrics_results_valid["roc_auc_class_0"], \
-                    metrics_results_valid["roc_auc_class_1"]
+                    valid_folds_fpr, valid_folds_tpr, valid_folds_roc_auc_class_0, valid_folds_roc_auc_class_1,train_folds_pvals_class_0,train_folds_pvals_class_1 = metrics_results_valid["fpr"], metrics_results_valid["tpr"], metrics_results_valid["roc_auc_class_0"], metrics_results_valid["roc_auc_class_1"],metrics_results_valid["pval_class_0"],metrics_results_valid["pval_class_1"]
                     metrics_results_valid_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_valid_species.p".format(folder), "rb"))
-                    valid_species_folds_fpr, valid_species_folds_tpr, valid_species_folds_roc_auc_class_0, valid_species_folds_roc_auc_class_1 = \
+                    valid_species_folds_fpr, valid_species_folds_tpr, valid_species_folds_roc_auc_class_0, valid_species_folds_roc_auc_class_1,train_species_folds_pvals_class_0,train_species_folds_pvals_class_1 = \
                     metrics_results_valid_species["fpr"], metrics_results_valid_species["tpr"], \
-                    metrics_results_valid_species["roc_auc_class_0"], metrics_results_valid_species["roc_auc_class_1"]
+                    metrics_results_valid_species["roc_auc_class_0"], metrics_results_valid_species["roc_auc_class_1"],metrics_results_valid_species["pval_class_0"],metrics_results_valid_species["pval_class_1"]
 
                 if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_test.p".format(folder)):
                     metrics_results_test = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_test.p".format(folder), "rb"))
-                    test_folds_fpr, test_folds_tpr, test_folds_roc_auc_class_0, test_folds_roc_auc_class_1 = \
+                    test_folds_fpr, test_folds_tpr, test_folds_roc_auc_class_0, test_folds_roc_auc_class_1,test_folds_pvals_class_0,test_folds_pvals_class_1 = \
                     metrics_results_test["fpr"], metrics_results_test["tpr"], metrics_results_test["roc_auc_class_0"], \
-                    metrics_results_test["roc_auc_class_1"]
+                    metrics_results_test["roc_auc_class_1"],metrics_results_test["pval_class_0"],metrics_results_test["pval_class_1"]
 
                     metrics_results_test_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_test_species.p".format(folder), "rb"))
-                    test_species_folds_fpr, test_species_folds_tpr, test_species_folds_roc_auc_class_0, test_species_folds_roc_auc_class_1 = \
+                    test_species_folds_fpr, test_species_folds_tpr, test_species_folds_roc_auc_class_0, test_species_folds_roc_auc_class_1,test_species_folds_pvals_class_0,test_species_folds_pvals_class_1 = \
                     metrics_results_test_species["fpr"], metrics_results_test_species["tpr"], metrics_results_test_species[
-                        "roc_auc_class_0"], metrics_results_test_species["roc_auc_class_1"]
+                        "roc_auc_class_0"], metrics_results_test_species["roc_auc_class_1"],metrics_results_test_species["pval_class_0"],metrics_results_test_species["pval_class_1"]
 
 
             else:
                 print("calculating ROC-AUC values")
-                train_folds_fpr, train_folds_tpr, train_folds_roc_auc_class_0, train_folds_roc_auc_class_1 = [], [], [], []
-                valid_folds_fpr, valid_folds_tpr, valid_folds_roc_auc_class_0, valid_folds_roc_auc_class_1 = [], [], [], []
-                test_folds_fpr, test_folds_tpr, test_folds_roc_auc_class_0, test_folds_roc_auc_class_1 = [], [], [], []
-                train_species_folds_fpr, train_species_folds_tpr, train_species_folds_roc_auc_class_0, train_species_folds_roc_auc_class_1 = [], [], [], []
-                valid_species_folds_fpr, valid_species_folds_tpr, valid_species_folds_roc_auc_class_0, valid_species_folds_roc_auc_class_1 = [], [], [], []
-                test_species_folds_fpr, test_species_folds_tpr, test_species_folds_roc_auc_class_0, test_species_folds_roc_auc_class_1 = [], [], [], []
+                train_folds_fpr, train_folds_tpr, train_folds_roc_auc_class_0, train_folds_roc_auc_class_1,train_folds_pvals_class_0,train_folds_pvals_class_1 = [], [], [], [],[],[]
+                valid_folds_fpr, valid_folds_tpr, valid_folds_roc_auc_class_0, valid_folds_roc_auc_class_1,valid_folds_pvals_class_0,valid_folds_pvals_class_1 = [], [], [], [],[],[]
+                test_folds_fpr, test_folds_tpr, test_folds_roc_auc_class_0, test_folds_roc_auc_class_1,test_folds_pvals_class_0,test_folds_pvals_class_1 = [], [], [], [],[],[]
+                train_species_folds_fpr, train_species_folds_tpr, train_species_folds_roc_auc_class_0, train_species_folds_roc_auc_class_1,train_species_folds_pvals_class_0, train_species_folds_pvals_class_1 = [], [], [], [],[],[]
+                valid_species_folds_fpr, valid_species_folds_tpr, valid_species_folds_roc_auc_class_0, valid_species_folds_roc_auc_class_1,valid_species_folds_pvals_class_0, valid_species_folds_pvals_class_1 = [], [], [], [],[],[]
+                test_species_folds_fpr, test_species_folds_tpr, test_species_folds_roc_auc_class_0, test_species_folds_roc_auc_class_1,test_species_folds_pvals_class_0, test_species_folds_pvals_class_1 = [], [], [], [],[],[]
 
                 for fold in range(kfolds):
                     print("-------------FOLD {}--------------".format(fold))
@@ -2958,7 +2667,7 @@ def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_fo
                             idx_name = "all"
                             sample_mode = "samples"
 
-                            fpr, tpr, roc_auc = plot_ROC_curves(labels, onehot_labels, summary_dict, args, script_dir, mode,
+                            fpr, tpr, roc_auc,pvals = plot_ROC_curves(labels, onehot_labels, summary_dict, args, script_dir, mode,
                                                                 fold, sample_mode,
                                                                 prob_mode, idx_all, idx_name, save=False)
 
@@ -2967,6 +2676,8 @@ def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_fo
                                 train_folds_tpr.append(tpr)
                                 train_folds_roc_auc_class_0.append(roc_auc[0])
                                 train_folds_roc_auc_class_1.append(roc_auc[1])
+                                train_folds_pvals_class_0.append(pvals[0])
+                                train_folds_pvals_class_1.append(pvals[1])
                                 species_results = calculate_species_roc_auc_helper(summary_dict, args, script_dir, idx_all,
                                                                                    fold, prob_mode, sample_mode,
                                                                                    mode="{}_species".format(mode))
@@ -2974,12 +2685,16 @@ def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_fo
                                 train_species_folds_tpr.append(np.nan)
                                 train_species_folds_roc_auc_class_0.append(species_results[0])
                                 train_species_folds_roc_auc_class_1.append(species_results[1])
+                                train_species_folds_pvals_class_0.append(species_results[2])
+                                train_species_folds_pvals_class_1.append(species_results[3])
 
                             elif mode == "valid":
                                 valid_folds_fpr.append(fpr)
                                 valid_folds_tpr.append(tpr)
                                 valid_folds_roc_auc_class_0.append(roc_auc[0])
                                 valid_folds_roc_auc_class_1.append(roc_auc[1])
+                                valid_folds_pvals_class_0.append(pvals[0])
+                                valid_folds_pvals_class_1.append(pvals[1])
                                 species_results = calculate_species_roc_auc_helper(summary_dict, args, script_dir, idx_all,
                                                                                    fold, prob_mode, sample_mode,
                                                                                    mode="{}_species".format(mode))
@@ -2987,64 +2702,106 @@ def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_fo
                                 valid_species_folds_tpr.append(np.nan)
                                 valid_species_folds_roc_auc_class_0.append(species_results[0])
                                 valid_species_folds_roc_auc_class_1.append(species_results[1])
+                                valid_species_folds_pvals_class_0.append(species_results[2])
+                                valid_species_folds_pvals_class_1.append(species_results[3])
+
                             else:
                                 test_folds_fpr.append(fpr)
                                 test_folds_tpr.append(tpr)
                                 test_folds_roc_auc_class_0.append(roc_auc[0])
                                 test_folds_roc_auc_class_1.append(roc_auc[1])
+                                test_folds_pvals_class_0.append(pvals[0])
+                                test_folds_pvals_class_1.append(pvals[1])
                                 test_species_folds_fpr.append(np.nan)
                                 test_species_folds_tpr.append(np.nan)
                                 test_species_folds_roc_auc_class_0.append(np.nan)
                                 test_species_folds_roc_auc_class_1.append(np.nan)
+                                test_species_folds_pvals_class_0.append(np.nan)
+                                test_species_folds_pvals_class_1.append(np.nan)
+
                         else:
                             if mode == "valid":
                                 valid_folds_fpr.append(np.nan)
                                 valid_folds_tpr.append(np.nan)
                                 valid_folds_roc_auc_class_0.append(np.nan)
                                 valid_folds_roc_auc_class_1.append(np.nan)
+                                valid_folds_pvals_class_0.append(np.nan)
+                                valid_folds_pvals_class_1.append(np.nan)
                                 valid_species_folds_fpr.append(np.nan)
                                 valid_species_folds_tpr.append(np.nan)
                                 valid_species_folds_roc_auc_class_0.append(np.nan)
                                 valid_species_folds_roc_auc_class_1.append(np.nan)
+                                valid_species_folds_pvals_class_0.append(np.nan)
+                                valid_species_folds_pvals_class_1.append(np.nan)
                             else:
                                 test_folds_fpr.append(np.nan)
                                 test_folds_tpr.append(np.nan)
                                 test_folds_roc_auc_class_0.append(np.nan)
                                 test_folds_roc_auc_class_1.append(np.nan)
+                                test_folds_pvals_class_0.append(np.nan)
+                                test_folds_pvals_class_1.append(np.nan)
                                 test_species_folds_fpr.append(np.nan)
                                 test_species_folds_tpr.append(np.nan)
                                 test_species_folds_roc_auc_class_0.append(np.nan)
                                 test_species_folds_roc_auc_class_1.append(np.nan)
+                                test_species_folds_pvals_class_0.append(np.nan)
+                                test_species_folds_pvals_class_1.append(np.nan)
 
                 metrics_results_train["fpr"] = train_folds_fpr
                 metrics_results_train["tpr"] = train_folds_tpr
                 metrics_results_train["roc_auc_class_0"] = train_folds_roc_auc_class_0
                 metrics_results_train["roc_auc_class_1"] = train_folds_roc_auc_class_1
+                train_folds_pvals_class_0 = np.array(train_folds_pvals_class_0)
+                metrics_results_train["pval_class_0"] = train_folds_pvals_class_0[~np.isnan(train_folds_pvals_class_0)]
+                train_folds_pvals_class_1 = np.array(train_folds_pvals_class_1)
+                metrics_results_train["pval_class_1"] = train_folds_pvals_class_1[~np.isnan(train_folds_pvals_class_1)]
+
 
                 metrics_results_valid["fpr"] = valid_folds_fpr
                 metrics_results_valid["tpr"] = valid_folds_tpr
                 metrics_results_valid["roc_auc_class_0"] = valid_folds_roc_auc_class_0
                 metrics_results_valid["roc_auc_class_1"] = valid_folds_roc_auc_class_1
+                valid_folds_pvals_class_0 = np.array(valid_folds_pvals_class_0)
+                metrics_results_valid["pval_class_0"] = valid_folds_pvals_class_0[~np.isnan(valid_folds_pvals_class_0)]
+                valid_folds_pvals_class_1 = np.array(valid_folds_pvals_class_1)
+                metrics_results_valid["pval_class_1"] = valid_folds_pvals_class_1[~np.isnan(valid_folds_pvals_class_1)]
 
                 metrics_results_test["fpr"] = test_folds_fpr
                 metrics_results_test["tpr"] = test_folds_tpr
                 metrics_results_test["roc_auc_class_0"] = test_folds_roc_auc_class_0
                 metrics_results_test["roc_auc_class_1"] = test_folds_roc_auc_class_1
+                test_folds_pvals_class_0 = np.array(test_folds_pvals_class_0)
+                metrics_results_test["pval_class_0"] = test_folds_pvals_class_0[~np.isnan(test_folds_pvals_class_0)]
+                test_folds_pvals_class_1 = np.array(test_folds_pvals_class_1)
+                metrics_results_test["pval_class_1"] = test_folds_pvals_class_1[~np.isnan(test_folds_pvals_class_1)]
 
                 metrics_results_train_species["fpr"] = train_species_folds_fpr
                 metrics_results_train_species["tpr"] = train_species_folds_tpr
                 metrics_results_train_species["roc_auc_class_0"] = train_species_folds_roc_auc_class_0
                 metrics_results_train_species["roc_auc_class_1"] = train_species_folds_roc_auc_class_1
+                train_species_folds_pvals_class_0 = np.array(train_species_folds_pvals_class_0)
+                metrics_results_train_species["pval_class_0"] = train_species_folds_pvals_class_0[~np.isnan(train_species_folds_pvals_class_0)]
+                train_species_folds_pvals_class_1 = np.array(train_species_folds_pvals_class_1)
+                metrics_results_train_species["pval_class_1"] = train_species_folds_pvals_class_1[~np.isnan(train_species_folds_pvals_class_1)]
+
 
                 metrics_results_valid_species["fpr"] = valid_species_folds_fpr
                 metrics_results_valid_species["tpr"] = valid_species_folds_tpr
                 metrics_results_valid_species["roc_auc_class_0"] = valid_species_folds_roc_auc_class_0
                 metrics_results_valid_species["roc_auc_class_1"] = valid_species_folds_roc_auc_class_1
+                valid_species_folds_pvals_class_0 = np.array(valid_species_folds_pvals_class_0)
+                metrics_results_valid_species["pval_class_0"] = valid_species_folds_pvals_class_0[~np.isnan(valid_species_folds_pvals_class_0)]
+                valid_species_folds_pvals_class_1 = np.array(valid_species_folds_pvals_class_1)
+                metrics_results_valid_species["pval_class_1"] = valid_species_folds_pvals_class_1[~np.isnan(valid_species_folds_pvals_class_1)]
 
                 metrics_results_test_species["fpr"] = test_species_folds_fpr
                 metrics_results_test_species["tpr"] = test_species_folds_tpr
                 metrics_results_test_species["roc_auc_class_0"] = test_species_folds_roc_auc_class_0
                 metrics_results_test_species["roc_auc_class_1"] = test_species_folds_roc_auc_class_1
+                test_species_folds_pvals_class_0 = np.array(test_species_folds_pvals_class_0)
+                metrics_results_test_species["pval_class_0"] = test_species_folds_pvals_class_0[~np.isnan(test_species_folds_pvals_class_0)]
+                test_species_folds_pvals_class_1 = np.array(test_species_folds_pvals_class_1)
+                metrics_results_test_species["pval_class_1"] = test_species_folds_pvals_class_1[~np.isnan(test_species_folds_pvals_class_1)]
 
                 pickle.dump(metrics_results_train, open("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder), "wb"))
                 pickle.dump(metrics_results_valid, open("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder), "wb"))
@@ -3061,39 +2818,73 @@ def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_fo
                 np.round((np.mean(np.array(metrics_results_train["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train["roc_auc_class_1"])))/2, 2)) + " $\pm$ " + str(
                 np.round((np.std(np.array(metrics_results_train["roc_auc_class_0"])) + np.std(np.array(metrics_results_train["roc_auc_class_1"])))/2, 2))
 
+            metrics_pvals_all_latex[learning_type][name]["train"]= str(
+                np.round((np.mean(np.array(metrics_results_train["pval_class_0"])) + np.mean(np.array(metrics_results_train["pval_class_1"])))/2, 2)) + " $\pm$ " + str(
+                np.round((np.std(np.array(metrics_results_train["pval_class_0"])) + np.std(np.array(metrics_results_train["pval_class_1"])))/2, 2))
+
             metrics_results_all_latex[learning_type][name]["valid"] = str(
                 np.round((np.mean((np.array(metrics_results_valid["roc_auc_class_0"]))) + np.mean(np.array(metrics_results_valid["roc_auc_class_1"])))/2, 2)) + " $\pm$ " + str(
                 np.round((np.std(np.array(metrics_results_valid["roc_auc_class_0"])) + np.std(np.array(metrics_results_valid["roc_auc_class_1"])))/2, 2))
 
+            metrics_pvals_all_latex[learning_type][name]["valid"] = str(
+                np.round((np.mean((np.array(metrics_results_valid["pval_class_0"]))) + np.mean(
+                    np.array(metrics_results_valid["pval_class_1"]))) / 2, 2)) + " $\pm$ " + str(
+                np.round((np.std(np.array(metrics_results_valid["pval_class_0"])) + np.std(
+                    np.array(metrics_results_valid["pval_class_1"]))) / 2, 2))
+
 
             metrics_results_all_latex[learning_type][name]["test"] = str(
                 np.round((np.mean(np.array(metrics_results_test["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test["roc_auc_class_1"])))/2, 2)) + " $\pm$ " + str(
-                np.round((np.std(np.array(metrics_results_test["roc_auc_class_0"])) + np.std(np.array(metrics_results_test["roc_auc_class_0"])))/2, 2)) if metrics_results_test["roc_auc_class_0"] is not None else metrics_results_test["roc_auc_class_0"]
+                np.round((np.std(np.array(metrics_results_test["roc_auc_class_0"])) + np.std(np.array(metrics_results_test["roc_auc_class_1"])))/2, 2)) if metrics_results_test["roc_auc_class_0"] is not None else metrics_results_test["roc_auc_class_0"]
+
+
+            metrics_pvals_all_latex[learning_type][name]["test"] = str(
+                np.round((np.mean(np.array(metrics_results_test["pval_class_0"])) + np.mean(np.array(metrics_results_test["pval_class_1"])))/2, 2)) + " $\pm$ " + str(
+                np.round((np.std(np.array(metrics_results_test["pval_class_0"])) + np.std(np.array(metrics_results_test["pval_class_1"])))/2, 2)) if metrics_results_test["pval_class_0"] is not None else metrics_results_test["roc_auc_class_0"]
+
 
 
             metrics_results_all_latex[learning_type][name]["train-species"] = str(
                 np.round((np.mean(np.array(metrics_results_train_species["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train_species["roc_auc_class_1"])))/2, 2)) + " $\pm$ " + str(
                 np.round((np.std(np.array(metrics_results_train_species["roc_auc_class_0"])) + np.std(np.array(metrics_results_train_species["roc_auc_class_1"])))/2, 2))
 
+            metrics_pvals_all_latex[learning_type][name]["train-species"] = str(
+                np.round((np.mean(np.array(metrics_results_train_species["pval_class_0"])) + np.mean(
+                    np.array(metrics_results_train_species["pval_class_1"]))) / 2, 2)) + " $\pm$ " + str(
+                np.round((np.std(np.array(metrics_results_train_species["pval_class_0"])) + np.std(
+                    np.array(metrics_results_train_species["pval_class_1"]))) / 2, 2))
 
             metrics_results_all_latex[learning_type][name]["valid-species"] = str(
                 np.round((np.mean((np.array(metrics_results_valid_species["roc_auc_class_0"]))) + np.mean(np.array(metrics_results_valid_species["roc_auc_class_1"])))/2, 2)) + " $\pm$ " + str(
                 np.round((np.std(np.array(metrics_results_valid_species["roc_auc_class_0"])) + np.std(np.array(metrics_results_valid_species["roc_auc_class_1"])))/2, 2))
 
+            metrics_pvals_all_latex[learning_type][name]["valid-species"] = str(
+                np.round((np.mean((np.array(metrics_results_valid_species["pval_class_0"]))) + np.mean(np.array(metrics_results_valid_species["pval_class_1"])))/2, 2)) + " $\pm$ " + str(
+                np.round((np.std(np.array(metrics_results_valid_species["pval_class_0"])) + np.std(np.array(metrics_results_valid_species["pval_class_1"])))/2, 2))
 
 
             metrics_results_all_latex[learning_type][name]["test-species"] = str(
                 np.round((np.mean(np.array(metrics_results_test_species["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test_species["roc_auc_class_1"])))/2, 2)) + " $\pm$ " + str(
-                np.round((np.std(np.array(metrics_results_test_species["roc_auc_class_0"])) + np.std(np.array(metrics_results_test_species["roc_auc_class_0"])))/2, 2)) if metrics_results_test_species["roc_auc_class_0"] is not None else metrics_results_test_species["roc_auc_class_0"]
+                np.round((np.std(np.array(metrics_results_test_species["roc_auc_class_0"])) + np.std(np.array(metrics_results_test_species["roc_auc_class_1"])))/2, 2)) if metrics_results_test_species["roc_auc_class_0"] is not None else metrics_results_test_species["roc_auc_class_0"]
+
+            metrics_pvals_all_latex[learning_type][name]["test-species"] = str(
+                np.round((np.mean(np.array(metrics_results_test_species["pval_class_0"])) + np.mean(np.array(metrics_results_test_species["pval_class_1"])))/2, 2)) + " $\pm$ " + str(
+                np.round((np.std(np.array(metrics_results_test_species["pval_class_0"])) + np.std(np.array(metrics_results_test_species["pval_class_1"])))/2, 2)) if metrics_results_test_species["pval_class_0"] is not None else metrics_results_test_species["pval_class_0"]
 
 
 
             metrics_results_all[learning_type][name]["train"] = np.round((np.mean(np.array(metrics_results_train["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train["roc_auc_class_1"])))/2, 2)
+            metrics_pvals_all[learning_type][name]["train"] = np.round((np.mean(np.array(metrics_results_train["pval_class_0"])) + np.mean(np.array(metrics_results_train["pval_class_1"])))/2, 2)
             metrics_results_all[learning_type][name]["valid"] = np.round((np.mean((np.array(metrics_results_valid["roc_auc_class_0"]))) + np.mean(np.array(metrics_results_valid["roc_auc_class_1"])))/2, 2)
+            metrics_pvals_all[learning_type][name]["valid"] = np.round((np.mean((np.array(metrics_results_valid["pval_class_0"]))) + np.mean(np.array(metrics_results_valid["pval_class_1"])))/2, 2)
             metrics_results_all[learning_type][name]["test"] = np.round((np.mean(np.array(metrics_results_test["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test["roc_auc_class_1"])))/2, 2) if metrics_results_test["roc_auc_class_0"] is not None else metrics_results_test["roc_auc_class_0"]
+            metrics_pvals_all[learning_type][name]["test"] = np.round((np.mean(np.array(metrics_results_test["pval_class_0"])) + np.mean(np.array(metrics_results_test["pval_class_1"])))/2, 2) if metrics_results_test["pval_class_0"] is not None else metrics_results_test["pval_class_0"]
             metrics_results_all[learning_type][name]["train-species"] =  np.round((np.mean(np.array(metrics_results_train_species["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train_species["roc_auc_class_1"])))/2, 2)
+            metrics_pvals_all[learning_type][name]["train-species"] =  np.round((np.mean(np.array(metrics_results_train_species["pval_class_0"])) + np.mean(np.array(metrics_results_train_species["pval_class_1"])))/2, 2)
             metrics_results_all[learning_type][name]["valid-species"] = np.round((np.mean((np.array(metrics_results_valid_species["roc_auc_class_0"]))) + np.mean(np.array(metrics_results_valid_species["roc_auc_class_1"])))/2, 2)
+            metrics_pvals_all[learning_type][name]["valid-species"] = np.round((np.mean((np.array(metrics_results_valid_species["pval_class_0"]))) + np.mean(np.array(metrics_results_valid_species["pval_class_1"])))/2, 2)
             metrics_results_all[learning_type][name]["test-species"] = np.round((np.mean(np.array(metrics_results_test_species["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test_species["roc_auc_class_1"])))/2, 2)if metrics_results_test_species["roc_auc_class_0"] is not None else metrics_results_test_species["roc_auc_class_0"]
+            metrics_pvals_all[learning_type][name]["test-species"] = np.round((np.mean(np.array(metrics_results_test_species["pval_class_0"])) + np.mean(np.array(metrics_results_test_species["pval_class_1"])))/2, 2)if metrics_results_test_species["pval_class_0"] is not None else metrics_results_test_species["pval_class_0"]
 
             bsize = 0.7
             bar1_0 = ax1.bar(i, np.mean(train_folds_roc_auc_class_0), yerr=np.std(train_folds_roc_auc_class_0), width=bsize,
@@ -3196,19 +2987,21 @@ def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_fo
     df_latex = convert_dict(metrics_results_all_latex)
     df_latex.style.format(na_rep="-").to_latex('{}/{}/methods_comparison_LATEX.tex'.format(script_dir, results_folder))
 
-    metrics_results_all = {key.replace(r"\textbf{", "").replace("}", ""): val for key, val in metrics_results_all.items()}
-    df = convert_dict(metrics_results_all)
-    #Highlight: https://stackoverflow.com/questions/59769161/python-color-pandas-dataframe-based-on-multiindex
-    colors = {"supervised(Icore)": matplotlib.colors.to_rgba('lavender'), "supervised(Icore_non_anchor)": matplotlib.colors.to_rgba('palegreen'),"semisupervised(Icore)":matplotlib.colors.to_rgba('paleturquoise'),"semisupervised(Icore_non_anchor)":matplotlib.colors.to_rgba('plum')}
-    c = {k: matplotlib.colors.rgb2hex(v) for k, v in colors.items()}
-    idx = df.index.get_level_values(0)
-    css = [{'selector': f'.row{i}.level0', 'props': [('background-color', c[v])]} for i, v in enumerate(idx)]
+
+    def process_dict(metrics_dict,title):
+        metrics_dict = {key.replace(r"\textbf{", "").replace("}", ""): val for key, val in metrics_dict.items()}
+        df = convert_dict(metrics_dict)
+        #Highlight: https://stackoverflow.com/questions/59769161/python-color-pandas-dataframe-based-on-multiindex
+        colors = {"supervised(Icore)": matplotlib.colors.to_rgba('lavender'), "supervised(Icore_non_anchor)": matplotlib.colors.to_rgba('palegreen'),"semisupervised(Icore)":matplotlib.colors.to_rgba('paleturquoise'),"semisupervised(Icore_non_anchor)":matplotlib.colors.to_rgba('plum')}
+        c = {k: matplotlib.colors.rgb2hex(v) for k, v in colors.items()}
+        idx = df.index.get_level_values(0)
+        css = [{'selector': f'.row{i}.level0', 'props': [('background-color', c[v])]} for i, v in enumerate(idx)]
+        df_styled = df.style.format(na_rep="-", escape="latex",precision=2).background_gradient(axis=None,cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" for pandas 2.1
+        dfi.export(df_styled, '{}/{}/metrics_comparison_{}.png'.format(script_dir, results_folder,title), max_cols=-1)
 
 
-    df_styled = df.style.format(na_rep="-", escape="latex",precision=2).background_gradient(axis=None,
-                                                                                cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" for pandas 2.1
-
-    dfi.export(df_styled, '{}/{}/methods_comparison_DATAFRAME.png'.format(script_dir, results_folder), max_cols=-1)
+    process_dict(metrics_results_all, "ROC_AUC")
+    process_dict(metrics_pvals_all, "P_values_AUC")
 
 
 def plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covariances_dict_train,covariances_dict_valid,covariances_dict_test,learning_type,name,args,script_dir,results_folder):
@@ -3300,26 +3093,25 @@ def plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covaria
                                                             filter_correlations=False)
 
             if mode == "train":
-                covariances_dict_train[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"]))
+                covariances_dict_train[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"])) #make positive because umap vector can be orientated anywhere
                 covariances_dict_train[learning_type][name]["features_names"].append(correlations_dict["features_names"])
-                covariances_dict_train[learning_type][name]["pearson_coefficients"].append(correlations_dict["pearson_coefficients"])
+                covariances_dict_train[learning_type][name]["pearson_coefficients"].append(np.abs(correlations_dict["pearson_coefficients"]))
                 covariances_dict_train[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
                 covariances_dict_train[learning_type][name]["umap_1d"].append(umap_proj_1d)
             elif mode == "valid":
                 covariances_dict_valid[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"]))
                 covariances_dict_valid[learning_type][name]["features_names"].append(correlations_dict["features_names"])
-                covariances_dict_valid[learning_type][name]["pearson_coefficients"].append(correlations_dict["pearson_coefficients"])
+                covariances_dict_valid[learning_type][name]["pearson_coefficients"].append(np.abs(correlations_dict["pearson_coefficients"]))
                 covariances_dict_valid[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
                 covariances_dict_valid[learning_type][name]["umap_1d"].append(umap_proj_1d)
             elif mode == "test":
                 covariances_dict_test[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"]))
                 covariances_dict_test[learning_type][name]["features_names"].append(correlations_dict["features_names"])
-                covariances_dict_test[learning_type][name]["pearson_coefficients"].append(correlations_dict["pearson_coefficients"])
+                covariances_dict_test[learning_type][name]["pearson_coefficients"].append(np.abs(correlations_dict["pearson_coefficients"]))
                 covariances_dict_test[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
                 covariances_dict_test[learning_type][name]["umap_1d"].append(umap_proj_1d)
 
     return covariances_dict_train,covariances_dict_valid,covariances_dict_test
-
 
 def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results_folder="Benchmark"):
      """Computes the average UMAP1d vs peptide feature correlations across the n-folds"""
@@ -3568,14 +3360,6 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
      # df_latex = convert_dict(covariances_all_latex)
      # df_latex.style.format(na_rep="-").to_latex('{}/{}/methods_comparison_LATEX.tex'.format(script_dir, results_folder))
 
-     #print(covariances_all['supervised(Icore)'].keys())
-     #print(covariances_all['supervised(Icore)']["viral-dataset-11-onehot-8mers-0-unobserved"]["train"].values())
-     # for key1,val1 in covariances_all.items():
-     #     for key2,val2 in val1.items():
-     #         for key3,val3 in val2.items():
-     #             for key4,val4 in val3.items():
-     #                print("{}_{}_{}_{}".format(key1,key2,key3,key4))
-     #                print(val4)
      def process_dict(metric_dict,title=""):
          metric_dict = {key.replace(r"\textbf{", "").replace("}", ""): val for key, val in metric_dict.items()}
 

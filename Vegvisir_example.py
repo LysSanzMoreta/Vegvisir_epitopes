@@ -217,10 +217,10 @@ def analysis_models():
     #assert args.dataset_name in ["viral_dataset8","viral_dataset6"], "In order to analyse the semi supervised performance we need to set num_obs_classes correctly, please select viral_dataset8 or viral_dataset6 and leraning-type to semisupervised"
 
 
-    #VegvisirPlots.plot_kfold_comparisons2(args,script_dir,dict_results_all,kfolds=5,results_folder = "Benchmark")
+    VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_all,kfolds=5,results_folder = "Benchmark")
 
 
-    VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_all,kfolds=5,results_folder="Benchmark")
+    #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_all,kfolds=5,results_folder="Benchmark")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
