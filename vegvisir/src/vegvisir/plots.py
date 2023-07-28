@@ -1406,7 +1406,7 @@ def plot_latent_correlations(umap_proj,dataset_info,latent_space,predictions_dic
     plt.clf()
     plt.close(fig)
 
-def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_space,sample_mode,results_dir,method,vector_name,plot_scatter_correlations=False,plot_covariance=True,save_plot=True):
+def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_space,sample_mode,results_dir,method,vector_name,plot_scatter_correlations=False,plot_covariance=True,save_plot=True,filter_correlations=True):
     """
     :param umap_proj:
     :param dataset_info:
@@ -1426,9 +1426,8 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
     features_dict.pop('clusters_info', None)
     features_dict["immunodominance_scores"] = latent_space[:,3]
     true_labels = latent_space[:,0]
-
     # #Highlight: Bring the pre-calculate peptide features back. PRESERVING THE ORDER OF THE SEQUENCES!
-    if (not args.shuffle_sequence) and (not args.random_sequences) and (args.num_mutations != 0)  and (args.sequence_type != "Icore"):
+    if (not args.shuffle_sequence) and (not args.random_sequences) and (not args.num_mutations != 0) and (args.sequence_type == "Icore"):
         if (args.num_classes == args.num_obs_classes):
             sequences_raw = settings["sequences_raw"]  # the sequences are following the order from the data loader
             sequences_raw = list(map(lambda seq: "".join(seq).replace("#", ""), sequences_raw))
@@ -1442,27 +1441,54 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
 
             sequences_feats = sequences_feats.to_dict(orient="list")
             sequences_feats.pop('Icore', None)
-
             #Highlight: Merge both features dict if there is useful information
             if sequences_feats[peptide_feats_cols[1]]:
                 features_dict = {**features_dict, **sequences_feats}
 
-    print("#####################################3")
 
-    pearson_correlations = list(map(lambda feat1,feat2: round(np.corrcoef(feat1,feat2,rowvar=False)[0][1],2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
-    pearson_correlations = np.array(pearson_correlations)
-    pearson_corr_idx = np.argwhere((pearson_correlations >= 0.1) | (pearson_correlations <-0.1))
-    pearson_correlations=pearson_correlations[pearson_corr_idx]
+    def calculate_correlations(feat1,feat2,method="pearson"):
+        unique_vals = np.unique(feat2)
+        if (unique_vals.astype(int) == unique_vals).sum() == len(unique_vals): #if the variable is categorical
+            print("found categorical variable")
+            result =  scipy.stats.pointbiserial(feat1, feat2)
+        else:
+            print("continuous variable")
+            if method == "pearson":
+                result =  scipy.stats.pearsonr(feat1, feat2)
+            else:
+                result =  scipy.stats.spearmanr(feat1, feat2)
+        return result
 
-    spearman_correlations = list(map(lambda feat1,feat2: round(stats.spearmanr(feat1,feat2,axis=1).correlation,2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
-    spearman_correlations = np.array(spearman_correlations)
+
+    #pearson_correlations = list(map(lambda feat1,feat2: scipy.stats.pearsonr(feat1, feat2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
+    pearson_correlations = list(map(lambda feat1,feat2: calculate_correlations(feat1, feat2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
+    pearson_correlations = list(zip(*pearson_correlations))
+    pearson_coefficients = np.array(pearson_correlations[0])
+    pearson_coefficients = np.round(pearson_coefficients,2)
+    pearson_pvalues = np.array(pearson_correlations[1])
+    pearson_pvalues = np.round(pearson_pvalues,3)
+    if filter_correlations:
+        pearson_coef_idx = np.argwhere((pearson_coefficients >= 0.1) | (pearson_coefficients <-0.1))
+        pearson_coefficients=pearson_coefficients[pearson_coef_idx]
+
+    #spearman_correlations = list(map(lambda feat1,feat2: scipy.stats.stats.spearmanr(feat1,feat2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
+    spearman_correlations = list(map(lambda feat1,feat2: calculate_correlations(feat1,feat2,method="spearman"),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
+    spearman_correlations = list(zip(*spearman_correlations))
+
+    spearman_coefficients = np.array(spearman_correlations[0])
+    spearman_coefficients = np.round(spearman_coefficients,2)
     #spearman_corr_idx = np.argwhere((spearman_correlations >= 0.1) | (spearman_correlations <-0.1))
-    spearman_correlations = spearman_correlations[pearson_corr_idx]
+    if filter_correlations:
+        spearman_coefficients = spearman_coefficients[pearson_coef_idx]
 
     features_dict_new = defaultdict()
     for idx,(key,val) in enumerate(features_dict.items()):
-        if idx in pearson_corr_idx:
+        if filter_correlations:
+          if idx in pearson_coef_idx:
             features_dict_new[key] = val
+        else:
+            features_dict_new[key] = val
+
 
     if features_dict_new:
         if plot_scatter_correlations:
@@ -1471,9 +1497,9 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
             fig, axs= plt.subplots(nrows, ncols, figsize=(40, 30),dpi=500)
             axs = axs.ravel()
             i= 0
-            for feature,pearson_corr,spearman_corr,color in zip(features_dict_new.keys(),pearson_correlations,spearman_correlations,colors_list_aa):
+            for feature,pearson_coef,pval,spearman_coef,color in zip(features_dict_new.keys(),pearson_coefficients,pearson_pvalues,spearman_coefficients,colors_list_aa):
                 axs[i].scatter(umap_proj_1d,features_dict_new[feature],color=color,s=10)
-                axs[i].set_title("{}: \n Pearson: {} \n Spearman: {}".format(feature,pearson_corr.item(),spearman_corr.item()),fontsize=22)
+                axs[i].set_title("{}: \n Pearson: {} \n Spearman: {}".format(feature,pearson_coef.item(),spearman_coef.item()),fontsize=22)
                 axs[i].tick_params(axis='both', which='major', labelsize=15,width=0.1)
                 axs[i].tick_params(axis='both', which='minor', labelsize=15,width=0.1)
                 i += 1
@@ -1491,31 +1517,31 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
         features_matrix = np.array(list(features_dict.values()))
         features_matrix = np.vstack([umap_proj_1d[None, :], features_matrix])
         features_covariance = np.cov(features_matrix)
-
-        # norm = plt.Normalize(0, 1)
-        norm = None
-        cmap = sns.color_palette("rocket_r", as_cmap=True)
-        cbar = True
-
-        sns.heatmap(features_covariance, ax=ax1, cbar=cbar, cmap=cmap, norm=norm, annot=True,
-                    annot_kws={"fontsize": "small"}, fmt=".1f")
-        ax1.set_xticks(np.arange(len(features_names)), labels=features_names, rotation=45)
-        ax1.spines['left'].set_visible(False)
-        # ax1.yaxis.set_ticklabels([])
-        ax1.set_yticks(np.arange(len(features_names)) + 0.5, labels=features_names, rotation=360)
-
-        ax1.set_title("Covariance matrix features")
-
-        fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.2)
-        plt.margins(0.6)
-        fig.suptitle("Features covariance")
         if save_plot:
-            plt.savefig("{}/{}/HEATMAP_features_UMAP_1D_covariance_{}_{}.png".format(results_dir, method, vector_name,
-                                                                                     sample_mode), dpi=600)
+            # norm = plt.Normalize(0, 1)
+            norm = None
+            cmap = sns.color_palette("rocket_r", as_cmap=True)
+            cbar = True
+
+            sns.heatmap(features_covariance, ax=ax1, cbar=cbar, cmap=cmap, norm=norm, annot=True,annot_kws={"fontsize": "small"}, fmt=".1f")
+            ax1.set_xticks(np.arange(len(features_names)), labels=features_names, rotation=45)
+            ax1.spines['left'].set_visible(False)
+            # ax1.yaxis.set_ticklabels([])
+            ax1.set_yticks(np.arange(len(features_names)) + 0.5, labels=features_names, rotation=360)
+            ax1.set_title("Covariance matrix features")
+
+            fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.2)
+            plt.margins(0.6)
+            fig.suptitle("Features covariance")
+            plt.savefig("{}/{}/HEATMAP_features_UMAP_1D_covariance_{}_{}.png".format(results_dir, method, vector_name,sample_mode), dpi=600)
         plt.clf()
         plt.close(fig)
 
-        return features_covariance, features_names
+        return {"features_covariance":features_covariance,
+                "features_names":features_names,
+                "pearson_coefficients":pearson_coefficients,
+                "pearson_pvalues":pearson_pvalues,
+                "spearman_coefficients":spearman_coefficients}
 
 def plot_latent_space(args,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4,plot_correlations=True):
     """
@@ -1732,15 +1758,18 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     fpr = dict()
     tpr = dict()
     roc_auc = dict()
+    pvals = dict()
     labels = labels[idx]
     onehot_targets = onehot_labels[idx]
     target_scores = predictions_dict[stats_name][idx]
+    #TODO??: https://scikit-learn.org/stable/modules/generated/sklearn.feature_selection.f_regression.html#sklearn.feature_selection.f_regression
     try:
         fig,[ax1,ax2] = plt.subplots(1,2,figsize=(9, 6),gridspec_kw={'width_ratios': [4.5,1]})
         # ROC AUC per class
         for i in range(args.num_obs_classes):
             fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
             roc_auc[i] = auc(fpr[i], tpr[i])
+            pvals[i] = 0
             ax1.plot(fpr[i], tpr[i], label='Class {} AUC : {}'.format(i, round(roc_auc[i],2)), c=colors_dict_labels[i])
         # Micro ROC AUC
         fpr["micro"], tpr["micro"], _ = roc_curve(onehot_targets.ravel(), target_scores.ravel())
@@ -2925,7 +2954,7 @@ def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_fo
                             prob_mode = "class_probs_predictions_samples_average"
                             idx_all = np.ones_like(labels).astype(bool)
                             if args.num_classes > args.num_obs_classes:
-                                idx_all = (labels[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2,
+                                idx_all = (labels[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2,we skip it
                             idx_name = "all"
                             sample_mode = "samples"
 
@@ -3181,6 +3210,117 @@ def plot_kfold_comparisons2(args, script_dir, dict_results, kfolds=5, results_fo
 
     dfi.export(df_styled, '{}/{}/methods_comparison_DATAFRAME.png'.format(script_dir, results_folder), max_cols=-1)
 
+
+def plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covariances_dict_train,covariances_dict_valid,covariances_dict_test,learning_type,name,args,script_dir,results_folder):
+    for mode, summary_dict in zip(["train", "valid", "test"], [train_out, valid_out, test_out]):
+        if summary_dict is not None:
+            dataset_info = summary_dict["dataset_info"]
+            latent_space = summary_dict["latent_space"]
+            if "umap_1d" not in summary_dict.keys():
+                print("Constructing UMAP-1d")
+                umap_proj_1d = reducer.fit_transform(latent_space[:, 5:]).squeeze(-1)
+            else:
+                print("Umap found, not calculating")
+                umap_proj_1d = summary_dict["umap_1d"]
+            # umap_proj_1d = np.random.rand(latent_space.shape[0]) #used to do fast debugging
+            custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
+
+            aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
+            hydropathy_dict = custom_features_dicts["hydropathy_dict"]
+            volume_dict = custom_features_dicts["volume_dict"]
+            radius_dict = custom_features_dicts["radius_dict"]
+            side_chain_pka_dict = custom_features_dicts["side_chain_pka_dict"]
+            isoelectric_dict = custom_features_dicts["isoelectric_dict"]
+            bulkiness_dict = custom_features_dicts["bulkiness_dict"]
+            data_int = summary_dict["summary_dict"]["data_int_samples"]
+            sequences = data_int[:, 1:].squeeze(1)
+            if dataset_info.corrected_aa_types == 20:
+                sequences_mask = np.zeros_like(sequences).astype(bool)
+            else:
+                sequences_mask = np.array((sequences == 0))
+
+            sequences_lens = np.sum(~sequences_mask, axis=1)
+            sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(sequences)
+            sequences_list = sequences_raw.tolist()
+            bulkiness_scores = np.vectorize(bulkiness_dict.get)(sequences)
+            bulkiness_scores = np.ma.masked_array(bulkiness_scores, mask=sequences_mask, fill_value=0)
+            bulkiness_scores = np.ma.sum(bulkiness_scores, axis=1)
+
+            volume_scores = np.vectorize(volume_dict.get)(sequences)
+            volume_scores = np.ma.masked_array(volume_scores, mask=sequences_mask, fill_value=0)
+            volume_scores = np.ma.sum(volume_scores, axis=1)  # TODO: Mean? or sum?
+
+            radius_scores = np.vectorize(radius_dict.get)(sequences)
+            radius_scores = np.ma.masked_array(radius_scores, mask=sequences_mask, fill_value=0)
+            radius_scores = np.ma.sum(radius_scores, axis=1)
+
+            side_chain_pka_scores = np.vectorize(side_chain_pka_dict.get)(sequences)
+            side_chain_pka_scores = np.ma.masked_array(side_chain_pka_scores, mask=sequences_mask, fill_value=0)
+            side_chain_pka_scores = np.ma.mean(side_chain_pka_scores,
+                                               axis=1)  # Highlight: before I was doing just the sum
+
+            isoelectric_scores = np.array(
+                list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_list)))
+            aromaticity_scores = np.array(
+                list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_list)))
+            hydropathy_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_list)))
+            molecular_weight_scores = np.array(
+                list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_list)))
+            extintion_coefficient_reduced_scores = np.array(
+                list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[0], sequences_list)))
+            extintion_coefficient_cystines_scores = np.array(
+                list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[1], sequences_list)))
+
+            settings = {"features_dict": {"hydropathy_scores": hydropathy_scores,
+                                          "isoelectric_scores": isoelectric_scores,
+                                          "volume_scores": volume_scores,
+                                          "radius_scores": radius_scores,
+                                          "side_chain_pka_scores": side_chain_pka_scores,
+                                          "aromaticity_scores": aromaticity_scores,
+                                          "molecular_weights": molecular_weight_scores,
+                                          "bulkiness_scores": bulkiness_scores,
+                                          "sequences_lens": sequences_lens,
+                                          "extintion_coefficients_reduced": extintion_coefficient_reduced_scores,
+                                          "extintion_coefficients_cystines": extintion_coefficient_cystines_scores,
+                                          },
+                        "sequences_raw": sequences_raw}
+
+            correlations_dict = plot_latent_correlations_1d(umap_proj_1d,
+                                                            args,
+                                                            settings,
+                                                            dataset_info,
+                                                            latent_space,
+                                                            sample_mode="samples",
+                                                            results_dir="{}/{}".format(script_dir, results_folder),
+                                                            method=mode,
+                                                            vector_name="latent_space_z",
+                                                            plot_scatter_correlations=False,
+                                                            plot_covariance=True,
+                                                            save_plot=False,
+                                                            filter_correlations=False)
+
+            if mode == "train":
+                covariances_dict_train[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"]))
+                covariances_dict_train[learning_type][name]["features_names"].append(correlations_dict["features_names"])
+                covariances_dict_train[learning_type][name]["pearson_coefficients"].append(correlations_dict["pearson_coefficients"])
+                covariances_dict_train[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
+                covariances_dict_train[learning_type][name]["umap_1d"].append(umap_proj_1d)
+            elif mode == "valid":
+                covariances_dict_valid[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"]))
+                covariances_dict_valid[learning_type][name]["features_names"].append(correlations_dict["features_names"])
+                covariances_dict_valid[learning_type][name]["pearson_coefficients"].append(correlations_dict["pearson_coefficients"])
+                covariances_dict_valid[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
+                covariances_dict_valid[learning_type][name]["umap_1d"].append(umap_proj_1d)
+            elif mode == "test":
+                covariances_dict_test[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"]))
+                covariances_dict_test[learning_type][name]["features_names"].append(correlations_dict["features_names"])
+                covariances_dict_test[learning_type][name]["pearson_coefficients"].append(correlations_dict["pearson_coefficients"])
+                covariances_dict_test[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
+                covariances_dict_test[learning_type][name]["umap_1d"].append(umap_proj_1d)
+
+    return covariances_dict_train,covariances_dict_valid,covariances_dict_test
+
+
 def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results_folder="Benchmark"):
      """Computes the average UMAP1d vs peptide feature correlations across the n-folds"""
      new_feature_names = {"UMAP-1D":"UMAP-1D",
@@ -3196,10 +3336,10 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
                           "extintion_coefficients_reduced":"Extintion coefficients (reduced)",
                           "extintion_coefficients_cystines":"Extintion coefficients (oxidized)",
                           "immunodominance_scores":"Immunodominance"}
-     overwrite = False
+     overwrite_correlations = False
      covariances_all = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict())))
-     #covariances_all  = lambda: defaultdict(covariances_all) #unlimited nested dict
-     covariances_all_latex = defaultdict(lambda: defaultdict(lambda: defaultdict()))
+     pearson_coefficients_all = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict())))
+     pearson_pvalues_all = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict())))
 
      covariances_dict_train= defaultdict(lambda :defaultdict(lambda : defaultdict(lambda : [])))
      covariances_dict_valid= defaultdict(lambda :defaultdict(lambda : defaultdict(lambda : [])))
@@ -3208,16 +3348,59 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
      for learning_type, values in dict_results.items():
          for name, folder in values.items():
              print("{}".format(name))
-             if os.path.exists("{}/Vegvisir_checkpoints/covariances_train.p".format(folder)) and not overwrite:
-                print("Loading pre computed covariance matrices ---------------------------------------")
+             if os.path.exists("{}/Vegvisir_checkpoints/covariances_train.p".format(folder)) and not overwrite_correlations:
+                print("Loading pre computed correlations ---------------------------------------")
                 #Highlight: Dill is an *** , if you change the module's non mutable structures (i.e named tuples), it will complain
                 covariances_dict_train = dill.load(open("{}/Vegvisir_checkpoints/covariances_train.p".format(folder), "rb"))
                 covariances_dict_valid = dill.load(open("{}/Vegvisir_checkpoints/covariances_valid.p".format(folder), "rb"))
                 if os.path.exists("{}/Vegvisir_checkpoints/covariances_test.p".format(folder)):
-                        covariances_dict_test = dill.load(open("{}/Vegvisir_checkpoints/covariances_test.p".format(folder), "rb"))
+                    covariances_dict_test = dill.load(open("{}/Vegvisir_checkpoints/covariances_test.p".format(folder), "rb"))
+             elif os.path.exists("{}/Vegvisir_checkpoints/covariances_train.p".format(folder)) and overwrite_correlations:
+                 print("Loading pre computed UMAP, re-calculating correlations ---------------------------------------")
+                 # Highlight: Dill is an *** , if you change the module's non mutable structures (i.e named tuples), it will complain
+                 covariances_dict_train_precomputed = dill.load(open("{}/Vegvisir_checkpoints/covariances_train.p".format(folder), "rb"))
+                 covariances_dict_valid_precomputed = dill.load(open("{}/Vegvisir_checkpoints/covariances_valid.p".format(folder), "rb"))
+                 if os.path.exists("{}/Vegvisir_checkpoints/covariances_test.p".format(folder)):
+                     covariances_dict_test_precomputed = dill.load(open("{}/Vegvisir_checkpoints/covariances_test.p".format(folder), "rb"))
+
+                 for fold in range(kfolds):
+                     print("Computing correlations & covariances")
+                     print("FOLD: {} ------------------------".format(fold))
+                     if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold)):
+                        train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold))
+                     else:
+                        train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_valid_fold_{}.p".format(folder, fold))
+
+                     #Highlight: Load the UMAPs from this fold (precomputed)
+                     covariances_dict_train_fold = covariances_dict_train_precomputed[learning_type][name]
+                     covariances_dict_train_fold = dict(zip(list(covariances_dict_train_fold.keys()),list(zip(*covariances_dict_train_fold.values()))[fold]))
+                     train_out = {**train_out, **covariances_dict_train_fold}
+                     valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(folder, fold))
+                     covariances_dict_valid_fold = covariances_dict_valid_precomputed[learning_type][name]
+                     covariances_dict_valid_fold = dict(zip(list(covariances_dict_valid_fold.keys()),list(zip(*covariances_dict_valid_fold.values()))[fold]))
+                     valid_out = {**valid_out, **covariances_dict_valid_fold}
+                     if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold)):
+                         test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold))
+                         covariances_dict_test_fold = covariances_dict_test_precomputed[learning_type][name]
+                         covariances_dict_test_fold = dict(zip(list(covariances_dict_test_fold.keys()),
+                                                                list(zip(*covariances_dict_test_fold.values()))[fold]))
+                         test_out = {**test_out, **covariances_dict_test_fold}
+                     else:
+                         test_out = None
+
+                     args = train_out["args"]
+                     plot_latent_correlations_helper(
+                         train_out, valid_out, test_out, reducer, covariances_dict_train, covariances_dict_valid,
+                         covariances_dict_test, learning_type, name, args, script_dir, results_folder)
+                     #print(len(covariances_dict_train[learning_type][name]["umap_1d"]))
+
+                 dill.dump(covariances_dict_train,open("{}/Vegvisir_checkpoints/covariances_train.p".format(folder), "wb"))
+                 dill.dump(covariances_dict_valid,open("{}/Vegvisir_checkpoints/covariances_valid.p".format(folder), "wb"))
+                 dill.dump(covariances_dict_test,open("{}/Vegvisir_checkpoints/covariances_test.p".format(folder), "wb"))
+
              else:
                 for fold in range(kfolds):
-                     print("Computing correlation covariances")
+                     print("Files not existing.Computing correlation covariances")
                      print("FOLD: {} ------------------------".format(fold))
                      if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold)):
                         train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold))
@@ -3232,90 +3415,105 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
 
                      args = train_out["args"]
 
-                     for mode, summary_dict in zip(["valid", "train", "test"], [train_out, valid_out, test_out]):
-                         if summary_dict is not None:
-                             latent_space = summary_dict["latent_space"]
-                             dataset_info = summary_dict["dataset_info"]
-                             umap_proj_1d = reducer.fit_transform(latent_space[:, 5:]).squeeze(-1) #TODO: semisupervised might need independent treatment?
-                             custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
-
-                             aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
-                             hydropathy_dict = custom_features_dicts["hydropathy_dict"]
-                             volume_dict = custom_features_dicts["volume_dict"]
-                             radius_dict = custom_features_dicts["radius_dict"]
-                             side_chain_pka_dict = custom_features_dicts["side_chain_pka_dict"]
-                             isoelectric_dict = custom_features_dicts["isoelectric_dict"]
-                             bulkiness_dict = custom_features_dicts["bulkiness_dict"]
-                             data_int = summary_dict["summary_dict"]["data_int_samples"]
-                             sequences = data_int[:, 1:].squeeze(1)
-                             if dataset_info.corrected_aa_types == 20:
-                                 sequences_mask = np.zeros_like(sequences).astype(bool)
-                             else:
-                                 sequences_mask = np.array((sequences == 0))
-
-                             sequences_lens = np.sum(~sequences_mask, axis=1)
-                             sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(sequences)
-                             sequences_list = sequences_raw.tolist()
-                             bulkiness_scores = np.vectorize(bulkiness_dict.get)(sequences)
-                             bulkiness_scores = np.ma.masked_array(bulkiness_scores, mask=sequences_mask, fill_value=0)
-                             bulkiness_scores = np.ma.sum(bulkiness_scores, axis=1)
-
-                             volume_scores = np.vectorize(volume_dict.get)(sequences)
-                             volume_scores = np.ma.masked_array(volume_scores, mask=sequences_mask, fill_value=0)
-                             volume_scores = np.ma.sum(volume_scores, axis=1)  # TODO: Mean? or sum?
-
-                             radius_scores = np.vectorize(radius_dict.get)(sequences)
-                             radius_scores = np.ma.masked_array(radius_scores, mask=sequences_mask, fill_value=0)
-                             radius_scores = np.ma.sum(radius_scores, axis=1)
-
-                             side_chain_pka_scores = np.vectorize(side_chain_pka_dict.get)(sequences)
-                             side_chain_pka_scores = np.ma.masked_array(side_chain_pka_scores, mask=sequences_mask,fill_value=0)
-                             side_chain_pka_scores = np.ma.mean(side_chain_pka_scores,axis=1)  # Highlight: before I was doing just the sum
-
-                             isoelectric_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_list)))
-                             aromaticity_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_list)))
-                             hydropathy_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_list)))
-                             molecular_weight_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_list)))
-                             extintion_coefficient_reduced_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[0], sequences_list)))
-                             extintion_coefficient_cystines_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[1], sequences_list)))
-
-                             settings = {"features_dict": {"hydropathy_scores":hydropathy_scores,
-                                                            "isoelectric_scores":isoelectric_scores,
-                                                            "volume_scores":volume_scores,
-                                                            "radius_scores":radius_scores,
-                                                            "side_chain_pka_scores":side_chain_pka_scores,
-                                                            "aromaticity_scores":aromaticity_scores,
-                                                            "molecular_weights":molecular_weight_scores,
-                                                            "bulkiness_scores":bulkiness_scores,
-                                                            "sequences_lens":sequences_lens,
-                                                            "extintion_coefficients_reduced":extintion_coefficient_reduced_scores,
-                                                            "extintion_coefficients_cystines":extintion_coefficient_cystines_scores,
-                                                           },
-                                         "sequences_raw":sequences_raw}
-
-                             covariance,features_names = plot_latent_correlations_1d(umap_proj_1d,
-                                                                     args,
-                                                                     settings,
-                                                                     dataset_info,
-                                                                     latent_space,
-                                                                     sample_mode="samples",
-                                                                     results_dir="{}/{}".format(script_dir,results_folder),
-                                                                     method=mode,
-                                                                     vector_name="latent_space_z",
-                                                                     plot_scatter_correlations=False,
-                                                                     plot_covariance=True,
-                                                                     save_plot=False)
-
-                             if mode == "train":
-                                covariances_dict_train[learning_type][name]["covariance"].append(np.abs(covariance))
-                                covariances_dict_train[learning_type][name]["features_names"].append(features_names)
-                             elif mode == "valid":
-                                covariances_dict_valid[learning_type][name]["covariance"].append(np.abs(covariance))
-                                covariances_dict_valid[learning_type][name]["features_names"].append(features_names)
-                             elif mode == "test":
-                                covariances_dict_test[learning_type][name]["covariance"].append(np.abs(covariance))
-                                covariances_dict_test[learning_type][name]["features_names"].append(features_names)
-
+                     # for mode, summary_dict in zip(["train", "valid", "test"], [train_out, valid_out, test_out]):
+                     #     if summary_dict is not None:
+                     #         dataset_info = summary_dict["dataset_info"]
+                     #         latent_space = summary_dict["latent_space"]
+                     #         if "umap_1d" in summary_dict.keys():
+                     #             umap_proj_1d = reducer.fit_transform(latent_space[:, 5:]).squeeze(-1)
+                     #         else:
+                     #             umap_proj_1d = summary_dict["umap_1d"]
+                     #         #umap_proj_1d = np.random.rand(latent_space.shape[0]) #used to do fast debugging
+                     #         custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
+                     #
+                     #         aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
+                     #         hydropathy_dict = custom_features_dicts["hydropathy_dict"]
+                     #         volume_dict = custom_features_dicts["volume_dict"]
+                     #         radius_dict = custom_features_dicts["radius_dict"]
+                     #         side_chain_pka_dict = custom_features_dicts["side_chain_pka_dict"]
+                     #         isoelectric_dict = custom_features_dicts["isoelectric_dict"]
+                     #         bulkiness_dict = custom_features_dicts["bulkiness_dict"]
+                     #         data_int = summary_dict["summary_dict"]["data_int_samples"]
+                     #         sequences = data_int[:, 1:].squeeze(1)
+                     #         if dataset_info.corrected_aa_types == 20:
+                     #             sequences_mask = np.zeros_like(sequences).astype(bool)
+                     #         else:
+                     #             sequences_mask = np.array((sequences == 0))
+                     #
+                     #         sequences_lens = np.sum(~sequences_mask, axis=1)
+                     #         sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(sequences)
+                     #         sequences_list = sequences_raw.tolist()
+                     #         bulkiness_scores = np.vectorize(bulkiness_dict.get)(sequences)
+                     #         bulkiness_scores = np.ma.masked_array(bulkiness_scores, mask=sequences_mask, fill_value=0)
+                     #         bulkiness_scores = np.ma.sum(bulkiness_scores, axis=1)
+                     #
+                     #         volume_scores = np.vectorize(volume_dict.get)(sequences)
+                     #         volume_scores = np.ma.masked_array(volume_scores, mask=sequences_mask, fill_value=0)
+                     #         volume_scores = np.ma.sum(volume_scores, axis=1)  # TODO: Mean? or sum?
+                     #
+                     #         radius_scores = np.vectorize(radius_dict.get)(sequences)
+                     #         radius_scores = np.ma.masked_array(radius_scores, mask=sequences_mask, fill_value=0)
+                     #         radius_scores = np.ma.sum(radius_scores, axis=1)
+                     #
+                     #         side_chain_pka_scores = np.vectorize(side_chain_pka_dict.get)(sequences)
+                     #         side_chain_pka_scores = np.ma.masked_array(side_chain_pka_scores, mask=sequences_mask,fill_value=0)
+                     #         side_chain_pka_scores = np.ma.mean(side_chain_pka_scores,axis=1)  # Highlight: before I was doing just the sum
+                     #
+                     #         isoelectric_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_list)))
+                     #         aromaticity_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_list)))
+                     #         hydropathy_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_list)))
+                     #         molecular_weight_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_list)))
+                     #         extintion_coefficient_reduced_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[0], sequences_list)))
+                     #         extintion_coefficient_cystines_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[1], sequences_list)))
+                     #
+                     #         settings = {"features_dict": {"hydropathy_scores":hydropathy_scores,
+                     #                                        "isoelectric_scores":isoelectric_scores,
+                     #                                        "volume_scores":volume_scores,
+                     #                                        "radius_scores":radius_scores,
+                     #                                        "side_chain_pka_scores":side_chain_pka_scores,
+                     #                                        "aromaticity_scores":aromaticity_scores,
+                     #                                        "molecular_weights":molecular_weight_scores,
+                     #                                        "bulkiness_scores":bulkiness_scores,
+                     #                                        "sequences_lens":sequences_lens,
+                     #                                        "extintion_coefficients_reduced":extintion_coefficient_reduced_scores,
+                     #                                        "extintion_coefficients_cystines":extintion_coefficient_cystines_scores,
+                     #                                       },
+                     #                     "sequences_raw":sequences_raw}
+                     #
+                     #         correlations_dict = plot_latent_correlations_1d(umap_proj_1d,
+                     #                                                 args,
+                     #                                                 settings,
+                     #                                                 dataset_info,
+                     #                                                 latent_space,
+                     #                                                 sample_mode="samples",
+                     #                                                 results_dir="{}/{}".format(script_dir,results_folder),
+                     #                                                 method=mode,
+                     #                                                 vector_name="latent_space_z",
+                     #                                                 plot_scatter_correlations=False,
+                     #                                                 plot_covariance=True,
+                     #                                                 save_plot=False,
+                     #                                                 filter_correlations=False)
+                     #
+                     #
+                     #         if mode == "train":
+                     #            covariances_dict_train[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"]))
+                     #            covariances_dict_train[learning_type][name]["features_names"].append(correlations_dict["features_names"])
+                     #            covariances_dict_train[learning_type][name]["pearson_coefficients"].append(correlations_dict["pearson_coefficients"])
+                     #            covariances_dict_train[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
+                     #            covariances_dict_train[learning_type][name]["umap_1d"].append(umap_proj_1d)
+                     #         elif mode == "valid":
+                     #            covariances_dict_valid[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"]))
+                     #            covariances_dict_valid[learning_type][name]["features_names"].append(correlations_dict["features_names"])
+                     #            covariances_dict_valid[learning_type][name]["pearson_coefficients"].append(correlations_dict["pearson_coefficients"])
+                     #            covariances_dict_valid[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
+                     #            covariances_dict_valid[learning_type][name]["umap_1d"].append(umap_proj_1d)
+                     #         elif mode == "test":
+                     #            covariances_dict_test[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"]))
+                     #            covariances_dict_test[learning_type][name]["features_names"].append(correlations_dict["features_names"])
+                     #            covariances_dict_test[learning_type][name]["pearson_coefficients"].append(correlations_dict["pearson_coefficients"])
+                     #            covariances_dict_test[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
+                     #            covariances_dict_test[learning_type][name]["umap_1d"].append(umap_proj_1d)
+                     plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covariances_dict_train,covariances_dict_valid,covariances_dict_test,learning_type,name,args,script_dir,results_folder)
                 dill.dump(covariances_dict_train,open("{}/Vegvisir_checkpoints/covariances_train.p".format(folder), "wb"))
                 dill.dump(covariances_dict_valid,open("{}/Vegvisir_checkpoints/covariances_valid.p".format(folder), "wb"))
                 dill.dump(covariances_dict_test,open("{}/Vegvisir_checkpoints/covariances_test.p".format(folder), "wb"))
@@ -3326,22 +3524,38 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
              covariances_all[learning_type][name]["valid"] = np.mean([covariance[0,1:] for covariance in covariances_dict_valid[learning_type][name]["covariance"]],axis=0)
              covariances_all[learning_type][name]["test"] = np.mean([covariance[0,1:] for covariance in covariances_dict_test[learning_type][name]["covariance"]],axis=0)
 
-             if covariances_dict_train[learning_type][name]["features_names"]:
-                 features_names = covariances_dict_train[learning_type][name]["features_names"][0][1:]
+
+             pearson_pvalues_all[learning_type][name]["train"] = np.mean([pvalues for pvalues in covariances_dict_train[learning_type][name]["pearson_pvalues"]],axis=0)
+             pearson_pvalues_all[learning_type][name]["valid"] = np.mean([pvalues for pvalues in covariances_dict_valid[learning_type][name]["pearson_pvalues"]],axis=0)
+             pearson_pvalues_all[learning_type][name]["test"] = np.mean([pvalues for pvalues in covariances_dict_test[learning_type][name]["pearson_pvalues"]],axis=0)
+
+
+             
+             pearson_coefficients_all[learning_type][name]["train"] = np.mean([coefficients for coefficients in covariances_dict_train[learning_type][name]["pearson_coefficients"]],axis=0)
+             pearson_coefficients_all[learning_type][name]["valid"] = np.mean([coefficients for coefficients in covariances_dict_valid[learning_type][name]["pearson_coefficients"]],axis=0)
+             pearson_coefficients_all[learning_type][name]["test"] = np.mean([coefficients for coefficients in covariances_dict_test[learning_type][name]["pearson_coefficients"]],axis=0)
+
+
+             if covariances_dict_train[learning_type][name]["features_names"]: #UMAP-1D
+                 features_names = covariances_dict_train[learning_type][name]["features_names"][0][1:] # remove UMAP-1D
                  features_names = [new_feature_names[feat] if feat in new_feature_names.keys() else feat for feat in features_names]
+
              else:
                  features_names = covariances_dict_train[learning_type][name]["features_names"]
 
-
-             #
-             # print(covariances_all[learning_type][name]["train"])
-             # print(covariances_all[learning_type][name]["test"])
-             # print(type(covariances_all[learning_type][name]["test"]))
-             #
              n_feats = len(features_names)
              covariances_all[learning_type][name]["train"] = dict(zip(features_names,np.round(covariances_all[learning_type][name]["train"],2).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
              covariances_all[learning_type][name]["valid"] = dict(zip(features_names,np.round(covariances_all[learning_type][name]["valid"],2).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
              covariances_all[learning_type][name]["test"] = dict(zip(features_names,np.round(covariances_all[learning_type][name]["test"],2).tolist())) if features_names and type(covariances_all[learning_type][name]["test"]) != np.float64 else dict(zip(features_names,[np.nan]*n_feats))
+
+             pearson_pvalues_all[learning_type][name]["train"] = dict(zip(features_names,np.round(pearson_pvalues_all[learning_type][name]["train"],3).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
+             pearson_pvalues_all[learning_type][name]["valid"] = dict(zip(features_names,np.round(pearson_pvalues_all[learning_type][name]["valid"],3).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
+             pearson_pvalues_all[learning_type][name]["test"] = dict(zip(features_names,np.round(pearson_pvalues_all[learning_type][name]["test"],3).tolist())) if features_names and type(pearson_pvalues_all[learning_type][name]["test"]) != np.float64 else dict(zip(features_names,[np.nan]*n_feats))
+
+
+             pearson_coefficients_all[learning_type][name]["train"] = dict(zip(features_names,np.round(pearson_coefficients_all[learning_type][name]["train"],3).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
+             pearson_coefficients_all[learning_type][name]["valid"] = dict(zip(features_names,np.round(pearson_coefficients_all[learning_type][name]["valid"],3).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
+             pearson_coefficients_all[learning_type][name]["test"] = dict(zip(features_names,np.round(pearson_coefficients_all[learning_type][name]["test"],3).tolist())) if features_names and type(pearson_coefficients_all[learning_type][name]["test"]) != np.float64 else dict(zip(features_names,[np.nan]*n_feats))
 
              # covariances_all_latex[learning_type][name]["train"] = np.mean(covariances_dict_train[learning_type][name]["covariance"]) +"$\pm$" + np.mean(covariances_dict_train[learning_type][name]["covariance"])
              # covariances_all_latex[learning_type][name]["valid"] = np.mean(covariances_dict_valid[learning_type][name]["covariance"]) +"$\pm$" + np.mean(covariances_dict_valid[learning_type][name]["covariance"])
@@ -3349,25 +3563,39 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
 
 
 
+     print("Finished loop, building dataframe")
+
      # df_latex = convert_dict(covariances_all_latex)
      # df_latex.style.format(na_rep="-").to_latex('{}/{}/methods_comparison_LATEX.tex'.format(script_dir, results_folder))
 
-     covariances_all = {key.replace(r"\textbf{", "").replace("}", ""): val for key, val in covariances_all.items()}
+     #print(covariances_all['supervised(Icore)'].keys())
+     #print(covariances_all['supervised(Icore)']["viral-dataset-11-onehot-8mers-0-unobserved"]["train"].values())
+     # for key1,val1 in covariances_all.items():
+     #     for key2,val2 in val1.items():
+     #         for key3,val3 in val2.items():
+     #             for key4,val4 in val3.items():
+     #                print("{}_{}_{}_{}".format(key1,key2,key3,key4))
+     #                print(val4)
+     def process_dict(metric_dict,title=""):
+         metric_dict = {key.replace(r"\textbf{", "").replace("}", ""): val for key, val in metric_dict.items()}
 
-     df = pd.DataFrame.from_dict({(i, j,k): covariances_all[i][j][k] for i in covariances_all.keys() for j in covariances_all[i].keys() for k in covariances_all[i][j]},orient='index')
+         df = pd.DataFrame.from_dict({(i, j,k): metric_dict[i][j][k] for i in metric_dict.keys() for j in metric_dict[i].keys() for k in metric_dict[i][j]},orient='index')
 
+         # Highlight: https://stackoverflow.com/questions/59769161/python-color-pandas-dataframe-based-on-multiindex
+         colors = {"supervised(Icore)": matplotlib.colors.to_rgba('lavender'),
+                   "supervised(Icore_non_anchor)": matplotlib.colors.to_rgba('palegreen'),
+                   "semisupervised(Icore)": matplotlib.colors.to_rgba('paleturquoise'),
+                   "semisupervised(Icore_non_anchor)": matplotlib.colors.to_rgba('plum')}
+         c = {k: matplotlib.colors.rgb2hex(v) for k, v in colors.items()}
+         idx = df.index.get_level_values(0)
+         css = [{'selector': f'.row{i}.level0', 'props': [('background-color', c[v])]} for i, v in enumerate(idx)]
 
-     # Highlight: https://stackoverflow.com/questions/59769161/python-color-pandas-dataframe-based-on-multiindex
-     colors = {"supervised(Icore)": matplotlib.colors.to_rgba('lavender'),
-               "supervised(Icore_non_anchor)": matplotlib.colors.to_rgba('palegreen'),
-               "semisupervised(Icore)": matplotlib.colors.to_rgba('paleturquoise'),
-               "semisupervised(Icore_non_anchor)": matplotlib.colors.to_rgba('plum')}
-     c = {k: matplotlib.colors.rgb2hex(v) for k, v in colors.items()}
-     idx = df.index.get_level_values(0)
-     css = [{'selector': f'.row{i}.level0', 'props': [('background-color', c[v])]} for i, v in enumerate(idx)]
+         df_styled = df.style.format(na_rep="-", escape="latex",precision=3).background_gradient(axis=None,cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" when pandas 2.1 arrives
 
-     df_styled = df.style.format(na_rep="-", escape="latex",precision=2).background_gradient(axis=None,cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" when pandas 2.1 arrives
+         dfi.export(df_styled, '{}/{}/{}_DATAFRAME.png'.format(script_dir, results_folder,title), max_cols=-1,max_rows=-1)
 
-     dfi.export(df_styled, '{}/{}/Latent_correlations_comparison_DATAFRAME.png'.format(script_dir, results_folder), max_cols=-1,max_rows=-1)
+     process_dict(covariances_all,"Latent_covariances")
+     process_dict(pearson_pvalues_all,"Latent_pearson_pvalues")
+     process_dict(pearson_coefficients_all,"Latent_pearson_coefficients")
 
 

@@ -1053,28 +1053,28 @@ def convert_to_pandas_dataframe(epitopes_padded,data,storage_folder,args,use_tes
     shift_proportions =False
     if use_test:
         data_train = data[data["training"] == True][column_names]
-        data_valid = data[data["training"] == False][column_names]
+        data_test = data[data["training"] == False][column_names]
 
-        labels_counts = data_valid["target_corrected"].value_counts()
+        labels_counts = data_test["target_corrected"].value_counts()
         n_positives = labels_counts[1.0]
         n_negatives = labels_counts[0.0]
-        positives_proportion = (n_positives * 100)/data_valid.shape[0]
-        negatives_proportion = (n_negatives * 100)/data_valid.shape[0]
+        positives_proportion = (n_positives * 100)/data_test.shape[0]
+        negatives_proportion = (n_negatives * 100)/data_test.shape[0]
 
         if shift_proportions:
-            VegvisirLoadUtils.redefine_class_proportions(data_valid,n_positives,n_negatives,positives_proportion,negatives_proportion,drop="positives")
+            VegvisirLoadUtils.redefine_class_proportions(data_test,n_positives,n_negatives,positives_proportion,negatives_proportion,drop="positives")
             shifted = "shifted_proportions"
         else:
             shifted = ""
 
         data_train = data_train.astype({'partition': 'int'})
-        data_valid.drop("partition", axis=1, inplace=True)
+        data_test.drop("partition", axis=1, inplace=True)
         data_train["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder, args.dataset_name), sep="\t",
                                    index=False, header=None)
         shuffled = ["shuffled" if args.shuffle_sequence else "non_shuffled"][0]
         data_train.to_csv("{}/{}/viral_nnalign_input_train_{}.tsv".format(storage_folder, args.dataset_name,shuffled), sep="\t",
                           index=False, header=None)
-        data_valid.to_csv("{}/{}/viral_nnalign_input_valid_{}_{}.tsv".format(storage_folder, args.dataset_name,shuffled,shifted), sep="\t",
+        data_test.to_csv("{}/{}/viral_nnalign_input_valid_{}_{}.tsv".format(storage_folder, args.dataset_name,shuffled,shifted), sep="\t",
                           index=False, header=None)  # TODO: Header None?
 
     else:

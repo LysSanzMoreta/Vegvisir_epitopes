@@ -26,15 +26,15 @@ import vegvisir.plots as VegvisirPlots
 if "CUDA_VISIBLE_DEVICES" in os.environ:
     pass
 else:
-    print("Cuda device has not been specified in your environment variables, setting it to cuda 1")
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+    print("Cuda device has not been specified in your environment variables, setting it to cuda device 0")
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 print("Loading Vegvisir module from {}".format(vegvisir.__file__))
 now = datetime.datetime.now()
 
 def define_suffix(args):
     kmers = "_{}mers".format("9" if args.sequence_type == "Icore" else "8") if args.filter_kmers else ""
-
+    #kmers_name = "_{}mers".format("9" if args.sequence_type == "Icore" else "8") if args.filter_kmers else "variable-length"
     encoding = "_{}".format(args.encoding)
     num_unobserved = "_{}_unobserved".format(args.num_unobserved) if args.learning_type == "semisupervised" else ""
     if args.shuffle_sequence:
@@ -58,6 +58,7 @@ def define_suffix(args):
             suffix = "_TESTING{}".format(kmers)
         else:
             suffix = "{}".format(kmers)
+    #name = args.dataset_name + "-" + encoding + "-" + kmers_name
     return encoding + suffix + num_unobserved
 def main():
     """Executes nnalignpy:
@@ -97,15 +98,21 @@ def main():
 
 
 def analysis_models():
-    """Analyses the results of all possible model combinations"""
+    """Analyses the results of all possible model combinations (stress testing)"""
 
     dict_results_all = {"supervised(Icore)":{
                                 r"viral-dataset-3-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset3_2023_07_15_14h31min30s605832ms_60epochs_supervised_Icore_blosum_TESTING",
                                 r"viral-dataset-3-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset3_2023_07_15_15h53min19s522115ms_60epochs_supervised_Icore_onehot_TESTING",
+                                r"viral-dataset-3-blosum-shuffled-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset3_2023_07_21_15h02min41s885374ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
+                                r"viral-dataset-3-onehot-shuffled-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset3_2023_07_21_16h35min28s374245ms_60epochs_supervised_Icore_onehot_shuffled_TESTING",
+                                r"viral-dataset-3-blosum-random-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset3_2023_07_28_05h01min58s428968ms_60epochs_supervised_Icore_blosum_random_TESTING",
+                                r"viral-dataset-3-onehot-random-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset3_2023_07_28_06h15min47s287899ms_60epochs_supervised_Icore_onehot_random_TESTING",
                                 r"viral-dataset-3-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset3_2023_07_21_11h15min37s877362ms_60epochs_supervised_Icore_blosum_TESTING_9mers",
                                 r"viral-dataset-3-onehot-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset3_2023_07_21_12h01min17s340676ms_60epochs_supervised_Icore_onehot_TESTING_9mers",
-                                r"viral-dataset-3-blosum-shuffled-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset3_2023_07_21_15h02min41s885374ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
-                                r"viral-dataset-3-onehot-shuffled-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset3_2023_07_21_16h35min28s374245ms_60epochs_supervised_Icore_onehot_shuffled_TESTING",
+                                r"viral-dataset-3-blosum-9mers-shuffled":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset3_2023_07_28_07h21min38s605815ms_60epochs_supervised_Icore_blosum_shuffled_TESTING_9mers",
+                                r"viral-dataset-3-onehot-9mers-shuffled":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset3_2023_07_28_08h11min36s002925ms_60epochs_supervised_Icore_onehot_shuffled_TESTING_9mers",
+                                r"viral-dataset-3-blosum-9mers-random":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset3_2023_07_28_09h10min31s003786ms_60epochs_supervised_Icore_blosum_random_TESTING_9mers",
+                                r"viral-dataset-3-onehot-9mers-random":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset3_2023_07_28_09h58min27s397141ms_60epochs_supervised_Icore_onehot_random_TESTING_9mers",
                                 r"viral-dataset-9-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset9_2023_07_15_17h12min48s008216ms_60epochs_supervised_Icore_blosum_TESTING",
                                 r"viral-dataset-9-blosum-shuffled-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset9_2023_07_15_18h49min47s511026ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
                                 r"viral-dataset-9-blosum-random-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset9_2023_07_15_20h25min51s797758ms_60epochs_supervised_Icore_blosum_random_TESTING",
@@ -132,18 +139,18 @@ def analysis_models():
                                 r"viral-dataset-3-onehot-shuffled-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset3_2023_07_25_00h44min02s537273ms_60epochs_supervised_Icore_non_anchor_onehot_shuffled_TESTING_8mers",
                                 r"viral-dataset-3-blosum-random-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset3_2023_07_25_01h11min13s239115ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING_8mers",
                                 r"viral-dataset-3-onehot-random-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset3_2023_07_25_01h37min20s146147ms_60epochs_supervised_Icore_non_anchor_onehot_random_TESTING_8mers",
-                                r"viral-dataset-9-blosum-variable-length":"",
-                                r"viral-dataset-9-blosum-shuffled-variable-length":"",
-                                r"viral-dataset-9-blosum-random-variable-length":"",
-                                r"viral-dataset-9-onehot-variable-length":"",
-                                r"viral-dataset-9-onehot-shuffled-variable-length":"",
-                                r"viral-dataset-9-onehot-random-variable-length":"",
-                                r"viral-dataset-9-blosum-8mers":"",
-                                r"viral-dataset-9-blosum-shuffled-8mers":"",
-                                r"viral-dataset-9-blosum-random-8mers":"",
-                                r"viral-dataset-9-onehot-8mers":"",
-                                r"viral-dataset-9-onehot-shuffled-8mers":"",
-                                r"viral-dataset-9-onehot-random-8mers":"",
+                                r"viral-dataset-9-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_26_22h23min34s704348ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING",
+                                r"viral-dataset-9-onehot-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_26_23h59min52s031839ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING",
+                                r"viral-dataset-9-blosum-shuffled-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_27_01h35min33s191421ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING",
+                                r"viral-dataset-9-onehot-shuffled-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_27_03h08min34s398130ms_60epochs_supervised_Icore_non_anchor_onehot_shuffled_TESTING",
+                                #r"viral-dataset-9-blosum-random-variable-length":"weird",
+                                r"viral-dataset-9-onehot-random-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_27_06h18min41s252650ms_60epochs_supervised_Icore_non_anchor_onehot_random_TESTING",
+                                r"viral-dataset-9-blosum-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_27_07h51min21s590446ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING_8mers",
+                                r"viral-dataset-9-onehot-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_27_08h22min01s223478ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING_8mers",
+                                r"viral-dataset-9-blosum-shuffled-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_27_08h49min57s552823ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING_8mers",
+                                r"viral-dataset-9-onehot-shuffled-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_27_09h21min36s968218ms_60epochs_supervised_Icore_non_anchor_onehot_shuffled_TESTING_8mers",
+                                r"viral-dataset-9-blosum-random-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_27_09h53min55s317100ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING_8mers",
+                                r"viral-dataset-9-onehot-random-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_07_28_04h25min40s585455ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING_8mers",
 
                                },
                                 "semisupervised(Icore)":{
@@ -175,36 +182,32 @@ def analysis_models():
                                 "semisupervised(Icore_non_anchor)": {
                                     r"viral-dataset-8-blosum-variable-length-5000-unobserved": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset8_2023_07_24_15h53min40s103983ms_60epochs_semisupervised_Icore_non_anchor_blosum_TESTING_5000_unobserved",
                                     r"viral-dataset-8-onehot-variable-length-5000-unobserved": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset8_2023_07_24_18h00min33s334285ms_60epochs_semisupervised_Icore_non_anchor_onehot_TESTING_5000_unobserved",
-                                    r"viral-dataset-8-blosum-shuffled-variable-length-5000-unobserved":"",
-                                    r"viral-dataset-8-onehot-shuffled-variable-length-5000-unobserved":"",
-                                    r"viral-dataset-8-blosum-variable-length-0-unobserved": "",
-                                    r"viral-dataset-8-onehot-variable-length-0-unobserved": "",
-                                    r"viral-dataset-8-blosum-shuffled-variable-length-0-unobserved": "",
-                                    r"viral-dataset-8-onehot-shuffled-variable-length-0-unobserved": "",
+                                    r"viral-dataset-8-blosum-shuffled-variable-length-5000-unobserved":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset8_2023_07_24_21h32min39s633060ms_60epochs_semisupervised_Icore_non_anchor_blosum_shuffled_TESTING_5000_unobserved",
+                                    r"viral-dataset-8-onehot-shuffled-variable-length-5000-unobserved":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset8_2023_07_24_23h39min11s927221ms_60epochs_semisupervised_Icore_non_anchor_onehot_shuffled_TESTING_5000_unobserved",
                                     r"viral-dataset-8-blosum-8mers-5000-unobserved": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset8_2023_07_24_20h08min17s969033ms_60epochs_semisupervised_Icore_non_anchor_blosum_TESTING_8mers_5000_unobserved",
-                                    r"viral-dataset-8-onehot-8mers-5000-unobserved": "",
-                                    #r"viral-dataset-8-blosum-shuffled-8mers-5000-unobserved": "",
-                                    #r"viral-dataset-8-onehot-shuffled-8mers-5000-unobserved": "",
-                                    # r"viral-dataset-10-blosum-variable-length": "",
-                                    # r"viral-dataset-10-blosum-shuffled-variable-length": "",
-                                    # r"viral-dataset-10-blosum-random-variable-length": "",
-                                    # r"viral-dataset-10-onehot-variable-length": "",
-                                    # r"viral-dataset-10-onehot-shuffled-variable-length": "",
-                                    # r"viral-dataset-10-onehot-random-variable-length": "",
-                                    # r"viral-dataset-10-blosum-8mers": "",
-                                    # r"viral-dataset-10-blosum-shuffled-8mers": "",
-                                    # r"viral-dataset-10-blosum-random-8mers": "",
-                                    # r"viral-dataset-10-onehot-8mers": "",
-                                    # r"viral-dataset-10-onehot-shuffled-8mers": "",
-                                    # r"viral-dataset-10-onehot-random-8mers": "",
-                                    r"viral-dataset-11-blosum-variable-length-5000-unobserved": "",
-                                    r"viral-dataset-11-onehot-variable-length-5000-unobserved": "",
-                                    r"viral-dataset-11-blosum-variable-length-0-unobserved":"",
-                                    r"viral-dataset-11-onehot-variable-length-0-unobserved":"",
-                                    r"viral-dataset-11-blosum-8mers-5000-unobserved":"",
-                                    r"viral-dataset-11-onehot-8mers-5000-unobserved":"",
-                                    r"viral-dataset-11-blosum-8mers-0-unobserved":"",
-                                    r"viral-dataset-11-onehot-8mers-0-unobserved":"",
+                                    r"viral-dataset-8-onehot-8mers-5000-unobserved": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset8_2023_07_24_20h50min27s161827ms_60epochs_semisupervised_Icore_non_anchor_onehot_TESTING_8mers_5000_unobserved",
+                                    r"viral-dataset-8-blosum-shuffled-8mers-5000-unobserved": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset8_2023_07_25_01h42min00s789533ms_60epochs_semisupervised_Icore_non_anchor_blosum_shuffled_TESTING_8mers_5000_unobserved",
+                                    r"viral-dataset-8-onehot-shuffled-8mers-5000-unobserved": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset8_2023_07_25_02h24min43s633407ms_60epochs_semisupervised_Icore_non_anchor_onehot_shuffled_TESTING_8mers_5000_unobserved",
+                                    r"viral-dataset-10-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset10_2023_07_26_22h32min39s635034ms_60epochs_semisupervised_Icore_non_anchor_blosum_TESTING_5000_unobserved",
+                                    r"viral-dataset-10-onehot-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset10_2023_07_27_05h52min58s223671ms_60epochs_semisupervised_Icore_non_anchor_onehot_TESTING_5000_unobserved",
+                                    r"viral-dataset-10-blosum-shuffled-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset10_2023_07_27_00h58min13s034305ms_60epochs_semisupervised_Icore_non_anchor_blosum_shuffled_TESTING_5000_unobserved",
+                                    r"viral-dataset-10-onehot-shuffled-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset10_2023_07_28_00h02min01s954443ms_60epochs_semisupervised_Icore_non_anchor_onehot_shuffled_TESTING_5000_unobserved",
+                                    r"viral-dataset-10-blosum-random-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset10_2023_07_27_03h25min10s615651ms_60epochs_semisupervised_Icore_non_anchor_blosum_random_TESTING_5000_unobserved",
+                                    r"viral-dataset-10-onehot-random-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset10_2023_07_28_02h12min33s579051ms_60epochs_semisupervised_Icore_non_anchor_onehot_random_TESTING_5000_unobserved",
+                                    r"viral-dataset-10-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset10_2023_07_27_10h48min58s530091ms_60epochs_semisupervised_Icore_non_anchor_blosum_TESTING_8mers_5000_unobserved",
+                                    r"viral-dataset-10-onehot-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset10_2023_07_27_12h44min58s851618ms_60epochs_semisupervised_Icore_non_anchor_onehot_TESTING_8mers_5000_unobserved",
+                                    r"viral-dataset-10-blosum-shuffled-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset10_2023_07_27_11h28min01s487237ms_60epochs_semisupervised_Icore_non_anchor_blosum_shuffled_TESTING_8mers_5000_unobserved",
+                                    r"viral-dataset-10-onehot-shuffled-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset10_2023_07_27_08h21min10s537715ms_60epochs_semisupervised_Icore_non_anchor_onehot_shuffled_TESTING_5000_unobserved",
+                                    r"viral-dataset-10-blosum-random-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset10_2023_07_27_12h07min21s483121ms_60epochs_semisupervised_Icore_non_anchor_blosum_random_TESTING_8mers_5000_unobserved",
+                                    r"viral-dataset-10-onehot-random-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset10_2023_07_27_14h00min31s072893ms_60epochs_semisupervised_Icore_non_anchor_onehot_random_TESTING_8mers_5000_unobserved",
+                                    r"viral-dataset-11-blosum-variable-length-5000-unobserved": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset11_2023_07_25_13h16min32s959401ms_60epochs_semisupervised_Icore_non_anchor_blosum_TESTING_5000_unobserved",
+                                    r"viral-dataset-11-onehot-variable-length-5000-unobserved": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset11_2023_07_25_15h38min37s432591ms_60epochs_semisupervised_Icore_non_anchor_onehot_TESTING_5000_unobserved",
+                                    r"viral-dataset-11-blosum-variable-length-0-unobserved":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset11_2023_07_25_11h22min15s221766ms_60epochs_semisupervised_Icore_non_anchor_blosum_TESTING_0_unobserved",
+                                    r"viral-dataset-11-onehot-variable-length-0-unobserved":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset11_2023_07_26_10h30min56s050759ms_60epochs_semisupervised_Icore_non_anchor_onehot_TESTING_0_unobserved",
+                                    r"viral-dataset-11-blosum-8mers-5000-unobserved":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset11_2023_07_25_19h15min30s709035ms_60epochs_semisupervised_Icore_non_anchor_blosum_TESTING_8mers_5000_unobserved",
+                                    r"viral-dataset-11-onehot-8mers-5000-unobserved":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset11_2023_07_25_20h03min49s582137ms_60epochs_semisupervised_Icore_non_anchor_onehot_TESTING_8mers_5000_unobserved",
+                                    r"viral-dataset-11-blosum-8mers-0-unobserved":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset11_2023_07_25_18h01min57s747648ms_60epochs_semisupervised_Icore_non_anchor_blosum_TESTING_8mers_0_unobserved",
+                                    r"viral-dataset-11-onehot-8mers-0-unobserved":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Semisupervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset11_2023_07_25_18h39min30s140533ms_60epochs_semisupervised_Icore_non_anchor_onehot_TESTING_8mers_0_unobserved",
                                 }
     }
 
@@ -214,14 +217,15 @@ def analysis_models():
     #assert args.dataset_name in ["viral_dataset8","viral_dataset6"], "In order to analyse the semi supervised performance we need to set num_obs_classes correctly, please select viral_dataset8 or viral_dataset6 and leraning-type to semisupervised"
 
 
-    VegvisirPlots.plot_kfold_comparisons2(args,script_dir,dict_results_all,kfolds=5,results_folder = "Benchmark")
+    #VegvisirPlots.plot_kfold_comparisons2(args,script_dir,dict_results_all,kfolds=5,results_folder = "Benchmark")
+
 
     VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_all,kfolds=5,results_folder="Benchmark")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
-                        default="viral_dataset3",
+                        default="viral_dataset9",
                         help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data \n'
                              'viral_dataset3 : Only sequences, partitioned into train,validation and (old) test.If args.test = True, then the (old) assigned test is used \n'
                              'viral_dataset4 : viral_dataset3 sequences + Features \n '
@@ -238,7 +242,7 @@ if __name__ == "__main__":
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=20, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=2, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-encoding', type=str, nargs='?', default="blosum", help='<blosum> Use the matrix selected in args.subs_matrix to encode the sequences as blosum vectors'
                                                                                  '<onehot> One hot encoding of the sequences  ')
@@ -271,7 +275,7 @@ if __name__ == "__main__":
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
 
     parser.add_argument('-train', type=str2bool, nargs='?', default=False ,help='<True> Run the model \n <False> Make models comparison ')
-    parser.add_argument('-validate', type=str2bool, nargs='?', default=False, help='Evaluate the model on the validation dataset')
+    parser.add_argument('-validate', type=str2bool, nargs='?', default=True, help='Evaluate the model on the validation dataset')
     parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
 
     parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=False, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1, it saturates the CPU & GPU memory'
@@ -281,7 +285,7 @@ if __name__ == "__main__":
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. If the sequence contains gaps, the script will use 20 aa + 1 gap character ')
     parser.add_argument('-filter-kmers', type=str2bool, nargs='?', default=False, help="Filters the dataset to 9-mers only")
 
-    parser.add_argument('-st','--sequence-type', type=str, nargs='?', default="Icore", help='Define the type of peptide sequence to use:\n'
+    parser.add_argument('-st','--sequence-type', type=str, nargs='?', default="Icore_non_anchor", help='Define the type of peptide sequence to use:\n'
                                                                                 'Icore: Full peptide '
                                                                                 'Icore_non_anchor: Peptide without the anchoring points marked by NetMHCPan 4.1')
     parser.add_argument('-p','--seq-padding', type=str, nargs='?', default="ends", help='Controls how the sequences are padded to the length of the longest sequence \n'
@@ -309,7 +313,7 @@ if __name__ == "__main__":
                                                                                                  '<supervised> Supervised model. All target observations are used to compute the likelihood of the class given the latent representation')
 
     parser.add_argument('-glitch','--glitch', type=str2bool, nargs='?', default=False, help='NOT USED at the moment, does not seem necessary. Only works with blosum encodings'
-                                                                                           '<True>: Applies a random noise distortion (via rotations) to the encoded vector within the conserved positions of the sequences  \n'
+                                                                                           '<True>: Applies a random noise distortion (via rotations) to the encoded vector within the conserved positions of the sequences (mainly anchor points)  \n'
                                                                                            '<False>: The blosum encodings are left untouched')
     parser.add_argument('-num-samples','-num_samples', type=int, nargs='?', default=3, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
     parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="None", help='Load the checkpoints (state_dict and optimizer) from a previous run \n'

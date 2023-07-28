@@ -35,6 +35,7 @@ import vegvisir.similarities as VegvisirSimilarities
 import vegvisir.load_utils as VegvisirLoadUtils
 import vegvisir.plots as VegvisirPlots
 import vegvisir.mutual_information as VegvisirMI
+from collections import Counter
 plt.style.use('ggplot')
 DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_array_raw","data_array_int","data_array_int_mask",
                                         "data_array_blosum_encoding",
@@ -82,11 +83,11 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     if args.dataset_name in ["viral_dataset6","viral_dataset8","viral_dataset10","viral_dataset11"]:
         assert args.learning_type == "semisupervised", "Please select semisupervised learning for dataset {}".format(args.dataset_name)
 
-    if args.dataset_name in ["viral_dataset10"] and  args.sequence_type == "Icore_non_anchor":
-        raise ValueError("Icore_non_anchor are missing for the test datase and unobserved sequences. Please select args.sequence_type == Icore, and wait for the sequences to arrive")
+    # if args.dataset_name in ["viral_dataset10"] and  args.sequence_type == "Icore_non_anchor":
+    #     raise ValueError("Icore_non_anchor are missing for the test datase and unobserved sequences. Please select args.sequence_type == Icore, and wait for the sequences to arrive")
 
-    if args.dataset_name in ["viral_dataset9"] and args.test and args.sequence_type == "Icore_non_anchor":
-        raise ValueError("Icore_non_anchor are missing for the test datase, please set args.validate==True and args.test == False")
+    # if args.dataset_name in ["viral_dataset9"] and args.test and args.sequence_type == "Icore_non_anchor":
+    #     raise ValueError("Icore_non_anchor are missing for the test datase, please set args.validate==True and args.test == False")
 
     dataset_load_fx = lambda f,dataset_name,current_path,storage_folder,args,results_dir,update: lambda dataset_name,current_path,storage_folder,args,results_dir,update: f(dataset_name,current_path,storage_folder,args,results_dir,update)
     data_load_function = dataset_load_fx(func_dict[dataset_name],dataset_name,script_dir,storage_folder,args,results_dir,update)
@@ -707,7 +708,7 @@ def viral_dataset8(dataset_name,script_dir,storage_folder,args,results_dir,updat
                 data_unobserved_list.append(data_unobserved_i.sample(n=int((args.num_unobserved/len(unique_partitions.keys()))),replace=False))
             data_unobserved = pd.concat(data_unobserved_list,axis=0)
         else:
-            print("Not using unobserved data points")
+            assert args.num_unobserved != 0, "Please, if num-unobserved== 0 use the supervised method instead with viral_dataset3"
             data_unobserved = pd.DataFrame(columns=data_unobserved.columns)
 
     #data_unobserved = data_unobserved.sample(n=args.num_unobserved,replace=False)
@@ -746,6 +747,17 @@ def viral_dataset8(dataset_name,script_dir,storage_folder,args,results_dir,updat
         data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
+
+        # data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor"]].agg(lambda srs: Counter(list(srs)).most_common(1)[0][0]) #remove nans and retun first occurrence
+        # data_b  = data_b[data_b['Icore_non_anchor'].notna()]
+        # data_c = data.groupby('Icore', as_index=False)[["Icore","partition", "target", "training","org_name"]].agg(lambda srs: Counter(list(srs)).most_common(1)[0][0]) #return first occurence
+        #
+        # # Reattach info on training
+        # data = pd.merge(data_a, data_b, on='Icore', how='right')
+        # data = pd.merge(data,data_c,on="Icore",how="left")
+
+
+
         data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
 
     else:
@@ -757,6 +769,8 @@ def viral_dataset8(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     data.loc[(data["target"] == 2), "target_corrected"] = 2
     data.loc[(data["target"] == 2), "confidence_score"] = 0
+    print(np.unique(data["target"].to_numpy()))
+    exit()
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,unobserved=True)
     data.loc[(data["target"] == 2), "target_corrected"] = 2
     data.loc[(data["target"] == 2), "confidence_score"] = 0
@@ -834,6 +848,9 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     #/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/viral_dataset9/NEW_pMHC_test.csv
     new_test_dataset = pd.read_csv("{}/{}/NEW_pMHC_test.csv".format(storage_folder,args.dataset_name),sep = ",")
+    new_test_dataset_anchors = pd.read_csv("{}/{}/new_test_nonanchor.csv".format(storage_folder,args.dataset_name),sep = ",")
+    new_test_dataset_anchors = new_test_dataset_anchors[["Icore","Icore_non_anchor"]]
+    new_test_dataset = pd.merge(new_test_dataset,new_test_dataset_anchors,on=["Icore"],how="left")
 
     test_mode_dict = {0:"test_virus",
                       1:"test_bacteria",
@@ -852,11 +869,12 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
     elif test_mode == "test_cancer":
         new_test_dataset = new_test_dataset[(new_test_dataset['kingdom'].str.contains("Eukaryota"))]
 
-
     data["training"] = True #Highlight: This time we do not keep track of the training data
     data = pd.merge(data,new_test_dataset, on=['Icore',"allele","training","target"], how='outer',suffixes=('_a', '_b'))
-    data = data.drop("kingdom",axis=1)
+    data["Icore_non_anchor"] = data["Icore_non_anchor_a"].fillna(data["Icore_non_anchor_b"])
+    data = data.drop(["Icore_non_anchor_a","Icore_non_anchor_b"],axis=1)
 
+    data = data.drop("kingdom",axis=1)
 
     filters_dict,analysis_mode = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
@@ -870,10 +888,13 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
         # Group data by Icore, therefore the alleles are grouped
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
         #data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training","org_name"]].agg(lambda x: max(set(list(x)), key=list(x).count))
-        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
+        #data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training","org_name"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
+        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor"]].agg(lambda srs: Counter(list(srs)).most_common(1)[0][0]) #remove nans and return first occurrence
+        data_b  = data_b[data_b['Icore_non_anchor'].notna()]
+        data_c = data.groupby('Icore', as_index=False)[["Icore","partition", "target", "training","org_name"]].agg(lambda srs: Counter(list(srs)).most_common(1)[0][0]) #return first occurence
+        data = pd.merge(data_a, data_b, on='Icore', how='right')
 
-        # Reattach info on training
-        data = pd.merge(data_a, data_b, on='Icore', how='outer')
+        data = pd.merge(data,data_c,on="Icore",how="left")
         data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
 
 
@@ -889,8 +910,6 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
     data = pd.merge(data,data_species, on=['Icore'], how='left',suffixes=('_a', '_b'))
     data["org_name"] = data["org_name_a"].fillna(data["org_name_b"])
     data.drop(["org_name_b","org_name_a"],axis=1,inplace=True)
-    #print(data["org_name_b"].tolist())
-
     data.loc[(data["training"] == False), "confidence_score"] = 0
 
     unique_values = pd.unique(data["org_name"])
@@ -899,14 +918,7 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
     pickle.dump(org_name_dict,open('{}/{}/org_name_dict.pkl'.format(storage_folder,args.dataset_name), 'wb'))
     data = data.replace({"org_name": org_name_dict_reverse})
     # nan_rows = data[data["confidence_score"].isna()]
-    # print(nan_rows[["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"]])
-    #
-    # training = data[data["training"] == True]
-    # test = data[data["training"] == False]
-    # print(training.shape[0])
-    # print(test.shape[0])
-    # print(training.shape[0] + test.shape[0])
-    # merge = pd.merge(training,test,on=["Icore"],how="inner")
+
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
@@ -996,6 +1008,9 @@ def viral_dataset10(dataset_name,script_dir,storage_folder,args,results_dir,upda
 
     #/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/viral_dataset9/NEW_pMHC_test.csv
     new_test_dataset = pd.read_csv("{}/{}/NEW_pMHC_test.csv".format(storage_folder,args.dataset_name),sep = ",")
+    new_test_dataset_anchors = pd.read_csv("{}/{}/new_test_nonanchor.csv".format(storage_folder,args.dataset_name),sep = ",")
+    new_test_dataset_anchors = new_test_dataset_anchors[["Icore","Icore_non_anchor"]]
+    new_test_dataset = pd.merge(new_test_dataset,new_test_dataset_anchors,on=["Icore"],how="left")
 
     test_mode_dict = {0:"test_virus",
                       1:"test_bacteria",
@@ -1015,6 +1030,8 @@ def viral_dataset10(dataset_name,script_dir,storage_folder,args,results_dir,upda
         new_test_dataset = new_test_dataset[(new_test_dataset['kingdom'].str.contains("Eukaryota"))]
     data["training"] = True #Highlight: This time we do not keep track of the training data
     data = pd.merge(data,new_test_dataset, on=['Icore',"allele","training","target"], how='outer',suffixes=('_a', '_b'))
+    data["Icore_non_anchor"] = data["Icore_non_anchor_a"].fillna(data["Icore_non_anchor_b"])
+    data = data.drop(["Icore_non_anchor_a","Icore_non_anchor_b"],axis=1)
 
     data = data.drop("kingdom",axis=1)
     if filters_dict["filter_alleles"][0]:
@@ -1025,7 +1042,7 @@ def viral_dataset10(dataset_name,script_dir,storage_folder,args,results_dir,upda
         # Group data by Icore, therefore, the alleles are grouped
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
         #data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training","org_name"]].agg(lambda x: max(set(list(x)), key=list(x).count))
-        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
+        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training","org_name"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
 
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
@@ -1253,10 +1270,16 @@ def data_class_division(array,array_mask,idx,labels,confidence_scores):
 def build_exploration_folders(args,storage_folder,filters_dict):
 
     for mode in ["All","Train", "Test"]:
-        VegvisirUtils.folders("all","{}/{}/similarities/{}/{}/diff_allele/same_len/{}mers/neighbours1/".format(storage_folder,args.dataset_name,args.sequence_type, mode,filters_dict["filter_kmers"][1]))
-        VegvisirUtils.folders("positives","{}/{}/similarities/{}/{}/diff_allele/same_len/{}mers/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode,filters_dict["filter_kmers"][1]),overwrite=False)
-        VegvisirUtils.folders("negatives","{}/{}/similarities/{}/{}/diff_allele/same_len/{}mers/neighbours1".format(storage_folder,args.dataset_name, args.sequence_type,mode,filters_dict["filter_kmers"][1]),overwrite=False)
-        VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/{}/diff_allele/same_len/{}mers/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode,filters_dict["filter_kmers"][1]),overwrite=False)
+        if args.sequence_type == "Icore":
+            VegvisirUtils.folders("all","{}/{}/similarities/{}/{}/diff_allele/same_len/9mers/neighbours1/".format(storage_folder,args.dataset_name,args.sequence_type, mode))
+            VegvisirUtils.folders("positives","{}/{}/similarities/{}/{}/diff_allele/same_len/9mers/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
+            VegvisirUtils.folders("negatives","{}/{}/similarities/{}/{}/diff_allele/same_len/9mers/neighbours1".format(storage_folder,args.dataset_name, args.sequence_type,mode),overwrite=False)
+            VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/{}/diff_allele/same_len/9mers/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
+        else:
+            VegvisirUtils.folders("all","{}/{}/similarities/{}/{}/diff_allele/same_len/8mers/neighbours1/".format(storage_folder,args.dataset_name,args.sequence_type, mode))
+            VegvisirUtils.folders("positives","{}/{}/similarities/{}/{}/diff_allele/same_len/8mers/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
+            VegvisirUtils.folders("negatives","{}/{}/similarities/{}/{}/diff_allele/same_len/8mers/neighbours1".format(storage_folder,args.dataset_name, args.sequence_type,mode),overwrite=False)
+            VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/{}/diff_allele/same_len/8mers/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
 
 
         VegvisirUtils.folders("all","{}/{}/similarities/{}/{}/diff_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name, args.sequence_type,mode))
@@ -1265,10 +1288,16 @@ def build_exploration_folders(args,storage_folder,filters_dict):
         VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/{}/diff_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name, args.sequence_type,mode),overwrite=False)
 
 
-        VegvisirUtils.folders("all","{}/{}/similarities/{}/{}/same_allele/same_len/{}mers/neighbours1".format(storage_folder,args.dataset_name, args.sequence_type,mode,filters_dict["filter_kmers"][1]))
-        VegvisirUtils.folders("positives","{}/{}/similarities/{}/{}/same_allele/same_len/{}mers/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode,filters_dict["filter_kmers"][1]),overwrite=False)
-        VegvisirUtils.folders("negatives","{}/{}/similarities/{}/{}/same_allele/same_len/{}mers/neighbours1".format(storage_folder,args.dataset_name, args.sequence_type,mode,filters_dict["filter_kmers"][1]),overwrite=False)
-        VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/{}/same_allele/same_len/{}mers/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode,filters_dict["filter_kmers"][1]),overwrite=False)
+        if args.sequence_type == "Icore":
+            VegvisirUtils.folders("all", "{}/{}/similarities/{}/{}/same_allele/same_len/9mers/neighbours1".format(storage_folder, args.dataset_name, args.sequence_type, mode))
+            VegvisirUtils.folders("positives","{}/{}/similarities/{}/{}/same_allele/same_len/9mers/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
+            VegvisirUtils.folders("negatives","{}/{}/similarities/{}/{}/same_allele/same_len/9mers/neighbours1".format(storage_folder,args.dataset_name, args.sequence_type,mode),overwrite=False)
+            VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/{}/same_allele/same_len/9mers/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
+        else:
+            VegvisirUtils.folders("all", "{}/{}/similarities/{}/{}/same_allele/same_len/8mers/neighbours1".format(storage_folder, args.dataset_name, args.sequence_type, mode))
+            VegvisirUtils.folders("positives","{}/{}/similarities/{}/{}/same_allele/same_len/8mers/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
+            VegvisirUtils.folders("negatives","{}/{}/similarities/{}/{}/same_allele/same_len/8mers/neighbours1".format(storage_folder,args.dataset_name, args.sequence_type,mode),overwrite=False)
+            VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/{}/same_allele/same_len/8mers/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
 
         VegvisirUtils.folders("all","{}/{}/similarities/{}/{}/same_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode))
         VegvisirUtils.folders("positives","{}/{}/similarities/{}/{}/same_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
@@ -1430,6 +1459,7 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
         build_exploration_folders(args, storage_folder,filters_dict)
     else:
         print("Folder structure existing")
+
     plot_mi,plot_frequencies,plot_cosine_similarity = False,False,False
     #plot_mi,plot_frequencies,plot_cosine_similarity = True,True,True
     #Highlight: Encode amino acid raw
@@ -1806,7 +1836,7 @@ def process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,sequences_
                                                                     args.shuffle_sequence).run()
         sequences_padded, sequences_padded_mask = zip(*sequences_pad_result)  # unpack list of tuples onto 2 lists
         
-        if args.random_sequences or args.num_mutations > 0:
+        if args.random_sequences or args.num_mutations > 0: #Store the randomized sequences
             VegvisirUtils.convert_to_pandas_dataframe(sequences_padded, data, storage_folder, args, use_test=True)
 
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, args.subs_matrix,
@@ -1846,7 +1876,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     epitopes_list = data[sequence_column].values.tolist()
     #epitopes_list = functools.reduce(operator.iconcat, epitopes_list, [])  # flatten list of lists
 
-    seq_max_len = len(max(epitopes_list, key=len))
+    seq_max_len = len(max(epitopes_list, key=len)) #Highlight: If this gives an error there are some nan values
     epitopes_lens = np.array(list(map(len, epitopes_list)))
     unique_lens = list(set(epitopes_lens))
 
@@ -1866,7 +1896,13 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     # prefix1 = "shuffled_" if args.shuffle_sequence else ""
     # prefix2 = "random_" if args.random_sequences else ""
     # prefix = prefix1 + prefix2
+    # intermediate_dataset_train = intermediate_dataset[intermediate_dataset["training"] == True]
+    # intermediate_dataset_test = intermediate_dataset[intermediate_dataset["training"] == False]
+    #
     # intermediate_dataset.to_csv("{}/benchmarking/{}sequences_{}.tsv".format(storage_folder,prefix,args.dataset_name),sep="\t",index=False)
+    # intermediate_dataset_train.to_csv("{}/benchmarking/{}sequences_{}_TRAIN.tsv".format(storage_folder,prefix,args.dataset_name),sep="\t",index=False)
+    # intermediate_dataset_test.to_csv("{}/benchmarking/{}sequences_{}_TEST.tsv".format(storage_folder,prefix,args.dataset_name),sep="\t",index=False)
+    # exit()
 
     epitopes_array_raw = np.array(epitopes_padded)
 
@@ -1899,7 +1935,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
 
     #data_volumetrics(seq_max_len,epitopes_list, data, epitopes_mask, storage_folder, args, filters_dict,analysis_mode,plot_volumetrics=False,plot_covariance=True)
 
-    if args.dataset_name not in  ["viral_dataset6","viral_dataset8","viral_dataset9","viral_dataset10","viral_dataset11"]:
+    if args.dataset_name not in  ["viral_dataset6","viral_dataset8","viral_dataset10","viral_dataset11"]:
         try:
             all_sim_results = data_exploration(data, epitopes_array_blosum, epitopes_array_int, epitopes_mask, aa_dict, aa_list,
                              blosum_norm, seq_max_len, storage_folder, args, corrected_aa_types,analysis_mode,filters_dict)
@@ -1923,7 +1959,6 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
                                                kmers_cosine_similarity=None)
         positional_weights = np.ones((n_data,seq_max_len))
         positional_weights_mask = np.ones((n_data,seq_max_len)).astype(bool)
-
 
     #Highlight: Reattatch partition, identifier, label, immunodominance score
     labels = data["target_corrected"].values.tolist()

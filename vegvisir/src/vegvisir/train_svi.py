@@ -1009,7 +1009,7 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                                                corrected_aa_types=dataset_info.corrected_aa_types,
                                                storage_folder=dataset_info.storage_folder,
                                                num_classes=args.num_classes,
-                                               num_obs_classes=args.num_obs_classes) #TODO: mum unobserved
+                                               num_obs_classes=args.num_obs_classes)
                     Vegvisir.save_model_output(
                         "{}/Vegvisir_checkpoints/model_outputs_train_{}{}.p".format(results_dir,mode.lower().split("_")[0], fold),
                         {"latent_space": train_predictive_samples_latent_space,

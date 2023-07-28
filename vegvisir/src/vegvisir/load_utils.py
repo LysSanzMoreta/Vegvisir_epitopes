@@ -553,7 +553,8 @@ class SequenceRandomGeneration(object):
         self.sequences = sequences
         self.seq_max_len = seq_max_len
         self.method = padding_method
-        self.random_seeds = list(range(len(sequences)))
+        random_seeds = np.array(list(range(len(sequences)))) #+ 1
+        self.random_seeds = random_seeds.tolist()
         self.aminoacids_list = np.array(list(VegvisirUtils.aminoacid_names_dict(20).keys()))
 
     def run(self):
