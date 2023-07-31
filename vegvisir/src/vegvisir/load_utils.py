@@ -291,7 +291,7 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
         dataset_proportions(test_data, results_dir, type="Test")
         info_file.write("\n -------------------------------------------------")
         info_file.write("\n Using as valid/test partition: {}".format(partition_idx))
-        warnings.warn("Test dataset == Valid dataset, since the test has been discarded. If you want to use the test dataset please select args.test == True to activate <prededined_partitions> or <predefined_partitions_diffused_test> ")
+        warnings.warn("Test dataset == Valid dataset, since the test has been discarded. If you want to use the test dataset please select args.test == True to activate <prededined_partitions> or <predefined_partitions_diffused_test>. Unless you are using a special dataset ")
     elif method == "predefined_partitions_diffused_test":
         """Diffuse/divide/transfers the test dataset to the train and validation datasets. The test has been assigned onto training partitions"""
         if partition_test is not None:

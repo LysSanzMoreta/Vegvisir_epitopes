@@ -125,6 +125,10 @@ def analysis_models():
                                 r"viral-dataset-9-onehot-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset9_2023_07_16_06h14min14s242596ms_60epochs_supervised_Icore_onehot_TESTING_9mers",
                                 r"viral-dataset-9-onehot-shuffled-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset9_2023_07_16_07h20min21s295545ms_60epochs_supervised_Icore_onehot_shuffled_TESTING_9mers",
                                 r"viral-dataset-9-onehot-random-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset9_2023_07_16_08h27min59s620085ms_60epochs_supervised_Icore_onehot_random_TESTING_9mers",
+                                r"viral-dataset-12-blosum-random-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset12_2023_07_31_10h51min08s664848ms_60epochs_supervised_Icore_blosum",
+                                r"viral-dataset-12-onehot-random-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset12_2023_07_31_11h12min47s101833ms_60epochs_supervised_Icore_onehot",
+                                r"viral-dataset-12-blosum-random-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset12_2023_07_31_11h49min37s800692ms_60epochs_supervised_Icore_blosum_9mers",
+                                r"viral-dataset-12-onehot-random-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/PLOTS_Vegvisir_viral_dataset12_2023_07_31_11h57min30s948968ms_60epochs_supervised_Icore_onehot_9mers"
                                 },
                            "supervised(Icore_non_anchor)":{
                                 r"viral-dataset-3-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset3_2023_07_24_15h49min18s185301ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING",
@@ -220,7 +224,7 @@ def analysis_models():
     VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_all,kfolds=5,results_folder = "Benchmark")
 
 
-    #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_all,kfolds=5,results_folder="Benchmark")
+    VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_all,kfolds=5,results_folder="Benchmark")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
@@ -236,13 +240,14 @@ if __name__ == "__main__":
                              'viral_dataset9: Same as viral_dataset7 with a new test dataset (OLD test,train and validation are mixed). New test dataset available when using args.test=True \n'
                              'viral_dataset10: Same as viral_dataset6 (containing unobserved datapoints) with a new test dataset (OLD test,train and validation are mixed). New test available when using args.test=True \n'
                              'viral_dataset11: Similar to viral_dataset6 (containing unobserved datapoints), but the (old) test is incorporated as an unobserved sequence as well. (old) test available when using args.test=True \n'
+                             'viral_dataset12: Training only on the unobserved data points with randomly assigned labels'
                              )
     parser.add_argument('-subset_data', type=str, default="no",
                         help="Pick only the first <n> datapoints (epitopes) for testing the pipeline\n"
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=2, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=20, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-encoding', type=str, nargs='?', default="blosum", help='<blosum> Use the matrix selected in args.subs_matrix to encode the sequences as blosum vectors'
                                                                                  '<onehot> One hot encoding of the sequences  ')
@@ -274,9 +279,9 @@ if __name__ == "__main__":
     parser.add_argument('-guide', type=str, nargs='?', default="custom", help='<custom>: See guides.py \n'
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
 
-    parser.add_argument('-train', type=str2bool, nargs='?', default=False ,help='<True> Run the model \n <False> Make models comparison ')
+    parser.add_argument('-train', type=str2bool, nargs='?', default=True ,help='<True> Run the model \n <False> Make models comparison ')
     parser.add_argument('-validate', type=str2bool, nargs='?', default=True, help='Evaluate the model on the validation dataset')
-    parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
+    parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
 
     parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=False, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1, it saturates the CPU & GPU memory'
                                                                                                 'False: Only plots the computationally inexpensive ROC curves')
@@ -285,7 +290,7 @@ if __name__ == "__main__":
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. If the sequence contains gaps, the script will use 20 aa + 1 gap character ')
     parser.add_argument('-filter-kmers', type=str2bool, nargs='?', default=False, help="Filters the dataset to 9-mers only")
 
-    parser.add_argument('-st','--sequence-type', type=str, nargs='?', default="Icore_non_anchor", help='Define the type of peptide sequence to use:\n'
+    parser.add_argument('-st','--sequence-type', type=str, nargs='?', default="Icore", help='Define the type of peptide sequence to use:\n'
                                                                                 'Icore: Full peptide '
                                                                                 'Icore_non_anchor: Peptide without the anchoring points marked by NetMHCPan 4.1')
     parser.add_argument('-p','--seq-padding', type=str, nargs='?', default="ends", help='Controls how the sequences are padded to the length of the longest sequence \n'

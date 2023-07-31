@@ -75,19 +75,19 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
                  "viral_dataset8":viral_dataset8,
                  "viral_dataset9":viral_dataset9,
                  "viral_dataset10":viral_dataset10,
-                 "viral_dataset11":viral_dataset11}
+                 "viral_dataset11":viral_dataset11,
+                 "viral_dataset12":viral_dataset12,
+                 }
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
     if args.learning_type == "semisupervised":
         if args.dataset_name in ["viral_dataset3","viral_dataset7","viral_dataset9"]:
             raise ValueError("Please select viral_dataset6 or viral_dataset8 or viral_dataset8 for semisupervised learning, else select supervised learning")
     if args.dataset_name in ["viral_dataset6","viral_dataset8","viral_dataset10","viral_dataset11"]:
         assert args.learning_type == "semisupervised", "Please select semisupervised learning for dataset {}".format(args.dataset_name)
-
-    # if args.dataset_name in ["viral_dataset10"] and  args.sequence_type == "Icore_non_anchor":
-    #     raise ValueError("Icore_non_anchor are missing for the test datase and unobserved sequences. Please select args.sequence_type == Icore, and wait for the sequences to arrive")
-
-    # if args.dataset_name in ["viral_dataset9"] and args.test and args.sequence_type == "Icore_non_anchor":
-    #     raise ValueError("Icore_non_anchor are missing for the test datase, please set args.validate==True and args.test == False")
+    if args.dataset_name == "viral_dataset12" and args.learning_type not in ["unsupervised","supervised"]:
+        raise ValueError("Please select either unsupervised or supervised learning types, despite this dataset being built upon unobserved data points (they will be randomly assigned a target value")
+    if args.dataset_name == "viral_dataset12" and args.test:
+        raise ValueError("No testing is available for this dataset, only validation. Please set args.validate == True and args.test == False")
 
     dataset_load_fx = lambda f,dataset_name,current_path,storage_folder,args,results_dir,update: lambda dataset_name,current_path,storage_folder,args,results_dir,update: f(dataset_name,current_path,storage_folder,args,results_dir,update)
     data_load_function = dataset_load_fx(func_dict[dataset_name],dataset_name,script_dir,storage_folder,args,results_dir,update)
@@ -106,7 +106,7 @@ def select_filters(args):
         kmer_size = 9
 
     filters_dict = {"filter_kmers":[args.filter_kmers,kmer_size,args.sequence_type], #Icore_non_anchor #Highlight: Remmeber to use 8!!
-                    "group_alleles":[True],
+                    "group_alleles":[False],
                     "filter_alleles":[False], #if True keeps the most common allele
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
@@ -906,8 +906,11 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,no_subjects_test=True)
+    if filters_dict["group_alleles"][0]:
+        data = pd.merge(data,data_species, on=['Icore'], how='left',suffixes=('_a', '_b'))
+    else:
+        data = pd.merge(data,data_species, on=['Icore',"allele"], how='left',suffixes=('_a', '_b'))
 
-    data = pd.merge(data,data_species, on=['Icore'], how='left',suffixes=('_a', '_b'))
     data["org_name"] = data["org_name_a"].fillna(data["org_name_b"])
     data.drop(["org_name_b","org_name_a"],axis=1,inplace=True)
     data.loc[(data["training"] == False), "confidence_score"] = 0
@@ -921,6 +924,8 @@ def viral_dataset9(dataset_name,script_dir,storage_folder,args,results_dir,updat
 
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
+
+    exit()
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
     return data_info
 
@@ -1219,9 +1224,124 @@ def viral_dataset11(dataset_name,script_dir,storage_folder,args,results_dir,upda
 
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
-
-
     VegvisirPlots.plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
+    #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
+    data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
+
+    return data_info
+
+def viral_dataset12(dataset_name,script_dir,storage_folder,args,results_dir,update):
+    """
+    Collects IEDB data and creates artificially generated epitopes. The artificial epitopes are designed by randomly chopping viral proteins onto peptides and then checking binding to MHC with NetMHC-pan
+
+    ####################
+    #HEADER DESCRIPTIONS#
+    ####################
+    allele
+    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
+    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
+    Number of Subjects Responded
+    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
+    training
+    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
+    partition
+
+    return
+          :param pandas dataframe: Results pandas dataframe with the following structure:
+                  Icore:Interaction peptide core
+                  allele: MHC allele
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  training: True assign data point to train , else assign to Test (given)
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  target: Pre-assigned target (given)
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+    """
+
+    dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
+    # data_observed = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    # data_observed.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
+    # data_observed = data_observed.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
+    filters_dict,analysis_mode = select_filters(args)
+    json.dump(filters_dict, dataset_info_file, indent=2)
+    data_species = pd.read_csv("{}/common_files/dataset_species.tsv".format(storage_folder),sep="\t")
+    data_species = data_species.dropna(axis=1)
+    data_species = data_species[["Icore","allele","org_name"]]
+
+    data_unobserved = pd.read_csv("{}/{}/dataset_artificial_peptides_from_proteins_partitioned_hla_anchors.tsv".format(storage_folder,args.dataset_name),sep = "\t") #Highlight: The sequences from the labelled dataset have been filtered for some reason
+    data_unobserved = data_unobserved[(data_unobserved["source"] == "artificial")]
+    data_unobserved = data_unobserved[["Icore","target","partition","allele","Icore_non_anchor"]]
+    #data_unobserved = data_unobserved.sample(n=args.num_unobserved,replace=False)
+    unique_partitions = data_unobserved["partition"].value_counts()
+    if args.num_unobserved < data_unobserved.shape[0]:
+        if args.num_unobserved != 0:
+            data_unobserved_list = []
+            for partition in unique_partitions.keys():
+                data_unobserved_i = data_unobserved.loc[(data_unobserved["partition"] == partition)]
+                data_unobserved_list.append(data_unobserved_i.sample(n=int((args.num_unobserved / len(unique_partitions.keys()))),replace=False))
+            data_unobserved = pd.concat(data_unobserved_list, axis=0)
+        else:
+            raise ValueError("Please select args.num_unobserved > 0, at least 5000 datapoints, since this dataset is built solely in unobserved/unlabelled data points")
+            data_unobserved = pd.DataFrame(columns=data_unobserved.columns)
+
+    data = data_unobserved #I know this is creating an unnecesary copy of the data, it is here for readibility
+    data["target"] = 2 #need to keep it "unobserved" for the grouping function
+    data["target_corrected"] = 2 #need to keep it "unobserved" for the grouping function
+    data["confidence_score"] = 0
+    data["Assay_number_of_subjects_responded"] = 0 #this gives immunodominance score of 0
+    data["Assay_number_of_subjects_tested"] = 1
+    #Highlight: Incorporate the Icore-non_anchors
+    #Filter peptides/Icores with unknown aminoacids "X"
+    data = data[~data['Icore'].str.contains("X")]
+
+    # anchors_per_allele = pd.read_csv("{}/anchor_info_content/anchors_per_allele_average.txt".format(storage_folder),sep="\s+",header=0)
+    # anchors_per_allele=anchors_per_allele[anchors_per_allele[["allele"]].isin(data_allele_types).any(axis=1)]
+    # allele_anchors_dict = dict(zip(anchors_per_allele["allele"],anchors_per_allele["anchors"]))
+    allele_counts = data.value_counts("allele")
+    most_common_allele = allele_counts.index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
+    #data_allele_types = allele_counts.index.tolist() #alleles present in this dataset
+    if filters_dict["filter_alleles"][0]:
+        data = data[data["allele"] == most_common_allele]
+
+    if filters_dict["group_alleles"][0]:
+        print("Grouping alleles")
+        # Group data by Icore, therefore, the alleles are grouped
+        data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
+        #data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count))
+        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
+
+        # Reattach info on training
+        data = pd.merge(data_a, data_b, on='Icore', how='outer')
+        data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
+
+    else:
+        allele_counts_dict = data["allele"].value_counts().to_dict()
+        allele_dict = dict(zip(allele_counts_dict.keys(),list(range(len(allele_counts_dict.keys())))))
+        data["allele_encoded"] = data["allele"]
+        data.replace({"allele_encoded": allele_dict},inplace=True)
+
+    data["training"] = True #in this dataset wwe only do validation, not testing
+    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,unobserved=True,plot_histograms=False)
+
+    a = np.random.choice(np.array([0,1]),p=[0.75,0.25],size=(data.shape[0]))
+
+
+    data["target"] = np.random.choice(np.array([0,1]),p=[0.75,0.25],size=(data.shape[0])) #randomly assigning targets
+    data["target_corrected"] = data["target"] #need to re-assign
+    data["confidence_score"] = 0
+    data["org_name"] = "unobserved"
+
+
+    unique_values = pd.unique(data["org_name"])
+    org_name_dict = dict(zip(list(range(len(unique_values))), unique_values))
+    org_name_dict_reverse = dict(zip(unique_values, list(range(len(unique_values)))))
+    pickle.dump(org_name_dict,open('{}/{}/org_name_dict.pkl'.format(storage_folder,args.dataset_name), 'wb'))
+    data = data.replace({"org_name": org_name_dict_reverse})
+
+    name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key, val in filters_dict.items()])
+    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder, args.dataset_name, name_suffix),sep="\t")
+    VegvisirPlots.plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
+
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
@@ -1895,7 +2015,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     #                                      })
     # prefix1 = "shuffled_" if args.shuffle_sequence else ""
     # prefix2 = "random_" if args.random_sequences else ""
-    # prefix = prefix1 + prefix2
+    # prefix = prefix1 + prefix2 + "ungrouped_alleles"
     # intermediate_dataset_train = intermediate_dataset[intermediate_dataset["training"] == True]
     # intermediate_dataset_test = intermediate_dataset[intermediate_dataset["training"] == False]
     #

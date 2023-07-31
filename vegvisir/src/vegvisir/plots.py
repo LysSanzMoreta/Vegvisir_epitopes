@@ -2997,7 +2997,7 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
         idx = df.index.get_level_values(0)
         css = [{'selector': f'.row{i}.level0', 'props': [('background-color', c[v])]} for i, v in enumerate(idx)]
         df_styled = df.style.format(na_rep="-", escape="latex",precision=2).background_gradient(axis=None,cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" for pandas 2.1
-        dfi.export(df_styled, '{}/{}/metrics_comparison_{}.png'.format(script_dir, results_folder,title), max_cols=-1)
+        dfi.export(df_styled, '{}/{}/metrics_comparison_{}.png'.format(script_dir, results_folder,title), max_cols=-1,max_rows=-1)
 
 
     process_dict(metrics_results_all, "ROC_AUC")
