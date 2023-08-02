@@ -1028,15 +1028,15 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
     #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax1, cmap="Blues", n_levels=30, fill=True, thresh=0.05,alpha=0.5)  # cmap='Blues'
     ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:, 2], alpha=alpha, s=size)
 
-    ax1.set_title("True labels", fontsize=20)
+    ax1.set_title("Binary targets", fontsize=20)
     if method == "_single_sample":
         #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax2, cmap="Blues", n_levels=30, fill=True,thresh=0.05, alpha=0.5)  # cmap='Blues'
         ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha, s=size)
-        ax2.set_title("Predicted labels \n (single sample)", fontsize=20)
+        ax2.set_title("Predicted binary targets \n (single sample)", fontsize=20)
     else:
         #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax2, cmap="Blues", n_levels=30, fill=True,thresh=0.05, alpha=0.5)  # cmap='Blues'
         ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha, s=size)
-        ax2.set_title("Predicted binary labels \n (samples mode)", fontsize=20)
+        ax2.set_title("Predicted binary targets \n (samples mode)", fontsize=20)
 
     ax3.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_confidence, alpha=alpha, s=size)
     ax3.set_title("Confidence scores", fontsize=20)
@@ -1429,39 +1429,30 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
     # #Highlight: Bring the pre-calculate peptide features back. PRESERVING THE ORDER OF THE SEQUENCES!
     if (not args.shuffle_sequence) and (not args.random_sequences) and (not args.num_mutations != 0) and (args.sequence_type == "Icore"):
         if (args.num_classes == args.num_obs_classes):
-            sequences_raw = settings["sequences_raw"]  # the sequences are following the order from the data loader
-            sequences_raw = list(map(lambda seq: "".join(seq).replace("#", ""), sequences_raw))
-            sequences_raw = pd.DataFrame({"Icore": sequences_raw})
-            all_feats = pd.read_csv("{}/common_files/dataset_all_features.tsv".format(dataset_info.storage_folder),sep="\s+",index_col=0)
-            peptide_feats_cols = all_feats.columns[(all_feats.columns.str.contains("Icore")) | (all_feats.columns.str.contains(pat = 'pep_'))]
-            peptide_feats = all_feats[peptide_feats_cols]
-            sequences_feats = VegvisirUtils.merge_in_left_order(sequences_raw, peptide_feats, "Icore")
-            sequences_feats = sequences_feats.groupby('Icore', as_index=False, sort=False)[peptide_feats_cols[peptide_feats_cols != "Icore"]].agg(lambda x: sum(list(x)) / len(list(x))) #sort Falsse to not mess up the order in which the sequences come out from the model
-            sequences_feats = sequences_feats[~sequences_feats[peptide_feats_cols[1]].isna()]
+            try:
+                sequences_raw = settings["sequences_raw"]  # the sequences are following the order from the data loader
+                sequences_raw = list(map(lambda seq: "".join(seq).replace("#", ""), sequences_raw))
+                sequences_raw = pd.DataFrame({"Icore": sequences_raw})
+                all_feats = pd.read_csv("{}/common_files/dataset_all_features.tsv".format(dataset_info.storage_folder),sep="\s+",index_col=0)
+                peptide_feats_cols = all_feats.columns[(all_feats.columns.str.contains("Icore")) | (all_feats.columns.str.contains(pat = 'pep_'))]
+                peptide_feats = all_feats[peptide_feats_cols]
+                sequences_feats = VegvisirUtils.merge_in_left_order(sequences_raw, peptide_feats, "Icore")
+                sequences_feats = sequences_feats.groupby('Icore', as_index=False, sort=False)[peptide_feats_cols[peptide_feats_cols != "Icore"]].agg(lambda x: sum(list(x)) / len(list(x))) #sort Falsse to not mess up the order in which the sequences come out from the model
+                sequences_feats = sequences_feats[~sequences_feats[peptide_feats_cols[1]].isna()]
 
-            sequences_feats = sequences_feats.to_dict(orient="list")
-            sequences_feats.pop('Icore', None)
-            #Highlight: Merge both features dict if there is useful information
-            if sequences_feats[peptide_feats_cols[1]]:
-                features_dict = {**features_dict, **sequences_feats}
-
-
-    def calculate_correlations(feat1,feat2,method="pearson"):
-        unique_vals = np.unique(feat2)
-        if (unique_vals.astype(int) == unique_vals).sum() == len(unique_vals): #if the variable is categorical
-            #print("found categorical variable")
-            result =  scipy.stats.pointbiserialr(feat1, feat2)
-        else:
-            #print("continuous variable")
-            if method == "pearson":
-                result =  scipy.stats.pearsonr(feat1, feat2)
-            else:
-                result =  scipy.stats.spearmanr(feat1, feat2)
-        return result
-
+                sequences_feats = sequences_feats.to_dict(orient="list")
+                sequences_feats.pop('Icore', None)
+                #Highlight: Merge both features dict if there is useful information
+                if sequences_feats[peptide_feats_cols[1]] and len(sequences_feats[peptide_feats_cols[1]]) == umap_proj_1d.shape:
+                    features_dict = {**features_dict, **sequences_feats}
+                else:
+                    print("Could not find information about all the sequences")
+            except:
+                print("Not all of the sequences are in the pre-computed features, skipping")
+                pass
 
     #pearson_correlations = list(map(lambda feat1,feat2: scipy.stats.pearsonr(feat1, feat2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
-    pearson_correlations = list(map(lambda feat1,feat2: calculate_correlations(feat1, feat2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
+    pearson_correlations = list(map(lambda feat1,feat2: VegvisirUtils.calculate_correlations(feat1, feat2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
     pearson_correlations = list(zip(*pearson_correlations))
     pearson_coefficients = np.array(pearson_correlations[0])
     pearson_coefficients = np.round(pearson_coefficients,2)
@@ -1472,7 +1463,7 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
         pearson_coefficients=pearson_coefficients[pearson_coef_idx]
 
     #spearman_correlations = list(map(lambda feat1,feat2: scipy.stats.stats.spearmanr(feat1,feat2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
-    spearman_correlations = list(map(lambda feat1,feat2: calculate_correlations(feat1,feat2,method="spearman"),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
+    spearman_correlations = list(map(lambda feat1,feat2: VegvisirUtils.calculate_correlations(feat1,feat2,method="spearman"),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
     spearman_correlations = list(zip(*spearman_correlations))
 
     spearman_coefficients = np.array(spearman_correlations[0])
@@ -1517,13 +1508,14 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
         features_matrix = np.array(list(features_dict.values()))
         features_matrix = np.vstack([umap_proj_1d[None, :], features_matrix])
         features_covariance = np.cov(features_matrix)
+        features_correlations = np.corrcoef(features_matrix)
         if save_plot:
             # norm = plt.Normalize(0, 1)
             norm = None
             cmap = sns.color_palette("rocket_r", as_cmap=True)
             cbar = True
 
-            sns.heatmap(features_covariance, ax=ax1, cbar=cbar, cmap=cmap, norm=norm, annot=True,annot_kws={"fontsize": "small"}, fmt=".1f")
+            sns.heatmap(features_correlations, ax=ax1, cbar=cbar, cmap=cmap, norm=norm, annot=True,annot_kws={"fontsize": "small"}, fmt=".1f")
             ax1.set_xticks(np.arange(len(features_names)), labels=features_names, rotation=45)
             ax1.spines['left'].set_visible(False)
             # ax1.yaxis.set_ticklabels([])
@@ -1533,7 +1525,8 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
             fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.2)
             plt.margins(0.6)
             fig.suptitle("Features covariance")
-            plt.savefig("{}/{}/HEATMAP_features_UMAP_1D_covariance_{}_{}.png".format(results_dir, method, vector_name,sample_mode), dpi=600)
+            #plt.savefig("{}/{}/HEATMAP_features_UMAP_1D_covariance_{}_{}.png".format(results_dir, method, vector_name,sample_mode), dpi=600)
+            plt.savefig("{}/{}/HEATMAP_features_UMAP_1D_correlations_{}_{}.png".format(results_dir, method, vector_name,sample_mode), dpi=600)
         plt.clf()
         plt.close(fig)
 
@@ -1831,8 +1824,12 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
     :param mode:
     :return:
     """
+    evaluation_modes = ["samples","single_sample"] if predictions_dict["true_single_sample"] is not None else ["samples"]
+    probability_modes = ["class_probs_predictions_samples_average","class_probs_prediction_single_sample"] if predictions_dict["true_single_sample"] else ["class_probs_predictions_samples_average"]
+    binary_modes = ["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] else ["class_binary_predictions_samples_mode"]
 
-    for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
+    for sample_mode,prob_mode,binary_mode in zip(evaluation_modes,probability_modes,binary_modes):
+    #for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
         labels = predictions_dict["true_{}".format(sample_mode)]
         onehot_labels = predictions_dict["true_onehot_{}".format(sample_mode)]
         confidence_scores = predictions_dict["confidence_scores_{}".format(sample_mode)]
@@ -1991,7 +1988,13 @@ def plot_classification_metrics_per_species(dataset_info,args,predictions_dict,f
     :return:
     """
     species_dict = pickle.load(open('{}/{}/org_name_dict.pkl'.format(dataset_info.storage_folder,args.dataset_name),"rb"))
-    for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
+
+    evaluation_modes = ["samples","single_sample"] if predictions_dict["true_single_sample"] is not None else ["samples"]
+    probability_modes = ["class_probs_predictions_samples_average","class_probs_prediction_single_sample"] if predictions_dict["true_single_sample"] else ["class_probs_predictions_samples_average"]
+    binary_modes = ["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] else ["class_binary_predictions_samples_mode"]
+
+    #for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
+    for sample_mode,prob_mode,binary_mode in zip(evaluation_modes,probability_modes,binary_modes):
         data_int = predictions_dict["data_int_{}".format(sample_mode)]
         org_name = data_int[:,0,6]
         unique_org_name,counts = np.unique(org_name,return_counts=True)
@@ -2167,7 +2170,10 @@ def plot_attention_weights(summary_dict,dataset_info,results_dir,method="Train")
     aa_patches = [mpatches.Patch(color=colors_list[i], label='{}'.format(aa)) for aa,i in aminoacids_dict.items()]
     aa_groups_patches = [mpatches.Patch(color=color, label='{}'.format(group)) for group,color in groups_names_colors_dict.items()]
 
-    for sample_mode in ["single_sample","samples"]:
+    evaluation_modes = ["single_sample","samples"] if summary_dict["true_single_sample"] is not None else ["samples"]
+
+
+    for sample_mode in evaluation_modes:
         data_int = summary_dict["data_int_{}".format(sample_mode)]
         confidence_scores = summary_dict["confidence_scores_{}".format(sample_mode)]
         idx_all = np.ones_like(confidence_scores).astype(bool)
@@ -2257,7 +2263,9 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
     max_len = dataset_info.seq_max_len
     diag_idx_maxlen = np.diag_indices(max_len)
 
-    for sample_mode in ["single_sample","samples"]:
+    evaluation_modes = ["single_sample","samples"] if summary_dict["true_single_sample"] is not None else ["samples"]
+
+    for sample_mode in evaluation_modes:
         data_int = summary_dict["data_int_{}".format(sample_mode)]
         data_mask = summary_dict["data_mask_{}".format(sample_mode)]
         data_mask_seq = data_mask[:, 1:,:,0].squeeze(1)
@@ -2466,32 +2474,50 @@ def plot_volumetrics(volumetrics_dict,seq_max_len,labels,storage_folder,args,sub
         plt.clf()
         plt.close(fig)
 
-def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,storage_folder,args,subfolders,tag=""):
+def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,storage_folder,args,subfolders,tag="",use_precomputed_features=True):
     """
-    :param labels: immunodominance scores or true labels
+    :param labels: immunodominance scores or  binary targets
     """
 
-    fig, [ax1, ax2] = plt.subplots(nrows=1, ncols=2, figsize=(25, 20),gridspec_kw={'width_ratios': [4.5,1]})
-    if not args.shuffle_sequence and not args.random_sequences and args.num_mutations != 0:
-        sequences_raw = list(map(lambda seq: "".join(seq).replace("#", ""), sequences_raw))
-        sequences_raw = pd.DataFrame({"Icore": sequences_raw})
-        all_feats = pd.read_csv("{}/common_files/dataset_all_features.tsv".format(storage_folder),sep="\s+",index_col=0)
-        peptide_feats_cols = all_feats.columns[(all_feats.columns.str.contains("Icore")) | (all_feats.columns.str.contains(pat = 'pep_'))]
-        peptide_feats = all_feats[peptide_feats_cols]
-        sequences_feats = VegvisirUtils.merge_in_left_order(sequences_raw, peptide_feats, "Icore")
-        sequences_feats = sequences_feats.groupby('Icore', as_index=False, sort=False)[peptide_feats_cols[peptide_feats_cols != "Icore"]].agg(lambda x: sum(list(x)) / len(list(x))) #sort Falsse to not mess up the order in which the sequences come out from the model
-        sequences_feats = sequences_feats[~sequences_feats[peptide_feats_cols[1]].isna()]
+    label_names = {"_immunodominance_scores":"Immunodominance",
+                   "_binary_labels":"Binary targets"}
+    if (not args.shuffle_sequence) and (not args.random_sequences) and (not args.num_mutations != 0) and (args.sequence_type == "Icore"):
+        if (args.num_classes == args.num_obs_classes) and use_precomputed_features:
+            sequences_raw = list(map(lambda seq: "".join(seq).replace("#", ""), sequences_raw))
+            sequences_raw = pd.DataFrame({"Icore": sequences_raw})
+            all_feats = pd.read_csv("{}/common_files/dataset_all_features.tsv".format(storage_folder),sep="\s+",index_col=0)
+            peptide_feats_cols = all_feats.columns[(all_feats.columns.str.contains("Icore")) | (all_feats.columns.str.contains(pat = 'pep_'))]
+            peptide_feats = all_feats[peptide_feats_cols]
+            sequences_feats = VegvisirUtils.merge_in_left_order(sequences_raw, peptide_feats, "Icore")
+            sequences_feats = sequences_feats.groupby('Icore', as_index=False, sort=False)[peptide_feats_cols[peptide_feats_cols != "Icore"]].agg(lambda x: sum(list(x)) / len(list(x))) #sort Falsse to not mess up the order in which the sequences come out from the model
+            sequences_feats = sequences_feats[~sequences_feats[peptide_feats_cols[1]].isna()]
 
-        sequences_feats = sequences_feats.to_dict(orient="list")
-        sequences_feats.pop('Icore', None)
+            sequences_feats = sequences_feats.to_dict(orient="list")
+            sequences_feats.pop('Icore', None)
 
-        #Highlight: Merge both features dict
-        if sequences_feats[peptide_feats_cols[1]]:
-            features_dict = {**features_dict, **sequences_feats}
+            #Highlight: Merge both features dict
+            if sequences_feats[peptide_feats_cols[1]]:
+                features_dict = {**features_dict, **sequences_feats}
 
+
+    if tag == "_immunodominance_scores" and features_dict["volume"] is not None:
+        pearson_correlations = list(map(lambda feat1,feat2: VegvisirUtils.calculate_correlations(feat1, feat2),[labels]*len(features_dict.keys()),list(features_dict.values())))
+        pearson_correlations = list(zip(*pearson_correlations))
+        pearson_coefficients = np.array(pearson_correlations[0])
+        pearson_coefficients = np.round(pearson_coefficients,2)
+        pearson_pvalues = np.array(pearson_correlations[1])
+        pearson_pvalues = np.round(pearson_pvalues,3)
+    else:
+        if features_dict["volume"] is not None:
+            pearson_correlations = list(map(lambda feat1,feat2: VegvisirUtils.calculate_correlations(feat2, feat1),[labels]*len(features_dict.keys()),list(features_dict.values())))
+            pearson_correlations = list(zip(*pearson_correlations))
+            pearson_coefficients = np.array(pearson_correlations[0])
+            pearson_coefficients = np.round(pearson_coefficients,2)
+            pearson_pvalues = np.array(pearson_correlations[1])
+            pearson_pvalues = np.round(pearson_pvalues,3)
 
     if features_dict["volume"] is not None:
-
+        fig, [ax1, ax2] = plt.subplots(nrows=1, ncols=2, figsize=(25, 20), gridspec_kw={'width_ratios': [4.5, 1]})
         features_names = list(features_dict.keys()) + [tag.replace("_","")]
         features_matrix = np.array(list(features_dict.values()))
         features_matrix = np.vstack([features_matrix,labels[None,:]])
@@ -2519,6 +2545,28 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
         plt.savefig("{}/{}/similarities/{}/HEATMAP_features_covariance{}.png".format(storage_folder,args.dataset_name,subfolders,tag))
         plt.clf()
         plt.close(fig)
+
+        #Highlight: Plot correlations
+
+        fig, [ax1, ax2] = plt.subplots(nrows=1, ncols=2, figsize=(25, 20), gridspec_kw={'width_ratios': [4.5, 0.5]})
+
+        i=0
+        position_labels = []
+        for feat_name,coeff,pval in zip(features_dict.keys(),pearson_coefficients,pearson_pvalues):
+            position_labels.append(i)
+            ax1.bar(i,coeff,label=feat_name,width = 0.1)
+            i += 0.2
+
+        ax1.xaxis.set_ticks(position_labels)
+        ax1.set_xticklabels(features_dict.keys(),fontsize=30,rotation=80)
+        ax1.tick_params(axis="y",labelsize=30)
+        ax2.axis("off")
+        #plt.margins(0.7)
+        fig.tight_layout(pad=3.0, w_pad=2.5, h_pad=3.0)
+
+        fig.suptitle("Correlation coefficients: Features vs {}".format(label_names[tag]),fontsize=30)
+
+        plt.savefig("{}/{}/similarities/{}/HISTOGRAM_features_correlations{}.png".format(storage_folder,args.dataset_name,subfolders,tag))
 
 def calculate_species_roc_auc_helper(summary_dict,args,script_dir,idx_all,fold,prob_mode,sample_mode,mode="train_species"):
     
@@ -2572,7 +2620,6 @@ def calculate_species_roc_auc_helper(summary_dict,args,script_dir,idx_all,fold,p
     species_pval_class_1 = species_pval_class_1[~np.isnan(species_pval_class_1)]
 
     return np.mean(species_auc_class_0),np.mean(species_auc_class_1),np.mean(species_pval_class_0),np.mean(species_pval_class_1)
-
 
 def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_folder="Benchmark"):
     """Compares average ROC AUC"""
@@ -3002,7 +3049,6 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
 
     process_dict(metrics_results_all, "ROC_AUC")
     process_dict(metrics_pvals_all, "P_values_AUC")
-
 
 def plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covariances_dict_train,covariances_dict_valid,covariances_dict_test,learning_type,name,args,script_dir,results_folder):
     for mode, summary_dict in zip(["train", "valid", "test"], [train_out, valid_out, test_out]):

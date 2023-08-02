@@ -22,6 +22,7 @@ else:#pip installed module
 from vegvisir import str2bool,str2None
 import vegvisir.utils as VegvisirUtils
 import vegvisir.plots as VegvisirPlots
+from argparse import Namespace
 
 if "CUDA_VISIBLE_DEVICES" in os.environ:
     pass
@@ -71,7 +72,7 @@ def main():
     VegvisirUtils.folders(ntpath.basename(results_dir), script_dir)
     if args.k_folds > 1:
         for kfold in range(args.k_folds):
-            VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Train_fold_{}".format(kfold)), script_dir)
+            VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Train_fold_{}".format(kfold)), script_dir) #TODO: 2 folders for train
             if args.test:
                 VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Test_fold_{}".format(kfold)), script_dir)
                 if args.validate:
@@ -229,8 +230,9 @@ def analysis_models():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
-                        default="viral_dataset9",
+                        default="custom_dataset",
                         help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data \n'
+                             'custom_dataset: Perform training or prediction (by setting the args.pretrained_model to the folder path with the model checkpoints). Define also train_path, test_path'
                              'viral_dataset3 : Only sequences, partitioned into train,validation and (old) test.If args.test = True, then the (old) assigned test is used \n'
                              'viral_dataset4 : viral_dataset3 sequences + Features \n '
                              'viral_dataset5: Contains additional artificially generated negative data points in the (old) test dataset \n'
@@ -240,14 +242,16 @@ if __name__ == "__main__":
                              'viral_dataset9: Same as viral_dataset7 with a new test dataset (OLD test,train and validation are mixed). New test dataset available when using args.test=True \n'
                              'viral_dataset10: Same as viral_dataset6 (containing unobserved datapoints) with a new test dataset (OLD test,train and validation are mixed). New test available when using args.test=True \n'
                              'viral_dataset11: Similar to viral_dataset6 (containing unobserved datapoints), but the (old) test is incorporated as an unobserved sequence as well. (old) test available when using args.test=True \n'
-                             'viral_dataset12: Training only on the unobserved data points with randomly assigned labels'
+                             'viral_dataset12: Training only on the unobserved data points with randomly assigned labels. MHC binders without binary targets'
                              )
-    parser.add_argument('-subset_data', type=str, default="no",
+
+
+    parser.add_argument('-subset-data', type=str, default="no",
                         help="Pick only the first <n> datapoints (epitopes) for testing the pipeline\n"
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=20, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=2, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-encoding', type=str, nargs='?', default="blosum", help='<blosum> Use the matrix selected in args.subs_matrix to encode the sequences as blosum vectors'
                                                                                  '<onehot> One hot encoding of the sequences  ')
@@ -283,7 +287,11 @@ if __name__ == "__main__":
     parser.add_argument('-validate', type=str2bool, nargs='?', default=True, help='Evaluate the model on the validation dataset')
     parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
 
-    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=False, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1, it saturates the CPU & GPU memory'
+    parser.add_argument('-train-path', type=str2None, nargs='?', default="/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/custom_dataset/unobserved_grouped_alleles_train.tsv",help="Path to training dataset. Use only for training. ")
+    parser.add_argument('-test-path', type=str2None, nargs='?', default= "", help='Path to sequences to predict')
+
+
+    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=True, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1, it saturates the CPU & GPU memory'
                                                                                                 'False: Only plots the computationally inexpensive ROC curves')
 
 
@@ -321,11 +329,15 @@ if __name__ == "__main__":
                                                                                            '<True>: Applies a random noise distortion (via rotations) to the encoded vector within the conserved positions of the sequences (mainly anchor points)  \n'
                                                                                            '<False>: The blosum encodings are left untouched')
     parser.add_argument('-num-samples','-num_samples', type=int, nargs='?', default=3, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
-    parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="None", help='Load the checkpoints (state_dict and optimizer) from a previous run \n'
+
+    #path = /home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_08_01_15h28min54s913529ms_60epochs_supervised_Icore_blosum_TESTING
+    parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_08_01_15h28min54s913529ms_60epochs_supervised_Icore_blosum_TESTING",
+                                                                                                help='Load the checkpoints (state_dict and optimizer) from a previous run \n'
                                                                                                 '<None>: Trains model \n'
                                                                                                 '<str path>: Loads pre-trained model from given path \n')
 
     args = parser.parse_args()
+
     if args.use_cuda:
         if torch.cuda.is_available():
             torch.set_default_tensor_type(torch.cuda.DoubleTensor)
@@ -353,8 +365,15 @@ if __name__ == "__main__":
     #torch.manual_seed(0)
     pyro.enable_validation(False)
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    if args.pretrained_model is not None:
+        args_dict = json.load(open("{}/commandline_args.txt".format(args.pretrained_model)))
+        args_dict["pretrained_model"] = args.pretrained_model
+        if args_dict["dataset_name"] == args.dataset_name:
+            print("Overriding your current args (from argparser) to load the ones in {}".format(args.pretrained_model))
+            args = Namespace(**args_dict)
     if args.train:
         main()
     else:
         analysis_models()
+
 

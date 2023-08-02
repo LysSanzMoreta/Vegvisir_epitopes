@@ -17,6 +17,7 @@ from sklearn import preprocessing
 import random
 import pandas as pd
 import torch
+import scipy
 import vegvisir.plots as VegvisirPlots
 import vegvisir.load_utils as VegvisirLoadUtils
 from scipy import stats
@@ -1277,7 +1278,18 @@ def merge_in_left_order(x, y, on=None):
     z = x.merge(y, how='left', on=on).set_index("Order").loc[np.arange(len(x)), :]
     return z
 
-
+def calculate_correlations(feat1,feat2,method="pearson"):
+    unique_vals = np.unique(feat2)
+    if (unique_vals.astype(int) == unique_vals).sum() == len(unique_vals): #if the variable is categorical
+        #print("found categorical variable")
+        result =  scipy.stats.pointbiserialr(feat1, feat2)
+    else:
+        #print("continuous variable")
+        if method == "pearson":
+            result =  scipy.stats.pearsonr(feat1, feat2)
+        else:
+            result =  scipy.stats.spearmanr(feat1, feat2)
+    return result
 
 
 
