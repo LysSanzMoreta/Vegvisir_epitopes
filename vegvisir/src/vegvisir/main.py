@@ -22,18 +22,17 @@ def run(dataset_info,results_dir,args):
 
         #VegvisirTrainSVI.kfold_crossvalidation(dataset_info,additional_info,args)
 
-        VegvisirTrainSVI.train_model(dataset_info, additional_info, args)
 
         # if args.pretrained_model is not None:
         #     print("Loading pre-trained model from {}".format(args.pretrained_model))
         #     VegvisirTrainSVI.load_model(dataset_info,additional_info,args)
         #
         # else:
-        #     if args.k_folds <= 1:
-        #         VegvisirTrainSVI.train_model(dataset_info,additional_info,args)
-        #     else:
-        #         print("Initializing {}-fold cross validation".format(args.k_folds))
-        #         VegvisirTrainSVI.kfold_crossvalidation(dataset_info,additional_info,args)
+        if args.k_folds <= 1:
+            VegvisirTrainSVI.train_model(dataset_info,additional_info,args)
+        else:
+            print("Initializing {}-fold cross validation".format(args.k_folds))
+            VegvisirTrainSVI.kfold_crossvalidation(dataset_info,additional_info,args)
 
 
         #VegvisirTrainRF.train_xgboost_binary_classifier(dataset_info,additional_info,args)

@@ -22,7 +22,7 @@ class VEGVISIRModelClass(nn.Module):
     def __init__(self, model_load):
         super(VEGVISIRModelClass, self).__init__()
         self.args = model_load.args
-        self.beta = model_load.args.beta_scale #scaling the KL divergence error
+        self.likelihood_scale = model_load.args.likelihood_scale #scaling the class log likelihood
         self.aa_types = model_load.aa_types
         self.seq_max_len = model_load.seq_max_len
         self.max_len = model_load.max_len
@@ -877,9 +877,10 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
             class_logits = self.classifier_model(latent_space, None)
             class_logits = self.logsoftmax(class_logits)  # [N,num_classes]
             pyro.deterministic("class_logits", class_logits, event_dim=1)
-            with pyro.poutine.mask(mask=confidence_mask_true):
-                pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),
-                            obs=[None if sample else true_labels][0])  # [N,]
+            #with pyro.poutine.mask(mask=confidence_mask_true):
+                #pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=None if sample else true_labels)  # [N,]
+            with pyro.poutine.scale(None,self.likelihood_scale):
+                pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=None if sample else true_labels)
 
         return {"attn_weights": outputnn.attn_weights}
 

@@ -262,7 +262,6 @@ def custom_dataset(script_dir,storage_folder,args,results_dir):
 
             #train_data = train_data.replace(columns={"target":"target_corrected"})
             train_data["training"] = True
-
             train_data["immunodominance_score"] = 0
             train_data["confidence_score"] = 0
             train_data["org_name"] = 0

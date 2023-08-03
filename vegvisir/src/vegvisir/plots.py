@@ -37,6 +37,8 @@ import vegvisir.similarities as VegvisirSimilarities
 from collections import namedtuple
 import dataframe_image as dfi
 import statsmodels.api as sm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib.pyplot as plt
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
 colors_dict = {0: "green", 1: "red",2:"navajowhite"}
@@ -1133,6 +1135,124 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
     #del confidence_scores,immunodominance_scores,hydropathy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
     #gc.collect()
 
+
+def colorbar(mappable):
+    """Places a figure color bar without squeezing the plot"""
+    last_axes = plt.gca()
+    ax = mappable.axes
+    fig = ax.figure
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    cbar = fig.colorbar(mappable, cax=cax)
+    plt.sca(last_axes)
+    return cbar
+
+def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
+    print("Plotting (reduced) scatter UMAP of {}...".format(vector_name))
+
+    title_dict = {"latent_space_z": "Latent representation (z)",
+                  "encoder_final_hidden_state":"Encoder Hf",
+                  "decoder_final_hidden_state": "Decoder Hf"}
+    colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:, 0])
+    if method == "_single_sample":
+        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
+            predictions_dict["class_binary_prediction_single_sample"])
+    else:
+        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
+            predictions_dict["class_binary_predictions_samples_mode"])
+
+    # Highlight: Confidence scores colors
+    confidence_scores = latent_space[:, 4]
+    confidence_scores_unique = np.unique(confidence_scores).tolist()
+    colormap_confidence = matplotlib.cm.get_cmap('plasma_r', len(confidence_scores_unique))
+    colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
+    colors_confidence = np.vectorize(colors_dict.get, signature='()->(n)')(confidence_scores)
+    # Highlight: Immunodominance scores colors
+    immunodominance_scores = latent_space[:, 3]
+    immunodominance_scores_unique = np.unique(immunodominance_scores)
+    immunodominance_scores, immunodominance_scores_unique = VegvisirUtils.replace_nan(immunodominance_scores,
+                                                                                      immunodominance_scores_unique)
+    colormap_immunodominance = matplotlib.cm.get_cmap('plasma_r', len(immunodominance_scores_unique.tolist()))
+    colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
+    colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
+    # Highlight: Frequency scores per class: https://stackoverflow.com/questions/65927253/linearsegmentedcolormap-to-list
+    frequency_class0_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 0]).tolist()
+    colormap_frequency_class0 = matplotlib.cm.get_cmap('BuGn',
+                                                       len(frequency_class0_unique))  # This one is  a LinearSegmentedColor map and works slightly different
+    colormap_frequency_class0_array = np.array(
+        [colormap_frequency_class0(i) for i in range(colormap_frequency_class0.N)])
+    colors_dict = dict(zip(frequency_class0_unique, colormap_frequency_class0_array))
+    colors_frequency_class0 = np.vectorize(colors_dict.get, signature='()->(n)')(
+        predictions_dict["class_binary_prediction_samples_frequencies"][:, 0])
+    frequency_class1_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 1]).tolist()
+    colormap_frequency_class1 = matplotlib.cm.get_cmap('OrRd', len(frequency_class1_unique))
+    colormap_frequency_class1_array = np.array(
+        [colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
+    colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
+    colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(
+        predictions_dict["class_binary_prediction_samples_frequencies"][:, 1])
+    alpha = 0.7
+    size = 5
+    fig = plt.figure()
+    ax1 = plt.subplot2grid(shape=(2, 6), loc=(0, 0), colspan=2)
+    ax2 = plt.subplot2grid((2, 6), (0, 2), colspan=2)
+    ax3 = plt.subplot2grid((2, 6), (0, 4), colspan=2)
+    ax4 = plt.subplot2grid((2, 6), (1, 1), colspan=2)
+    ax5 = plt.subplot2grid((2, 6), (1, 3), colspan=2)
+
+
+    fig.suptitle('UMAP projections', fontsize=20)
+    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:, 2], alpha=alpha, s=size)
+    ax1.set_title("Binary targets", fontsize=10)
+    ax1.axis("off")
+
+
+    if method == "_single_sample":
+        #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax2, cmap="Blues", n_levels=30, fill=True,thresh=0.05, alpha=0.5)  # cmap='Blues'
+        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha, s=size)
+        ax2.set_title("Predicted binary targets \n (single sample)", fontsize=10)
+    else:
+        #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax2, cmap="Blues", n_levels=30, fill=True,thresh=0.05, alpha=0.5)  # cmap='Blues'
+        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha, s=size)
+        ax2.set_title("Predicted binary targets \n (samples mode)", fontsize=10)
+    ax2.axis("off")
+
+    ################################################################################
+    ax3.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class0, alpha=alpha, s=size)
+    ax3.set_title("Probability class 0 ", fontsize=10)
+    ax3.axis("off")
+    divider3 = make_axes_locatable(ax3)
+    cax3 = divider3.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(0, 1), cmap=colormap_frequency_class0), ax=ax3,cax=cax3)
+    ################################################################################
+    ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=alpha, s=size)
+    ax4.set_title("Probability class 1 \n ", fontsize=10)
+    ax4.axis("off")
+    divider4 = make_axes_locatable(ax4)
+    cax4 = divider4.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_frequency_class1), ax=ax4,cax=cax4)
+    ################################################################################
+    ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=alpha, s=size)
+    ax5.set_title("Immunogenicity \n scores", fontsize=10)
+    ax5.axis("off")
+    divider5 = make_axes_locatable(ax5)
+    cax5 = divider5.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance), ax=ax5,cax=cax5)
+
+    fig.suptitle("UMAP of {}".format(title_dict[vector_name]))
+
+    negative_patch = mpatches.Patch(color=colors_dict_labels[0], label='Class 0')
+    positive_patch = mpatches.Patch(color=colors_dict_labels[1], label='Class 1')
+    fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
+    ax5.legend(handles=[negative_patch, positive_patch], prop={'size': 10}, loc='lower right',
+               bbox_to_anchor=(2.19, 0), ncol=1)
+    plt.savefig("{}/{}/umap_SCATTER_reduced_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=500)
+    plt.clf()
+    plt.close(fig)
+
+    #del confidence_scores,immunodominance_scores,hydropathy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
+    #gc.collect()
+
 def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
     print("Plotting scatter (quantiles) UMAP of {}...".format(vector_name))
 
@@ -1546,6 +1666,7 @@ def plot_latent_space(args,dataset_info,latent_space,predictions_dict,sample_mod
                        vector_name="latent_space_z", n_clusters=4)
 
     plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
+    plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
     if vector_name == "latent_space_z":
         plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
     if plot_correlations and vector_name == "latent_space_z":
@@ -1555,6 +1676,8 @@ def plot_latent_space(args,dataset_info,latent_space,predictions_dict,sample_mod
                                  vector_name)
     del umap_proj
     gc.collect()
+
+
 
 def plot_gradients(gradient_norms,results_dir,mode):
     print("Plotting gradients")
@@ -1794,7 +1917,7 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
         plt.clf()
         plt.close(fig)
     except:
-        print("Could not calculate AUC, only one class found.")
+        print("Could not calculate AUC, only one class found. (or another error came up)")
         roc_auc[0] = np.nan
         roc_auc[1] = np.nan
     try:
@@ -1825,8 +1948,8 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
     :return:
     """
     evaluation_modes = ["samples","single_sample"] if predictions_dict["true_single_sample"] is not None else ["samples"]
-    probability_modes = ["class_probs_predictions_samples_average","class_probs_prediction_single_sample"] if predictions_dict["true_single_sample"] else ["class_probs_predictions_samples_average"]
-    binary_modes = ["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] else ["class_binary_predictions_samples_mode"]
+    probability_modes = ["class_probs_predictions_samples_average","class_probs_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_probs_predictions_samples_average"]
+    binary_modes = ["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_mode"]
 
     for sample_mode,prob_mode,binary_mode in zip(evaluation_modes,probability_modes,binary_modes):
     #for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
@@ -1909,6 +2032,7 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
                         auk_score_binary = None
                 else:
                     auk_score_binary = None
+
                 plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name)
                 plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name)
 
@@ -1990,8 +2114,8 @@ def plot_classification_metrics_per_species(dataset_info,args,predictions_dict,f
     species_dict = pickle.load(open('{}/{}/org_name_dict.pkl'.format(dataset_info.storage_folder,args.dataset_name),"rb"))
 
     evaluation_modes = ["samples","single_sample"] if predictions_dict["true_single_sample"] is not None else ["samples"]
-    probability_modes = ["class_probs_predictions_samples_average","class_probs_prediction_single_sample"] if predictions_dict["true_single_sample"] else ["class_probs_predictions_samples_average"]
-    binary_modes = ["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] else ["class_binary_predictions_samples_mode"]
+    probability_modes = ["class_probs_predictions_samples_average","class_probs_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_probs_predictions_samples_average"]
+    binary_modes = ["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_mode"]
 
     #for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
     for sample_mode,prob_mode,binary_mode in zip(evaluation_modes,probability_modes,binary_modes):

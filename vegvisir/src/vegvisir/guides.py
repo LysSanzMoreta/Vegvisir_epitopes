@@ -24,7 +24,6 @@ class VEGVISIRGUIDES(EasyGuide):
         super(VEGVISIRGUIDES, self).__init__(vegvisir_model)
         #self.guide_type = ModelLoad.args.select_guide
         #self.Vegvisir = Vegvisir
-        self.beta = model_load.args.beta_scale #scaling the KL divergence error
         self.blosum = model_load.blosum
         self.learning_type = model_load.args.learning_type
         self.glitch = model_load.args.glitch
