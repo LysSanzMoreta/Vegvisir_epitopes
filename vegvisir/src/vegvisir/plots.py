@@ -15,8 +15,11 @@ from collections import defaultdict
 import dill
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import scipy
 from matplotlib.colors import Normalize
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.colorbar import Colorbar
+import matplotlib.gridspec as gridspec
+
 import  matplotlib
 #matplotlib.rc('text', usetex=True)
 import seaborn as sns
@@ -37,8 +40,6 @@ import vegvisir.similarities as VegvisirSimilarities
 from collections import namedtuple
 import dataframe_image as dfi
 import statsmodels.api as sm
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-import matplotlib.pyplot as plt
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
 colors_dict = {0: "green", 1: "red",2:"navajowhite"}
@@ -1147,7 +1148,7 @@ def colorbar(mappable):
     plt.sca(last_axes)
     return cbar
 
-def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
+def plot_scatter_reduced2(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
     print("Plotting (reduced) scatter UMAP of {}...".format(vector_name))
 
     title_dict = {"latent_space_z": "Latent representation (z)",
@@ -1161,12 +1162,6 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
         colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
             predictions_dict["class_binary_predictions_samples_mode"])
 
-    # Highlight: Confidence scores colors
-    confidence_scores = latent_space[:, 4]
-    confidence_scores_unique = np.unique(confidence_scores).tolist()
-    colormap_confidence = matplotlib.cm.get_cmap('plasma_r', len(confidence_scores_unique))
-    colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
-    colors_confidence = np.vectorize(colors_dict.get, signature='()->(n)')(confidence_scores)
     # Highlight: Immunodominance scores colors
     immunodominance_scores = latent_space[:, 3]
     immunodominance_scores_unique = np.unique(immunodominance_scores)
@@ -1246,12 +1241,147 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
     fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
     ax5.legend(handles=[negative_patch, positive_patch], prop={'size': 10}, loc='lower right',
                bbox_to_anchor=(2.19, 0), ncol=1)
-    plt.savefig("{}/{}/umap_SCATTER_reduced_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=500)
+    plt.savefig("{}/{}/umap_SCATTER_reduced_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=600)
     plt.clf()
     plt.close(fig)
 
     #del confidence_scores,immunodominance_scores,hydropathy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
     #gc.collect()
+
+
+def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
+    print("Plotting (reduced) scatter UMAP of {}...".format(vector_name))
+
+    title_dict = {"latent_space_z": "Latent representation (z)",
+                  "encoder_final_hidden_state":"Encoder Hf",
+                  "decoder_final_hidden_state": "Decoder Hf"}
+    colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:, 0])
+    if method == "_single_sample":
+        predictions_binary = predictions_dict["class_binary_prediction_single_sample"]
+        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_binary)
+    else:
+        predictions_binary = predictions_dict["class_binary_predictions_samples_mode"]
+        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_binary)
+
+
+    dataframe = pd.DataFrame({"UMAP_x":umap_proj[:,0],
+                              "UMAP_y": umap_proj[:, 1],
+                              "Binary targets":latent_space[:, 0],
+                              "predictions_binary":predictions_binary,
+                              "Immunogenicity":latent_space[:, 3],
+                              "frequency_0":predictions_dict["class_binary_prediction_samples_frequencies"][:, 0],
+                              "frequency_1":predictions_dict["class_binary_prediction_samples_frequencies"][:, 1]
+                             })
+
+    # Highlight: Immunodominance scores colors
+    immunodominance_scores = latent_space[:, 3]
+    immunodominance_scores_unique = np.unique(immunodominance_scores)
+    immunodominance_scores, immunodominance_scores_unique = VegvisirUtils.replace_nan(immunodominance_scores,
+                                                                                      immunodominance_scores_unique)
+    colormap_immunodominance = matplotlib.cm.get_cmap('plasma_r', len(immunodominance_scores_unique.tolist()))
+    colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
+    colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
+    # Highlight: Frequency scores per class: https://stackoverflow.com/questions/65927253/linearsegmentedcolormap-to-list
+    frequency_class0_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 0]).tolist()
+    colormap_frequency_class0 = matplotlib.cm.get_cmap('BuGn',len(frequency_class0_unique))  # This one is  a LinearSegmentedColor map and works slightly different
+    colormap_frequency_class0_array = np.array([colormap_frequency_class0(i) for i in range(colormap_frequency_class0.N)])
+    colors_dict = dict(zip(frequency_class0_unique, colormap_frequency_class0_array))
+    colors_frequency_class0 = np.vectorize(colors_dict.get, signature='()->(n)')(
+        predictions_dict["class_binary_prediction_samples_frequencies"][:, 0])
+    frequency_class1_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 1]).tolist()
+    colormap_frequency_class1 = matplotlib.cm.get_cmap('OrRd', len(frequency_class1_unique))
+    colormap_frequency_class1_array = np.array(
+        [colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
+    colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
+    colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_binary_prediction_samples_frequencies"][:, 1])
+
+    alpha = 0.7
+    size = 5
+    # Highlight: Scatter and density plot
+    g0 = sns.jointplot(data=dataframe, x="UMAP_x", y="UMAP_y", hue="Binary targets", alpha=alpha, s=8,
+                        palette=list(colors_dict_labels.values()),
+                        hue_order=[0,1]
+                        )
+    g0.ax_joint.axis("off")
+    g0.ax_marg_x.axis("off")
+    g0.ax_marg_y.axis("off")
+
+    #Highlight: Predictions scatter plot
+    g1 = sns.FacetGrid(dataframe,hue="predictions_binary", subplot_kws={"fc": "white"}, margin_titles=True,
+    palette = list(colors_dict_labels.values()),
+    hue_order = [0, 1]
+    )
+    g1.set(yticks=[])
+    g1.set(xticks=[])
+    g1_axes = g1.axes.flatten()
+    g1_axes[0].set_title("Predicted targets")
+    g1.map(plt.scatter, "UMAP_x", "UMAP_y", alpha=alpha, s=size)
+    g1_axes[0].set_xlabel("")
+    g1_axes[0].set_ylabel("")
+
+    #Highlight: Immunogenicity scatter plot
+    g2 = sns.FacetGrid(dataframe, hue="Immunogenicity", subplot_kws={"fc": "white"},
+                       palette=colormap_immunodominance.colors,
+                       hue_order=immunodominance_scores_unique)
+    g2.set(yticks=[])
+    g2.set(xticks=[])
+    g2_axes = g2.axes.flatten()
+    g2_axes[0].set_title("Immunogenicity")
+    g2.map(plt.scatter, "UMAP_x", "UMAP_y", alpha=alpha, s=size)
+    g2_axes[0].set_xlabel("")
+    g2_axes[0].set_ylabel("")
+
+    g3 = sns.FacetGrid(dataframe, hue="frequency_0", subplot_kws={"fc": "white"},
+                       palette=colormap_frequency_class0_array,
+                       hue_order=frequency_class0_unique
+                       )
+    g3.set(yticks=[])
+    g3.set(xticks=[])
+    g3_axes = g3.axes.flatten()
+    g3_axes[0].set_title("Posterior predictive (class 0)")
+    g3.map(plt.scatter, "UMAP_x", "UMAP_y", alpha=alpha, s=size)
+
+    g4 = sns.FacetGrid(dataframe, hue="frequency_1", subplot_kws={"fc": "white"},
+                       palette=colormap_frequency_class1_array,
+                       hue_order=frequency_class1_unique
+                       )
+    g4.set(yticks=[])
+    g4.set(xticks=[])
+    g4_axes = g4.axes.flatten()
+    g4_axes[0].set_title("Posterior predictive (class 1)")
+    g4.map(plt.scatter, "UMAP_x", "UMAP_y", alpha=alpha, s=size)
+
+    fig = plt.figure(figsize=(17, 8))
+    gs = gridspec.GridSpec(2, 6, width_ratios=[2, 1, 0.1, 0.07, 1, 0.1])
+
+    mg0 = VegvisirUtils.SeabornFig2Grid(g0, fig, gs[0:2, 0])
+    mg1 = VegvisirUtils.SeabornFig2Grid(g1, fig, gs[0, 1])
+    mg2 = VegvisirUtils.SeabornFig2Grid(g2, fig, gs[0, 4])
+    mg3 = VegvisirUtils.SeabornFig2Grid(g3, fig, gs[1, 1])
+    mg4 = VegvisirUtils.SeabornFig2Grid(g4, fig, gs[1, 4])
+
+    gs.update(top=0.9)
+    # gs.update(right=0.4)
+
+    # Following: https://www.sc.eso.org/~bdias/pycoffee/codes/20160407/gridspec_demo.html
+    cbax2 = plt.subplot(gs[0, 5])  # Place it where it should be.
+    cbax3 = plt.subplot(gs[1, 2])  # Place it where it should be.
+    cbax4 = plt.subplot(gs[1, 5])  # Place it where it should be.
+
+    cb2 = Colorbar(ax=cbax2, mappable=plt.cm.ScalarMappable(cmap=colormap_immunodominance))
+    cb3 = Colorbar(ax=cbax3, mappable=plt.cm.ScalarMappable(norm=Normalize(0, 1), cmap=colormap_frequency_class0))
+    cb4 = Colorbar(ax=cbax4, mappable=plt.cm.ScalarMappable(norm=Normalize(0, 1), cmap=colormap_frequency_class1))
+
+    fig.suptitle("UMAP latent space (z) projections")
+
+    plt.savefig("{}/{}/umap_SCATTER_reduced_{}_{}".format(results_dir, method, vector_name, sample_mode))
+    plt.clf()
+    plt.close(fig)
+
+    #del confidence_scores,immunodominance_scores,hydropathy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
+    #gc.collect()
+
+
 
 def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
     print("Plotting scatter (quantiles) UMAP of {}...".format(vector_name))
