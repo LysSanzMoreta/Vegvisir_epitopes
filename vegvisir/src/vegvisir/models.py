@@ -27,6 +27,7 @@ class VEGVISIRModelClass(nn.Module):
         self.seq_max_len = model_load.seq_max_len
         self.max_len = model_load.max_len
         self.batch_size = model_load.args.batch_size
+        self.likelihood_scale = self.likelihood_scale if self.likelihood_scale < 100 else self.batch_size
         self.input_dim = model_load.input_dim
         self.hidden_dim = model_load.args.hidden_dim
         self.embedding_dim = model_load.args.embedding_dim
@@ -1246,8 +1247,6 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
         """
 
         return Trace_ELBO(strict_enumeration_warning=False)
-
-
 
 class VegvisirModel5b(VEGVISIRModelClass,PyroModule):
     """

@@ -726,26 +726,31 @@ def clip_backprop(model, clip_value):
             handles.append(handle)
     return handles
 def kfold_loop(kfolds,dataset_info, args, additional_info):
-    """"""
+    """K-fold cross validation training loop"""
     for fold, (train_idx, valid_idx) in enumerate(kfolds): #returns k-splits for train and validation
         epoch_loop(train_idx, valid_idx, dataset_info, args, additional_info, mode="Valid_fold_{}".format(fold),fold="_fold_{}".format(fold))
         torch.cuda.empty_cache()
 def kfold_crossvalidation(dataset_info,additional_info,args):
-    """Set up k-fold cross validation and the training loop"""
+    """Set up k-fold cross validation for the training loop"""
     print("Loading dataset into model...")
     data_blosum = dataset_info.data_array_blosum_encoding
     seq_max_len = dataset_info.seq_max_len
     results_dir = additional_info.results_dir
     #Highlight: Train- Test split and kfold generator
-    partitioning_method = ["predefined_partitions" if args.test else"predefined_partitions_discard_test"][0]
-    if args.dataset_name in ["viral_dataset6","viral_dataset7"]:
-        partitioning_method = "predefined_partitions_diffused_test_create_new_test" if args.test else "predefined_partitions_diffused_test"
+    if args.predefined_partitions:
+        partitioning_method = ["predefined_partitions" if args.test else"predefined_partitions_discard_test"][0]
+        if args.dataset_name in ["viral_dataset6","viral_dataset7"]:
+            partitioning_method = "predefined_partitions_diffused_test_create_new_test" if args.test else "predefined_partitions_diffused_test"
+    else:
+        partitioning_method = "random_stratified"
+
 
     traineval_data_blosum,test_data_blosum,kfolds = VegvisirLoadUtils.trainevaltest_split_kfolds(data_blosum,
                                                                                                  args,results_dir,
                                                                                                  seq_max_len,dataset_info.max_len,
                                                                                                  dataset_info.features_names,
                                                                                                  None,method=partitioning_method)
+
 
 
     #Highlight:Also split the rest of arrays
@@ -1123,9 +1128,12 @@ def train_model(dataset_info,additional_info,args):
     seq_max_len = dataset_info.seq_max_len
     results_dir = additional_info.results_dir
     #Highlight: Train- Test split and kfold generator
-    partitioning_method = "predefined_partitions" if args.test else"predefined_partitions_discard_test"
-    if args.dataset_name in ["viral_dataset6","viral_dataset7"]:
-        partitioning_method = "predefined_partitions_diffused_test_create_new_test" if args.test else "predefined_partitions_diffused_test"
+    if args.predefined_partitions:
+        partitioning_method = "predefined_partitions" if args.test else"predefined_partitions_discard_test"
+        if args.dataset_name in ["viral_dataset6","viral_dataset7"]:
+            partitioning_method = "predefined_partitions_diffused_test_create_new_test" if args.test else "predefined_partitions_diffused_test"
+    else:
+        partitioning_method = "random_stratified"
 
     train_data_blosum,valid_data_blosum,test_data_blosum = VegvisirLoadUtils.trainevaltest_split(data_blosum,
                                                                                                  args,results_dir,

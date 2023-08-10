@@ -136,7 +136,8 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,uno
         dataset_info_file.write("Filter 1: Icores with number of subjects lower than {}. Drops {} data points, remaining {} \n".format(threshold,nprefilter - nfiltered, nfiltered))
 
     data["immunodominance_score"] = data["Assay_number_of_subjects_responded"] / data["Assay_number_of_subjects_tested"]
-    data = data.fillna({"immunodominance_score":0})
+    #data = data.fillna({"immunodominance_score":0}) #this assumes that if the immunodominance score is nan is because there is not enough information and then assigns it to 0, perhaps no good
+    data["immunodominance_score"] = data["immunodominance_score"].fillna(data["target"])
 
     if filters_dict["corrected_immunodominance_score"][0]:
         treshold = filters_dict["corrected_immunodominance_score"][1]
@@ -198,8 +199,6 @@ def check_overlap(data):
     test = data[data["training"] == False]
     overlap = pd.merge(train,test,on = ["Icore"],how="inner")
     assert overlap.size == 0, "Test data points included in the train dataset"
-
-
 
 def custom_dataset(script_dir,storage_folder,args,results_dir):
     """
@@ -320,8 +319,6 @@ def custom_dataset(script_dir,storage_folder,args,results_dir):
 
     return data_info
 
-
-
 def viral_dataset3(script_dir,storage_folder,args,results_dir):
     """
     ####################
@@ -369,8 +366,7 @@ def viral_dataset3(script_dir,storage_folder,args,results_dir):
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
         #data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count)) # messy when same number of counts
         #data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].nth(0) #returns first hit
-        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
- #selects mode and returns first hit in case of equal counts
+        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])#selects mode and returns first hit in case of equal counts
         # Reattach info on training
         data = pd.merge(data_a, data_b, on='Icore', how='outer')
         data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
@@ -396,7 +392,7 @@ def viral_dataset3(script_dir,storage_folder,args,results_dir):
 
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
-    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
+    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
 
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
@@ -476,7 +472,7 @@ def viral_dataset4(script_dir,storage_folder,args,results_dir):
     data = data.replace({"org_name":org_name_dict_reverse})
 
     name_suffix = "__".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
-    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
+    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
 
 
     VegvisirPlots.plot_features_histogram(data,features_names,"{}/{}".format(storage_folder,args.dataset_name),name_suffix)
@@ -556,7 +552,7 @@ def viral_dataset5(script_dir,storage_folder,args,results_dir):
     data = data.replace({"org_name":org_name_dict_reverse})
 
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
-    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
+    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
 
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
@@ -679,7 +675,7 @@ def viral_dataset6(script_dir,storage_folder,args,results_dir):
     data = data.replace({"org_name": org_name_dict_reverse})
 
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
-    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
+    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
 
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
@@ -773,7 +769,7 @@ def viral_dataset7(script_dir,storage_folder,args,results_dir):
     data = data.replace({"org_name": org_name_dict_reverse})
 
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
-    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
+    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
 
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
@@ -894,8 +890,7 @@ def viral_dataset8(script_dir,storage_folder,args,results_dir):
 
     data.loc[(data["target"] == 2), "target_corrected"] = 2
     data.loc[(data["target"] == 2), "confidence_score"] = 0
-    print(np.unique(data["target"].to_numpy()))
-    exit()
+
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,unobserved=True)
     data.loc[(data["target"] == 2), "target_corrected"] = 2
     data.loc[(data["target"] == 2), "confidence_score"] = 0
@@ -908,7 +903,7 @@ def viral_dataset8(script_dir,storage_folder,args,results_dir):
     data = data.replace({"org_name":org_name_dict_reverse})
 
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
-    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
+    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
 
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
@@ -975,14 +970,19 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir):
     new_test_dataset = pd.read_csv("{}/{}/NEW_pMHC_test.csv".format(storage_folder,args.dataset_name),sep = ",")
     new_test_dataset_anchors = pd.read_csv("{}/{}/new_test_nonanchor.csv".format(storage_folder,args.dataset_name),sep = ",")
     new_test_dataset_anchors = new_test_dataset_anchors[["Icore","Icore_non_anchor"]]
+    new_test_dataset_immunogenicity = pd.read_csv("{}/{}/new_test_nonanchor_immunodominance.csv".format(storage_folder,args.dataset_name),sep=",")
+    new_test_dataset_immunogenicity = new_test_dataset_immunogenicity[["Icore","allele","subjects_tested","subjects_responded"]] #"Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"
+    new_test_dataset_immunogenicity.columns = ["Icore","alelle","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"]
     new_test_dataset = pd.merge(new_test_dataset,new_test_dataset_anchors,on=["Icore"],how="left")
+    new_test_dataset = pd.merge(new_test_dataset,new_test_dataset_immunogenicity,on=["Icore"],how="left")
+
 
     test_mode_dict = {0:"test_virus",
                       1:"test_bacteria",
                       2:"test_cancer"}
 
     new_test_dataset["training"] = False
-    new_test_dataset["target_corrected"]  = new_test_dataset["target"]
+    #new_test_dataset["target_corrected"]  = new_test_dataset["target"]
     test_mode = test_mode_dict[0]
     if test_mode=="test_virus":
         #new_test_dataset = new_test_dataset[(new_test_dataset['org_name'].str.contains("virus")) | (new_test_dataset['org_name'].str.contains("SARS-CoV2"))]
@@ -994,10 +994,16 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir):
     elif test_mode == "test_cancer":
         new_test_dataset = new_test_dataset[(new_test_dataset['kingdom'].str.contains("Eukaryota"))]
 
-    data["training"] = True #Highlight: This time we do not keep track of the training data
+    data["training"] = True #Highlight: Everything is training (also old test)
     data = pd.merge(data,new_test_dataset, on=['Icore',"allele","training","target"], how='outer',suffixes=('_a', '_b'))
+
     data["Icore_non_anchor"] = data["Icore_non_anchor_a"].fillna(data["Icore_non_anchor_b"])
-    data = data.drop(["Icore_non_anchor_a","Icore_non_anchor_b"],axis=1)
+    data["Assay_number_of_subjects_responded"] = data["Assay_number_of_subjects_responded_a"].fillna(data["Assay_number_of_subjects_responded_b"])
+    data["Assay_number_of_subjects_tested"] = data["Assay_number_of_subjects_tested_a"].fillna(data["Assay_number_of_subjects_tested_b"])
+
+    data = data.drop(["Icore_non_anchor_a", "Icore_non_anchor_b"], axis=1)
+    data = data.drop(["Assay_number_of_subjects_tested_a", "Assay_number_of_subjects_tested_b"], axis=1)
+    data = data.drop(["Assay_number_of_subjects_responded_a", "Assay_number_of_subjects_responded_b"], axis=1)
 
     data = data.drop("kingdom",axis=1)
 
@@ -1138,14 +1144,21 @@ def viral_dataset10(script_dir,storage_folder,args,results_dir):
     new_test_dataset = pd.read_csv("{}/{}/NEW_pMHC_test.csv".format(storage_folder,args.dataset_name),sep = ",")
     new_test_dataset_anchors = pd.read_csv("{}/{}/new_test_nonanchor.csv".format(storage_folder,args.dataset_name),sep = ",")
     new_test_dataset_anchors = new_test_dataset_anchors[["Icore","Icore_non_anchor"]]
+    new_test_dataset_immunogenicity = pd.read_csv("{}/{}/new_test_nonanchor_immunodominance.csv".format(storage_folder,args.dataset_name),sep=",")
+    new_test_dataset_immunogenicity = new_test_dataset_immunogenicity[["Icore","allele","subjects_tested","subjects_responded"]] #"Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"
+    new_test_dataset_immunogenicity.columns = ["Icore","alelle","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"]
     new_test_dataset = pd.merge(new_test_dataset,new_test_dataset_anchors,on=["Icore"],how="left")
+    new_test_dataset = pd.merge(new_test_dataset,new_test_dataset_immunogenicity,on=["Icore"],how="left")
+
+    #print(new_test_dataset[["Assay_number_of_subjects_tested"]].value_counts())
+
 
     test_mode_dict = {0:"test_virus",
                       1:"test_bacteria",
                       2:"test_cancer"}
 
     new_test_dataset["training"] = False
-    new_test_dataset["target_corrected"]  = new_test_dataset["target"]
+    #new_test_dataset["target_corrected"]  = new_test_dataset["target"]
     test_mode = test_mode_dict[0]
 
     if test_mode=="test_virus":
@@ -1159,7 +1172,12 @@ def viral_dataset10(script_dir,storage_folder,args,results_dir):
     data["training"] = True #Highlight: This time we do not keep track of the training data
     data = pd.merge(data,new_test_dataset, on=['Icore',"allele","training","target"], how='outer',suffixes=('_a', '_b'))
     data["Icore_non_anchor"] = data["Icore_non_anchor_a"].fillna(data["Icore_non_anchor_b"])
+    data["Assay_number_of_subjects_responded"] = data["Assay_number_of_subjects_responded_a"].fillna(data["Assay_number_of_subjects_responded_b"])
+    data["Assay_number_of_subjects_tested"] = data["Assay_number_of_subjects_tested_a"].fillna(data["Assay_number_of_subjects_tested_b"])
+
     data = data.drop(["Icore_non_anchor_a","Icore_non_anchor_b"],axis=1)
+    data = data.drop(["Assay_number_of_subjects_tested_a","Assay_number_of_subjects_tested_b"],axis=1)
+    data = data.drop(["Assay_number_of_subjects_responded_a","Assay_number_of_subjects_responded_b"],axis=1)
 
     data = data.drop("kingdom",axis=1)
     if filters_dict["filter_alleles"][0]:
@@ -1182,9 +1200,21 @@ def viral_dataset10(script_dir,storage_folder,args,results_dir):
         data["allele_encoded"] = data["allele"]
         data.replace({"allele_encoded": allele_dict},inplace=True)
 
+
+
+
     data.loc[(data["target"] == 2), "target_corrected"] = 2
     data.loc[(data["target"] == 2), "confidence_score"] = 0
-    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,unobserved=True,no_subjects_test=True)
+    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,unobserved=True,no_subjects_test=False)
+
+
+    # test_data =  data[data["training"] == False]
+    # print(test_data.shape)
+    # print(test_data["target"].tolist())
+    # print(test_data["target_corrected"].tolist())
+    # #nan_rows = test_data[test_data["Assay_number_of_subjects_tested"].isna()]
+    # #print(nan_rows)
+    # exit()
 
     data.loc[(data["target"] == 2), "target_corrected"] = 2
     data.loc[(data["target"] == 2), "confidence_score"] = 0
@@ -1192,14 +1222,22 @@ def viral_dataset10(script_dir,storage_folder,args,results_dir):
     data["org_name"] = data["org_name_a"].fillna(data["org_name_b"])
     data.drop(["org_name_b","org_name_a"],axis=1,inplace=True)
 
+
+
+
     data.loc[(data["training"] == False), "confidence_score"] = 0
     unique_values = pd.unique(data["org_name"])
     org_name_dict = dict(zip(list(range(len(unique_values))), unique_values))
     org_name_dict_reverse = dict(zip(unique_values, list(range(len(unique_values)))))
     pickle.dump(org_name_dict,open('{}/{}/org_name_dict.pkl'.format(storage_folder,args.dataset_name), 'wb'))
     data = data.replace({"org_name": org_name_dict_reverse})
+
+
+
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
+
+    exit()
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
@@ -1622,6 +1660,7 @@ def data_volumetrics(seq_max_len,epitopes_list,data,epitopes_array_mask,storage_
         subfolders = "{}/All/{}/neighbours1/all".format(args.sequence_type,analysis_mode)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw.tolist(),features_dict_all,seq_max_len,immunodominance_scores,storage_folder,args,subfolders,tag="_immunodominance_scores",use_precomputed_features=use_precomputed_features)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw.tolist(),features_dict_all,seq_max_len,labels_arr,storage_folder,args,subfolders,tag="_binary_labels",use_precomputed_features=use_precomputed_features)
+
         #Highlight: Train
         features_dict_all_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.all.tolist(),storage_folder).features_summary()
         subfolders = "{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode)
@@ -2136,25 +2175,26 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
     epitopes_padded, epitopes_padded_mask, aa_dict, blosum_array, blosum_dict, blosum_array_dict = process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,epitopes_list,data)
 
+    save_intermediate_dataset = True
+    if save_intermediate_dataset:
+        intermediate_dataset = pd.DataFrame({"{}".format(sequence_column):list(map(lambda seq:"".join(seq).replace("#",""),epitopes_padded)),
+                                             "target_corrected": data["target_corrected"],
+                                             "partitions": data["partition"],
+                                             "training":data["training"],
+                                             "immunodominance_score":data["immunodominance_score"],
+                                             "org_name":data["org_name"],
+                                             "confidence_scores": data["confidence_score"]
+                                             })
+        prefix1 = "shuffled_" if args.shuffle_sequence else ""
+        prefix2 = "random_" if args.random_sequences else ""
+        prefix = prefix1 + prefix2  + sequence_column + "_"
+        intermediate_dataset_train = intermediate_dataset[intermediate_dataset["training"] == True]
+        intermediate_dataset_test = intermediate_dataset[intermediate_dataset["training"] == False]
 
-    # intermediate_dataset = pd.DataFrame({"Icore":list(map(lambda seq:"".join(seq).replace("#",""),epitopes_padded)),
-    #                                      "target_corrected": data["target_corrected"],
-    #                                      "partitions": data["partition"],
-    #                                      "training":data["training"],
-    #                                      "immunodominance_score":data["immunodominance_score"],
-    #                                      "org_name":data["org_name"],
-    #                                      "confidence_scores": data["confidence_score"]
-    #                                      })
-    # prefix1 = "shuffled_" if args.shuffle_sequence else ""
-    # prefix2 = "random_" if args.random_sequences else ""
-    # prefix = prefix1 + prefix2 + "ungrouped_alleles"
-    # intermediate_dataset_train = intermediate_dataset[intermediate_dataset["training"] == True]
-    # intermediate_dataset_test = intermediate_dataset[intermediate_dataset["training"] == False]
-    #
-    # intermediate_dataset.to_csv("{}/benchmarking/{}sequences_{}.tsv".format(storage_folder,prefix,args.dataset_name),sep="\t",index=False)
-    # intermediate_dataset_train.to_csv("{}/benchmarking/{}sequences_{}_TRAIN.tsv".format(storage_folder,prefix,args.dataset_name),sep="\t",index=False)
-    # intermediate_dataset_test.to_csv("{}/benchmarking/{}sequences_{}_TEST.tsv".format(storage_folder,prefix,args.dataset_name),sep="\t",index=False)
-    # exit()
+        intermediate_dataset.to_csv("{}/benchmark_dataset/{}sequences_{}.tsv".format(storage_folder,prefix,args.dataset_name),sep="\t",index=False)
+        intermediate_dataset_train.to_csv("{}/benchmark_dataset/{}sequences_{}_TRAIN.tsv".format(storage_folder,prefix,args.dataset_name),sep="\t",index=False)
+        intermediate_dataset_test.to_csv("{}/benchmark_dataset/{}sequences_{}_TEST.tsv".format(storage_folder,prefix,args.dataset_name),sep="\t",index=False)
+        # # exit()
 
     epitopes_array_raw = np.array(epitopes_padded)
 
@@ -2184,7 +2224,9 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
 
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
+    #Highlight: Features correlations
     #data_volumetrics(seq_max_len,epitopes_list, data, epitopes_mask, storage_folder, args, filters_dict,analysis_mode,plot_volumetrics=False,plot_covariance=True)
+    #exit()
 
     if args.dataset_name not in  ["viral_dataset6","viral_dataset8","viral_dataset10","viral_dataset11"]:
         try:

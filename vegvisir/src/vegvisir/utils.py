@@ -217,7 +217,7 @@ def calculate_aa_frequencies(dataset,freq_bins):
     """
 
     freqs = np.apply_along_axis(lambda x: np.bincount(x, minlength=freq_bins), axis=0, arr=dataset.astype("int64")).T
-    #freqs = freqs/dataset.shape[0]
+    freqs = freqs/dataset.shape[0]
     return freqs
 
 class AUK:
@@ -850,6 +850,7 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
                         "class_probs_predictions_samples": probs_predictions_samples,
                         "class_probs_predictions_samples_average": np.mean(probs_predictions_samples,axis=1),
+                        "class_binary_predictions_samples_logits_average_argmax": np.argmax(np.mean(probs_predictions_samples,axis=1),axis=1),
                         "class_binary_prediction_single_sample": predictions_dict["binary"],
                         "class_logits_prediction_single_sample": predictions_dict["logits"],
                         "class_logits_prediction_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
@@ -889,6 +890,7 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
                         "class_probs_predictions_samples": probs_predictions_samples,
                         "class_probs_predictions_samples_average": np.mean(probs_predictions_samples, axis=1),
+                        "class_binary_predictions_samples_logits_average_argmax": np.argmax(np.mean(probs_predictions_samples, axis=1),axis=1),
                         "class_binary_prediction_single_sample": None,
                         "class_logits_prediction_single_sample": None,
                         "class_logits_prediction_single_sample_argmax": None,
@@ -1131,8 +1133,8 @@ def calculate_extintioncoefficient(seq):
     """Calculates the molar extinction coefficient assuming cysteines (reduced) and cystines residues (Cys-Cys-bond)
     :param str seq"""
     seq = "".join(seq).replace("#","")
-    excoef_reduded, excoef_cystines = ProteinAnalysis(seq).molar_extinction_coefficient()
-    return excoef_reduded,excoef_cystines
+    excoef_cysteines, excoef_cystines = ProteinAnalysis(seq).molar_extinction_coefficient()
+    return excoef_cysteines,excoef_cystines
 
 class CalculatePeptideFeatures(object):
     def __init__(self,seq_max_len,list_sequences,storage_folder):
@@ -1140,6 +1142,8 @@ class CalculatePeptideFeatures(object):
         self.seq_max_len = seq_max_len
         self.aminoacid_properties = pd.read_csv("{}/aminoacid_properties.txt".format(storage_folder),sep = "\s+")
         self.list_sequences = list_sequences
+        self.corrected_aa_types = len(set().union(*self.list_sequences))
+        self.aminoacids_list = aminoacid_names_dict(self.corrected_aa_types)
         self.hydropathy_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["Hydropathy_index"].values.tolist()))
         self.volume_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["Volume(A3)"].values.tolist()))
         self.radius_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["Radius"].values.tolist()))
@@ -1182,8 +1186,17 @@ class CalculatePeptideFeatures(object):
         side_chain_pka = sum(list( map(lambda aa: self.side_chain_pka_dict[aa], list(seq))) + pads)/len(seq)
         aromaticity = calculate_aromaticity(seq)
         extintion_coefficient_reduced,extintion_coefficient_cystines = calculate_extintioncoefficient(seq)
+        aminoacid_frequencies = list(map(lambda aa,seq: seq.count(aa)/len(seq),self.aminoacids_list,[seq]*len(self.aminoacids_list)))
+        aminoacid_frequencies_dict = dict(zip(self.aminoacids_list,aminoacid_frequencies))
+        return molecular_weight,volume,radius,bulkiness,isoelectric,hydropathy,side_chain_pka,aromaticity,extintion_coefficient_reduced,extintion_coefficient_cystines,aminoacid_frequencies_dict
 
-        return molecular_weight,volume,radius,bulkiness,isoelectric,hydropathy,side_chain_pka,aromaticity,extintion_coefficient_reduced,extintion_coefficient_cystines
+    def calculate_aminoacid_frequencies(self,seq,seq_max_len):
+
+        seq = "".join(seq).replace("#", "")
+        aminoacid_frequencies = list(map(lambda aa,seq: seq.count(aa)/len(seq),self.aminoacids_list,[seq]*len(self.aminoacids_list)))
+        aminoacid_frequencies_dict = dict(zip(self.aminoacids_list,aminoacid_frequencies))
+
+        return aminoacid_frequencies_dict
 
 
     def volumetrics_summary(self):
@@ -1203,6 +1216,7 @@ class CalculatePeptideFeatures(object):
 
         return volumetrics_dict
 
+
     def features_summary(self):
 
         if self.list_sequences:
@@ -1216,8 +1230,9 @@ class CalculatePeptideFeatures(object):
                                 "hydropathy":np.array(zipped_results[5]),
                                 "side_chain_pka":np.array(zipped_results[6]),
                                 "aromaticity":np.array(zipped_results[7]),
-                                "extintion_coefficient_reduced":np.array(zipped_results[8]),
-                                "extintion_coefficient_cystines": np.array(zipped_results[9])
+                                "extintion_coefficient_cysteines":np.array(zipped_results[8]),
+                                "extintion_coefficient_cystines": np.array(zipped_results[9]),
+                                 #"aminoacid_frequencies_dict":dict(zip(self.list_sequences,zipped_results[10]))
                                 }
         else:
             features_dict = {"molecular_weights":None,
@@ -1229,10 +1244,21 @@ class CalculatePeptideFeatures(object):
                                 "side_chain_pka": None,
                                 "aromaticity":None,
                                 "extintion_coefficient_reduced":None,
-                                "extintion_coefficient_cystines": None
+                                "extintion_coefficient_cystines": None,
+                                #"aminoacid_frequencies_dict":None
                              }
 
         return features_dict
+
+    def aminoacid_frequencies(self):
+        if self.list_sequences:
+            aminoacid_frequencies_dict= list(map(lambda seq: self.calculate_aminoacid_frequencies(seq,self.seq_max_len), self.list_sequences))
+
+            return aminoacid_frequencies_dict
+        else:
+            raise ValueError("sequences list is empty")
+
+
 
 def build_features_dicts(dataset_info):
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository

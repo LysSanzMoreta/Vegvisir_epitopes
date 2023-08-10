@@ -10,6 +10,7 @@ import json
 import math
 import operator
 import pickle
+import warnings
 from collections import defaultdict
 
 import dill
@@ -19,6 +20,7 @@ from matplotlib.colors import Normalize
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colorbar import Colorbar
 import matplotlib.gridspec as gridspec
+import matplotlib.transforms as transforms
 
 import  matplotlib
 #matplotlib.rc('text', usetex=True)
@@ -673,7 +675,10 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
 
     sequences_lens = np.sum(~sequences_mask,axis=1)
     sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(sequences)
+    #aminoacid_frequencies = VegvisirUtils.calculate_aa_frequencies(sequences_raw,dataset_info.corrected_aa_types)
     sequences_list = sequences_raw.tolist()
+
+    #aminoacid_frequencies_dict = VegvisirUtils.CalculatePeptideFeatures(dataset_info.seq_max_len,sequences_list,dataset_info.storage_folder).calculate_aminoacid_frequencies()
 
     # hydropathy_scores = np.vectorize(hydropathy_dict.get)(sequences)
     # hydropathy_scores = np.ma.masked_array(hydropathy_scores, mask=sequences_mask, fill_value=0)
@@ -984,8 +989,8 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
         colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
             predictions_dict["class_binary_prediction_single_sample"])
     else:
-        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
-            predictions_dict["class_binary_predictions_samples_mode"])
+        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_dict["class_binary_predictions_samples_mode"])
+        #colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_dict["class_binary_predictions_samples_logits_average_argmax"])
 
     # Highlight: Confidence scores colors
     confidence_scores = latent_space[:, 4]
@@ -1136,7 +1141,6 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
     #del confidence_scores,immunodominance_scores,hydropathy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
     #gc.collect()
 
-
 def colorbar(mappable):
     """Places a figure color bar without squeezing the plot"""
     last_axes = plt.gca()
@@ -1159,8 +1163,9 @@ def plot_scatter_reduced2(umap_proj,dataset_info,latent_space,predictions_dict,s
         colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
             predictions_dict["class_binary_prediction_single_sample"])
     else:
-        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
-            predictions_dict["class_binary_predictions_samples_mode"])
+        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_dict["class_binary_predictions_samples_mode"])
+        #colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_dict["class_binary_predictions_samples_logits_average_argmax"])
+
 
     # Highlight: Immunodominance scores colors
     immunodominance_scores = latent_space[:, 3]
@@ -1248,7 +1253,6 @@ def plot_scatter_reduced2(umap_proj,dataset_info,latent_space,predictions_dict,s
     #del confidence_scores,immunodominance_scores,hydropathy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
     #gc.collect()
 
-
 def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
     print("Plotting (reduced) scatter UMAP of {}...".format(vector_name))
 
@@ -1261,8 +1265,8 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
         colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_binary)
     else:
         predictions_binary = predictions_dict["class_binary_predictions_samples_mode"]
+        #predictions_binary = predictions_dict["class_binary_predictions_samples_logits_average_argmax"]
         colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_binary)
-
 
     dataframe = pd.DataFrame({"UMAP_x":umap_proj[:,0],
                               "UMAP_y": umap_proj[:, 1],
@@ -1296,12 +1300,13 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
     colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_binary_prediction_samples_frequencies"][:, 1])
 
     alpha = 0.7
-    size = 5
+    size = 4
     # Highlight: Scatter and density plot
     g0 = sns.jointplot(data=dataframe, x="UMAP_x", y="UMAP_y", hue="Binary targets", alpha=alpha, s=8,
                         palette=list(colors_dict_labels.values()),
                         hue_order=[0,1]
                         )
+    g0.ax_joint.legend(fancybox=True, framealpha=0.5)
     g0.ax_joint.axis("off")
     g0.ax_marg_x.axis("off")
     g0.ax_marg_y.axis("off")
@@ -1340,6 +1345,8 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
     g3_axes = g3.axes.flatten()
     g3_axes[0].set_title("Posterior predictive (class 0)")
     g3.map(plt.scatter, "UMAP_x", "UMAP_y", alpha=alpha, s=size)
+    g3_axes[0].set_xlabel("")
+    g3_axes[0].set_ylabel("")
 
     g4 = sns.FacetGrid(dataframe, hue="frequency_1", subplot_kws={"fc": "white"},
                        palette=colormap_frequency_class1_array,
@@ -1350,6 +1357,8 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
     g4_axes = g4.axes.flatten()
     g4_axes[0].set_title("Posterior predictive (class 1)")
     g4.map(plt.scatter, "UMAP_x", "UMAP_y", alpha=alpha, s=size)
+    g4_axes[0].set_xlabel("")
+    g4_axes[0].set_ylabel("")
 
     fig = plt.figure(figsize=(17, 8))
     gs = gridspec.GridSpec(2, 6, width_ratios=[2, 1, 0.1, 0.07, 1, 0.1])
@@ -1380,8 +1389,6 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
 
     #del confidence_scores,immunodominance_scores,hydropathy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
     #gc.collect()
-
-
 
 def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
     print("Plotting scatter (quantiles) UMAP of {}...".format(vector_name))
@@ -1807,8 +1814,6 @@ def plot_latent_space(args,dataset_info,latent_space,predictions_dict,sample_mod
     del umap_proj
     gc.collect()
 
-
-
 def plot_gradients(gradient_norms,results_dir,mode):
     print("Plotting gradients")
     #fig = plt.figure(figsize=(13, 6), dpi=100).set_facecolor('white')
@@ -1967,7 +1972,7 @@ def micro_auc(args,onehot_labels,y_prob,idx):
           roc_aucs[i] = auc(fprs[i], tprs[i])
     return [micro_roc_auc_ovr,fprs,tprs,roc_aucs]
 
-def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name):
+def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name,save_plot=True):
     """Following https://scikit-learn.org/stable/auto_examples/model_selection/plot_precision_recall.html#:~:text=The%20precision%2Drecall%20curve%20shows,a%20low%20false%20negative%20rate."""
     onehot_targets = onehot_labels[idx]
     target_scores = predictions_dict[stats_name][idx]
@@ -1980,24 +1985,26 @@ def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,resul
             precision[i], recall[i], _ = precision_recall_curve(onehot_targets[:, i], target_scores[:, i])
             average_precision[i] = average_precision_score(onehot_targets[:, i], target_scores[:, i])
 
-        # A "micro-average": quantifying score on all classes jointly
-        precision["micro"], recall["micro"], _ = precision_recall_curve(
-            onehot_targets.ravel(), target_scores.ravel()
-        )
-        average_precision["micro"] = average_precision_score(onehot_targets, target_scores, average="micro")
-        fig = plt.figure()
-        plt.plot(recall["micro"],precision["micro"], label="Average Precision (AP): {}".format(average_precision["micro"]))
-        plt.xlim([0, 1])
-        plt.ylim([0, 1])
-        plt.ylabel('Precision', fontsize=20)
-        plt.xlabel('Recall', fontsize=20)
-        plt.legend(loc='lower right', prop={'size': 15})
-        plt.title("Average Precision curves")
-        plt.savefig("{}/{}/PrecisionRecall_curves_fold{}_{}".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
-        plt.clf()
-        plt.close(fig)
+        if save_plot:
+            # A "micro-average": quantifying score on all classes jointly
+            precision["micro"], recall["micro"], _ = precision_recall_curve(
+                onehot_targets.ravel(), target_scores.ravel()
+            )
+            average_precision["micro"] = average_precision_score(onehot_targets, target_scores, average="micro")
+            fig = plt.figure()
+            plt.plot(recall["micro"],precision["micro"], label="Average Precision (AP): {}".format(average_precision["micro"]))
+            plt.xlim([0, 1])
+            plt.ylim([0, 1])
+            plt.ylabel('Precision', fontsize=20)
+            plt.xlabel('Recall', fontsize=20)
+            plt.legend(loc='lower right', prop={'size': 15})
+            plt.title("Average Precision curves")
+            plt.savefig("{}/{}/PrecisionRecall_curves_fold{}_{}".format(results_dir, mode, fold, "{}_{}".format(key_name, idx_name)))
+            plt.clf()
+            plt.close(fig)
     except:
         print("Could not calculate AUC, only one class found")
+    return {"precision":precision,"recall":recall,"average_precision":average_precision}
 
 def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name,save=True):
     # Compute ROC curve and ROC area for each class
@@ -2080,6 +2087,7 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
     evaluation_modes = ["samples","single_sample"] if predictions_dict["true_single_sample"] is not None else ["samples"]
     probability_modes = ["class_probs_predictions_samples_average","class_probs_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_probs_predictions_samples_average"]
     binary_modes = ["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_mode"]
+    #binary_modes = ["class_binary_predictions_samples_logits_average_argmax","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_logits_average_argmax"]
 
     for sample_mode,prob_mode,binary_mode in zip(evaluation_modes,probability_modes,binary_modes):
     #for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
@@ -2246,6 +2254,7 @@ def plot_classification_metrics_per_species(dataset_info,args,predictions_dict,f
     evaluation_modes = ["samples","single_sample"] if predictions_dict["true_single_sample"] is not None else ["samples"]
     probability_modes = ["class_probs_predictions_samples_average","class_probs_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_probs_predictions_samples_average"]
     binary_modes = ["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_mode"]
+    #binary_modes = ["class_binary_predictions_samples_logits_average_argmax","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_logits_average_argmax"]
 
     #for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
     for sample_mode,prob_mode,binary_mode in zip(evaluation_modes,probability_modes,binary_modes):
@@ -2802,21 +2811,30 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
 
         #Highlight: Plot correlations
 
-        fig, [ax1, ax2] = plt.subplots(nrows=1, ncols=2, figsize=(25, 20), gridspec_kw={'width_ratios': [4.5, 0.5]})
+        fig, ax1 = plt.subplots(nrows=1, ncols=1, figsize=(15, 12)) #gridspec_kw={'width_ratios': [4.5, 0.5]}
 
         i=0
+        j = 0
         position_labels = []
         for feat_name,coeff,pval in zip(features_dict.keys(),pearson_coefficients,pearson_pvalues):
             position_labels.append(i)
-            ax1.bar(i,coeff,label=feat_name,width = 0.1)
+            ax1.bar(i,coeff,label=feat_name,width = 0.1,color=colors_list_aa[j])
             i += 0.2
+            j +=1
 
         ax1.xaxis.set_ticks(position_labels)
-        ax1.set_xticklabels(features_dict.keys(),fontsize=30,rotation=80)
+        def clean_labels(label):
+            if label == "extintion_coefficient_cystines":
+                label = "extintion coefficient \n (cystines)"
+            elif label == "extintion_coefficient_cysteines":
+                label = "extintion coefficient \n (cysteines)"
+            else:
+                label = label.replace("_"," ")
+            return label
+        labels_names = list(map(lambda label: clean_labels(label), list(features_dict.keys())))
+        ax1.set_xticklabels(labels_names,fontsize=25,rotation=80)
         ax1.tick_params(axis="y",labelsize=30)
-        ax2.axis("off")
-        #plt.margins(0.7)
-        fig.tight_layout(pad=3.0, w_pad=2.5, h_pad=3.0)
+        plt.subplots_adjust(top=0.9,bottom=0.35)
 
         fig.suptitle("Correlation coefficients: Features vs {}".format(label_names[tag]),fontsize=30)
 
@@ -2875,13 +2893,311 @@ def calculate_species_roc_auc_helper(summary_dict,args,script_dir,idx_all,fold,p
 
     return np.mean(species_auc_class_0),np.mean(species_auc_class_1),np.mean(species_pval_class_0),np.mean(species_pval_class_1)
 
-def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_folder="Benchmark"):
-    """Compares average ROC AUC"""
-    overwrite=False
-    metrics_results_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
+def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds):
+    """"""
+    metrics_results_train = dict.fromkeys(metrics_keys)
+    metrics_results_valid = dict.fromkeys(metrics_keys)
+    metrics_results_test = dict.fromkeys(metrics_keys)
+    metrics_results_train_species = dict.fromkeys(metrics_keys)
+    metrics_results_valid_species = dict.fromkeys(metrics_keys)
+    metrics_results_test_species = dict.fromkeys(metrics_keys)
+    if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder)) and not overwrite:
+        print("Loading pre-computed ROC-AUC values")
+        metrics_results_train = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder), "rb"))
+        train_folds_ap_class_0,train_folds_ap_class_1,train_folds_ppv,train_folds_fpr, train_folds_tpr, train_folds_roc_auc_class_0, train_folds_roc_auc_class_1, train_folds_pvals_class_0, train_folds_pvals_class_1 = metrics_results_train["ap_class_0"],metrics_results_train["ap_class_1"],metrics_results_train["ppv"],metrics_results_train["fpr"], metrics_results_train["tpr"], metrics_results_train["roc_auc_class_0"], metrics_results_train["roc_auc_class_1"], metrics_results_train["pval_class_0"], metrics_results_train["pval_class_1"]
+
+        metrics_results_train_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_train_species.p".format(folder), "rb"))
+        train_species_folds_ap_class_0,train_species_folds_ap_class_1,train_species_folds_ppv,train_species_folds_fpr, train_species_folds_tpr, train_species_folds_roc_auc_class_0, train_species_folds_roc_auc_class_1,train_species_folds_pvals_class_0, train_species_folds_pvals_class_1 = metrics_results_train_species["ap_class_0"],metrics_results_train_species["ap_class_1"],metrics_results_train_species["ppv"],metrics_results_train_species["fpr"], metrics_results_train_species["tpr"], metrics_results_train_species["roc_auc_class_0"], metrics_results_train_species["roc_auc_class_1"], metrics_results_train_species["pval_class_0"], metrics_results_train_species["pval_class_1"]
+
+        if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder)):
+            metrics_results_valid = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder), "rb"))
+            valid_folds_ap_class_0,valid_folds_ap_class_1,valid_folds_ppv,valid_folds_fpr, valid_folds_tpr, valid_folds_roc_auc_class_0, valid_folds_roc_auc_class_1, train_folds_pvals_class_0, train_folds_pvals_class_1 = \
+            metrics_results_valid["ap_class_0"],metrics_results_valid["ap_class_1"],metrics_results_valid["ppv"],metrics_results_valid["fpr"], metrics_results_valid["tpr"], metrics_results_valid["roc_auc_class_0"], \
+            metrics_results_valid["roc_auc_class_1"], metrics_results_valid["pval_class_0"], metrics_results_valid["pval_class_1"]
+            metrics_results_valid_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_valid_species.p".format(folder), "rb"))
+            valid_species_folds_ap_class_0,valid_species_folds_ap_class_1,valid_species_folds_ppv,valid_species_folds_fpr, valid_species_folds_tpr, valid_species_folds_roc_auc_class_0, valid_species_folds_roc_auc_class_1, valid_species_folds_pvals_class_0, valid_species_folds_pvals_class_1 =metrics_results_valid_species["ap_class_0"],metrics_results_valid_species["ap_class_1"],metrics_results_valid_species["ppv"], metrics_results_valid_species["fpr"], metrics_results_valid_species["tpr"],metrics_results_valid_species["roc_auc_class_0"], metrics_results_valid_species["roc_auc_class_1"], metrics_results_valid_species["pval_class_0"], metrics_results_valid_species["pval_class_1"]
+
+        if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_test.p".format(folder)):
+            metrics_results_test = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_test.p".format(folder), "rb"))
+            test_folds_ap_class_0,test_folds_ap_class_1,test_folds_ppv,test_folds_fpr, test_folds_tpr, test_folds_roc_auc_class_0, test_folds_roc_auc_class_1, test_folds_pvals_class_0, test_folds_pvals_class_1 = \
+                metrics_results_test["ap_class_0"],metrics_results_test["ap_class_1"],metrics_results_test["ppv"],metrics_results_test["fpr"], metrics_results_test["tpr"], metrics_results_test["roc_auc_class_0"], \
+                    metrics_results_test["roc_auc_class_1"], metrics_results_test["pval_class_0"], metrics_results_test[
+                    "pval_class_1"]
+
+            metrics_results_test_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_test_species.p".format(folder), "rb"))
+            test_species_folds_ap_class_0,test_species_folds_ap_class_1,test_species_folds_ppv,test_species_folds_fpr, test_species_folds_tpr, test_species_folds_roc_auc_class_0, test_species_folds_roc_auc_class_1, test_species_folds_pvals_class_0, test_species_folds_pvals_class_1 = \
+                metrics_results_test_species["ap_class_0"],metrics_results_test_species["ap_class_1"],metrics_results_test_species["ppv"],metrics_results_test_species["fpr"], metrics_results_test_species["tpr"], metrics_results_test_species[
+                    "roc_auc_class_0"], metrics_results_test_species["roc_auc_class_1"], metrics_results_test_species["pval_class_0"], metrics_results_test_species["pval_class_1"]
+
+
+    else:
+        print("calculating ROC-AUC values")
+        train_folds_ap_class_0,train_folds_ap_class_1,train_folds_ppv,train_folds_fpr, train_folds_tpr, train_folds_roc_auc_class_0, train_folds_roc_auc_class_1, train_folds_pvals_class_0, train_folds_pvals_class_1 = [],[], [], [], [], [], [],[],[]
+        valid_folds_ap_class_0,valid_folds_ap_class_1,valid_folds_ppv,valid_folds_fpr, valid_folds_tpr, valid_folds_roc_auc_class_0, valid_folds_roc_auc_class_1, valid_folds_pvals_class_0, valid_folds_pvals_class_1 = [],[], [], [], [], [], [],[],[]
+        test_folds_ap_class_0,test_folds_ap_class_1,test_folds_ppv,test_folds_fpr, test_folds_tpr, test_folds_roc_auc_class_0, test_folds_roc_auc_class_1, test_folds_pvals_class_0, test_folds_pvals_class_1 =[], [], [], [], [], [], [],[],[]
+        train_species_folds_ap_class_0,train_species_folds_ap_class_1,train_species_folds_ppv,train_species_folds_fpr, train_species_folds_tpr, train_species_folds_roc_auc_class_0, train_species_folds_roc_auc_class_1, train_species_folds_pvals_class_0, train_species_folds_pvals_class_1 = [],[], [], [], [], [], [],[],[]
+        valid_species_folds_ap_class_0,valid_species_folds_ap_class_1,valid_species_folds_ppv,valid_species_folds_fpr, valid_species_folds_tpr, valid_species_folds_roc_auc_class_0, valid_species_folds_roc_auc_class_1, valid_species_folds_pvals_class_0, valid_species_folds_pvals_class_1 = [],[], [], [], [], [], [],[],[]
+        test_species_folds_ap_class_0,test_species_folds_ap_class_1,test_species_folds_ppv,test_species_folds_fpr, test_species_folds_tpr, test_species_folds_roc_auc_class_0, test_species_folds_roc_auc_class_1, test_species_folds_pvals_class_0, test_species_folds_pvals_class_1 = [], [], [],[], [], [], [],[],[]
+
+        for fold in range(kfolds):
+            print("-------------FOLD {}--------------".format(fold))
+            if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold)):
+                train_out = torch.load(
+                    "{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold))
+                args = train_out["args"]
+                train_out = train_out["summary_dict"]
+            else:
+                train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_valid_fold_{}.p".format(folder, fold))["summary_dict"]
+            valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(folder, fold))["summary_dict"]
+            if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold)):
+                test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold))["summary_dict"]
+            else:
+                test_out = None
+
+            for mode, summary_dict in zip(["train", "valid", "test"], [train_out, valid_out, test_out]):
+
+                if summary_dict is not None:
+                    labels = summary_dict["true_samples"]
+                    onehot_labels = summary_dict["true_onehot_samples"]
+                    # confidence_scores = summary_dict["confidence_scores_samples"]
+                    prob_mode = "class_probs_predictions_samples_average"
+                    idx_all = np.ones_like(labels).astype(bool)
+                    if args.num_classes > args.num_obs_classes:
+                        idx_all = (labels[..., None] != 2).any(
+                            -1)  # Highlight: unlabelled data has been assigned labelled 2,we skip it
+                    idx_name = "all"
+                    sample_mode = "samples"
+
+                    fpr, tpr, roc_auc, pvals = plot_ROC_curves(labels, onehot_labels, summary_dict, args, script_dir,
+                                                               mode,
+                                                               fold, sample_mode,
+                                                               prob_mode, idx_all, idx_name, save=False)
+
+                    binary_predictions = np.argmax(summary_dict[prob_mode],axis=1)
+                    tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=binary_predictions).ravel()
+                    precision = tp / (tp + fp)
+
+                    ap_dict = plot_precision_recall_curve(labels, onehot_labels, summary_dict, args, script_dir, mode, fold,
+                                                "", prob_mode, idx_all, idx_name, save_plot=False)
+
+
+                    if mode == "train":
+
+                        train_folds_ap_class_0.append(ap_dict["average_precision"][0])
+                        train_folds_ap_class_1.append(ap_dict["average_precision"][1])
+                        train_folds_ppv.append(precision)
+                        train_folds_fpr.append(fpr)
+                        train_folds_tpr.append(tpr)
+                        train_folds_roc_auc_class_0.append(roc_auc[0])
+                        train_folds_roc_auc_class_1.append(roc_auc[1])
+                        train_folds_pvals_class_0.append(pvals[0])
+                        train_folds_pvals_class_1.append(pvals[1])
+                        species_results = calculate_species_roc_auc_helper(summary_dict, args, script_dir, idx_all,
+                                                                           fold, prob_mode, sample_mode,
+                                                                           mode="{}_species".format(mode))
+                        
+                        train_species_folds_ap_class_0.append(np.nan)
+                        train_species_folds_ap_class_1.append(np.nan)
+                        train_species_folds_ppv.append(np.nan)
+                        train_species_folds_fpr.append(np.nan)
+                        train_species_folds_tpr.append(np.nan)
+                        train_species_folds_roc_auc_class_0.append(species_results[0])
+                        train_species_folds_roc_auc_class_1.append(species_results[1])
+                        train_species_folds_pvals_class_0.append(species_results[2])
+                        train_species_folds_pvals_class_1.append(species_results[3])
+
+                    elif mode == "valid":
+                        valid_folds_ap_class_0.append(ap_dict["average_precision"][0])
+                        valid_folds_ap_class_1.append(ap_dict["average_precision"][1])
+                        valid_folds_ppv.append(precision)
+                        valid_folds_fpr.append(fpr)
+                        valid_folds_tpr.append(tpr)
+                        valid_folds_roc_auc_class_0.append(roc_auc[0])
+                        valid_folds_roc_auc_class_1.append(roc_auc[1])
+                        valid_folds_pvals_class_0.append(pvals[0])
+                        valid_folds_pvals_class_1.append(pvals[1])
+                        species_results = calculate_species_roc_auc_helper(summary_dict, args, script_dir, idx_all,
+                                                                           fold, prob_mode, sample_mode,
+                                                                           mode="{}_species".format(mode))
+                        valid_species_folds_ap_class_0.append(np.nan)
+                        valid_species_folds_ap_class_1.append(np.nan)
+                        valid_species_folds_ppv.append(np.nan)
+                        valid_species_folds_fpr.append(np.nan)
+                        valid_species_folds_tpr.append(np.nan)
+                        valid_species_folds_roc_auc_class_0.append(species_results[0])
+                        valid_species_folds_roc_auc_class_1.append(species_results[1])
+                        valid_species_folds_pvals_class_0.append(species_results[2])
+                        valid_species_folds_pvals_class_1.append(species_results[3])
+
+                    else:
+                        test_folds_ap_class_0.append(ap_dict["average_precision"][0])
+                        test_folds_ap_class_1.append(ap_dict["average_precision"][1])
+                        test_folds_ppv.append(precision)
+                        test_folds_fpr.append(fpr)
+                        test_folds_tpr.append(tpr)
+                        test_folds_roc_auc_class_0.append(roc_auc[0])
+                        test_folds_roc_auc_class_1.append(roc_auc[1])
+                        test_folds_pvals_class_0.append(pvals[0])
+                        test_folds_pvals_class_1.append(pvals[1])
+                        
+                        test_species_folds_ap_class_0.append(np.nan)
+                        test_species_folds_ap_class_1.append(np.nan)
+                        test_species_folds_ppv.append(np.nan)
+                        test_species_folds_fpr.append(np.nan)
+                        test_species_folds_tpr.append(np.nan)
+                        test_species_folds_roc_auc_class_0.append(np.nan)
+                        test_species_folds_roc_auc_class_1.append(np.nan)
+                        test_species_folds_pvals_class_0.append(np.nan)
+                        test_species_folds_pvals_class_1.append(np.nan)
+
+                else:
+                    if mode == "valid":
+                        valid_folds_ap_class_0.append(np.nan)
+                        valid_folds_ap_class_1.append(np.nan)
+                        valid_folds_fpr.append(np.nan)
+                        valid_folds_tpr.append(np.nan)
+                        valid_folds_roc_auc_class_0.append(np.nan)
+                        valid_folds_roc_auc_class_1.append(np.nan)
+                        valid_folds_pvals_class_0.append(np.nan)
+                        valid_folds_pvals_class_1.append(np.nan)
+                        valid_species_folds_ppv.append(np.nan)
+                        valid_species_folds_fpr.append(np.nan)
+                        valid_species_folds_tpr.append(np.nan)
+                        valid_species_folds_roc_auc_class_0.append(np.nan)
+                        valid_species_folds_roc_auc_class_1.append(np.nan)
+                        valid_species_folds_pvals_class_0.append(np.nan)
+                        valid_species_folds_pvals_class_1.append(np.nan)
+                    else:
+                        test_folds_ap_class_0.append(np.nan)
+                        test_folds_ap_class_1.append(np.nan)
+                        test_folds_fpr.append(np.nan)
+                        test_folds_tpr.append(np.nan)
+                        test_folds_roc_auc_class_0.append(np.nan)
+                        test_folds_roc_auc_class_1.append(np.nan)
+                        test_folds_pvals_class_0.append(np.nan)
+                        test_folds_pvals_class_1.append(np.nan)
+                        test_species_folds_ppv.append(np.nan)
+                        test_species_folds_fpr.append(np.nan)
+                        test_species_folds_tpr.append(np.nan)
+                        test_species_folds_roc_auc_class_0.append(np.nan)
+                        test_species_folds_roc_auc_class_1.append(np.nan)
+                        test_species_folds_pvals_class_0.append(np.nan)
+                        test_species_folds_pvals_class_1.append(np.nan)
+
+        
+        
+        metrics_results_train["ap_class_0"] = train_folds_ap_class_0
+        metrics_results_train["ap_class_1"] = train_folds_ap_class_1
+        metrics_results_train["ppv"] = train_folds_ppv
+        metrics_results_train["fpr"] = train_folds_fpr
+        metrics_results_train["tpr"] = train_folds_tpr
+        metrics_results_train["roc_auc_class_0"] = train_folds_roc_auc_class_0
+        metrics_results_train["roc_auc_class_1"] = train_folds_roc_auc_class_1
+        train_folds_pvals_class_0 = np.array(train_folds_pvals_class_0)
+        metrics_results_train["pval_class_0"] = train_folds_pvals_class_0[~np.isnan(train_folds_pvals_class_0)]
+        train_folds_pvals_class_1 = np.array(train_folds_pvals_class_1)
+        metrics_results_train["pval_class_1"] = train_folds_pvals_class_1[~np.isnan(train_folds_pvals_class_1)]
+
+        
+        metrics_results_valid["ap_class_0"] = valid_folds_ap_class_0
+        metrics_results_valid["ap_class_1"] = valid_folds_ap_class_1
+        metrics_results_valid["ppv"] = valid_folds_ppv
+        metrics_results_valid["fpr"] = valid_folds_fpr
+        metrics_results_valid["tpr"] = valid_folds_tpr
+        metrics_results_valid["roc_auc_class_0"] = valid_folds_roc_auc_class_0
+        metrics_results_valid["roc_auc_class_1"] = valid_folds_roc_auc_class_1
+        valid_folds_pvals_class_0 = np.array(valid_folds_pvals_class_0)
+        metrics_results_valid["pval_class_0"] = valid_folds_pvals_class_0[~np.isnan(valid_folds_pvals_class_0)]
+        valid_folds_pvals_class_1 = np.array(valid_folds_pvals_class_1)
+        metrics_results_valid["pval_class_1"] = valid_folds_pvals_class_1[~np.isnan(valid_folds_pvals_class_1)]
+
+        metrics_results_test["ap_class_0"] = test_folds_ap_class_0
+        metrics_results_test["ap_class_1"] = test_folds_ap_class_1
+        metrics_results_test["ppv"] = test_folds_ppv
+        metrics_results_test["fpr"] = test_folds_fpr
+        metrics_results_test["tpr"] = test_folds_tpr
+        metrics_results_test["roc_auc_class_0"] = test_folds_roc_auc_class_0
+        metrics_results_test["roc_auc_class_1"] = test_folds_roc_auc_class_1
+        test_folds_pvals_class_0 = np.array(test_folds_pvals_class_0)
+        metrics_results_test["pval_class_0"] = test_folds_pvals_class_0[~np.isnan(test_folds_pvals_class_0)]
+        test_folds_pvals_class_1 = np.array(test_folds_pvals_class_1)
+        metrics_results_test["pval_class_1"] = test_folds_pvals_class_1[~np.isnan(test_folds_pvals_class_1)]
+
+        
+        
+        metrics_results_train_species["ap_class_0"] = train_species_folds_ap_class_0
+        metrics_results_train_species["ap_class_1"] = train_species_folds_ap_class_1
+        metrics_results_train_species["ppv"] = train_species_folds_ppv
+        metrics_results_train_species["fpr"] = train_species_folds_fpr
+        metrics_results_train_species["tpr"] = train_species_folds_tpr
+        metrics_results_train_species["roc_auc_class_0"] = train_species_folds_roc_auc_class_0
+        metrics_results_train_species["roc_auc_class_1"] = train_species_folds_roc_auc_class_1
+        train_species_folds_pvals_class_0 = np.array(train_species_folds_pvals_class_0)
+        metrics_results_train_species["pval_class_0"] = train_species_folds_pvals_class_0[~np.isnan(train_species_folds_pvals_class_0)]
+        train_species_folds_pvals_class_1 = np.array(train_species_folds_pvals_class_1)
+        metrics_results_train_species["pval_class_1"] = train_species_folds_pvals_class_1[~np.isnan(train_species_folds_pvals_class_1)]
+
+        
+        metrics_results_valid_species["ap_class_0"] = valid_species_folds_ap_class_0
+        metrics_results_valid_species["ap_class_1"] = valid_species_folds_ap_class_1
+        metrics_results_valid_species["ppv"] = valid_species_folds_ppv
+        metrics_results_valid_species["fpr"] = valid_species_folds_fpr
+        metrics_results_valid_species["tpr"] = valid_species_folds_tpr
+        metrics_results_valid_species["roc_auc_class_0"] = valid_species_folds_roc_auc_class_0
+        metrics_results_valid_species["roc_auc_class_1"] = valid_species_folds_roc_auc_class_1
+        valid_species_folds_pvals_class_0 = np.array(valid_species_folds_pvals_class_0)
+        metrics_results_valid_species["pval_class_0"] = valid_species_folds_pvals_class_0[~np.isnan(valid_species_folds_pvals_class_0)]
+        valid_species_folds_pvals_class_1 = np.array(valid_species_folds_pvals_class_1)
+        metrics_results_valid_species["pval_class_1"] = valid_species_folds_pvals_class_1[~np.isnan(valid_species_folds_pvals_class_1)]
+
+        
+        metrics_results_test_species["ap_class_0"] = test_species_folds_ap_class_0
+        metrics_results_test_species["ap_class_1"] = test_species_folds_ap_class_1
+        metrics_results_test_species["ppv"] = test_species_folds_ppv
+        metrics_results_test_species["fpr"] = test_species_folds_fpr
+        metrics_results_test_species["tpr"] = test_species_folds_tpr
+        metrics_results_test_species["roc_auc_class_0"] = test_species_folds_roc_auc_class_0
+        metrics_results_test_species["roc_auc_class_1"] = test_species_folds_roc_auc_class_1
+        test_species_folds_pvals_class_0 = np.array(test_species_folds_pvals_class_0)
+        metrics_results_test_species["pval_class_0"] = test_species_folds_pvals_class_0[~np.isnan(test_species_folds_pvals_class_0)]
+        test_species_folds_pvals_class_1 = np.array(test_species_folds_pvals_class_1)
+        metrics_results_test_species["pval_class_1"] = test_species_folds_pvals_class_1[~np.isnan(test_species_folds_pvals_class_1)]
+
+        pickle.dump(metrics_results_train, open("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder), "wb"))
+        pickle.dump(metrics_results_valid, open("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder), "wb"))
+        pickle.dump(metrics_results_test, open("{}/Vegvisir_checkpoints/roc_auc_test.p".format(folder), "wb"))
+
+        pickle.dump(metrics_results_train_species,
+                    open("{}/Vegvisir_checkpoints/roc_auc_train_species.p".format(folder), "wb"))
+        pickle.dump(metrics_results_valid_species,
+                    open("{}/Vegvisir_checkpoints/roc_auc_valid_species.p".format(folder), "wb"))
+        pickle.dump(metrics_results_test_species,
+                    open("{}/Vegvisir_checkpoints/roc_auc_test_species.p".format(folder), "wb"))
+
+
+    return {"train":metrics_results_train,
+        "valid":metrics_results_valid,
+        "test":metrics_results_test,
+        "train-species":metrics_results_train_species,
+        "valid-species":metrics_results_valid_species,
+        "test-species":metrics_results_test_species,
+        "train-auc-0":train_folds_roc_auc_class_0,
+        "train-auc-1":train_folds_roc_auc_class_1,
+        "valid-auc-0":valid_folds_roc_auc_class_0,
+        "valid-auc-1":valid_folds_roc_auc_class_1,
+        "test-auc-0": test_folds_roc_auc_class_0,
+        "test-auc-1": test_folds_roc_auc_class_1,
+
+            }
+
+def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_folder="Benchmark",title="",overwrite=False):
+    """Compares average ROC AUC, Average Precision and Precision across runs"""
+    metrics_auc_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
     metrics_pvals_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
-    metrics_results_all_latex = defaultdict(lambda: defaultdict(lambda: defaultdict()))
+    metrics_aps_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
+    metrics_auc_all_latex = defaultdict(lambda: defaultdict(lambda: defaultdict()))
     metrics_pvals_all_latex = defaultdict(lambda: defaultdict(lambda: defaultdict()))
+    metrics_aps_all_latex = defaultdict(lambda: defaultdict(lambda: defaultdict()))
 
     fig, [[ax1, ax2, ax3, ax4], [ax5, ax6, ax7, ax8]] = plt.subplots(nrows=2, ncols=4, figsize=(19, 6),
                                                                      gridspec_kw={'width_ratios': [5, 5, 5, 1],
@@ -2893,229 +3209,30 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
     patches_list_train = []
     patches_list_valid = []
     patches_list_test = []
-    metrics_keys = ["fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1","pval_class_0","pval_class_1"]
+    metrics_keys = ["ap","ppv","fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1","pval_class_0","pval_class_1"]
     for learning_type,values in dict_results.items():
         for name, folder in values.items():
             print("-------------NAME {}--------------".format(name))
-            metrics_results_train = dict.fromkeys(metrics_keys)
-            metrics_results_valid = dict.fromkeys(metrics_keys)
-            metrics_results_test = dict.fromkeys(metrics_keys)
-            metrics_results_train_species = dict.fromkeys(metrics_keys)
-            metrics_results_valid_species = dict.fromkeys(metrics_keys)
-            metrics_results_test_species = dict.fromkeys(metrics_keys)
-
-            if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder)) and not overwrite:
-                print("Loading pre-computed ROC-AUC values")
-                metrics_results_train = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder), "rb"))
-                train_folds_fpr, train_folds_tpr, train_folds_roc_auc_class_0, train_folds_roc_auc_class_1,train_folds_pvals_class_0,train_folds_pvals_class_1  = metrics_results_train["fpr"], metrics_results_train["tpr"], metrics_results_train["roc_auc_class_0"], metrics_results_train["roc_auc_class_1"], metrics_results_train["pval_class_0"],metrics_results_train["pval_class_1"]
-
-                metrics_results_train_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_train_species.p".format(folder), "rb"))
-                train_species_folds_fpr, train_species_folds_tpr, train_species_folds_roc_auc_class_0, train_species_folds_roc_auc_class_1,train_species_folds_pvals_class_0,train_species_folds_pvals_class_1 = metrics_results_train_species["fpr"], metrics_results_train_species["tpr"], metrics_results_train_species["roc_auc_class_0"], metrics_results_train_species["roc_auc_class_1"],metrics_results_train_species["pval_class_0"],metrics_results_train_species["pval_class_1"]
-
-                if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder)):
-                    metrics_results_valid = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder), "rb"))
-                    valid_folds_fpr, valid_folds_tpr, valid_folds_roc_auc_class_0, valid_folds_roc_auc_class_1,train_folds_pvals_class_0,train_folds_pvals_class_1 = metrics_results_valid["fpr"], metrics_results_valid["tpr"], metrics_results_valid["roc_auc_class_0"], metrics_results_valid["roc_auc_class_1"],metrics_results_valid["pval_class_0"],metrics_results_valid["pval_class_1"]
-                    metrics_results_valid_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_valid_species.p".format(folder), "rb"))
-                    valid_species_folds_fpr, valid_species_folds_tpr, valid_species_folds_roc_auc_class_0, valid_species_folds_roc_auc_class_1,train_species_folds_pvals_class_0,train_species_folds_pvals_class_1 = \
-                    metrics_results_valid_species["fpr"], metrics_results_valid_species["tpr"], \
-                    metrics_results_valid_species["roc_auc_class_0"], metrics_results_valid_species["roc_auc_class_1"],metrics_results_valid_species["pval_class_0"],metrics_results_valid_species["pval_class_1"]
-
-                if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_test.p".format(folder)):
-                    metrics_results_test = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_test.p".format(folder), "rb"))
-                    test_folds_fpr, test_folds_tpr, test_folds_roc_auc_class_0, test_folds_roc_auc_class_1,test_folds_pvals_class_0,test_folds_pvals_class_1 = \
-                    metrics_results_test["fpr"], metrics_results_test["tpr"], metrics_results_test["roc_auc_class_0"], \
-                    metrics_results_test["roc_auc_class_1"],metrics_results_test["pval_class_0"],metrics_results_test["pval_class_1"]
-
-                    metrics_results_test_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_test_species.p".format(folder), "rb"))
-                    test_species_folds_fpr, test_species_folds_tpr, test_species_folds_roc_auc_class_0, test_species_folds_roc_auc_class_1,test_species_folds_pvals_class_0,test_species_folds_pvals_class_1 = \
-                    metrics_results_test_species["fpr"], metrics_results_test_species["tpr"], metrics_results_test_species[
-                        "roc_auc_class_0"], metrics_results_test_species["roc_auc_class_1"],metrics_results_test_species["pval_class_0"],metrics_results_test_species["pval_class_1"]
 
 
-            else:
-                print("calculating ROC-AUC values")
-                train_folds_fpr, train_folds_tpr, train_folds_roc_auc_class_0, train_folds_roc_auc_class_1,train_folds_pvals_class_0,train_folds_pvals_class_1 = [], [], [], [],[],[]
-                valid_folds_fpr, valid_folds_tpr, valid_folds_roc_auc_class_0, valid_folds_roc_auc_class_1,valid_folds_pvals_class_0,valid_folds_pvals_class_1 = [], [], [], [],[],[]
-                test_folds_fpr, test_folds_tpr, test_folds_roc_auc_class_0, test_folds_roc_auc_class_1,test_folds_pvals_class_0,test_folds_pvals_class_1 = [], [], [], [],[],[]
-                train_species_folds_fpr, train_species_folds_tpr, train_species_folds_roc_auc_class_0, train_species_folds_roc_auc_class_1,train_species_folds_pvals_class_0, train_species_folds_pvals_class_1 = [], [], [], [],[],[]
-                valid_species_folds_fpr, valid_species_folds_tpr, valid_species_folds_roc_auc_class_0, valid_species_folds_roc_auc_class_1,valid_species_folds_pvals_class_0, valid_species_folds_pvals_class_1 = [], [], [], [],[],[]
-                test_species_folds_fpr, test_species_folds_tpr, test_species_folds_roc_auc_class_0, test_species_folds_roc_auc_class_1,test_species_folds_pvals_class_0, test_species_folds_pvals_class_1 = [], [], [], [],[],[]
+            metrics_results_dict = plot_kfold_comparison_helper(metrics_keys,script_dir, folder, overwrite, kfolds)
 
-                for fold in range(kfolds):
-                    print("-------------FOLD {}--------------".format(fold))
-                    if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold)):
-                        train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold))
-                        args = train_out["args"]
-                        train_out = train_out["summary_dict"]
-                    else:
-                        train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_valid_fold_{}.p".format(folder, fold))["summary_dict"]
-                    valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(folder, fold))["summary_dict"]
-                    if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold)):
-                        test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold))["summary_dict"]
-                    else:
-                        test_out = None
+            metrics_results_train = metrics_results_dict["train"]
+            metrics_results_train_species = metrics_results_dict["train-species"]
+            metrics_results_valid = metrics_results_dict["valid"]
+            metrics_results_valid_species = metrics_results_dict["valid-species"]
+            metrics_results_test = metrics_results_dict["test"]
+            metrics_results_test_species = metrics_results_dict["test-species"]
+            train_folds_roc_auc_class_0 = metrics_results_dict["train-auc-0"]
+            train_folds_roc_auc_class_1 = metrics_results_dict["train-auc-1"]
+            valid_folds_roc_auc_class_0 = metrics_results_dict["valid-auc-0"]
+            valid_folds_roc_auc_class_1 = metrics_results_dict["valid-auc-1"]
+            test_folds_roc_auc_class_0 = metrics_results_dict["test-auc-0"]
+            test_folds_roc_auc_class_1 = metrics_results_dict["test-auc-1"]
 
-                    for mode, summary_dict in zip(["train", "valid", "test"], [train_out, valid_out, test_out]):
-
-                        if summary_dict is not None:
-                            labels = summary_dict["true_samples"]
-                            onehot_labels = summary_dict["true_onehot_samples"]
-                            # confidence_scores = summary_dict["confidence_scores_samples"]
-                            prob_mode = "class_probs_predictions_samples_average"
-                            idx_all = np.ones_like(labels).astype(bool)
-                            if args.num_classes > args.num_obs_classes:
-                                idx_all = (labels[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2,we skip it
-                            idx_name = "all"
-                            sample_mode = "samples"
-
-                            fpr, tpr, roc_auc,pvals = plot_ROC_curves(labels, onehot_labels, summary_dict, args, script_dir, mode,
-                                                                fold, sample_mode,
-                                                                prob_mode, idx_all, idx_name, save=False)
-
-                            if mode == "train":
-                                train_folds_fpr.append(fpr)
-                                train_folds_tpr.append(tpr)
-                                train_folds_roc_auc_class_0.append(roc_auc[0])
-                                train_folds_roc_auc_class_1.append(roc_auc[1])
-                                train_folds_pvals_class_0.append(pvals[0])
-                                train_folds_pvals_class_1.append(pvals[1])
-                                species_results = calculate_species_roc_auc_helper(summary_dict, args, script_dir, idx_all,
-                                                                                   fold, prob_mode, sample_mode,
-                                                                                   mode="{}_species".format(mode))
-                                train_species_folds_fpr.append(np.nan)
-                                train_species_folds_tpr.append(np.nan)
-                                train_species_folds_roc_auc_class_0.append(species_results[0])
-                                train_species_folds_roc_auc_class_1.append(species_results[1])
-                                train_species_folds_pvals_class_0.append(species_results[2])
-                                train_species_folds_pvals_class_1.append(species_results[3])
-
-                            elif mode == "valid":
-                                valid_folds_fpr.append(fpr)
-                                valid_folds_tpr.append(tpr)
-                                valid_folds_roc_auc_class_0.append(roc_auc[0])
-                                valid_folds_roc_auc_class_1.append(roc_auc[1])
-                                valid_folds_pvals_class_0.append(pvals[0])
-                                valid_folds_pvals_class_1.append(pvals[1])
-                                species_results = calculate_species_roc_auc_helper(summary_dict, args, script_dir, idx_all,
-                                                                                   fold, prob_mode, sample_mode,
-                                                                                   mode="{}_species".format(mode))
-                                valid_species_folds_fpr.append(np.nan)
-                                valid_species_folds_tpr.append(np.nan)
-                                valid_species_folds_roc_auc_class_0.append(species_results[0])
-                                valid_species_folds_roc_auc_class_1.append(species_results[1])
-                                valid_species_folds_pvals_class_0.append(species_results[2])
-                                valid_species_folds_pvals_class_1.append(species_results[3])
-
-                            else:
-                                test_folds_fpr.append(fpr)
-                                test_folds_tpr.append(tpr)
-                                test_folds_roc_auc_class_0.append(roc_auc[0])
-                                test_folds_roc_auc_class_1.append(roc_auc[1])
-                                test_folds_pvals_class_0.append(pvals[0])
-                                test_folds_pvals_class_1.append(pvals[1])
-                                test_species_folds_fpr.append(np.nan)
-                                test_species_folds_tpr.append(np.nan)
-                                test_species_folds_roc_auc_class_0.append(np.nan)
-                                test_species_folds_roc_auc_class_1.append(np.nan)
-                                test_species_folds_pvals_class_0.append(np.nan)
-                                test_species_folds_pvals_class_1.append(np.nan)
-
-                        else:
-                            if mode == "valid":
-                                valid_folds_fpr.append(np.nan)
-                                valid_folds_tpr.append(np.nan)
-                                valid_folds_roc_auc_class_0.append(np.nan)
-                                valid_folds_roc_auc_class_1.append(np.nan)
-                                valid_folds_pvals_class_0.append(np.nan)
-                                valid_folds_pvals_class_1.append(np.nan)
-                                valid_species_folds_fpr.append(np.nan)
-                                valid_species_folds_tpr.append(np.nan)
-                                valid_species_folds_roc_auc_class_0.append(np.nan)
-                                valid_species_folds_roc_auc_class_1.append(np.nan)
-                                valid_species_folds_pvals_class_0.append(np.nan)
-                                valid_species_folds_pvals_class_1.append(np.nan)
-                            else:
-                                test_folds_fpr.append(np.nan)
-                                test_folds_tpr.append(np.nan)
-                                test_folds_roc_auc_class_0.append(np.nan)
-                                test_folds_roc_auc_class_1.append(np.nan)
-                                test_folds_pvals_class_0.append(np.nan)
-                                test_folds_pvals_class_1.append(np.nan)
-                                test_species_folds_fpr.append(np.nan)
-                                test_species_folds_tpr.append(np.nan)
-                                test_species_folds_roc_auc_class_0.append(np.nan)
-                                test_species_folds_roc_auc_class_1.append(np.nan)
-                                test_species_folds_pvals_class_0.append(np.nan)
-                                test_species_folds_pvals_class_1.append(np.nan)
-
-                metrics_results_train["fpr"] = train_folds_fpr
-                metrics_results_train["tpr"] = train_folds_tpr
-                metrics_results_train["roc_auc_class_0"] = train_folds_roc_auc_class_0
-                metrics_results_train["roc_auc_class_1"] = train_folds_roc_auc_class_1
-                train_folds_pvals_class_0 = np.array(train_folds_pvals_class_0)
-                metrics_results_train["pval_class_0"] = train_folds_pvals_class_0[~np.isnan(train_folds_pvals_class_0)]
-                train_folds_pvals_class_1 = np.array(train_folds_pvals_class_1)
-                metrics_results_train["pval_class_1"] = train_folds_pvals_class_1[~np.isnan(train_folds_pvals_class_1)]
-
-
-                metrics_results_valid["fpr"] = valid_folds_fpr
-                metrics_results_valid["tpr"] = valid_folds_tpr
-                metrics_results_valid["roc_auc_class_0"] = valid_folds_roc_auc_class_0
-                metrics_results_valid["roc_auc_class_1"] = valid_folds_roc_auc_class_1
-                valid_folds_pvals_class_0 = np.array(valid_folds_pvals_class_0)
-                metrics_results_valid["pval_class_0"] = valid_folds_pvals_class_0[~np.isnan(valid_folds_pvals_class_0)]
-                valid_folds_pvals_class_1 = np.array(valid_folds_pvals_class_1)
-                metrics_results_valid["pval_class_1"] = valid_folds_pvals_class_1[~np.isnan(valid_folds_pvals_class_1)]
-
-                metrics_results_test["fpr"] = test_folds_fpr
-                metrics_results_test["tpr"] = test_folds_tpr
-                metrics_results_test["roc_auc_class_0"] = test_folds_roc_auc_class_0
-                metrics_results_test["roc_auc_class_1"] = test_folds_roc_auc_class_1
-                test_folds_pvals_class_0 = np.array(test_folds_pvals_class_0)
-                metrics_results_test["pval_class_0"] = test_folds_pvals_class_0[~np.isnan(test_folds_pvals_class_0)]
-                test_folds_pvals_class_1 = np.array(test_folds_pvals_class_1)
-                metrics_results_test["pval_class_1"] = test_folds_pvals_class_1[~np.isnan(test_folds_pvals_class_1)]
-
-                metrics_results_train_species["fpr"] = train_species_folds_fpr
-                metrics_results_train_species["tpr"] = train_species_folds_tpr
-                metrics_results_train_species["roc_auc_class_0"] = train_species_folds_roc_auc_class_0
-                metrics_results_train_species["roc_auc_class_1"] = train_species_folds_roc_auc_class_1
-                train_species_folds_pvals_class_0 = np.array(train_species_folds_pvals_class_0)
-                metrics_results_train_species["pval_class_0"] = train_species_folds_pvals_class_0[~np.isnan(train_species_folds_pvals_class_0)]
-                train_species_folds_pvals_class_1 = np.array(train_species_folds_pvals_class_1)
-                metrics_results_train_species["pval_class_1"] = train_species_folds_pvals_class_1[~np.isnan(train_species_folds_pvals_class_1)]
-
-
-                metrics_results_valid_species["fpr"] = valid_species_folds_fpr
-                metrics_results_valid_species["tpr"] = valid_species_folds_tpr
-                metrics_results_valid_species["roc_auc_class_0"] = valid_species_folds_roc_auc_class_0
-                metrics_results_valid_species["roc_auc_class_1"] = valid_species_folds_roc_auc_class_1
-                valid_species_folds_pvals_class_0 = np.array(valid_species_folds_pvals_class_0)
-                metrics_results_valid_species["pval_class_0"] = valid_species_folds_pvals_class_0[~np.isnan(valid_species_folds_pvals_class_0)]
-                valid_species_folds_pvals_class_1 = np.array(valid_species_folds_pvals_class_1)
-                metrics_results_valid_species["pval_class_1"] = valid_species_folds_pvals_class_1[~np.isnan(valid_species_folds_pvals_class_1)]
-
-                metrics_results_test_species["fpr"] = test_species_folds_fpr
-                metrics_results_test_species["tpr"] = test_species_folds_tpr
-                metrics_results_test_species["roc_auc_class_0"] = test_species_folds_roc_auc_class_0
-                metrics_results_test_species["roc_auc_class_1"] = test_species_folds_roc_auc_class_1
-                test_species_folds_pvals_class_0 = np.array(test_species_folds_pvals_class_0)
-                metrics_results_test_species["pval_class_0"] = test_species_folds_pvals_class_0[~np.isnan(test_species_folds_pvals_class_0)]
-                test_species_folds_pvals_class_1 = np.array(test_species_folds_pvals_class_1)
-                metrics_results_test_species["pval_class_1"] = test_species_folds_pvals_class_1[~np.isnan(test_species_folds_pvals_class_1)]
-
-                pickle.dump(metrics_results_train, open("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder), "wb"))
-                pickle.dump(metrics_results_valid, open("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder), "wb"))
-                pickle.dump(metrics_results_test, open("{}/Vegvisir_checkpoints/roc_auc_test.p".format(folder), "wb"))
-
-                pickle.dump(metrics_results_train_species,
-                            open("{}/Vegvisir_checkpoints/roc_auc_train_species.p".format(folder), "wb"))
-                pickle.dump(metrics_results_valid_species,
-                            open("{}/Vegvisir_checkpoints/roc_auc_valid_species.p".format(folder), "wb"))
-                pickle.dump(metrics_results_test_species,
-                            open("{}/Vegvisir_checkpoints/roc_auc_test_species.p".format(folder), "wb"))
-
-            metrics_results_all_latex[learning_type][name]["train"]= str(
+            
+            #Highlight: Train
+            metrics_auc_all_latex[learning_type][name]["train"]= str(
                 np.round((np.mean(np.array(metrics_results_train["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train["roc_auc_class_1"])))/2, 2)) + " $\pm$ " + str(
                 np.round((np.std(np.array(metrics_results_train["roc_auc_class_0"])) + np.std(np.array(metrics_results_train["roc_auc_class_1"])))/2, 2))
 
@@ -3123,7 +3240,15 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
                 np.round((np.mean(np.array(metrics_results_train["pval_class_0"])) + np.mean(np.array(metrics_results_train["pval_class_1"])))/2, 2)) + " $\pm$ " + str(
                 np.round((np.std(np.array(metrics_results_train["pval_class_0"])) + np.std(np.array(metrics_results_train["pval_class_1"])))/2, 2))
 
-            metrics_results_all_latex[learning_type][name]["valid"] = str(
+            metrics_aps_all_latex[learning_type][name]["train"] = str(
+                np.round((np.mean(np.array(metrics_results_train["ap_class_0"])) + np.mean(
+                    np.array(metrics_results_train["ap_class_1"]))) / 2, 2)) + " $\pm$ " + str(
+                np.round((np.std(np.array(metrics_results_train["ap_class_0"])) + np.std(
+                    np.array(metrics_results_train["ap_class_1"]))) / 2, 2))
+
+            #Highlight: Validation
+
+            metrics_auc_all_latex[learning_type][name]["valid"] = str(
                 np.round((np.mean((np.array(metrics_results_valid["roc_auc_class_0"]))) + np.mean(np.array(metrics_results_valid["roc_auc_class_1"])))/2, 2)) + " $\pm$ " + str(
                 np.round((np.std(np.array(metrics_results_valid["roc_auc_class_0"])) + np.std(np.array(metrics_results_valid["roc_auc_class_1"])))/2, 2))
 
@@ -3133,19 +3258,35 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
                 np.round((np.std(np.array(metrics_results_valid["pval_class_0"])) + np.std(
                     np.array(metrics_results_valid["pval_class_1"]))) / 2, 2))
 
+            metrics_aps_all_latex[learning_type][name]["valid"] = str(
+                np.round((np.mean((np.array(metrics_results_valid["ap_class_0"]))) + np.mean(
+                    np.array(metrics_results_valid["ap_class_1"]))) / 2, 2)) + " $\pm$ " + str(
+                np.round((np.std(np.array(metrics_results_valid["ap_class_0"])) + np.std(
+                    np.array(metrics_results_valid["ap_class_1"]))) / 2, 2))
 
-            metrics_results_all_latex[learning_type][name]["test"] = str(
+
+            #Highlight: Test
+
+            metrics_auc_all_latex[learning_type][name]["test"] = str(
                 np.round((np.mean(np.array(metrics_results_test["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test["roc_auc_class_1"])))/2, 2)) + " $\pm$ " + str(
                 np.round((np.std(np.array(metrics_results_test["roc_auc_class_0"])) + np.std(np.array(metrics_results_test["roc_auc_class_1"])))/2, 2)) if metrics_results_test["roc_auc_class_0"] is not None else metrics_results_test["roc_auc_class_0"]
 
 
             metrics_pvals_all_latex[learning_type][name]["test"] = str(
                 np.round((np.mean(np.array(metrics_results_test["pval_class_0"])) + np.mean(np.array(metrics_results_test["pval_class_1"])))/2, 2)) + " $\pm$ " + str(
-                np.round((np.std(np.array(metrics_results_test["pval_class_0"])) + np.std(np.array(metrics_results_test["pval_class_1"])))/2, 2)) if metrics_results_test["pval_class_0"] is not None else metrics_results_test["roc_auc_class_0"]
+                np.round((np.std(np.array(metrics_results_test["pval_class_0"])) + np.std(np.array(metrics_results_test["pval_class_1"])))/2, 2)) if metrics_results_test["pval_class_0"] is not None else metrics_results_test["pval_class_0"]
 
+            metrics_aps_all_latex[learning_type][name]["test"] = str(
+                np.round((np.mean(np.array(metrics_results_test["ap_class_0"])) + np.mean(
+                    np.array(metrics_results_test["ap_class_1"]))) / 2, 2)) + " $\pm$ " + str(
+                np.round((np.std(np.array(metrics_results_test["ap_class_0"])) + np.std(
+                    np.array(metrics_results_test["ap_class_1"]))) / 2, 2)) if metrics_results_test[
+                                                                                     "ap_class_0"] is not None else metrics_results_test["ap_class_0"]
+            
+                                                                                     
+            #Highlight: Train-species
 
-
-            metrics_results_all_latex[learning_type][name]["train-species"] = str(
+            metrics_auc_all_latex[learning_type][name]["train-species"] = str(
                 np.round((np.mean(np.array(metrics_results_train_species["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train_species["roc_auc_class_1"])))/2, 2)) + " $\pm$ " + str(
                 np.round((np.std(np.array(metrics_results_train_species["roc_auc_class_0"])) + np.std(np.array(metrics_results_train_species["roc_auc_class_1"])))/2, 2))
 
@@ -3154,8 +3295,16 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
                     np.array(metrics_results_train_species["pval_class_1"]))) / 2, 2)) + " $\pm$ " + str(
                 np.round((np.std(np.array(metrics_results_train_species["pval_class_0"])) + np.std(
                     np.array(metrics_results_train_species["pval_class_1"]))) / 2, 2))
+            
+            metrics_aps_all_latex[learning_type][name]["train-species"] = str(
+                np.round((np.mean(np.array(metrics_results_train_species["ap_class_0"])) + np.mean(
+                    np.array(metrics_results_train_species["ap_class_1"]))) / 2, 2)) + " $\pm$ " + str(
+                np.round((np.std(np.array(metrics_results_train_species["ap_class_0"])) + np.std(
+                    np.array(metrics_results_train_species["ap_class_1"]))) / 2, 2))
+            
+            #Highlight: valid species
 
-            metrics_results_all_latex[learning_type][name]["valid-species"] = str(
+            metrics_auc_all_latex[learning_type][name]["valid-species"] = str(
                 np.round((np.mean((np.array(metrics_results_valid_species["roc_auc_class_0"]))) + np.mean(np.array(metrics_results_valid_species["roc_auc_class_1"])))/2, 2)) + " $\pm$ " + str(
                 np.round((np.std(np.array(metrics_results_valid_species["roc_auc_class_0"])) + np.std(np.array(metrics_results_valid_species["roc_auc_class_1"])))/2, 2))
 
@@ -3164,7 +3313,15 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
                 np.round((np.std(np.array(metrics_results_valid_species["pval_class_0"])) + np.std(np.array(metrics_results_valid_species["pval_class_1"])))/2, 2))
 
 
-            metrics_results_all_latex[learning_type][name]["test-species"] = str(
+            metrics_aps_all_latex[learning_type][name]["valid-species"] = str(
+                np.round((np.mean((np.array(metrics_results_valid_species["ap_class_0"]))) + np.mean(np.array(metrics_results_valid_species["ap_class_1"])))/2, 2)) + " $\pm$ " + str(
+                np.round((np.std(np.array(metrics_results_valid_species["ap_class_0"])) + np.std(np.array(metrics_results_valid_species["ap_class_1"])))/2, 2))
+
+
+            
+            #Highlight: Test species
+            
+            metrics_auc_all_latex[learning_type][name]["test-species"] = str(
                 np.round((np.mean(np.array(metrics_results_test_species["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test_species["roc_auc_class_1"])))/2, 2)) + " $\pm$ " + str(
                 np.round((np.std(np.array(metrics_results_test_species["roc_auc_class_0"])) + np.std(np.array(metrics_results_test_species["roc_auc_class_1"])))/2, 2)) if metrics_results_test_species["roc_auc_class_0"] is not None else metrics_results_test_species["roc_auc_class_0"]
 
@@ -3173,19 +3330,35 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
                 np.round((np.std(np.array(metrics_results_test_species["pval_class_0"])) + np.std(np.array(metrics_results_test_species["pval_class_1"])))/2, 2)) if metrics_results_test_species["pval_class_0"] is not None else metrics_results_test_species["pval_class_0"]
 
 
+            metrics_aps_all_latex[learning_type][name]["test-species"] = str(
+                np.round((np.mean(np.array(metrics_results_test_species["ap_class_0"])) + np.mean(np.array(metrics_results_test_species["ap_class_1"])))/2, 2)) + " $\pm$ " + str(
+                np.round((np.std(np.array(metrics_results_test_species["ap_class_0"])) + np.std(np.array(metrics_results_test_species["ap_class_1"])))/2, 2)) if metrics_results_test_species["ap_class_0"] is not None else metrics_results_test_species["ap_class_0"]
 
-            metrics_results_all[learning_type][name]["train"] = np.round((np.mean(np.array(metrics_results_train["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train["roc_auc_class_1"])))/2, 2)
+
+
+
+            track_all = False
+            metrics_auc_all[learning_type][name]["train"] = np.round((np.mean(np.array(metrics_results_train["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train["roc_auc_class_1"])))/2, 2)
             metrics_pvals_all[learning_type][name]["train"] = np.round((np.mean(np.array(metrics_results_train["pval_class_0"])) + np.mean(np.array(metrics_results_train["pval_class_1"])))/2, 2)
-            metrics_results_all[learning_type][name]["valid"] = np.round((np.mean((np.array(metrics_results_valid["roc_auc_class_0"]))) + np.mean(np.array(metrics_results_valid["roc_auc_class_1"])))/2, 2)
-            metrics_pvals_all[learning_type][name]["valid"] = np.round((np.mean((np.array(metrics_results_valid["pval_class_0"]))) + np.mean(np.array(metrics_results_valid["pval_class_1"])))/2, 2)
-            metrics_results_all[learning_type][name]["test"] = np.round((np.mean(np.array(metrics_results_test["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test["roc_auc_class_1"])))/2, 2) if metrics_results_test["roc_auc_class_0"] is not None else metrics_results_test["roc_auc_class_0"]
+            metrics_aps_all[learning_type][name]["train"] = np.round((np.mean(np.array(metrics_results_train["ap_class_0"])) + np.mean(np.array(metrics_results_train["ap_class_1"])))/2, 2)
+            if track_all:
+                metrics_auc_all[learning_type][name]["valid"] = np.round((np.mean((np.array(metrics_results_valid["roc_auc_class_0"]))) + np.mean(np.array(metrics_results_valid["roc_auc_class_1"])))/2, 2)
+                metrics_pvals_all[learning_type][name]["valid"] = np.round((np.mean((np.array(metrics_results_valid["pval_class_0"]))) + np.mean(np.array(metrics_results_valid["pval_class_1"])))/2, 2)
+                metrics_aps_all[learning_type][name]["valid"] = np.round((np.mean((np.array(metrics_results_valid["ap_class_0"]))) + np.mean(np.array(metrics_results_valid["ap_class_1"])))/2, 2)
+            metrics_auc_all[learning_type][name]["test"] = np.round((np.mean(np.array(metrics_results_test["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test["roc_auc_class_1"])))/2, 2) if metrics_results_test["roc_auc_class_0"] is not None else metrics_results_test["roc_auc_class_0"]
             metrics_pvals_all[learning_type][name]["test"] = np.round((np.mean(np.array(metrics_results_test["pval_class_0"])) + np.mean(np.array(metrics_results_test["pval_class_1"])))/2, 2) if metrics_results_test["pval_class_0"] is not None else metrics_results_test["pval_class_0"]
-            metrics_results_all[learning_type][name]["train-species"] =  np.round((np.mean(np.array(metrics_results_train_species["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train_species["roc_auc_class_1"])))/2, 2)
-            metrics_pvals_all[learning_type][name]["train-species"] =  np.round((np.mean(np.array(metrics_results_train_species["pval_class_0"])) + np.mean(np.array(metrics_results_train_species["pval_class_1"])))/2, 2)
-            metrics_results_all[learning_type][name]["valid-species"] = np.round((np.mean((np.array(metrics_results_valid_species["roc_auc_class_0"]))) + np.mean(np.array(metrics_results_valid_species["roc_auc_class_1"])))/2, 2)
-            metrics_pvals_all[learning_type][name]["valid-species"] = np.round((np.mean((np.array(metrics_results_valid_species["pval_class_0"]))) + np.mean(np.array(metrics_results_valid_species["pval_class_1"])))/2, 2)
-            metrics_results_all[learning_type][name]["test-species"] = np.round((np.mean(np.array(metrics_results_test_species["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test_species["roc_auc_class_1"])))/2, 2)if metrics_results_test_species["roc_auc_class_0"] is not None else metrics_results_test_species["roc_auc_class_0"]
-            metrics_pvals_all[learning_type][name]["test-species"] = np.round((np.mean(np.array(metrics_results_test_species["pval_class_0"])) + np.mean(np.array(metrics_results_test_species["pval_class_1"])))/2, 2)if metrics_results_test_species["pval_class_0"] is not None else metrics_results_test_species["pval_class_0"]
+            metrics_aps_all[learning_type][name]["test"] = np.round((np.mean(np.array(metrics_results_test["ap_class_0"])) + np.mean(np.array(metrics_results_test["ap_class_1"])))/2, 2) if metrics_results_test["ap_class_0"] is not None else metrics_results_test["ap_class_0"]
+            metrics_auc_all[learning_type][name]["train-species"] = np.round((np.mean(np.array(metrics_results_train_species["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train_species["roc_auc_class_1"]))) / 2, 2)
+            metrics_pvals_all[learning_type][name]["train-species"] = np.round((np.mean(np.array(metrics_results_train_species["pval_class_0"])) + np.mean(np.array(metrics_results_train_species["pval_class_1"]))) / 2, 2)
+            metrics_aps_all[learning_type][name]["train-species"] = np.round((np.mean(np.array(metrics_results_train_species["ap_class_0"])) + np.mean(np.array(metrics_results_train_species["ap_class_1"]))) / 2, 2)
+
+            if track_all:
+                metrics_auc_all[learning_type][name]["valid-species"] = np.round((np.mean((np.array(metrics_results_valid_species["roc_auc_class_0"]))) + np.mean(np.array(metrics_results_valid_species["roc_auc_class_1"])))/2, 2)
+                metrics_pvals_all[learning_type][name]["valid-species"] = np.round((np.mean((np.array(metrics_results_valid_species["pval_class_0"]))) + np.mean(np.array(metrics_results_valid_species["pval_class_1"])))/2, 2)
+                metrics_aps_all[learning_type][name]["valid-species"] = np.round((np.mean((np.array(metrics_results_valid_species["ap_class_0"]))) + np.mean(np.array(metrics_results_valid_species["ap_class_1"])))/2, 2)
+                metrics_auc_all[learning_type][name]["test-species"] = np.round((np.mean(np.array(metrics_results_test_species["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test_species["roc_auc_class_1"])))/2, 2)if metrics_results_test_species["roc_auc_class_0"] is not None else metrics_results_test_species["roc_auc_class_0"]
+                metrics_pvals_all[learning_type][name]["test-species"] = np.round((np.mean(np.array(metrics_results_test_species["pval_class_0"])) + np.mean(np.array(metrics_results_test_species["pval_class_1"])))/2, 2)if metrics_results_test_species["pval_class_0"] is not None else metrics_results_test_species["pval_class_0"]
+                metrics_aps_all[learning_type][name]["test-species"] = np.round((np.mean(np.array(metrics_results_test_species["ap_class_0"])) + np.mean(np.array(metrics_results_test_species["ap_class_1"])))/2, 2)if metrics_results_test_species["ap_class_0"] is not None else metrics_results_test_species["ap_class_0"]
 
             bsize = 0.7
             bar1_0 = ax1.bar(i, np.mean(train_folds_roc_auc_class_0), yerr=np.std(train_folds_roc_auc_class_0), width=bsize,
@@ -3205,6 +3378,7 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
 
             fsize = 6
             elevation = 0.02
+            #Highlight: I am uncertain why it does not let me do this in a loop
             for bar in bar1_0.patches:
                 ax1.annotate(format(bar.get_height(), '.2f'),
                              (bar.get_x() + bar.get_width() / 2,
@@ -3285,15 +3459,20 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
         #df = df.stack().unstack(level=1)  # transposes
         return df
 
-    df_latex = convert_dict(metrics_results_all_latex)
-    df_latex.style.format(na_rep="-").to_latex('{}/{}/methods_comparison_LATEX.tex'.format(script_dir, results_folder))
+    df_latex = convert_dict(metrics_auc_all_latex)
+    df_latex.style.format(na_rep="-").to_latex('{}/{}/methods_comparison_LATEX_{}.tex'.format(script_dir, results_folder,title))
 
 
     def process_dict(metrics_dict,title):
         metrics_dict = {key.replace(r"\textbf{", "").replace("}", ""): val for key, val in metrics_dict.items()}
         df = convert_dict(metrics_dict)
         #Highlight: https://stackoverflow.com/questions/59769161/python-color-pandas-dataframe-based-on-multiindex
-        colors = {"supervised(Icore)": matplotlib.colors.to_rgba('lavender'), "supervised(Icore_non_anchor)": matplotlib.colors.to_rgba('palegreen'),"semisupervised(Icore)":matplotlib.colors.to_rgba('paleturquoise'),"semisupervised(Icore_non_anchor)":matplotlib.colors.to_rgba('plum')}
+        colors = {"supervised(Icore)": matplotlib.colors.to_rgba('lavender'),
+                  "Icore": matplotlib.colors.to_rgba('lavender'),
+                  "supervised(Icore_non_anchor)": matplotlib.colors.to_rgba('palegreen'),
+                  "Icore_non_anchor": matplotlib.colors.to_rgba('palegreen'),
+                  "semisupervised(Icore)":matplotlib.colors.to_rgba('paleturquoise'),
+                  "semisupervised(Icore_non_anchor)":matplotlib.colors.to_rgba('plum')}
         c = {k: matplotlib.colors.rgb2hex(v) for k, v in colors.items()}
         idx = df.index.get_level_values(0)
         css = [{'selector': f'.row{i}.level0', 'props': [('background-color', c[v])]} for i, v in enumerate(idx)]
@@ -3301,8 +3480,9 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
         dfi.export(df_styled, '{}/{}/metrics_comparison_{}.png'.format(script_dir, results_folder,title), max_cols=-1,max_rows=-1)
 
 
-    process_dict(metrics_results_all, "ROC_AUC")
-    process_dict(metrics_pvals_all, "P_values_AUC")
+    process_dict(metrics_auc_all, "ROC_AUC_{}".format(title))
+    process_dict(metrics_pvals_all, "Pvalues_AUC_{}".format(title))
+    process_dict(metrics_aps_all, "Average_precision_{}".format(title))
 
 def plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covariances_dict_train,covariances_dict_valid,covariances_dict_test,learning_type,name,args,script_dir,results_folder):
     for mode, summary_dict in zip(["train", "valid", "test"], [train_out, valid_out, test_out]):
@@ -3312,10 +3492,12 @@ def plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covaria
             if "umap_1d" not in summary_dict.keys():
                 print("Constructing UMAP-1d")
                 umap_proj_1d = reducer.fit_transform(latent_space[:, 5:]).squeeze(-1)
+                #warnings.warn("using random UMAP for debugging")
+                #umap_proj_1d = np.random.rand(latent_space.shape[0]) #used to do fast debugging
+
             else:
                 print("Umap found, not calculating")
                 umap_proj_1d = summary_dict["umap_1d"]
-            # umap_proj_1d = np.random.rand(latent_space.shape[0]) #used to do fast debugging
             custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
 
             aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
@@ -3413,7 +3595,7 @@ def plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covaria
 
     return covariances_dict_train,covariances_dict_valid,covariances_dict_test
 
-def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results_folder="Benchmark"):
+def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results_folder="Benchmark",overwrite_correlations=False,overwrite_all=False,subtitle=""):
      """Computes the average UMAP1d vs peptide feature correlations across the n-folds"""
      new_feature_names = {"UMAP-1D":"UMAP-1D",
                           "hydropathy_scores":"Hydropathy",
@@ -3428,10 +3610,9 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
                           "extintion_coefficients_reduced":"Extintion coefficients (reduced)",
                           "extintion_coefficients_cystines":"Extintion coefficients (oxidized)",
                           "immunodominance_scores":"Immunodominance"}
-     overwrite_correlations = False
-     covariances_all = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict())))
-     pearson_coefficients_all = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict())))
-     pearson_pvalues_all = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict())))
+     covariances_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
+     pearson_coefficients_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
+     pearson_pvalues_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
 
      covariances_dict_train= defaultdict(lambda :defaultdict(lambda : defaultdict(lambda : [])))
      covariances_dict_valid= defaultdict(lambda :defaultdict(lambda : defaultdict(lambda : [])))
@@ -3440,14 +3621,14 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
      for learning_type, values in dict_results.items():
          for name, folder in values.items():
              print("{}".format(name))
-             if os.path.exists("{}/Vegvisir_checkpoints/covariances_train.p".format(folder)) and not overwrite_correlations:
+             if os.path.exists("{}/Vegvisir_checkpoints/covariances_train.p".format(folder)) and not overwrite_correlations and not overwrite_all:
                 print("Loading pre computed correlations ---------------------------------------")
                 #Highlight: Dill is an *** , if you change the module's non mutable structures (i.e named tuples), it will complain
                 covariances_dict_train = dill.load(open("{}/Vegvisir_checkpoints/covariances_train.p".format(folder), "rb"))
                 covariances_dict_valid = dill.load(open("{}/Vegvisir_checkpoints/covariances_valid.p".format(folder), "rb"))
                 if os.path.exists("{}/Vegvisir_checkpoints/covariances_test.p".format(folder)):
                     covariances_dict_test = dill.load(open("{}/Vegvisir_checkpoints/covariances_test.p".format(folder), "rb"))
-             elif os.path.exists("{}/Vegvisir_checkpoints/covariances_train.p".format(folder)) and overwrite_correlations:
+             elif os.path.exists("{}/Vegvisir_checkpoints/covariances_train.p".format(folder)) and overwrite_correlations and not overwrite_all:
                  print("Loading pre computed UMAP, re-calculating correlations ---------------------------------------")
                  # Highlight: Dill is an *** , if you change the module's non mutable structures (i.e named tuples), it will complain
                  covariances_dict_train_precomputed = dill.load(open("{}/Vegvisir_checkpoints/covariances_train.p".format(folder), "rb"))
@@ -3492,8 +3673,7 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
 
              else:
                 for fold in range(kfolds):
-                     print("Files not existing.Computing correlation covariances")
-                     print("FOLD: {} ------------------------".format(fold))
+                     print("Files not existing or you set overwrite_all = True.Computing correlation covariances and UMAP")
                      if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold)):
                         train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold))
                      else:
@@ -3507,109 +3687,13 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
 
                      args = train_out["args"]
 
-                     # for mode, summary_dict in zip(["train", "valid", "test"], [train_out, valid_out, test_out]):
-                     #     if summary_dict is not None:
-                     #         dataset_info = summary_dict["dataset_info"]
-                     #         latent_space = summary_dict["latent_space"]
-                     #         if "umap_1d" in summary_dict.keys():
-                     #             umap_proj_1d = reducer.fit_transform(latent_space[:, 5:]).squeeze(-1)
-                     #         else:
-                     #             umap_proj_1d = summary_dict["umap_1d"]
-                     #         #umap_proj_1d = np.random.rand(latent_space.shape[0]) #used to do fast debugging
-                     #         custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
-                     #
-                     #         aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
-                     #         hydropathy_dict = custom_features_dicts["hydropathy_dict"]
-                     #         volume_dict = custom_features_dicts["volume_dict"]
-                     #         radius_dict = custom_features_dicts["radius_dict"]
-                     #         side_chain_pka_dict = custom_features_dicts["side_chain_pka_dict"]
-                     #         isoelectric_dict = custom_features_dicts["isoelectric_dict"]
-                     #         bulkiness_dict = custom_features_dicts["bulkiness_dict"]
-                     #         data_int = summary_dict["summary_dict"]["data_int_samples"]
-                     #         sequences = data_int[:, 1:].squeeze(1)
-                     #         if dataset_info.corrected_aa_types == 20:
-                     #             sequences_mask = np.zeros_like(sequences).astype(bool)
-                     #         else:
-                     #             sequences_mask = np.array((sequences == 0))
-                     #
-                     #         sequences_lens = np.sum(~sequences_mask, axis=1)
-                     #         sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(sequences)
-                     #         sequences_list = sequences_raw.tolist()
-                     #         bulkiness_scores = np.vectorize(bulkiness_dict.get)(sequences)
-                     #         bulkiness_scores = np.ma.masked_array(bulkiness_scores, mask=sequences_mask, fill_value=0)
-                     #         bulkiness_scores = np.ma.sum(bulkiness_scores, axis=1)
-                     #
-                     #         volume_scores = np.vectorize(volume_dict.get)(sequences)
-                     #         volume_scores = np.ma.masked_array(volume_scores, mask=sequences_mask, fill_value=0)
-                     #         volume_scores = np.ma.sum(volume_scores, axis=1)  # TODO: Mean? or sum?
-                     #
-                     #         radius_scores = np.vectorize(radius_dict.get)(sequences)
-                     #         radius_scores = np.ma.masked_array(radius_scores, mask=sequences_mask, fill_value=0)
-                     #         radius_scores = np.ma.sum(radius_scores, axis=1)
-                     #
-                     #         side_chain_pka_scores = np.vectorize(side_chain_pka_dict.get)(sequences)
-                     #         side_chain_pka_scores = np.ma.masked_array(side_chain_pka_scores, mask=sequences_mask,fill_value=0)
-                     #         side_chain_pka_scores = np.ma.mean(side_chain_pka_scores,axis=1)  # Highlight: before I was doing just the sum
-                     #
-                     #         isoelectric_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_list)))
-                     #         aromaticity_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_list)))
-                     #         hydropathy_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_list)))
-                     #         molecular_weight_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_list)))
-                     #         extintion_coefficient_reduced_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[0], sequences_list)))
-                     #         extintion_coefficient_cystines_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[1], sequences_list)))
-                     #
-                     #         settings = {"features_dict": {"hydropathy_scores":hydropathy_scores,
-                     #                                        "isoelectric_scores":isoelectric_scores,
-                     #                                        "volume_scores":volume_scores,
-                     #                                        "radius_scores":radius_scores,
-                     #                                        "side_chain_pka_scores":side_chain_pka_scores,
-                     #                                        "aromaticity_scores":aromaticity_scores,
-                     #                                        "molecular_weights":molecular_weight_scores,
-                     #                                        "bulkiness_scores":bulkiness_scores,
-                     #                                        "sequences_lens":sequences_lens,
-                     #                                        "extintion_coefficients_reduced":extintion_coefficient_reduced_scores,
-                     #                                        "extintion_coefficients_cystines":extintion_coefficient_cystines_scores,
-                     #                                       },
-                     #                     "sequences_raw":sequences_raw}
-                     #
-                     #         correlations_dict = plot_latent_correlations_1d(umap_proj_1d,
-                     #                                                 args,
-                     #                                                 settings,
-                     #                                                 dataset_info,
-                     #                                                 latent_space,
-                     #                                                 sample_mode="samples",
-                     #                                                 results_dir="{}/{}".format(script_dir,results_folder),
-                     #                                                 method=mode,
-                     #                                                 vector_name="latent_space_z",
-                     #                                                 plot_scatter_correlations=False,
-                     #                                                 plot_covariance=True,
-                     #                                                 save_plot=False,
-                     #                                                 filter_correlations=False)
-                     #
-                     #
-                     #         if mode == "train":
-                     #            covariances_dict_train[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"]))
-                     #            covariances_dict_train[learning_type][name]["features_names"].append(correlations_dict["features_names"])
-                     #            covariances_dict_train[learning_type][name]["pearson_coefficients"].append(correlations_dict["pearson_coefficients"])
-                     #            covariances_dict_train[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
-                     #            covariances_dict_train[learning_type][name]["umap_1d"].append(umap_proj_1d)
-                     #         elif mode == "valid":
-                     #            covariances_dict_valid[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"]))
-                     #            covariances_dict_valid[learning_type][name]["features_names"].append(correlations_dict["features_names"])
-                     #            covariances_dict_valid[learning_type][name]["pearson_coefficients"].append(correlations_dict["pearson_coefficients"])
-                     #            covariances_dict_valid[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
-                     #            covariances_dict_valid[learning_type][name]["umap_1d"].append(umap_proj_1d)
-                     #         elif mode == "test":
-                     #            covariances_dict_test[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"]))
-                     #            covariances_dict_test[learning_type][name]["features_names"].append(correlations_dict["features_names"])
-                     #            covariances_dict_test[learning_type][name]["pearson_coefficients"].append(correlations_dict["pearson_coefficients"])
-                     #            covariances_dict_test[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
-                     #            covariances_dict_test[learning_type][name]["umap_1d"].append(umap_proj_1d)
                      plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covariances_dict_train,covariances_dict_valid,covariances_dict_test,learning_type,name,args,script_dir,results_folder)
+
+
+
                 dill.dump(covariances_dict_train,open("{}/Vegvisir_checkpoints/covariances_train.p".format(folder), "wb"))
                 dill.dump(covariances_dict_valid,open("{}/Vegvisir_checkpoints/covariances_valid.p".format(folder), "wb"))
                 dill.dump(covariances_dict_test,open("{}/Vegvisir_checkpoints/covariances_test.p".format(folder), "wb"))
-
 
 
              covariances_all[learning_type][name]["train"] = np.mean([covariance[0,1:] for covariance in covariances_dict_train[learning_type][name]["covariance"]],axis=0)
@@ -3660,14 +3744,16 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
      # df_latex = convert_dict(covariances_all_latex)
      # df_latex.style.format(na_rep="-").to_latex('{}/{}/methods_comparison_LATEX.tex'.format(script_dir, results_folder))
 
-     def process_dict(metric_dict,title=""):
+     def process_dict(metric_dict,title="",subtitle=""):
          metric_dict = {key.replace(r"\textbf{", "").replace("}", ""): val for key, val in metric_dict.items()}
 
          df = pd.DataFrame.from_dict({(i, j,k): metric_dict[i][j][k] for i in metric_dict.keys() for j in metric_dict[i].keys() for k in metric_dict[i][j]},orient='index')
 
          # Highlight: https://stackoverflow.com/questions/59769161/python-color-pandas-dataframe-based-on-multiindex
          colors = {"supervised(Icore)": matplotlib.colors.to_rgba('lavender'),
+                   "Icore": matplotlib.colors.to_rgba('lavender'),
                    "supervised(Icore_non_anchor)": matplotlib.colors.to_rgba('palegreen'),
+                   "Icore_non_anchor": matplotlib.colors.to_rgba('palegreen'),
                    "semisupervised(Icore)": matplotlib.colors.to_rgba('paleturquoise'),
                    "semisupervised(Icore_non_anchor)": matplotlib.colors.to_rgba('plum')}
          c = {k: matplotlib.colors.rgb2hex(v) for k, v in colors.items()}
@@ -3676,10 +3762,230 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
 
          df_styled = df.style.format(na_rep="-", escape="latex",precision=3).background_gradient(axis=None,cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" when pandas 2.1 arrives
 
-         dfi.export(df_styled, '{}/{}/{}_DATAFRAME.png'.format(script_dir, results_folder,title), max_cols=-1,max_rows=-1)
+         dfi.export(df_styled, '{}/{}/{}_DATAFRAME_{}.png'.format(script_dir, results_folder,title,subtitle), max_cols=-1,max_rows=-1)
 
-     process_dict(covariances_all,"Latent_covariances")
-     process_dict(pearson_pvalues_all,"Latent_pearson_pvalues")
-     process_dict(pearson_coefficients_all,"Latent_pearson_coefficients")
+
+     process_dict(covariances_all,"Latent_covariances",subtitle)
+     process_dict(pearson_pvalues_all,"Latent_pearson_pvalues",subtitle)
+     process_dict(pearson_coefficients_all,"Latent_pearson_coefficients",subtitle)
+
+def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark"):
+    """"""
+
+    #Highlight: vegvisir results
+
+    metrics_keys = ["ppv","fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1","pval_class_0","pval_class_1"]
+
+    metrics_results_dict = plot_kfold_comparison_helper(metrics_keys, script_dir, folder=dict_results_vegvisir["viral-dataset9-likelihood-40"], overwrite=False, kfolds=5)
+
+    metrics_results_train = metrics_results_dict["train"]
+    #metrics_results_valid = metrics_results_dict["valid"]
+    metrics_results_test = metrics_results_dict["test"]
+
+    vegvisir_results_auc_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train["roc_auc_class_1"])))/2, 2)}
+    vegvisir_results_ppv_train = {"Vegvisir":np.round(np.mean(np.array(metrics_results_train["ppv"])), 2)}
+    vegvisir_results_auc_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test["roc_auc_class_1"])))/2, 2)}
+    vegvisir_results_ppv_test = {"Vegvisir":np.round(np.mean(np.array(metrics_results_test["ppv"])), 2)}
+
+
+    #Highlight: NNalign results
+    nnalign_results_path = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/report_models"
+
+    nnalign_results = pd.read_csv(nnalign_results_path,sep="\s+")
+    nnalign_results = nnalign_results.groupby('DATASET', as_index=False)[["AUC01_train", "AUC_train","PPV_train","AUC01_eval","AUC_eval","PPV_eval"]].agg(lambda x: sum(list(x))/len(list(x)))
+    nnalign_results =nnalign_results[nnalign_results["DATASET"]=="sequences_viral_dataset9"]
+    nnalign_results_train_auc_dict = {"NNAlign2.1":nnalign_results["AUC_train"].item()}
+    nnalign_results_train_ppv_dict = {"NNAlign2.1":nnalign_results["PPV_train"].item()}
+    nnalign_results_test_auc_dict = {"NNAlign2.1":nnalign_results["AUC_eval"].item()}
+    nnalign_results_test_ppv_dict = {"NNAlign2.1":nnalign_results["PPV_eval"].item()}
+
+
+    other_programs_results_path = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/sequences_viral_dataset9_predictors.tsv"
+
+    other_programs_results = pd.read_csv(other_programs_results_path,sep="\t")
+
+    pd.set_option('display.max_columns', None)
+
+    def process_results(training=True):
+
+        other_programs_results_mode= other_programs_results[other_programs_results["training"] == training]
+        other_programs_results_mode = other_programs_results_mode[["Icore","target_corrected","PRIME_rank","PRIME_score","MixMHCpred_rank_binding","IEDB_immuno","DeepImmuno","DeepNetBim_binding","DeepNetBim_immuno","DeepNetBim_immuno_probability"]]
+        #Highlight: Grouping by alleles
+        #a) Group non categorical outputs ("continuous")
+        other_programs_results_mode_continuous = other_programs_results_mode.groupby("Icore",as_index=False)[["PRIME_rank","PRIME_score","MixMHCpred_rank_binding","IEDB_immuno","DeepImmuno","DeepNetBim_binding","DeepNetBim_immuno_probability"]].agg(lambda x: sum(list(x))/len(list(x)))
+        #b) Process categorical outputs ("discrete")
+        other_programs_results_mode_categorical = other_programs_results_mode.groupby("Icore",as_index=False)[["target_corrected","DeepNetBim_immuno"]].agg(pd.Series.mode)
+
+        other_programs_results_mode = other_programs_results_mode_continuous.merge(other_programs_results_mode_categorical,on=["Icore"],how="left")
+        return other_programs_results_mode
+
+    other_programs_results_train = process_results(training=True)
+    other_programs_results_test = process_results(training=False)
+
+
+    programs_list = ["PRIME_rank","PRIME_score","MixMHCpred_rank_binding","IEDB_immuno","DeepImmuno","DeepNetBim_binding","DeepNetBim_immuno","DeepNetBim_immuno_probability"]
+
+
+    def calculate_auc(targets,predictions):
+        try:
+            targets = targets.to_numpy()
+            predictions = predictions.to_numpy()
+            predictions_nan = np.isnan(predictions)
+            targets = targets[~predictions_nan]
+            predictions = predictions[~predictions_nan]
+            fpr, tpr, _ = roc_curve(targets, predictions)
+            roc_auc = auc(fpr, tpr)
+            return roc_auc
+        except:
+            return np.nan
+
+
+
+    def calculate_ppv(targets,predictions):
+        targets = targets.to_numpy()
+        predictions = predictions.to_numpy()
+        try:
+            try:
+                binary_predictions = np.where(predictions >=0.5 , 1, 0) #for the rank this is useless, but I want to preserve the error
+            except:
+                binary_predictions = predictions
+            binary_predictions_nan = pd.isnull(binary_predictions)
+            targets = targets[~binary_predictions_nan]
+            binary_predictions = binary_predictions[~binary_predictions_nan]
+            tn, fp, fn, tp = confusion_matrix(y_true=targets, y_pred=binary_predictions).ravel()
+            precision = tp / (tp + fp)
+            return precision
+        except:
+            return np.nan
+
+    ppv_results_train = list(map(lambda program: calculate_ppv(other_programs_results_train["target_corrected"],other_programs_results_train[program]),programs_list ))
+    ppv_results_test = list(map(lambda program: calculate_ppv(other_programs_results_test["target_corrected"],other_programs_results_test[program]),programs_list ))
+
+    ppv_results_train_dict = dict(zip(programs_list,ppv_results_train))
+    ppv_results_test_dict = dict(zip(programs_list,ppv_results_test))
+
+
+    auc_results_train = list(map(lambda program: calculate_auc(other_programs_results_train["target_corrected"],other_programs_results_train[program]),programs_list ))
+    auc_results_test = list(map(lambda program: calculate_auc(other_programs_results_test["target_corrected"],other_programs_results_test[program]),programs_list ))
+
+    auc_results_train_dict = dict(zip(programs_list,auc_results_train))
+    auc_results_test_dict = dict(zip(programs_list,auc_results_test))
+
+    ppv_results_train_dict = dict(zip(programs_list, ppv_results_train_dict))
+    ppv_results_test_dict = dict(zip(programs_list, ppv_results_test_dict))
+
+
+    auc_results_train_dict = {**vegvisir_results_auc_train,**nnalign_results_train_auc_dict,**auc_results_train_dict,}
+    auc_results_test_dict = {**vegvisir_results_auc_test,**nnalign_results_test_auc_dict,**auc_results_test_dict}
+
+
+    ppv_results_train_dict = {**vegvisir_results_ppv_train,**nnalign_results_train_ppv_dict,**ppv_results_train_dict,}
+    ppv_results_test_dict = {**vegvisir_results_ppv_test,**nnalign_results_test_ppv_dict,**ppv_results_test_dict}
+
+
+    names_dict = {"Vegvisir":"Vegvisir",
+                  "NNAlign2.1":"NNAlign2.1",
+                  "PRIME_rank":"PRIME \n (MHC binding rank)",
+                  "PRIME_score":"PRIME \n (probability)",
+                  "MixMHCpred_rank_binding":"MixMHCpred \n (MHC binding rank)",
+                  "IEDB_immuno":"IEDB immuno",
+                  "DeepImmuno":"DeepImmuno",
+                  "DeepNetBim_binding":"DeepNetBim \n (MHC binding rank)",
+                  "DeepNetBim_immuno":"DeepNetBim \n (binary prediction)",
+                  "DeepNetBim_immuno_probability":"DeepNetBim \n (probability)"}
+
+    plot_only_auc = True
+    if plot_only_auc:
+        fig, ax1 = plt.subplots(nrows=1, ncols=1, figsize=(15, 18))
+        i = 0
+        positions = []
+        labels = []
+        for (program_train, auc_train), auc_test, ppv_train, ppv_test in zip(auc_results_train_dict.items(),
+                                                                             auc_results_test_dict.values(),
+                                                                             ppv_results_train_dict.values(),
+                                                                             ppv_results_test_dict.values()):
+
+            if np.isnan(auc_train) or np.isnan(auc_test):
+                pass
+            else:
+                bar_train_auc = ax1.barh(i, width=auc_train, color="skyblue", height=0.2)
+                bar_test_auc = ax1.barh(i + 0.2, width=auc_test, height=0.2, color="tomato")
+                positions.append(i)
+                i += 1
+                labels.append(names_dict[program_train])
+                for bar in [bar_train_auc.patches, bar_test_auc.patches]:
+                    rect = bar[0]  # single rectangle
+                    ax1.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
+                             '{}'.format(round(rect.get_width(), 2)),
+                             ha='center', va='center', fontsize=12)
+
+
+        ax1.set_yticks(positions, labels=labels, fontsize=15)
+        ax1.tick_params(axis='x', labelsize=15)
+
+        ax1.axvline(x=0.5, color='goldenrod', linestyle='--')
+        transformation = transforms.blended_transform_factory(ax1.get_yticklabels()[0].get_transform(), ax1.transData)
+        ax1.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=15)
+        ax1.set_title("ROC-AUC", fontsize=18)
+        ax1.margins(x=0.2)
+
+        plt.subplots_adjust(left=0.2, wspace=0.4)
+
+    else:
+
+        fig,[ax1,ax2] = plt.subplots(nrows=1,ncols=2,figsize=(20,18))
+        i= 0
+        positions = []
+        labels = []
+        for (program_train,auc_train),auc_test,ppv_train,ppv_test in zip(auc_results_train_dict.items(),auc_results_test_dict.values(),ppv_results_train_dict.values(),ppv_results_test_dict.values()):
+
+            if np.isnan(auc_train) or np.isnan(auc_test):
+                pass
+            else:
+                bar_train_auc= ax1.barh(i,width=auc_train,color="skyblue",height=0.2)
+                #bar_train_ppv= ax2.barh(i,width=ppv_train,color="skyblue",height=0.2)
+                bar_test_auc = ax1.barh(i + 0.2,width=auc_test,height=0.2,color="tomato")
+                #bar_test_ppv = ax2.barh(i + 0.2,width=ppv_test,height=0.2,color="tomato")
+                positions.append(i)
+                i += 1
+                labels.append(names_dict[program_train])
+                for bar in [bar_train_auc.patches,bar_test_auc.patches]:
+                    rect = bar[0] #single rectangle
+                    ax1.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
+                             '{}'.format(round(rect.get_width(),2)),
+                             ha='center', va='center',fontsize=12)
+                # for bar in [bar_train_ppv.patches,bar_test_ppv.patches]:
+                #     rect = bar[0] #single rectangle
+                #     ax2.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
+                #              '{}'.format(round(rect.get_width(),2)),
+                #              ha='center', va='center',fontsize=12)
+
+        ax1.set_yticks(positions,labels=labels,fontsize=15)
+        ax1.tick_params(axis='x', labelsize=15)
+
+        ax1.axvline(x=0.5, color='goldenrod', linestyle='--')
+        transformation = transforms.blended_transform_factory(ax1.get_yticklabels()[0].get_transform(), ax1.transData)
+        ax1.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center",transform=transformation,fontsize=15)
+        ax1.set_title("ROC-AUC",fontsize=18)
+        ax1.margins(x=0.2)
+
+
+        ax2.set_yticks(positions,labels=labels,fontsize=15)
+        ax2.set_title("Precision(PPV)",fontsize=18)
+        ax2.margins(x=0.2)
+
+        plt.subplots_adjust(left=0.2,wspace=0.4)
+
+    fig.suptitle("Benchmarking",fontsize=20)
+
+
+    plt.savefig("{}/{}/Benchmarking".format(script_dir,folder),dpi=600)
+
+
+
+
+
+
+
 
 
