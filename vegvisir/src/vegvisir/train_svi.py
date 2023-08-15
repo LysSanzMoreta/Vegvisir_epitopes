@@ -976,7 +976,7 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                 train_summary_dict = VegvisirUtils.manage_predictions(train_predictive_samples_dict,args,train_predictions_dict)
                 valid_summary_dict = VegvisirUtils.manage_predictions(valid_predictive_samples_dict,args,valid_predictions_dict)
                 if args.plot_all:
-                    #VegvisirPlots.plot_gradients(gradient_norms, results_dir, "Train_{}".format(mode))
+                    VegvisirPlots.plot_gradients(gradient_norms, results_dir, "Train_{}".format(mode))
 
                     ##VegvisirPlots.plot_latent_space(args,dataset_info,train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
                     ##VegvisirPlots.plot_latent_space(args,dataset_info,valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
@@ -1190,11 +1190,9 @@ def train_model(dataset_info,additional_info,args):
                 print("Joining Training & validation datasets to perform testing...")
             train_idx = (train_idx.int() + valid_idx.int()).bool()
             epoch_loop(train_idx, test_idx, dataset_info, args, additional_info,mode="Test")
-
-
 def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid",fold=""):
     """Set up k-fold cross validation and the training loop"""
-    print("Loading dataset into model...")
+    print("Loading dataset into pre-trained model...")
     data_blosum = dataset_info.data_array_blosum_encoding
     data_int = dataset_info.data_array_int
     data_onehot = dataset_info.data_array_onehot_encoding
@@ -1217,7 +1215,7 @@ def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     n_data = data_blosum.shape[0]
     batch_size = args.batch_size
     results_dir = additional_info.results_dir
-    check_point_epoch = [5 if args.num_epochs < 100 else int(args.num_epochs / 50)][0]
+    check_point_epoch = 5 if args.num_epochs < 100 else int(args.num_epochs / 50)
     model_load = ModelLoad(args=args,
                            max_len=dataset_info.max_len,
                            seq_max_len=dataset_info.seq_max_len,
@@ -1321,14 +1319,13 @@ def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     if args.plot_all:
         VegvisirPlots.plot_latent_space(args, dataset_info, train_predictive_samples_latent_space, train_summary_dict,"samples", results_dir, method="Train{}".format(fold))
         VegvisirPlots.plot_latent_space(args, dataset_info, valid_predictive_samples_latent_space, valid_summary_dict,"samples", results_dir, method=mode)
-
-        VegvisirPlots.plot_attention_weights(train_summary_dict, dataset_info, results_dir,
-                                             method="Train{}".format(fold))
+        #
+        VegvisirPlots.plot_attention_weights(train_summary_dict, dataset_info, results_dir, method="Train{}".format(fold))
         VegvisirPlots.plot_attention_weights(valid_summary_dict, dataset_info, results_dir, method=mode)
 
-        VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir, args,
-                                             method="Train{}".format(fold))
+        VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir, args,method="Train{}".format(fold))
         VegvisirPlots.plot_hidden_dimensions(valid_summary_dict, dataset_info, results_dir, args, method=mode)
+
 
     VegvisirPlots.plot_classification_metrics(args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold))
     VegvisirPlots.plot_classification_metrics(args,valid_summary_dict,"all",results_dir,mode=mode)

@@ -271,6 +271,228 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     plt.clf()
     plt.close(fig)
 
+
+def plot_data_information_reduced(data, filters_dict, storage_folder, args, name_suffix):
+    """"""
+    ndata = data.shape[0]
+    fig, ax = plt.subplots(nrows=2,ncols=4, figsize=(15, 10))
+    num_bins = 50
+
+    ############LABELS #############
+    unique,counts = np.unique(data["target"].to_numpy(),return_counts=True)
+
+    patches_list = []
+    position = 0
+    position_labels = []
+    for label,count in zip(unique,counts):
+        position_labels.append(position)
+        bar = ax[0][0].bar(position,count, label=label, color=colors_dict[label], width=0.1, edgecolor='white')
+        patches_list.append(bar.patches[0])
+        position += 0.5 if args.num_classes == 3 else 0.25
+    ax[0][0].margins(y=0.1)
+    ax[0][0].set_xlabel('Binary target class')
+    ax[0][0].set_title('Binary targets counts',fontsize=12)
+    ax[0][0].xaxis.set_ticks(position_labels)
+    ax[0][0].set_xticklabels(range(args.num_classes))
+    # Annotate the bars.
+    n_data = sum(counts)
+    for bar in patches_list:
+        ax[0][0].annotate(
+            "{}\n({}%)".format(bar.get_height(), np.round((bar.get_height() * 100) / n_data), 2),
+            (bar.get_x() + bar.get_width() / 2,
+             bar.get_height()), ha='center', va='center',
+            size=10, xytext=(0, 8),
+            textcoords='offset points',weight='bold')
+
+    ############LABELS CORRECTED #############
+    #freq, bins, patches = ax[0][1].hist(data["target_corrected"].to_numpy(), bins=args.num_classes, density=True, edgecolor='white')
+
+    unique,counts = np.unique(data["target_corrected"].to_numpy(),return_counts=True)
+    patches_list = []
+    position = 0
+    position_labels = []
+    for label,count in zip(unique,counts):
+        position_labels.append(position)
+        bar = ax[0][1].bar(position,count, label=label, color=colors_dict[label], width=0.1, edgecolor='white')
+        patches_list.append(bar.patches[0])
+        position += 0.5 if args.num_classes == 3 else 0.25
+
+    ax[0][1].margins(y=0.1)
+    ax[0][1].set_xlabel('Binary target class')
+    ax[0][1].set_title('Corrected binary targets counts',fontsize=12)
+    ax[0][1].xaxis.set_ticks(position_labels)
+    ax[0][1].set_xticklabels(range(args.num_classes))
+    # Annotate the bars.
+    n_data = sum(counts)
+
+    for bar in patches_list:
+        ax[0][1].annotate(
+            "{}\n({}%)".format(bar.get_height(), np.round((bar.get_height() * 100) / n_data), 2),
+            (bar.get_x() + bar.get_width() / 2,
+             bar.get_height()), ha='center', va='center',
+            size=10, xytext=(0, 8),
+            textcoords='offset points',weight='bold')
+    ####### Immunodominance scores ###################
+    ax[0][3].hist(data["immunodominance_score_scaled"].to_numpy(), num_bins, density=True)
+    ax[0][3].set_xlabel('Minmax scaled \n immunodominance score \n (N + / Total)',fontsize=12)
+    ax[0][3].set_title('Histogram of \n immunodominance scores',fontsize=12)
+    ############TEST PROPORTIONS #############
+    data_partitions = data[["partition", "training", "target_corrected"]]
+    test_counts = data_partitions[data_partitions["training"] == False].value_counts("target_corrected")  # returns a dict
+    test_counts = dict(sorted(test_counts.items(), key=operator.itemgetter(1), reverse=True))  # sort dict by values
+    if test_counts:
+        bar_list= []
+        for label,counts in test_counts.items():
+            bar = ax[1][0].bar(0, counts, label=labels_dict[label], color=colors_dict[label], width=0.1, edgecolor='white')
+            bar = bar.patches[0]
+            bar_list.append(bar)
+        n_data_test = sum([val for val in test_counts.values()])
+        for bar in bar_list:
+            ax[1][0].annotate("{}({}%)".format(bar.get_height(), np.round((bar.get_height() * 100) / n_data_test), 2),
+                              (bar.get_x() + bar.get_width() / 2,
+                               bar.get_height()), ha='center', va='center',
+                              size=12, xytext=(0, 8),
+                              textcoords='offset points',weight='bold')
+        ax[1][0].margins(y=0.1)
+        ax[1][0].xaxis.set_ticks([0])
+        ax[1][0].set_xticklabels(["Test proportions"], fontsize=12)
+        ax[1][0].set_title('Test dataset. \n Class proportions', fontsize=12)
+    ################ TRAIN PARTITION PROPORTIONS###################################
+
+    train_set = data_partitions[data_partitions["training"] == True]
+
+    partitions_groups = [train_set.groupby('partition').get_group(x) for x in train_set.groupby('partition').groups]
+    i = 0
+    partitions_names = []
+    for group in partitions_groups:
+        name = group["partition"].iloc[0]
+        group_counts = group.value_counts("target_corrected")  # returns a dict
+        group_counts = dict( sorted(group_counts.items(), key=operator.itemgetter(1),reverse=True)) #sort dict by value counts
+        if group_counts:
+            bar_list = []
+            for label,count in group_counts.items():
+                bar = ax[0][2].bar(i, count, label=labels_dict[int(label)], color=colors_dict[int(label)], width=0.1, edgecolor='white')
+                bar = bar.patches[0]
+                bar_list.append(bar)
+
+            i += 0.4
+            n_data_partition = sum([val for key, val in group_counts.items()])
+            for bar in bar_list:
+                ax[0][2].annotate(
+                    "{}\n({}%)".format(bar.get_height(), np.round((bar.get_height() * 100) / n_data_partition), 2),
+                    (bar.get_x() + bar.get_width() / 2,
+                     bar.get_height()), ha='center', va='center',
+                    size=8, xytext=(0, 8),
+                    textcoords='offset points',weight='bold')
+
+        partitions_names.append(name)
+    ax[0][2].margins(y=0.1)
+    ax[0][2].xaxis.set_ticks([0, 0.4, 0.8, 1.2, 1.6])
+    ax[0][2].set_xticklabels(["Part. {}".format(int(i)) for i in partitions_names])
+    ax[0][2].set_title('Train-validation dataset. \n Class proportions per partition',fontsize=12)
+    ######## Sequence length distributions ####################
+    ######Train#############################3
+    data_lens_train_negative = data.loc[(data["training"] == True) & (data["target_corrected"] == 0.), filters_dict["filter_kmers"][2]].str.len()
+    data_lens_train_positive = data.loc[(data["training"] == True) & (data["target_corrected"] == 1.), filters_dict["filter_kmers"][2]].str.len()
+    data_lens_train_unobserved = data.loc[(data["training"] == True) & (data["target_corrected"] == 2.), filters_dict["filter_kmers"][2]].str.len()
+
+    dict_counts = {0: data_lens_train_negative.value_counts(), 1: data_lens_train_positive.value_counts(),2:data_lens_train_unobserved.value_counts()}
+    all_lens = []
+    for key,vals in dict_counts.items():
+        all_lens += list(vals.keys())
+    unique_sorted = sorted(set(all_lens))[::-1]
+    position = 0
+    positions = []
+    for seq_len in unique_sorted:
+        positions.append(position + 0.2)
+        for label,val_counts in dict_counts.items():
+            if seq_len in val_counts.keys():
+                ax[1][1].bar(position, val_counts[seq_len], label=seq_len, color=colors_dict[label], width=0.1, edgecolor='white')
+                position += 0.2
+
+    ax[1][1].xaxis.set_ticks(positions)
+    ax[1][1].set_xticklabels(unique_sorted)
+    ax[1][1].set_title("Sequence length distribution of \n  the Train-validation dataset",fontsize=12)
+
+    ###### Test #####################
+    data_lens_test_negative = data.loc[(data["training"] == False) & (data["target_corrected"] == 0.), filters_dict["filter_kmers"][2]].str.len()
+    data_lens_test_positive = data.loc[(data["training"] == False) & (data["target_corrected"] == 1.), filters_dict["filter_kmers"][2]].str.len()
+    data_lens_test_unobserved = data.loc[(data["training"] == False) & (data["target_corrected"] == 2.), filters_dict["filter_kmers"][2]].str.len()
+
+    dict_counts = {0: data_lens_test_negative.value_counts(), 1: data_lens_test_positive.value_counts(),2:data_lens_test_unobserved.value_counts()}
+    all_lens = []
+    for key,vals in dict_counts.items():
+        all_lens += list(vals.keys())
+    unique_sorted = sorted(set(all_lens))[::-1]
+    position = 0
+    positions = []
+    for seq_len in unique_sorted:
+        positions.append(position + 0.2)
+        for label,val_counts in dict_counts.items():
+            if seq_len in val_counts.keys():
+                ax[1][2].bar(position, val_counts[seq_len], label=seq_len, color=colors_dict[label], width=0.1, edgecolor='white')
+                position += 0.2
+    ax[1][2].xaxis.set_ticks(positions)
+    ax[1][2].set_xticklabels(unique_sorted)
+    ax[1][2].set_title("Sequence length distribution of \n  the test dataset",fontsize=12)
+
+    #################################################################
+
+    # ################### ALLELES PROPORTIONS PER CLASS ##############################################
+    # if not filters_dict["group_alleles"][0]:
+    #     #Train
+    #     data_alleles_train_negative = data.loc[(data["training"] == True) & (data["target_corrected"] == 0.), "allele"].value_counts().to_dict()
+    #     data_alleles_train_positive = data.loc[(data["training"] == True) & (data["target_corrected"] == 1.), "allele"].value_counts().to_dict()
+    #
+    #     dict_counts = {0: data_alleles_train_negative, 1: data_alleles_train_positive}
+    #     longest, shortest = [(1, 0) if len(dict_counts[1].keys()) > len(dict_counts[0].keys()) else (0, 1)][0]
+    #     position = 0
+    #     positions = []
+    #     for val_i, count_i in dict_counts[longest].items():
+    #         ax[1][2].bar(position, count_i, label=longest, color=colors_dict[longest], width=0.4)
+    #         if val_i in dict_counts[shortest].keys():
+    #             count_j = dict_counts[shortest][val_i]
+    #             ax[1][2].bar(position + 0.45, count_j, label=shortest, color=colors_dict[shortest], width=0.4)
+    #         positions.append(position + 0.1)
+    #         position += 1.1
+    #     ax[1][2].xaxis.set_ticks(positions)
+    #     ax[1][2].set_xticklabels(dict_counts[longest].keys(),rotation=90,fontsize=2)
+    #     ax[1][2].xaxis.set_tick_params(width=0.1)
+    #     ax[1][2].set_title("Allele distribution of \n  the Train-valid dataset")
+    #     #Test
+    #     data_alleles_test_negative = data.loc[(data["training"] == False) & (data["target_corrected"] == 0.), "allele"].value_counts().to_dict()
+    #     data_alleles_test_positive = data.loc[(data["training"] == False) & (data["target_corrected"] == 1.), "allele"].value_counts().to_dict()
+    #     dict_counts = {0: data_alleles_test_negative, 1: data_alleles_test_positive}
+    #     longest, shortest = [(1, 0) if len(dict_counts[1].keys()) > len(dict_counts[0].keys()) else (0, 1)][0]
+    #     position = 0
+    #     positions = []
+    #     for val_i, count_i in dict_counts[longest].items():
+    #         ax[2][2].bar(position, count_i, label=longest, color=colors_dict[longest], width=0.4)
+    #         if val_i in dict_counts[shortest].keys():
+    #             count_j = dict_counts[shortest][val_i]
+    #             ax[2][2].bar(position + 0.45, count_j, label=shortest, color=colors_dict[shortest], width=0.4)
+    #         positions.append(position + 0.1)
+    #         position += 1.1
+    #     ax[2][2].xaxis.set_ticks(positions)
+    #     ax[2][2].set_xticklabels(dict_counts[longest].keys(),rotation=90,fontsize=2)
+    #     ax[2][2].xaxis.set_tick_params(width=0.1)
+    #     ax[2][2].set_title("Allele distribution of \n  the Test dataset",fontsize=10)
+
+
+    #ax[0][3].axis("off")
+    #ax[1][3].axis("off")
+    ax[1][3].axis("off")
+
+
+    legends = [mpatches.Patch(color=color, label='Class {}'.format(label))  for label, color in colors_dict.items() if label < args.num_classes]
+    fig.legend(handles=legends, prop={'size': 12}, loc='center right', bbox_to_anchor=(0.85, 0.2))
+    fig.tight_layout(pad=0.1)
+    fig.suptitle("Dataset distributions")
+    plt.subplots_adjust(right=0.9,top=0.9,hspace=0.35,wspace=0.3)
+    plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder, args.dataset_name, name_suffix), dpi=500)
+    plt.clf()
+    plt.close(fig)
+
 def plot_features_histogram(data, features_names, results_dir, name_suffix):
     """Plots the histogram densities featues of all data points
     Notes: If feeling fancy try: https://stackoverflow.com/questions/38830250/how-to-fill-matplotlib-bars-with-a-gradient"""
@@ -1152,107 +1374,6 @@ def colorbar(mappable):
     plt.sca(last_axes)
     return cbar
 
-def plot_scatter_reduced2(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
-    print("Plotting (reduced) scatter UMAP of {}...".format(vector_name))
-
-    title_dict = {"latent_space_z": "Latent representation (z)",
-                  "encoder_final_hidden_state":"Encoder Hf",
-                  "decoder_final_hidden_state": "Decoder Hf"}
-    colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:, 0])
-    if method == "_single_sample":
-        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
-            predictions_dict["class_binary_prediction_single_sample"])
-    else:
-        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_dict["class_binary_predictions_samples_mode"])
-        #colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_dict["class_binary_predictions_samples_logits_average_argmax"])
-
-
-    # Highlight: Immunodominance scores colors
-    immunodominance_scores = latent_space[:, 3]
-    immunodominance_scores_unique = np.unique(immunodominance_scores)
-    immunodominance_scores, immunodominance_scores_unique = VegvisirUtils.replace_nan(immunodominance_scores,
-                                                                                      immunodominance_scores_unique)
-    colormap_immunodominance = matplotlib.cm.get_cmap('plasma_r', len(immunodominance_scores_unique.tolist()))
-    colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
-    colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
-    # Highlight: Frequency scores per class: https://stackoverflow.com/questions/65927253/linearsegmentedcolormap-to-list
-    frequency_class0_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 0]).tolist()
-    colormap_frequency_class0 = matplotlib.cm.get_cmap('BuGn',
-                                                       len(frequency_class0_unique))  # This one is  a LinearSegmentedColor map and works slightly different
-    colormap_frequency_class0_array = np.array(
-        [colormap_frequency_class0(i) for i in range(colormap_frequency_class0.N)])
-    colors_dict = dict(zip(frequency_class0_unique, colormap_frequency_class0_array))
-    colors_frequency_class0 = np.vectorize(colors_dict.get, signature='()->(n)')(
-        predictions_dict["class_binary_prediction_samples_frequencies"][:, 0])
-    frequency_class1_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 1]).tolist()
-    colormap_frequency_class1 = matplotlib.cm.get_cmap('OrRd', len(frequency_class1_unique))
-    colormap_frequency_class1_array = np.array(
-        [colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
-    colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
-    colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(
-        predictions_dict["class_binary_prediction_samples_frequencies"][:, 1])
-    alpha = 0.7
-    size = 5
-    fig = plt.figure()
-    ax1 = plt.subplot2grid(shape=(2, 6), loc=(0, 0), colspan=2)
-    ax2 = plt.subplot2grid((2, 6), (0, 2), colspan=2)
-    ax3 = plt.subplot2grid((2, 6), (0, 4), colspan=2)
-    ax4 = plt.subplot2grid((2, 6), (1, 1), colspan=2)
-    ax5 = plt.subplot2grid((2, 6), (1, 3), colspan=2)
-
-
-    fig.suptitle('UMAP projections', fontsize=20)
-    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:, 2], alpha=alpha, s=size)
-    ax1.set_title("Binary targets", fontsize=10)
-    ax1.axis("off")
-
-
-    if method == "_single_sample":
-        #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax2, cmap="Blues", n_levels=30, fill=True,thresh=0.05, alpha=0.5)  # cmap='Blues'
-        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha, s=size)
-        ax2.set_title("Predicted binary targets \n (single sample)", fontsize=10)
-    else:
-        #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax2, cmap="Blues", n_levels=30, fill=True,thresh=0.05, alpha=0.5)  # cmap='Blues'
-        ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha, s=size)
-        ax2.set_title("Predicted binary targets \n (samples mode)", fontsize=10)
-    ax2.axis("off")
-
-    ################################################################################
-    ax3.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class0, alpha=alpha, s=size)
-    ax3.set_title("Probability class 0 ", fontsize=10)
-    ax3.axis("off")
-    divider3 = make_axes_locatable(ax3)
-    cax3 = divider3.append_axes("right", size="5%", pad=0.05)
-    fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(0, 1), cmap=colormap_frequency_class0), ax=ax3,cax=cax3)
-    ################################################################################
-    ax4.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_frequency_class1, alpha=alpha, s=size)
-    ax4.set_title("Probability class 1 \n ", fontsize=10)
-    ax4.axis("off")
-    divider4 = make_axes_locatable(ax4)
-    cax4 = divider4.append_axes("right", size="5%", pad=0.05)
-    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_frequency_class1), ax=ax4,cax=cax4)
-    ################################################################################
-    ax5.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_immunodominance, alpha=alpha, s=size)
-    ax5.set_title("Immunogenicity \n scores", fontsize=10)
-    ax5.axis("off")
-    divider5 = make_axes_locatable(ax5)
-    cax5 = divider5.append_axes("right", size="5%", pad=0.05)
-    fig.colorbar(plt.cm.ScalarMappable(cmap=colormap_immunodominance), ax=ax5,cax=cax5)
-
-    fig.suptitle("UMAP of {}".format(title_dict[vector_name]))
-
-    negative_patch = mpatches.Patch(color=colors_dict_labels[0], label='Class 0')
-    positive_patch = mpatches.Patch(color=colors_dict_labels[1], label='Class 1')
-    fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
-    ax5.legend(handles=[negative_patch, positive_patch], prop={'size': 10}, loc='lower right',
-               bbox_to_anchor=(2.19, 0), ncol=1)
-    plt.savefig("{}/{}/umap_SCATTER_reduced_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=600)
-    plt.clf()
-    plt.close(fig)
-
-    #del confidence_scores,immunodominance_scores,hydropathy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
-    #gc.collect()
-
 def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
     print("Plotting (reduced) scatter UMAP of {}...".format(vector_name))
 
@@ -1272,7 +1393,7 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
                               "UMAP_y": umap_proj[:, 1],
                               "Binary targets":latent_space[:, 0],
                               "predictions_binary":predictions_binary,
-                              "Immunogenicity":latent_space[:, 3],
+                              "Immunodominance":latent_space[:, 3],
                               "frequency_0":predictions_dict["class_binary_prediction_samples_frequencies"][:, 0],
                               "frequency_1":predictions_dict["class_binary_prediction_samples_frequencies"][:, 1]
                              })
@@ -1324,14 +1445,14 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
     g1_axes[0].set_xlabel("")
     g1_axes[0].set_ylabel("")
 
-    #Highlight: Immunogenicity scatter plot
-    g2 = sns.FacetGrid(dataframe, hue="Immunogenicity", subplot_kws={"fc": "white"},
+    #Highlight: Immunodominace scatter plot
+    g2 = sns.FacetGrid(dataframe, hue="Immunodominance", subplot_kws={"fc": "white"},
                        palette=colormap_immunodominance.colors,
                        hue_order=immunodominance_scores_unique)
     g2.set(yticks=[])
     g2.set(xticks=[])
     g2_axes = g2.axes.flatten()
-    g2_axes[0].set_title("Immunogenicity")
+    g2_axes[0].set_title("Immunodominance")
     g2.map(plt.scatter, "UMAP_x", "UMAP_y", alpha=alpha, s=size)
     g2_axes[0].set_xlabel("")
     g2_axes[0].set_ylabel("")
@@ -1683,6 +1804,7 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
     features_dict.pop('clusters_info', None)
     features_dict["immunodominance_scores"] = latent_space[:,3]
     true_labels = latent_space[:,0]
+    features_dict["binary_targets"] = true_labels
     # #Highlight: Bring the pre-calculate peptide features back. PRESERVING THE ORDER OF THE SEQUENCES!
     if (not args.shuffle_sequence) and (not args.random_sequences) and (not args.num_mutations != 0) and (args.sequence_type == "Icore"):
         if (args.num_classes == args.num_obs_classes):
@@ -1708,7 +1830,7 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
                 print("Not all of the sequences are in the pre-computed features, skipping")
                 pass
 
-    #pearson_correlations = list(map(lambda feat1,feat2: scipy.stats.pearsonr(feat1, feat2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
+    #Highlight: The variable is named pearson but some are calculated via point biserial
     pearson_correlations = list(map(lambda feat1,feat2: VegvisirUtils.calculate_correlations(feat1, feat2),[umap_proj_1d]*len(features_dict.keys()),list(features_dict.values())))
     pearson_correlations = list(zip(*pearson_correlations))
     pearson_coefficients = np.array(pearson_correlations[0])
@@ -2474,13 +2596,13 @@ def plot_attention_weights(summary_dict,dataset_info,results_dir,method="Train")
                     ax2.set_xticks(np.arange(attention_weights.shape[1] +1 ) + 0.5,labels=["{}".format(i) for i in range(attention_weights.shape[1] + 1)])
                     ax2.spines['left'].set_visible(False)
                     ax2.yaxis.set_ticklabels([])
-                    ax2.set_title("Attention by Aa type")
+                    ax2.set_title("Attention by amino acid type")
                     #Highlight: Aminoacids coloured by functional group (i.e positive, negative ...)
                     sns.heatmap(aminoacids_masked,ax=ax4,cbar=False,cmap=aa_groups_colormap)
                     ax4.set_xticks(np.arange(attention_weights.shape[1] +1) + 0.5,labels=["{}".format(i) for i in range(attention_weights.shape[1] + 1)])
                     ax4.spines['left'].set_visible(False)
                     ax4.yaxis.set_ticklabels([])
-                    ax4.set_title("Attention by Aa group")
+                    ax4.set_title("Attention by amino acid group")
 
                     ax3.axis("off")
                     ax5.axis("off")
@@ -2532,7 +2654,7 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
         data_int = summary_dict["data_int_{}".format(sample_mode)]
         data_mask = summary_dict["data_mask_{}".format(sample_mode)]
         data_mask_seq = data_mask[:, 1:,:,0].squeeze(1)
-        true_labels = summary_dict["true_{}".format(sample_mode)]
+        #true_labels = summary_dict["true_{}".format(sample_mode)]
         confidence_scores = summary_dict["confidence_scores_{}".format(sample_mode)]
         idx_all = np.ones_like(confidence_scores).astype(bool)
 
@@ -2540,14 +2662,15 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
         encoder_final_hidden_state = summary_dict["encoder_final_hidden_state_{}".format(sample_mode)]
         decoder_final_hidden_state = summary_dict["decoder_final_hidden_state_{}".format(sample_mode)]
         print("Plotting Hidden dimensions latent space")
-        plot_latent_space(args,dataset_info,encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden_state")
-        plot_latent_space(args,dataset_info,decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden_state")
+        #plot_latent_space(args,dataset_info,encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden_state")
+        #plot_latent_space(args,dataset_info,decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden_state")
 
         for data_points,idx_conf in zip(["all","high_confidence"],[idx_all,idx_highconfidence]):
             true_labels = summary_dict["true_{}".format(sample_mode)][idx_conf]
             positives_idx = (true_labels == 1)
             for class_type,idx_class in zip(["positives","negatives"],[positives_idx,~positives_idx]):
-
+                #warnings.warn("Change the line of code below!")
+                #idx_class = np.ones_like(idx_class).astype(bool)
                 encoder_hidden_states = summary_dict["encoder_hidden_states_{}".format(sample_mode)][idx_conf][idx_class]
                 decoder_hidden_states = summary_dict["decoder_hidden_states_{}".format(sample_mode)][idx_conf][idx_class] #TODO: Review the values
                 if encoder_hidden_states.size != 0:
@@ -2589,7 +2712,19 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
                             pass
                         else:
                             # Highlight: Attention weights
-                            sns.heatmap(weights, ax=ax1)
+                            divider = make_axes_locatable(ax1)
+                            #cbar_ax1 = divider.new_vertical(size="5%", pad=0.5, pack_start=True)
+                            cbar_ax1 = divider.append_axes("right", size="5%", pad=0.05)
+
+                            fig.add_axes(cbar_ax1)
+                            sns.heatmap(weights,
+                                        ax=ax1,
+                                        cbar_ax=cbar_ax1,
+                                        annot=False,
+                                        #square=True,
+                                        cbar_kws={ "orientation": "vertical" })
+                            #cb2 = Colorbar(ax=cbax2, mappable=plt.cm.ScalarMappable(cmap=colormap_immunodominance))
+
                             ax1.set_xticks(np.arange(weights.shape[1]) + 0.5,
                                            labels=["{}".format(i) for i in range(weights.shape[1])])
                             ax1.spines['left'].set_visible(False)
@@ -2602,31 +2737,40 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
                                 aminoacids_masked = (aminoacids[:, 1]) * weights_adjusted.astype(int)
                             else:
                                 aminoacids_masked = (aminoacids[:, 1]) * np.rint(weights)
+
                             sns.heatmap(aminoacids_masked, ax=ax2, cbar=False, cmap=aa_colormap)
-                            ax2.set_xticks(np.arange(weights.shape[1] + 1) + 0.5,labels=["{}".format(i) for i in range(weights.shape[1] + 1)])
+                            ax2.set_xticks(np.arange(weights.shape[1]) + 0.5,labels=["{}".format(i) for i in range(weights.shape[1])])
                             ax2.spines['left'].set_visible(False)
                             ax2.yaxis.set_ticklabels([])
-                            ax2.set_title("Information shift by Aa type")
+                            ax2.set_title("Information shift by amino acid type")
                             # Highlight: Aminoacids coloured by functional group (i.e positive, negative ...)
                             sns.heatmap(aminoacids_masked, ax=ax4, cbar=False, cmap=aa_groups_colormap)
-                            ax4.set_xticks(np.arange(max_len + 1) + 0.5,
-                                           labels=["{}".format(i) for i in range(max_len + 1)])
+                            ax4.set_xticks(np.arange(max_len) + 0.5,
+                                           labels=["{}".format(i) for i in range(max_len)])
                             ax4.spines['left'].set_visible(False)
                             ax4.yaxis.set_ticklabels([])
-                            ax4.set_title("Information shift by Aa group")
+                            ax4.set_title("Information shift by amino acid group")
 
                             ax3.axis("off")
                             ax5.axis("off")
                             ax6.axis("off")
 
-                            legend1 = plt.legend(handles=aa_patches, prop={'size': 8}, loc='center right',
-                                                 bbox_to_anchor=(0.9, 0.7), ncol=1)
-                            plt.legend(handles=aa_groups_patches, prop={'size': 8}, loc='center right',
-                                       bbox_to_anchor=(0.1, 0.5), ncol=1)
+                            # legend1 = plt.legend(handles=aa_patches, prop={'size': 8}, loc='best',
+                            #                      bbox_to_anchor=(2.1, -7.4), ncol=2)
+                            # plt.legend(handles=aa_groups_patches, prop={'size': 8}, loc='best',
+                            #            bbox_to_anchor=(1.6, -7.4), ncol=1)
+                            # plt.gca().add_artist(legend1)
+
+                            legend1 = plt.legend(handles=aa_patches, prop={'size': 10}, loc='best',
+                                                 bbox_to_anchor=(24, -0.3), ncol=2)
+                            plt.legend(handles=aa_groups_patches, prop={'size': 10}, loc='best',
+                                       bbox_to_anchor=(14, -0.4), ncol=1)
                             plt.gca().add_artist(legend1)
 
-                            fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
-                            fig.suptitle("{}. Information shift weights: {}, {}, {}".format(nn_name,sample_mode, data_points, class_type))
+                            #fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
+                            plt.subplots_adjust(left=0.1,hspace=0.3,wspace=0.3)
+                            #fig.suptitle("{}. Information shift weights: {}, {}, {}".format(nn_name,sample_mode, data_points, class_type))
+                            fig.suptitle("{}.Information shift weights".format(nn_name))
                             plt.savefig("{}/{}/{}_information_shift_plots_{}_{}_{}.png".format(results_dir, method, nn_name,sample_mode, data_points, class_type))
                             plt.clf()
                             plt.close(fig)
@@ -3210,11 +3354,12 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
     patches_list_valid = []
     patches_list_test = []
     metrics_keys = ["ap","ppv","fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1","pval_class_0","pval_class_1"]
+    tuples_idx = []
     for learning_type,values in dict_results.items():
         for name, folder in values.items():
             print("-------------NAME {}--------------".format(name))
 
-
+            tuples_idx.append((learning_type,name))
             metrics_results_dict = plot_kfold_comparison_helper(metrics_keys,script_dir, folder, overwrite, kfolds)
 
             metrics_results_train = metrics_results_dict["train"]
@@ -3456,13 +3601,16 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
         df = pd.DataFrame.from_dict(results_dict, orient="index").stack().to_frame()
         # to break out the lists into columns
         df = pd.DataFrame(df[0].values.tolist(),index=df.index)
+        #df = df.reindex(index=df.index.reindex(['s', 'r'], level=1)[0]) #preserving the original order because it tends to become unordered
         #df = df.stack().unstack(level=1)  # transposes
+        new_index = pd.MultiIndex.from_tuples(tuples_idx)
+        df = df.reindex(index=new_index) #guarantees the same order as the dictionary
         return df
 
     df_latex = convert_dict(metrics_auc_all_latex)
     df_latex.style.format(na_rep="-").to_latex('{}/{}/methods_comparison_LATEX_{}.tex'.format(script_dir, results_folder,title))
 
-
+    #a = {"w": {"r": {"train": 1, "test": 0.7}, "s": {"train": 1, "test": 0.7}},"t": {"r": {"train": 0.8, "test": 0.6}, "s": {"train": 0.9, "test": 0.8}}}
     def process_dict(metrics_dict,title):
         metrics_dict = {key.replace(r"\textbf{", "").replace("}", ""): val for key, val in metrics_dict.items()}
         df = convert_dict(metrics_dict)
@@ -3609,7 +3757,8 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
                           "sequences_lens":"Sequences  lengths",
                           "extintion_coefficients_reduced":"Extintion coefficients (reduced)",
                           "extintion_coefficients_cystines":"Extintion coefficients (oxidized)",
-                          "immunodominance_scores":"Immunodominance"}
+                          "immunodominance_scores":"Immunodominance",
+                          "binary_targets":"Binary targets"}
      covariances_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
      pearson_coefficients_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
      pearson_pvalues_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
@@ -3618,8 +3767,14 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
      covariances_dict_valid= defaultdict(lambda :defaultdict(lambda : defaultdict(lambda : [])))
      covariances_dict_test= defaultdict(lambda :defaultdict(lambda : defaultdict(lambda : [])))
      reducer = umap.UMAP(n_components=1)
+     tuples_idx = []
+     plot_all = False
      for learning_type, values in dict_results.items():
          for name, folder in values.items():
+             tuples_idx.append((learning_type,name,"train"))
+             if plot_all:
+                tuples_idx.append((learning_type,name,"valid"))
+             tuples_idx.append((learning_type,name,"test"))
              print("{}".format(name))
              if os.path.exists("{}/Vegvisir_checkpoints/covariances_train.p".format(folder)) and not overwrite_correlations and not overwrite_all:
                 print("Loading pre computed correlations ---------------------------------------")
@@ -3697,18 +3852,21 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
 
 
              covariances_all[learning_type][name]["train"] = np.mean([covariance[0,1:] for covariance in covariances_dict_train[learning_type][name]["covariance"]],axis=0)
-             covariances_all[learning_type][name]["valid"] = np.mean([covariance[0,1:] for covariance in covariances_dict_valid[learning_type][name]["covariance"]],axis=0)
+             if plot_all:
+                covariances_all[learning_type][name]["valid"] = np.mean([covariance[0,1:] for covariance in covariances_dict_valid[learning_type][name]["covariance"]],axis=0)
              covariances_all[learning_type][name]["test"] = np.mean([covariance[0,1:] for covariance in covariances_dict_test[learning_type][name]["covariance"]],axis=0)
 
 
              pearson_pvalues_all[learning_type][name]["train"] = np.mean([pvalues for pvalues in covariances_dict_train[learning_type][name]["pearson_pvalues"]],axis=0)
-             pearson_pvalues_all[learning_type][name]["valid"] = np.mean([pvalues for pvalues in covariances_dict_valid[learning_type][name]["pearson_pvalues"]],axis=0)
+             if plot_all:
+                pearson_pvalues_all[learning_type][name]["valid"] = np.mean([pvalues for pvalues in covariances_dict_valid[learning_type][name]["pearson_pvalues"]],axis=0)
              pearson_pvalues_all[learning_type][name]["test"] = np.mean([pvalues for pvalues in covariances_dict_test[learning_type][name]["pearson_pvalues"]],axis=0)
 
 
              
              pearson_coefficients_all[learning_type][name]["train"] = np.mean([coefficients for coefficients in covariances_dict_train[learning_type][name]["pearson_coefficients"]],axis=0)
-             pearson_coefficients_all[learning_type][name]["valid"] = np.mean([coefficients for coefficients in covariances_dict_valid[learning_type][name]["pearson_coefficients"]],axis=0)
+             if plot_all:
+                pearson_coefficients_all[learning_type][name]["valid"] = np.mean([coefficients for coefficients in covariances_dict_valid[learning_type][name]["pearson_coefficients"]],axis=0)
              pearson_coefficients_all[learning_type][name]["test"] = np.mean([coefficients for coefficients in covariances_dict_test[learning_type][name]["pearson_coefficients"]],axis=0)
 
 
@@ -3721,16 +3879,19 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
 
              n_feats = len(features_names)
              covariances_all[learning_type][name]["train"] = dict(zip(features_names,np.round(covariances_all[learning_type][name]["train"],2).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
-             covariances_all[learning_type][name]["valid"] = dict(zip(features_names,np.round(covariances_all[learning_type][name]["valid"],2).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
+             if plot_all:
+                covariances_all[learning_type][name]["valid"] = dict(zip(features_names,np.round(covariances_all[learning_type][name]["valid"],2).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
              covariances_all[learning_type][name]["test"] = dict(zip(features_names,np.round(covariances_all[learning_type][name]["test"],2).tolist())) if features_names and type(covariances_all[learning_type][name]["test"]) != np.float64 else dict(zip(features_names,[np.nan]*n_feats))
 
              pearson_pvalues_all[learning_type][name]["train"] = dict(zip(features_names,np.round(pearson_pvalues_all[learning_type][name]["train"],3).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
-             pearson_pvalues_all[learning_type][name]["valid"] = dict(zip(features_names,np.round(pearson_pvalues_all[learning_type][name]["valid"],3).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
+             if plot_all:
+                pearson_pvalues_all[learning_type][name]["valid"] = dict(zip(features_names,np.round(pearson_pvalues_all[learning_type][name]["valid"],3).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
              pearson_pvalues_all[learning_type][name]["test"] = dict(zip(features_names,np.round(pearson_pvalues_all[learning_type][name]["test"],3).tolist())) if features_names and type(pearson_pvalues_all[learning_type][name]["test"]) != np.float64 else dict(zip(features_names,[np.nan]*n_feats))
 
 
              pearson_coefficients_all[learning_type][name]["train"] = dict(zip(features_names,np.round(pearson_coefficients_all[learning_type][name]["train"],3).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
-             pearson_coefficients_all[learning_type][name]["valid"] = dict(zip(features_names,np.round(pearson_coefficients_all[learning_type][name]["valid"],3).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
+             if plot_all:
+                pearson_coefficients_all[learning_type][name]["valid"] = dict(zip(features_names,np.round(pearson_coefficients_all[learning_type][name]["valid"],3).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
              pearson_coefficients_all[learning_type][name]["test"] = dict(zip(features_names,np.round(pearson_coefficients_all[learning_type][name]["test"],3).tolist())) if features_names and type(pearson_coefficients_all[learning_type][name]["test"]) != np.float64 else dict(zip(features_names,[np.nan]*n_feats))
 
              # covariances_all_latex[learning_type][name]["train"] = np.mean(covariances_dict_train[learning_type][name]["covariance"]) +"$\pm$" + np.mean(covariances_dict_train[learning_type][name]["covariance"])
@@ -3759,7 +3920,8 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
          c = {k: matplotlib.colors.rgb2hex(v) for k, v in colors.items()}
          idx = df.index.get_level_values(0)
          css = [{'selector': f'.row{i}.level0', 'props': [('background-color', c[v])]} for i, v in enumerate(idx)]
-
+         new_index = pd.MultiIndex.from_tuples(tuples_idx)
+         df = df.reindex(index=new_index)  # guarantees the same order as the dictionary
          df_styled = df.style.format(na_rep="-", escape="latex",precision=3).background_gradient(axis=None,cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" when pandas 2.1 arrives
 
          dfi.export(df_styled, '{}/{}/{}_DATAFRAME_{}.png'.format(script_dir, results_folder,title,subtitle), max_cols=-1,max_rows=-1)

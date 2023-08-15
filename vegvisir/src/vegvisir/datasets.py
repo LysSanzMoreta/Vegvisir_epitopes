@@ -265,7 +265,6 @@ def custom_dataset(script_dir,storage_folder,args,results_dir):
             train_data["confidence_score"] = 0
             train_data["org_name"] = 0
 
-
     # data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
     # data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
     # data_species = pd.read_csv("{}/common_files/dataset_species.tsv".format(storage_folder),sep="\t")
@@ -1036,7 +1035,7 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir):
         data.replace({"allele_encoded": allele_dict},inplace=True)
 
 
-    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,no_subjects_test=True)
+    data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,no_subjects_test=False,plot_histograms=False)
     if filters_dict["group_alleles"][0]:
         data = pd.merge(data,data_species, on=['Icore'], how='left',suffixes=('_a', '_b'))
     else:
@@ -1052,8 +1051,10 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir):
     pickle.dump(org_name_dict,open('{}/{}/org_name_dict.pkl'.format(storage_folder,args.dataset_name), 'wb'))
     data = data.replace({"org_name": org_name_dict_reverse})
     # nan_rows = data[data["confidence_score"].isna()]
-
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
+
+    VegvisirPlots.plot_data_information_reduced(data, filters_dict, storage_folder, args, name_suffix)
+
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
     return data_info
@@ -2187,7 +2188,8 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
                                              })
         prefix1 = "shuffled_" if args.shuffle_sequence else ""
         prefix2 = "random_" if args.random_sequences else ""
-        prefix = prefix1 + prefix2  + sequence_column + "_"
+        prefix3 = "fixed_length_" if args.filter_kmers else "variable_length_"
+        prefix = prefix1 + prefix2 + prefix3  + sequence_column + "_"
         intermediate_dataset_train = intermediate_dataset[intermediate_dataset["training"] == True]
         intermediate_dataset_test = intermediate_dataset[intermediate_dataset["training"] == False]
 

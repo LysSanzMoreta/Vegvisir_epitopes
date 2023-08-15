@@ -348,10 +348,10 @@ def cosine_similarity(a,b,correlation_matrix=False,parallel=False):
             b = np.concatenate((b,dummy_row),axis=0)
     if np.ndim(a) == 1:
         num = np.dot(a,b)
-        #p1 = np.linalg.norm(a)
-        p1 = np.sqrt(np.sum(a**2))
-        #p2 = np.linalg.norm(b)
-        p2 = np.sqrt(np.sum(b**2))
+        p1 = np.linalg.norm(a)
+        #p1 = np.sqrt(np.sum(a**2))
+        p2 = np.linalg.norm(b)
+        #p2 = np.sqrt(np.sum(b**2))
         cosine_sim = num/(p1*p2)
         return cosine_sim
 
@@ -959,7 +959,7 @@ def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
     Calculates the amount of vector similarity/distance change between the hidden representations of the positions in the sequence for both backward and forward RNN hidden states.
     1) For a given sequence with 2 sequences of hidden states [2,L,Hidden_dim]
 
-        A) Calculate cosine similarities_old for each of the forward and backward hidden states of an RNN
+        A) Calculate cosine similarities for each of the forward and backward hidden states  (vectors) of an RNN
         Forward = Cos_sim([Hidden_states[0],Hidden_states[0]]
         Backward = Cos_sim([Hidden_states[1],Hidden_states[1]]
 
@@ -977,16 +977,16 @@ def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
         Pos 4 : [3->4]
 
 
-    :param arr:
-    :param arr_mask:
+    :param arr: Hidden states of one sequence
+    :param arr_mask: Boolean indicating the paddings in the sequence
     :param diag_idx_maxlen:
     :param max_len:
     :return:
     """
     forward = None
     backward = None
-    for idx in [0,1]:
-        cos_sim_arr = cosine_similarity(arr[idx],arr[idx],correlation_matrix=False)
+    for idx in [0,1]:#0 is the forward state, 1 is the backward
+        cos_sim_arr = cosine_similarity(arr[idx],arr[idx],correlation_matrix=False) #cosine similarity among all the vectors in the <forward/backward> hidden states
         cos_sim_diag = cos_sim_arr[diag_idx_maxlen[0][:-1],diag_idx_maxlen[1][1:]] #k=1 offset diagonal
         #Highlight: ignore the positions that have paddings
         n_paddings = (arr_mask.shape[0] - arr_mask.sum()) # max_len - true_len
@@ -997,7 +997,7 @@ def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
             else:
                 backward = np.zeros((max_len-1))
         else:
-            information_shift = 1-cos_sim_diag[:keep] #or cosine distance
+            information_shift = 1-cos_sim_diag[:keep] #or cosine distance , the cosine distancevaries between 0 and 2
             #information_shift = np.abs(cos_sim_diag[:-1] -cos_sim_diag[1:])
             #Highlight: Set to 0 the information gain in the padding positions
             information_shift = np.concatenate([information_shift,np.zeros((n_paddings,))])
@@ -1009,9 +1009,12 @@ def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
 
     #Highlight: Make the arrays overlap
     forward = np.insert(forward,obj=0,values=0,axis=0)
+
     backward = np.append(backward,np.zeros((1,)),axis=0)
-    weights = (forward + backward)/2
+    weights = np.concatenate([forward[None,:],backward[None,:]],axis=0)
+    weights = np.mean(weights,axis=0)
     #weights = np.exp(weights - np.max(weights)) / np.exp(weights - np.max(weights)).sum() #softmax
+    #Highlight: Minmax scaling
     weights = (weights - weights.min()) / (weights - weights.min()).sum()
     weights*= arr_mask
     return weights[None,:]
