@@ -35,6 +35,8 @@ class VEGVISIRGUIDES(EasyGuide):
         self.gru_hidden_dim = self.hidden_dim*2
         self.z_dim = model_load.args.z_dim
         self.device = model_load.args.device
+        self.use_cuda = model_load.args.use_cuda
+        self.tensor_type = torch.cuda.DoubleTensor if self.use_cuda else torch.DoubleTensor
         self.num_classes = model_load.args.num_classes
         self.encoding = model_load.args.encoding
         self.feats_dim = self.max_len - self.seq_max_len
@@ -42,20 +44,15 @@ class VEGVISIRGUIDES(EasyGuide):
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
         #self.embedding = Embed(self.blosum,self.embedding_dim,self.aa_types,self.device)
-        self.h_0_GUIDE = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
+        self.h_0_GUIDE = nn.Parameter(torch.randn(self.gru_hidden_dim).type(self.tensor_type), requires_grad=True).to(device=self.device)
         #self.decoder_guide = RNN_model(self.aa_types,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
         self.num_iafs = 0
         self.iaf_dim = self.hidden_dim
-        self.iafs = [dist.transforms.affine_autoregressive(self.z_dim, hidden_dims=[self.iaf_dim]) for _ in range(self.num_iafs)]
-        self.iafs_modules = nn.ModuleList(self.iafs)
-        if self.learning_type in ["supervised"]:
-            self.encoder_guide = RNN_guide2(self.aa_types, self.max_len, self.gru_hidden_dim, self.z_dim, self.device)
-            #self.classifier_guide = FCL4(self.z_dim,self.max_len,self.hidden_dim,self.num_classes,self.device)
-            #self.h_0_GUIDE_classifier = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
-            #self.classifier_guide = RNN_classifier(self.aa_types,self.max_len,self.gru_hidden_dim,self.num_classes,self.z_dim,self.device) #input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device
-        else:
-            self.encoder_guide = RNN_guide2(self.aa_types, self.max_len, self.gru_hidden_dim, self.z_dim, self.device)
-
+        #self.iafs = [dist.transforms.affine_autoregressive(self.z_dim, hidden_dims=[self.iaf_dim]) for _ in range(self.num_iafs)]
+        #self.iafs_modules = nn.ModuleList(self.iafs)
+        self.encoder_guide = RNN_guide2(self.aa_types, self.max_len, self.gru_hidden_dim, self.z_dim, self.device,self.tensor_type).to(device=self.device)
+        if self.use_cuda:
+            self.to(device=self.device)
 
     def guide_supervised_glitch(self, batch_data, batch_mask, epoch,guide_estimates, sample=False):
         """
@@ -104,7 +101,7 @@ class VEGVISIRGUIDES(EasyGuide):
         confidence_mask = (confidence_scores[..., None] < 0.7).any(-1)  # now we try to predict those with a low confidence score
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
         init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,
-                                         self.gru_hidden_dim).contiguous()  # bidirectional
+                                         self.gru_hidden_dim).contiguous().type(self.tensor_type)  # bidirectional
 
         with pyro.plate("plate_batch", dim=-1, device=self.device):
             z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state,rnn_final_hidden_state_bidirectional, rnn_hidden_states_bidirectional = self.encoder_guide(
@@ -146,13 +143,12 @@ class VEGVISIRGUIDES(EasyGuide):
         confidence_scores = batch_data["blosum"][:,0,0,5]
         confidence_mask = (confidence_scores[..., None] < 0.7).any(-1) #now we try to predict those with a low confidence score
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
-        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
-
+        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous().type(self.tensor_type)  # bidirectional
         with pyro.plate("plate_batch",dim= -1,device=self.device):
             z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state,rnn_final_hidden_state_bidirectional, rnn_hidden_states_bidirectional = self.encoder_guide(batch_sequences_blosum, batch_sequences_lens,init_h_0)
             assert z_mean.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_mean.shape)
             assert z_scale.shape == (batch_sequences_norm.shape[0], self.z_dim), "Wrong shape got {}".format(z_scale.shape)
-            latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(1))
+            latent_space = pyro.sample("latent_z", dist.Normal(z_mean,z_scale).to_event(1)).to(device=self.device)
         return {"latent_z": latent_space,
                 "z_mean": z_mean,
                 "z_scale": z_scale,
@@ -184,7 +180,7 @@ class VEGVISIRGUIDES(EasyGuide):
         confidence_scores = batch_data[self.encoding][:,0,0,5]
         confidence_mask = (confidence_scores[..., None] < 0.7).any(-1) #now we try to predict those with a low confidence score
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
-        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
+        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous() # bidirectional
 
         with pyro.plate("plate_batch",dim= -1,device=self.device):
             z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state,rnn_final_hidden_state_bidirectional, rnn_hidden_states_bidirectional = self.encoder_guide(batch_sequences_encoded, batch_sequences_lens,init_h_0)
@@ -222,7 +218,7 @@ class VEGVISIRGUIDES(EasyGuide):
         confidence_scores = batch_data["blosum"][:,0,0,5]
         confidence_mask = (confidence_scores[..., None] < 0.7).any(-1) #now we try to predict those with a low confidence score
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
-        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
+        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous().type(self.tensor_type)  # bidirectional
         with pyro.plate("plate_batch",dim= -1,device=self.device):
             z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state,rnn_final_hidden_state_bidirectional, rnn_hidden_states_bidirectional= self.encoder_guide(batch_sequences_blosum,batch_sequences_lens, init_h_0)
             assert torch.isnan(rnn_hidden_states).sum().item() == 0, "found nan in rnn hidden states"
@@ -272,11 +268,9 @@ class VEGVISIRGUIDES(EasyGuide):
         batch_size = batch_sequences_encoded.shape[0]
         #batch_sequences_norm = batch_data["norm"][:, 1]  # only sequences norm
         confidence_scores = batch_data["blosum"][:, 0, 0, 5]
-        confidence_mask = (confidence_scores[..., None] < 0.7).any(
-            -1)  # now we try to predict those with a low confidence score
+        confidence_mask = (confidence_scores[..., None] < 0.7).any(-1)  # now we try to predict those with a low confidence score
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
-        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,
-                                         self.gru_hidden_dim).contiguous()  # bidirectional
+        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous().type(self.tensor_type)  # bidirectional
         with pyro.plate("plate_batch", dim=-1, device=self.device):
             z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state, rnn_final_hidden_state_bidirectional, rnn_hidden_states_bidirectional = self.encoder_guide(
                 batch_sequences_encoded, batch_sequences_lens, init_h_0)
@@ -343,7 +337,7 @@ class VEGVISIRGUIDES(EasyGuide):
             # print("not rotating....")
             pass
 
-        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
+        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous().type(self.tensor_type)  # bidirectional
         with pyro.plate("plate_batch",dim= -1,device=self.device):
             z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state,rnn_final_hidden_state_bidirectional, rnn_hidden_states_bidirectional= self.encoder_guide(batch_sequences_blosum,batch_sequences_lens, init_h_0)
             assert torch.isnan(rnn_hidden_states).sum().item() == 0, "found nan in rnn hidden states"
@@ -387,7 +381,7 @@ class VEGVISIRGUIDES(EasyGuide):
         confidence_scores = batch_data["blosum"][:,0,0,5]
         confidence_mask = (confidence_scores[..., None] < 0.4).any(-1) #now we try to predict those with a low confidence score
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
-        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
+        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous().type(self.tensor_type)  # bidirectional
 
         with pyro.plate("plate_batch",dim= -1,device=self.device):
             z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state,rnn_final_hidden_state_bidirectional, rnn_hidden_states_bidirectional = self.encoder_guide(batch_sequences_blosum, batch_sequences_lens,init_h_0)
@@ -426,7 +420,7 @@ class VEGVISIRGUIDES(EasyGuide):
         confidence_scores = batch_data["blosum"][:,0,0,5]
         confidence_mask = (confidence_scores[..., None] < 0.4).any(-1) #now we try to predict those with a low confidence score
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
-        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
+        init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous().type(self.tensor_type)  # bidirectional
 
         with pyro.plate("plate_batch",dim= -1,device=self.device):
             z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state,rnn_final_hidden_state_bidirectional, rnn_hidden_states_bidirectional = self.encoder_guide(batch_sequences_encoded, batch_sequences_lens,init_h_0)
@@ -490,7 +484,7 @@ class VEGVISIRGUIDES(EasyGuide):
         confidence_mask = (confidence_scores[..., None] < 0.4).any(-1)  # now we try to predict those with a low confidence score
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
         init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,
-                                         self.gru_hidden_dim).contiguous()  # bidirectional
+                                         self.gru_hidden_dim).contiguous().type(self.tensor_type)  # bidirectional
 
         with pyro.plate("plate_batch", dim=-1, device=self.device):
             z_mean, z_scale, rnn_hidden_states, rnn_hidden, rnn_final_hidden_state,rnn_final_hidden_state_bidirectional, rnn_hidden_states_bidirectional = self.encoder_guide(

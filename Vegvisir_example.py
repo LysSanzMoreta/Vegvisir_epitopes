@@ -2,7 +2,7 @@
 """
 =======================
 2023: Lys Sanz Moreta
-nnalignpy :
+Vegvisir (VAE): T-cell epitope classifier
 =======================
 """
 import warnings
@@ -219,16 +219,16 @@ def analysis_models():
 
     # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_100,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_likelihood_100",overwrite=False)
     # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_random_stratified_partitions_100,kfolds=5,results_folder = "Benchmark/Plots",title="random_stratified_partitions_likelihood_100",overwrite=False)
-
-    VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_random_stratified_partitions_100,kfolds=5,results_folder="Benchmark/Plots",subtitle="random_stratified_partitions_likelihood_100",overwrite_correlations=True,overwrite_all=True)
-    VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_100,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_likelihood_100",overwrite_correlations=True,overwrite_all=True)
+    #
+    # VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_random_stratified_partitions_100,kfolds=5,results_folder="Benchmark/Plots",subtitle="random_stratified_partitions_likelihood_100",overwrite_correlations=False,overwrite_all=False)
+    # VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_100,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_likelihood_100",overwrite_correlations=False,overwrite_all=False)
 
 
     # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_80,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_likelihood_80",overwrite=False)
     # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_random_stratified_partitions_80,kfolds=5,results_folder = "Benchmark/Plots",title="random_stratified_partitions_likelihood_80",overwrite=False)
 
-    VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_80,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_likelihood_80",overwrite_correlations=True,overwrite_all=True)
-    VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_random_stratified_partitions_80,kfolds=5,results_folder="Benchmark/Plots",subtitle="random_stratified_partitions_likelihood_80",overwrite_correlations=True,overwrite_all=True)
+    # VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_80,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_likelihood_80",overwrite_correlations=False,overwrite_all=False)
+    # VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_random_stratified_partitions_80,kfolds=5,results_folder="Benchmark/Plots",subtitle="random_stratified_partitions_likelihood_80",overwrite_correlations=False,overwrite_all=False)
 
 
 
@@ -268,7 +268,7 @@ if __name__ == "__main__":
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=60, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=3, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-encoding', type=str, nargs='?', default="blosum", help='<blosum> Use the matrix selected in args.subs_matrix to encode the sequences as blosum vectors'
                                                                                  '<onehot> One hot encoding of the sequences  ')
@@ -300,9 +300,10 @@ if __name__ == "__main__":
     parser.add_argument('-guide', type=str, nargs='?', default="custom", help='<custom>: See guides.py \n'
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
 
-    parser.add_argument('-train', type=str2bool, nargs='?', default=False ,help='<True> Run the model \n <False> Make models comparison or load previous model if pargs.pretrained_model is not None ')
+    parser.add_argument('-train', type=str2bool, nargs='?', default=True ,help='<True> Run the model \n <False> Make models comparison or load previous model if pargs.pretrained_model is not None ')
     parser.add_argument('-validate', type=str2bool, nargs='?', default=True, help='Evaluate the model on the validation dataset')
-    parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
+    parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
+    parser.add_argument('-hpo', type=str2bool, nargs='?', default=True, help='Hyperparameter optimization with Ray Tune')
 
     parser.add_argument('-train-path', type=str2None, nargs='?', default="/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/custom_dataset/unobserved_grouped_alleles_train.tsv",help="Path to training dataset. Use only for training. ")
     parser.add_argument('-test-path', type=str2None, nargs='?', default= "", help='Path to sequences to predict')
@@ -310,7 +311,7 @@ if __name__ == "__main__":
                                                                                                 '<False> Performs a random stratified train, validation and test split')
 
 
-    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=True, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1, it saturates the CPU & GPU memory'
+    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=False, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1, it saturates the CPU & GPU memory'
                                                                                                 'False: Only plots the computationally inexpensive ROC curves')
 
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. \n'
@@ -361,7 +362,9 @@ if __name__ == "__main__":
     if args.use_cuda:
         if torch.cuda.is_available():
             torch.set_default_tensor_type(torch.cuda.DoubleTensor)
-            parser.add_argument('--device',type=str,default="cuda" ,nargs='?', help='Device choice (cpu, cuda:0, cuda:1), linked to use_cuda')
+            #cuda_device = "cuda:{}".format(os.environ["CUDA_VISIBLE_DEVICES"]) if args.hpo else "cuda"
+            cuda_device = "cuda"
+            parser.add_argument('--device',type=str,default="{}".format(cuda_device) ,nargs='?', help='Device choice (cpu, cuda:0, cuda:1, ...), behaviour linked to use_cuda')
         else:
             print("Cuda (gpu) not found falling back to cpu")
             torch.set_default_tensor_type(torch.DoubleTensor)

@@ -24,7 +24,7 @@ from scipy import stats
 from joblib import Parallel, delayed
 import multiprocessing
 from collections import namedtuple
-PeptideFeatures = namedtuple("PeptideFeatures",["hydropathy_dict","volume_dict","radius_dict","side_chain_pka_dict","isoelectric_dict","bulkiness_dict"])
+PeptideFeatures = namedtuple("PeptideFeatures",["hydrophobicity_dict","volume_dict","radius_dict","side_chain_pka_dict","isoelectric_dict","bulkiness_dict"])
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 def str2bool(v):
     """Converts a string into a boolean, useful for boolean arguments
@@ -1126,11 +1126,11 @@ def calculate_aromaticity(seq):
     aromaticity = ProteinAnalysis(seq).aromaticity()
     return aromaticity
 
-def calculate_hydropathy(seq):
+def calculate_gravy(seq):
     "GRAVY (grand average of hydropathy)"
     seq = "".join(seq).replace("#","")
-    hydropathy = ProteinAnalysis(seq).gravy()
-    return hydropathy
+    gravy = ProteinAnalysis(seq).gravy()
+    return gravy
 
 def calculate_extintioncoefficient(seq):
     """Calculates the molar extinction coefficient assuming cysteines (reduced) and cystines residues (Cys-Cys-bond)
@@ -1147,7 +1147,7 @@ class CalculatePeptideFeatures(object):
         self.list_sequences = list_sequences
         self.corrected_aa_types = len(set().union(*self.list_sequences))
         self.aminoacids_list = aminoacid_names_dict(self.corrected_aa_types)
-        self.hydropathy_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["Hydropathy_index"].values.tolist()))
+        self.gravy_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["gravy_index"].values.tolist()))
         self.volume_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["Volume(A3)"].values.tolist()))
         self.radius_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["Radius"].values.tolist()))
         self.side_chain_pka_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["side_chain_pka"].values.tolist()))
@@ -1155,7 +1155,7 @@ class CalculatePeptideFeatures(object):
         self.bulkiness_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["bulkiness"].values.tolist()))
     def return_dicts(self):
 
-        return PeptideFeatures(hydropathy_dict=self.hydropathy_dict,
+        return PeptideFeatures(gravy_dict=self.gravy_dict,
                                volume_dict = self.volume_dict,
                                radius_dict= self.radius_dict,
                                side_chain_pka_dict=self.side_chain_pka_dict,
@@ -1176,7 +1176,7 @@ class CalculatePeptideFeatures(object):
         return molecular_weight,volume,radius,bulkiness
 
     def calculate_features(self,seq,seq_max_len):
-        """Calculates molecular weight, volume, radius, isoelectric point, side chain pka, hydropathy of each residue in a protein sequence"""
+        """Calculates molecular weight, volume, radius, isoelectric point, side chain pka, gravy of each residue in a protein sequence"""
         seq = "".join(seq).replace("#", "")
 
         pads = [0] *(seq_max_len-len(seq))
@@ -1185,13 +1185,13 @@ class CalculatePeptideFeatures(object):
         radius = sum(list( map(lambda aa: self.radius_dict[aa], list(seq))) + pads)
         bulkiness = sum(list( map(lambda aa: self.bulkiness_dict[aa], list(seq))) + pads)
         isoelectric = calculate_isoelectric(seq)
-        hydropathy = calculate_hydropathy(seq)
+        gravy = calculate_gravy(seq)
         side_chain_pka = sum(list( map(lambda aa: self.side_chain_pka_dict[aa], list(seq))) + pads)/len(seq)
         aromaticity = calculate_aromaticity(seq)
         extintion_coefficient_reduced,extintion_coefficient_cystines = calculate_extintioncoefficient(seq)
         aminoacid_frequencies = list(map(lambda aa,seq: seq.count(aa)/len(seq),self.aminoacids_list,[seq]*len(self.aminoacids_list)))
         aminoacid_frequencies_dict = dict(zip(self.aminoacids_list,aminoacid_frequencies))
-        return molecular_weight,volume,radius,bulkiness,isoelectric,hydropathy,side_chain_pka,aromaticity,extintion_coefficient_reduced,extintion_coefficient_cystines,aminoacid_frequencies_dict
+        return molecular_weight,volume,radius,bulkiness,isoelectric,gravy,side_chain_pka,aromaticity,extintion_coefficient_reduced,extintion_coefficient_cystines,aminoacid_frequencies_dict
 
     def calculate_aminoacid_frequencies(self,seq,seq_max_len):
 
@@ -1230,7 +1230,7 @@ class CalculatePeptideFeatures(object):
                                 "radius":np.array(zipped_results[2]),
                                 "bulkiness":np.array(zipped_results[3]),
                                 "isoelectric":np.array(zipped_results[4]),
-                                "hydropathy":np.array(zipped_results[5]),
+                                "gravy":np.array(zipped_results[5]),
                                 "side_chain_pka":np.array(zipped_results[6]),
                                 "aromaticity":np.array(zipped_results[7]),
                                 "extintion_coefficient_cysteines":np.array(zipped_results[8]),
@@ -1243,7 +1243,7 @@ class CalculatePeptideFeatures(object):
                                 "radius":None,
                                 "bulkiness":None,
                                 "isoelectric": None,
-                                "hydropathy": None,
+                                "gravy": None,
                                 "side_chain_pka": None,
                                 "aromaticity":None,
                                 "extintion_coefficient_reduced":None,
@@ -1266,7 +1266,7 @@ class CalculatePeptideFeatures(object):
 def build_features_dicts(dataset_info):
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
     features_dicts = CalculatePeptideFeatures(dataset_info.seq_max_len,[],storage_folder).return_dicts()
-    hydropathy_dict = features_dicts.hydropathy_dict
+    gravy_dict = features_dicts.gravy_dict
     volume_dict = features_dicts.volume_dict
     radius_dict = features_dicts.radius_dict
     side_chain_pka_dict = features_dicts.side_chain_pka_dict
@@ -1278,7 +1278,7 @@ def build_features_dicts(dataset_info):
         aminoacids_dict = aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=[])
     else:
         aminoacids_dict = aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=["#"])
-        hydropathy_dict["#"] = 0
+        gravy_dict["#"] = 0
         volume_dict["#"] = 0
         radius_dict["#"] = 0
         side_chain_pka_dict["#"] = 0
@@ -1286,7 +1286,7 @@ def build_features_dicts(dataset_info):
         bulkiness_dict["#"] = 0
 
     aminoacids_dict_reversed = {val:key for key,val in aminoacids_dict.items()}
-    hydropathy_dict = {aminoacids_dict[key]:value for key,value in hydropathy_dict.items()}
+    gravy_dict = {aminoacids_dict[key]:value for key,value in gravy_dict.items()}
     volume_dict = {aminoacids_dict[key]:value for key,value in volume_dict.items()}
     radius_dict = {aminoacids_dict[key]:value for key,value in radius_dict.items()}
     side_chain_pka_dict = {aminoacids_dict[key]:value for key,value in side_chain_pka_dict.items()}
@@ -1294,7 +1294,7 @@ def build_features_dicts(dataset_info):
     bulkiness_dict = {aminoacids_dict[key]:value for key,value in bulkiness_dict.items()}
 
     return {"aminoacids_dict_reversed":aminoacids_dict_reversed,
-            "hydropathy_dict":hydropathy_dict,
+            "gravy_dict":gravy_dict,
             "volume_dict":volume_dict,
             "radius_dict":radius_dict,
             "side_chain_pka_dict":side_chain_pka_dict,

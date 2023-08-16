@@ -882,7 +882,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
 
     aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
-    hydropathy_dict = custom_features_dicts["hydropathy_dict"]
+    gravy_dict = custom_features_dicts["gravy_dict"]
     volume_dict = custom_features_dicts["volume_dict"]
     radius_dict = custom_features_dicts["radius_dict"]
     side_chain_pka_dict = custom_features_dicts["side_chain_pka_dict"]
@@ -902,9 +902,9 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
 
     #aminoacid_frequencies_dict = VegvisirUtils.CalculatePeptideFeatures(dataset_info.seq_max_len,sequences_list,dataset_info.storage_folder).calculate_aminoacid_frequencies()
 
-    # hydropathy_scores = np.vectorize(hydropathy_dict.get)(sequences)
-    # hydropathy_scores = np.ma.masked_array(hydropathy_scores, mask=sequences_mask, fill_value=0)
-    # hydropathy_scores = np.ma.mean(hydropathy_scores, axis=1)
+    # gravy_scores = np.vectorize(gravy_dict.get)(sequences)
+    # gravy_scores = np.ma.masked_array(gravy_scores, mask=sequences_mask, fill_value=0)
+    # gravy_scores = np.ma.mean(gravy_scores, axis=1)
     
     bulkiness_scores = np.vectorize(bulkiness_dict.get)(sequences)
     bulkiness_scores = np.ma.masked_array(bulkiness_scores, mask=sequences_mask, fill_value=0)
@@ -924,7 +924,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
 
     isoelectric_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_list)))
     aromaticity_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_list)))
-    hydropathy_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_list)))
+    gravy_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_gravy(seq), sequences_list)))
     molecular_weight_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_list)))
     extintion_coefficient_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[0], sequences_list)))
 
@@ -934,7 +934,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     i = 0
     labels = []
 
-    all_hydropathy = []
+    all_gravy = []
     all_volumes = []
     all_radius = []
     all_isoelectric = []
@@ -963,10 +963,10 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 else:
                     sequences_mask = np.array((sequences_cluster == 0))
                 sequences_len = np.sum(~sequences_mask,axis=1)
-                # hydropathy = np.vectorize(hydropathy_dict.get)(sequences_cluster)
-                # hydropathy = np.ma.masked_array(hydropathy,mask=sequences_mask,fill_value=0)
-                # hydropathy = np.ma.sum(hydropathy,axis=1)
-                hydropathy = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_cluster_list)))
+                # gravy = np.vectorize(gravy_dict.get)(sequences_cluster)
+                # gravy = np.ma.masked_array(gravy,mask=sequences_mask,fill_value=0)
+                # gravy = np.ma.sum(gravy,axis=1)
+                gravy = np.array(list(map(lambda seq: VegvisirUtils.calculate_gravy(seq), sequences_cluster_list)))
                 aromaticity = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_cluster_list)))
 
                 volumes = np.vectorize(volume_dict.get)(sequences_cluster)
@@ -993,7 +993,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 extintion_coefficient = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[0], sequences_cluster_list)))
 
 
-                clusters_info["Cluster_{}".format(cluster)][mode]["hydrophobicity"] = hydropathy.mean()
+                clusters_info["Cluster_{}".format(cluster)][mode]["gravy"] = gravy.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["volumes"] = volumes.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["radius"] = radius.mean()
                 clusters_info["Cluster_{}".format(cluster)][mode]["side_chain_pka"] = side_chain_pka.mean()
@@ -1008,7 +1008,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
 
                 all_side_chain_pka.append(side_chain_pka)
                 all_isoelectric.append(isoelectric)
-                all_hydropathy.append(hydropathy)
+                all_gravy.append(gravy)
                 all_volumes.append(volumes)
                 all_radius.append(radius)
                 all_aromaticity.append(aromaticity)
@@ -1031,7 +1031,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
                 label_locations.append(i + 0.2)
                 i+=0.4
 
-    boxplot0 = ax0.boxplot( all_hydropathy,
+    boxplot0 = ax0.boxplot( all_gravy,
                      vert=True,  # vertical box alignment
                      patch_artist=True,  # fill with color
                      labels=labels
@@ -1103,7 +1103,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
         for patch, color in zip(bplot['boxes'], all_colors):
             patch.set_facecolor(color)
 
-    ax0.set_title("Hydrophobicity",fontsize=20)
+    ax0.set_title("Gravy",fontsize=20)
     ax1.set_title("Volumes",fontsize=20)
     ax2.set_title("Radius",fontsize=20)
     ax3.set_title("Isoelectric",fontsize=20)
@@ -1135,7 +1135,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     plt.clf()
     plt.close(fig)
     
-    features_dict = {"hydropathy_scores":hydropathy_scores,
+    features_dict = {"gravy_scores":gravy_scores,
                 "isoelectric_scores":isoelectric_scores,
                 "volume_scores":volume_scores,
                 "radius_scores":radius_scores,
@@ -1170,13 +1170,13 @@ def plot_preprocessing(umap_proj,dataset_info,predictions_dict,sample_mode,resul
                                           reassignment_ratio=0, n_init="auto").fit_predict(umap_proj)
     colors_clusters = np.vectorize(colors_cluster_dict.get)(cluster_assignments)
 
-    # hydropathy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,aromaticity_scores,sequences_lens,clusters_info=plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
+    # gravy_scores,volume_scores,radius_scores,side_chain_pka_scores,isoelectric_scores,aromaticity_scores,sequences_lens,clusters_info=plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method)
     features_dict,sequences_raw = plot_clusters_features_distributions(dataset_info, cluster_assignments, n_clusters,
                                                          predictions_dict, sample_mode, results_dir, method,
                                                          vector_name)
 
     sequences_lens_settings = define_colormap(features_dict["sequences_lens"],cmap_name="viridis")
-    hydropathy_scores_settings = define_colormap(features_dict["hydropathy_scores"],cmap_name="viridis")
+    gravy_scores_settings = define_colormap(features_dict["gravy_scores"],cmap_name="viridis")
     volume_scores_settings = define_colormap(features_dict["volume_scores"],cmap_name="viridis")
     radius_scores_settings = define_colormap(features_dict["radius_scores"],cmap_name="viridis")
     side_chain_pka_settings = define_colormap(features_dict["side_chain_pka_scores"],cmap_name="magma")
@@ -1192,7 +1192,7 @@ def plot_preprocessing(umap_proj,dataset_info,predictions_dict,sample_mode,resul
             "cluster_assignments":cluster_assignments,
             "colors_clusters":colors_clusters,
             "sequence_lens_settings":sequences_lens_settings,
-            "hydropathy_scores_settings":hydropathy_scores_settings,
+            "gravy_scores_settings":gravy_scores_settings,
             "volume_scores_settings":volume_scores_settings,
             "radius_scores_settings":radius_scores_settings,
             "side_chain_pka_settings":side_chain_pka_settings,
@@ -1284,11 +1284,11 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
     ax9.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["colors_clusters"], alpha=alpha, s=size)
     ax9.set_title("Coloured by Kmeans cluster")
 
-    ax10.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["hydropathy_scores_settings"].colors_feature, alpha=alpha, s=size)
-    ax10.set_title("Coloured by Hydrophobicity")
-    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["hydropathy_scores_settings"].colormap_unique,
-                                       norm=Normalize(vmin=np.min(settings["hydropathy_scores_settings"].unique_values),
-                                                      vmax=np.max(settings["hydropathy_scores_settings"].unique_values))), ax=ax10)
+    ax10.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["gravy_scores_settings"].colors_feature, alpha=alpha, s=size)
+    ax10.set_title("Coloured by Gravy")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["gravy_scores_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["gravy_scores_settings"].unique_values),
+                                                      vmax=np.max(settings["gravy_scores_settings"].unique_values))), ax=ax10)
 
     ax11.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["volume_scores_settings"].colors_feature, alpha=alpha, s=size)
     ax11.set_title("Coloured by Peptide volume")
@@ -1360,7 +1360,7 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
     plt.clf()
     plt.close(fig)
 
-    #del confidence_scores,immunodominance_scores,hydropathy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
+    #del confidence_scores,immunodominance_scores,gravy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
     #gc.collect()
 
 def colorbar(mappable):
@@ -1508,7 +1508,7 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
     plt.clf()
     plt.close(fig)
 
-    #del confidence_scores,immunodominance_scores,hydropathy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
+    #del confidence_scores,immunodominance_scores,gravy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
     #gc.collect()
 
 def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
@@ -1592,18 +1592,18 @@ def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,
     ax9.scatter(umap_proj[:, 0], umap_proj[:, 1], c=settings["colors_clusters"], alpha=alpha, s=size)
     ax9.set_title("Coloured by Kmeans cluster")
     quantiles = [0.1,0.9]
-    quantiles_hydropathy = np.quantile(features_dict["hydropathy_scores"],quantiles)
+    quantiles_gravy = np.quantile(features_dict["gravy_scores"],quantiles)
 
-    quantile_hydropathy_idx = (features_dict["hydropathy_scores"][...,None] < quantiles_hydropathy[0]).any(-1), (features_dict["hydropathy_scores"][...,None] > quantiles_hydropathy[1]).any(-1)
-    hydropathy_colors = settings["hydropathy_scores_settings"].colors_feature
-    hydropathy_colors = hydropathy_colors[quantile_hydropathy_idx[0] | quantile_hydropathy_idx[1]]
-    hydropathy_umap = umap_proj[quantile_hydropathy_idx[0] | quantile_hydropathy_idx[1]]
+    quantile_gravy_idx = (features_dict["gravy_scores"][...,None] < quantiles_gravy[0]).any(-1), (features_dict["gravy_scores"][...,None] > quantiles_gravy[1]).any(-1)
+    gravy_colors = settings["gravy_scores_settings"].colors_feature
+    gravy_colors = gravy_colors[quantile_gravy_idx[0] | quantile_gravy_idx[1]]
+    gravy_umap = umap_proj[quantile_gravy_idx[0] | quantile_gravy_idx[1]]
 
-    ax10.scatter(hydropathy_umap[:,0],hydropathy_umap[:,1], c=hydropathy_colors, alpha=alpha, s=size)
-    ax10.set_title("Coloured by Hydrophobicity")
-    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["hydropathy_scores_settings"].colormap_unique,
-                                       norm=Normalize(vmin=np.min(settings["hydropathy_scores_settings"].unique_values),
-                                                      vmax=np.max(settings["hydropathy_scores_settings"].unique_values))), ax=ax10)
+    ax10.scatter(gravy_umap[:,0],gravy_umap[:,1], c=gravy_colors, alpha=alpha, s=size)
+    ax10.set_title("Coloured by Gravy")
+    fig.colorbar(plt.cm.ScalarMappable(cmap=settings["gravy_scores_settings"].colormap_unique,
+                                       norm=Normalize(vmin=np.min(settings["gravy_scores_settings"].unique_values),
+                                                      vmax=np.max(settings["gravy_scores_settings"].unique_values))), ax=ax10)
 
 
     
@@ -2211,6 +2211,7 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
     binary_modes = ["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_mode"]
     #binary_modes = ["class_binary_predictions_samples_logits_average_argmax","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_logits_average_argmax"]
 
+    metrics_summary_dict = defaultdict(lambda:defaultdict(lambda : defaultdict()))
     for sample_mode,prob_mode,binary_mode in zip(evaluation_modes,probability_modes,binary_modes):
     #for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
         labels = predictions_dict["true_{}".format(sample_mode)]
@@ -2293,8 +2294,8 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
                 else:
                     auk_score_binary = None
 
-                plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name)
-                plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name)
+                fpr,tpr,roc_auc,pvals = plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name)
+                ap_dict = plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name)
 
                 print("---------------- {} ----------------\n".format(prob_mode))
                 print("---------------- {} ----------------\n ".format(prob_mode),file=open("{}/AUC_out.txt".format(results_dir), "a"))
@@ -2306,7 +2307,18 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
                                "weighted_roc_auc_ovo": weighted_roc_auc_ovo,
                                "auk_score_binary":auk_score_binary}
 
-                json.dump(scores_dict, open("{}/AUC_out.txt".format(results_dir), "a"), indent=2)
+                #json.dump(scores_dict, open("{}/AUC_out_{}_fold_{}.txt".format(results_dir,mode,fold), "a"), indent=2)
+
+
+                metrics_summary_dict[sample_mode][idx_name]["fpr"] = fpr
+                metrics_summary_dict[sample_mode][idx_name]["tpr"] = tpr
+                metrics_summary_dict[sample_mode][idx_name]["roc_auc"] = roc_auc
+                metrics_summary_dict[sample_mode][idx_name]["pvals"] = pvals
+                metrics_summary_dict[sample_mode][idx_name]["precision"] = ap_dict["precision"]
+                metrics_summary_dict[sample_mode][idx_name]["recall"] = ap_dict["recall"]
+                metrics_summary_dict[sample_mode][idx_name]["average_precision"] = ap_dict["average_precision"]
+
+
 
             #for key_name_2,stats_name_2 in zip(["samples_mode","single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
             if predictions_dict[binary_mode] is not None:
@@ -2353,6 +2365,8 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
                 plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
                 plt.clf()
                 plt.close(fig)
+
+    return metrics_summary_dict
 
 def plot_classification_metrics_per_species(dataset_info,args,predictions_dict,fold,results_dir,mode="Train",per_sample=False):
     """
@@ -3649,7 +3663,7 @@ def plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covaria
             custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
 
             aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
-            hydropathy_dict = custom_features_dicts["hydropathy_dict"]
+            gravy_dict = custom_features_dicts["gravy_dict"]
             volume_dict = custom_features_dicts["volume_dict"]
             radius_dict = custom_features_dicts["radius_dict"]
             side_chain_pka_dict = custom_features_dicts["side_chain_pka_dict"]
@@ -3686,7 +3700,7 @@ def plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covaria
                 list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_list)))
             aromaticity_scores = np.array(
                 list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_list)))
-            hydropathy_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_hydropathy(seq), sequences_list)))
+            gravy_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_gravy(seq), sequences_list)))
             molecular_weight_scores = np.array(
                 list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_list)))
             extintion_coefficient_reduced_scores = np.array(
@@ -3694,7 +3708,7 @@ def plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covaria
             extintion_coefficient_cystines_scores = np.array(
                 list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[1], sequences_list)))
 
-            settings = {"features_dict": {"hydropathy_scores": hydropathy_scores,
+            settings = {"features_dict": {"gravy_scores": gravy_scores,
                                           "isoelectric_scores": isoelectric_scores,
                                           "volume_scores": volume_scores,
                                           "radius_scores": radius_scores,
@@ -3746,7 +3760,7 @@ def plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covaria
 def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results_folder="Benchmark",overwrite_correlations=False,overwrite_all=False,subtitle=""):
      """Computes the average UMAP1d vs peptide feature correlations across the n-folds"""
      new_feature_names = {"UMAP-1D":"UMAP-1D",
-                          "hydropathy_scores":"Hydropathy",
+                          "gravy_scores":"Gravy (Hydropathy index)", #larger the number is, the more hydrophobic the amino acid
                           "isoelectric_scores":"Isoelectric",
                           "volume_scores":"Volume",
                           "radius_scores":"Radius",
@@ -4138,6 +4152,9 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark
 
         plt.subplots_adjust(left=0.2,wspace=0.4)
 
+    colors_dict = {"Train":"skyblue","Test":"tomato"}
+    legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in colors_dict.items()]
+    fig.legend(handles=legends, prop={'size': 12}, loc='center right', bbox_to_anchor=(0.9, 0.5))
     fig.suptitle("Benchmarking",fontsize=20)
 
 

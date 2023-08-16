@@ -1,6 +1,7 @@
 import gc
 import json
 import warnings
+from argparse import Namespace
 
 from scipy import stats
 import time,os,datetime
@@ -23,6 +24,8 @@ import vegvisir.load_utils as VegvisirLoadUtils
 import vegvisir.plots as VegvisirPlots
 import vegvisir.models as VegvisirModels
 import vegvisir.guides as VegvisirGuides
+
+from ray.air import Checkpoint, session
 
 ModelLoad = namedtuple("ModelLoad",["args","max_len","seq_max_len","n_data","input_dim","aa_types","blosum","class_weights"])
 minidatasetinfo = namedtuple("minidatasetinfo", ["seq_max_len", "corrected_aa_types","num_classes","num_obs_classes","storage_folder"])
@@ -184,6 +187,163 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
                         "decoder_final_hidden_state": decoder_final_hidden_arr,
                         }
     return train_loss,target_accuracy,predictions_dict,latent_arr, reconstruction_accuracies_dict
+def train_loop_modified(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
+    """Regular batch training
+    :param pyro.infer svi
+    :param nn.Module,PyroModule Vegvisir: Neural net architecture
+    :param guide: EasyGuide or pyro.infer.autoguides
+    :param DataLoader data_loader: Pytorch dataloader
+    :param namedtuple args
+    """
+    Vegvisir.train() #Highlight: look at https://stackoverflow.com/questions/60018578/what-does-model-eval-do-in-pytorch
+    train_loss = 0.0
+    reconstruction_accuracies = []
+    binary_predictions = []
+    logits_predictions = []
+    probs_predictions = []
+    latent_spaces = []
+    true_labels = []
+    confidence_scores = []
+    training_assignation = []
+    attention_weights = []
+    encoder_hidden_states = []
+    encoder_final_hidden_states = []
+    decoder_hidden_states = []
+    decoder_final_hidden_states = []
+    reconstruction_logits = []
+    data_int = []
+    data_masks = []
+
+    for batch_number, batch_dataset in enumerate(data_loader):
+        batch_data_blosum = batch_dataset["batch_data_blosum"]
+        batch_data_int = batch_dataset["batch_data_int"]
+        batch_data_onehot = batch_dataset["batch_data_onehot"]
+        batch_data_blosum_norm = batch_dataset["batch_data_blosum_norm"]
+        batch_mask = batch_dataset["batch_mask"]
+        batch_positional_mask = batch_dataset["batch_positional_mask"]
+
+        if args.use_cuda:
+            batch_data_blosum = batch_data_blosum.cuda()
+            batch_data_int = batch_data_int.cuda()
+            batch_data_onehot = batch_data_onehot.cuda()
+            batch_data_blosum_norm = batch_data_blosum_norm.cuda()
+            batch_mask = batch_mask.cuda()
+            batch_positional_mask = batch_positional_mask.cuda()
+        batch_data = {"blosum":batch_data_blosum,
+                      "int":batch_data_int,
+                      "onehot":batch_data_onehot,
+                      "norm":batch_data_blosum_norm,
+                      "positional_mask":batch_positional_mask}
+        curr_bsize = batch_data["blosum"].shape[0]
+        data_int.append(batch_data_int.detach().cpu().numpy())
+        data_masks.append(batch_mask.detach().cpu().numpy())
+        #Forward & Backward pass
+        guide_estimates = guide(batch_data,batch_mask,epoch,None,sample=False)
+        loss = svi.step(batch_data,batch_mask,epoch,guide_estimates,sample=False)
+        sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=1, return_sites=(), parallel=False)(batch_data,batch_mask,epoch = 0,guide_estimates=guide_estimates,sample=True)
+
+        binary_class_prediction = sampling_output["predictions"].squeeze(0).squeeze(0).detach()
+        logits_class_prediction = sampling_output["class_logits"].squeeze(0).detach() #if curr_bsize == 1 else sampling_output["class_logits"].squeeze(0).squeeze(0).squeeze(0).detach()
+        probs_class_prediction = torch.nn.Sigmoid()(logits_class_prediction)
+        attn_weights = sampling_output["attn_weights"].squeeze(0).detach().cpu().numpy()
+        attention_weights.append(attn_weights)
+        encoder_hidden = sampling_output["encoder_hidden_states"].squeeze(0).detach().cpu().numpy()
+        encoder_hidden_states.append(encoder_hidden)
+        decoder_hidden = sampling_output["decoder_hidden_states"].squeeze(0).detach().cpu().numpy()
+        decoder_hidden_states.append(decoder_hidden)
+        encoder_final_hidden = sampling_output["encoder_final_hidden"].squeeze(0).squeeze(0).detach().cpu()
+        decoder_final_hidden = sampling_output["decoder_final_hidden"].squeeze(0).squeeze(0).detach().cpu()
+        reconstructed_sequences = sampling_output["sequences"].squeeze(0).squeeze(0).detach().cpu() if curr_bsize == 1 else sampling_output["sequences"].squeeze(0).squeeze(0).squeeze(0).detach().cpu()
+        reconstruction_logits_batch = sampling_output["sequences_logits"].squeeze(0).detach().cpu()
+        reconstruction_logits.append(reconstruction_logits_batch)
+
+        latent_space = sampling_output["latent_z"].squeeze(0).detach().cpu() if curr_bsize == 1 else sampling_output["latent_z"].squeeze(0).squeeze(0).detach().cpu()
+        true_labels_batch = batch_data["blosum"][:, 0, 0, 0].detach().cpu()
+
+        identifiers = batch_data["blosum"][:, 0, 0, 1].detach().cpu()
+        partitions = batch_data["blosum"][:, 0, 0, 2].detach().cpu()
+        training = batch_data["blosum"][:, 0, 0, 3].detach().cpu()
+        immunodominace_score = batch_data["blosum"][:, 0, 0, 4].detach().cpu()
+        confidence_score = batch_data["blosum"][:, 0, 0, 5].detach().cpu()
+        latent_space = torch.column_stack(
+            [true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score, latent_space])
+        encoder_final_hidden= torch.column_stack(
+            [true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score, encoder_final_hidden])
+        decoder_final_hidden= torch.column_stack(
+            [true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score, decoder_final_hidden])
+        encoder_final_hidden_states.append(encoder_final_hidden.numpy())
+        decoder_final_hidden_states.append(decoder_final_hidden.numpy())
+
+        mask_seq = batch_mask[:, 1:,:,0].squeeze(1).detach().cpu()
+        equal_aa = torch.Tensor((batch_data_int[:,1,:model_load.seq_max_len].detach().cpu() == reconstructed_sequences.long())*mask_seq)
+        reconstruction_accuracy = (equal_aa.sum(dim=1))/mask_seq.sum(dim=1)
+
+        reconstruction_accuracies.append(reconstruction_accuracy.cpu().numpy())
+        latent_spaces.append(latent_space.detach().cpu().numpy())
+        true_labels.append(true_labels_batch.detach().cpu().numpy())
+        confidence_scores.append(confidence_score.detach().cpu().numpy())
+        training_assignation.append(training.detach().cpu().numpy())
+
+        binary_predictions.append(binary_class_prediction.detach().cpu().numpy())
+        logits_predictions.append(logits_class_prediction.detach().cpu().numpy())
+        probs_predictions.append(probs_class_prediction.detach().cpu().numpy())
+
+        train_loss += loss
+    #Normalize train loss
+    train_loss /= len(data_loader)
+    data_int_arr = np.concatenate(data_int,axis=0)
+    data_mask_arr = np.concatenate(data_masks,axis=0)
+
+    true_labels_arr = np.concatenate(true_labels,axis=0)
+    binary_predictions_arr = np.concatenate(binary_predictions,axis=0)
+    logits_predictions_arr = np.concatenate(logits_predictions,axis=0)
+    probs_predictions_arr = np.concatenate(probs_predictions,axis=0)
+    latent_arr = np.concatenate(latent_spaces,axis=0)
+    confidence_scores_arr = np.concatenate(confidence_scores, axis=0)
+    training_assignation_arr = np.concatenate(training_assignation, axis=0)
+
+    attention_weights_arr = np.concatenate(attention_weights,axis=0)
+    encoder_hidden_arr = np.concatenate(encoder_hidden_states,axis=0)
+    decoder_hidden_arr = np.concatenate(decoder_hidden_states,axis=0)
+    encoder_final_hidden_arr = np.concatenate(encoder_final_hidden_states,axis=0)
+    decoder_final_hidden_arr = np.concatenate(decoder_final_hidden_states,axis=0)
+
+    reconstruction_accuracies_arr = np.concatenate(reconstruction_accuracies)
+    reconstruction_logits_arr = np.concatenate(reconstruction_logits,axis=0)
+    reconstruction_entropy = VegvisirUtils.compute_sites_entropies(reconstruction_logits_arr, true_labels_arr) #Highlight: first term is the label, then the entropy per position
+    reconstruction_accuracies_dict = {"mean":reconstruction_accuracies_arr.mean(),
+                                      "std":reconstruction_accuracies_arr.std(),
+                                      "entropies": np.mean(reconstruction_entropy[:,1:],axis=0)}
+
+    if args.num_classes == args.num_obs_classes:
+        observed_labels = true_labels_arr
+        target_accuracy = 100 * ((true_labels_arr == binary_predictions_arr).sum() / true_labels_arr.shape[0])
+
+    else:
+        confidence_mask = (true_labels_arr[..., None] != 2).any(-1) #Highlight: unlabelled data has been assigned labelled 2
+        observed_labels = true_labels_arr.copy()
+        observed_labels[~confidence_mask] = 0 #fake class 0 for unobserved data,will be ignored
+        target_accuracy = 100 * ((true_labels_arr[confidence_mask] == binary_predictions_arr[confidence_mask]).sum() / true_labels_arr[confidence_mask].shape[0])
+
+    true_onehot = np.zeros((true_labels_arr.shape[0],args.num_obs_classes))
+    true_onehot[np.arange(0,true_labels_arr.shape[0]),observed_labels.astype(int)] = 1
+    predictions_dict = {"data_int":data_int_arr,
+                        "data_mask": data_mask_arr,
+                        "binary":binary_predictions_arr,
+                        "logits":logits_predictions_arr,
+                        "probs":probs_predictions_arr,
+                        "true":true_labels_arr,
+                        "true_onehot":true_onehot,
+                        "observed":observed_labels,
+                        "confidence_scores":confidence_scores_arr,
+                        "training_assignation":training_assignation_arr,
+                        "attention_weights":attention_weights_arr,
+                        "encoder_hidden_states":encoder_hidden_arr,
+                        "decoder_hidden_states":decoder_hidden_arr,
+                        "encoder_final_hidden_state": encoder_final_hidden_arr,
+                        "decoder_final_hidden_state": decoder_final_hidden_arr,
+                        }
+    return train_loss,target_accuracy,predictions_dict,latent_arr, reconstruction_accuracies_dict
 def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
     """
     :param svi: pyro infer engine
@@ -246,8 +406,8 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
             encoder_hidden_states.append(encoder_hidden)
             decoder_hidden = sampling_output["decoder_hidden_states"].squeeze(0).detach().cpu().numpy()
             decoder_hidden_states.append(decoder_hidden)
-            encoder_final_hidden = sampling_output["encoder_final_hidden"].squeeze(0).detach().cpu()
-            decoder_final_hidden = sampling_output["decoder_final_hidden"].squeeze(0).detach().cpu()
+            encoder_final_hidden = sampling_output["encoder_final_hidden"].squeeze(0).squeeze(0).detach().cpu()
+            decoder_final_hidden = sampling_output["decoder_final_hidden"].squeeze(0).squeeze(0).detach().cpu()
             probs_class_prediction = torch.nn.Sigmoid()(logits_class_prediction)
             reconstructed_sequences = sampling_output["sequences"].squeeze(0).squeeze(0).detach().cpu() if curr_bsize == 1 else sampling_output["sequences"].squeeze(0).squeeze(0).squeeze(0).detach().cpu()
             reconstruction_logits_batch = sampling_output["sequences_logits"].squeeze(0).detach().cpu()
@@ -395,8 +555,8 @@ def test_loop(svi,Vegvisir,guide,data_loader,args,model_load,epoch): #TODO: remo
             encoder_hidden_states.append(encoder_hidden)
             decoder_hidden = sampling_output["decoder_hidden_states"].squeeze(0).detach().cpu().numpy()
             decoder_hidden_states.append(decoder_hidden)
-            encoder_final_hidden = sampling_output["encoder_final_hidden"].squeeze(0).detach().cpu()
-            decoder_final_hidden = sampling_output["decoder_final_hidden"].squeeze(0).detach().cpu()
+            encoder_final_hidden = sampling_output["encoder_final_hidden"].squeeze(0).squeeze(0).detach().cpu()
+            decoder_final_hidden = sampling_output["decoder_final_hidden"].squeeze(0).squeeze(0).detach().cpu()
             probs_class_prediction = torch.nn.Sigmoid()(logits_class_prediction)
 
             reconstructed_sequences = sampling_output["sequences"].squeeze(0).detach()
@@ -543,7 +703,7 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             #decoder_hidden = decoder_hidden.mean(axis=1)
             decoder_hidden_states.append(decoder_hidden)
             encoder_final_hidden = sampling_output["encoder_final_hidden"].squeeze(0).detach().cpu().permute(1,0,2)
-            encoder_final_hidden = encoder_final_hidden.mean(dim=1) #TODO: this is not correct, think about it
+            encoder_final_hidden = encoder_final_hidden.mean(dim=1) #TODO: this might not be correct, think about it
             decoder_final_hidden = sampling_output["decoder_final_hidden"].squeeze(0).detach().cpu().permute(1,0,2)
             decoder_final_hidden = decoder_final_hidden.mean(dim=1)
 
@@ -680,23 +840,24 @@ def select_model(model_load,results_dir,fold,args):
 def config_build(args,results_dir):
     """Select a default configuration dictionary. It can load a string dictionary from the command line (using json) or use the default parameters
     :param namedtuple args"""
-    # if args.parameter_search:
-    #     config = json.loads(args.config_dict)
-    # else:
-    "Default hyperparameters (Clipped Adam optimizer), z dim and GRU"
-    config = {
-        "lr": 1e-3, #default is 1e-3
-        "beta1": 0.95, #coefficients used for computing running averages of gradient and its square (default: (0.9, 0.999))
-        "beta2": 0.999,
-        "eps": 1e-8,#term added to the denominator to improve numerical stability (default: 1e-8)
-        "weight_decay": 0,#weight_decay: weight decay (L2 penalty) (default: 0)
-        "clip_norm": 10,#clip_norm: magnitude of norm to which gradients are clipped (default: 10.0)
-        "lrd": 1,#0.1 ** (1 / args.num_epochs), #rate at which learning rate decays (default: 1.0) #https://pyro.ai/examples/svi_part_iv.html
-        "z_dim": 30,
-        "gru_hidden_dim": 60, #60
-        "momentum":0.9
-    }
-    json.dump(config, open('{}/params_dict.txt'.format(results_dir), 'w'), indent=2)
+    if args.hpo:
+        #config = json.loads(args.config_dict)
+        config = args.config_dict
+    else:
+        "Default hyperparameters (Clipped Adam optimizer), z dim and GRU"
+        config = {
+            "lr": 1e-3, #default is 1e-3
+            "beta1": 0.95, #coefficients used for computing running averages of gradient and its square (default: (0.9, 0.999))
+            "beta2": 0.999,
+            "eps": 1e-8,#term added to the denominator to improve numerical stability (default: 1e-8)
+            "weight_decay": 0,#weight_decay: weight decay (L2 penalty) (default: 0)
+            "clip_norm": 10,#clip_norm: magnitude of norm to which gradients are clipped (default: 10.0)
+            "lrd": 1,#0.1 ** (1 / args.num_epochs), #rate at which learning rate decays (default: 1.0) #https://pyro.ai/examples/svi_part_iv.html
+            "z_dim": 30,
+            "gru_hidden_dim": 60, #60
+            "momentum":0.9
+        }
+        json.dump(config, open('{}/params_dict.txt'.format(results_dir), 'w'), indent=2)
 
     return config
 def init_weights(m):
@@ -783,8 +944,27 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
             print("Training & testing  ...")
         for fold in range(args.k_folds):
             epoch_loop(traineval_idx, test_idx, dataset_info, args, additional_info,mode="Test_fold_{}".format(fold),fold="_fold_{}".format(fold))
-def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid",fold=""):
+def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid",fold="",config=None):
     print("Remaining objects: {}".format(len(gc.get_objects())))
+    if config is not None:
+        print("Using hyperparameter search from Ray-tune")
+        args_dict = vars(args)
+        keys_list = ["batch_size","likelihood_scale","encoding","num_epochs","hidden_dim"]
+        config_dict1 = config.copy()
+        for key in keys_list:
+            args_dict[key] = config[key]
+            config_dict1.pop(key,None)
+        args_dict["config_dict"] = config_dict1
+        print(args_dict)
+        print("---------------")
+        args = Namespace(**args_dict)
+        pyro.enable_validation(False) #TODO: Reactivate
+
+        if args.use_cuda:
+            torch.set_default_tensor_type(torch.cuda.DoubleTensor)
+        else:
+            torch.set_default_tensor_type(torch.DoubleTensor)
+
     #Split the rest of the data (train_data) for train and validation
     data_blosum = dataset_info.data_array_blosum_encoding
     data_int = dataset_info.data_array_int
@@ -807,7 +987,7 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
 
 
     n_data = data_blosum.shape[0]
-    batch_size = args.batch_size
+    batch_size = int(args.batch_size)
     results_dir = additional_info.results_dir
     check_point_epoch = [5 if args.num_epochs < 100 else int(args.num_epochs / 50)][0]
     model_load = ModelLoad(args=args,
@@ -839,13 +1019,15 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                                                            data_array_blosum_encoding_mask[valid_idx],
                                                            data_positional_weights_mask[valid_idx],
                                                            )
+    train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)
+    valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)
 
-    train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffled_Ibel? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
-    valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffled_Ibel? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
 
     #Restart the model each fold
     Vegvisir = select_model(model_load, additional_info.results_dir,"all",args)
+
     params_config = config_build(args,additional_info.results_dir)
+
     if args.optimizer_name == "Adam" and not args.clip_gradients:
         adam_args = {"lr":params_config["lr"],
                     "betas": (params_config["beta1"], params_config["beta2"]),
@@ -883,9 +1065,12 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     # print(model_trace.nodes["predictions"])
 
     #Highlight: Draw the graph model
+
     pyro.render_model(Vegvisir.model, model_args=(data_args_0,data_args_1,0,None,False), filename="{}/model_graph.png".format(results_dir),render_distributions=True,render_params=False)
     pyro.render_model(guide, model_args=(data_args_0,data_args_1,0,None,False), filename="{}/guide_graph.png".format(results_dir),render_distributions=True,render_params=False)
     svi = SVI(Vegvisir.model, guide, optimizer, loss_func)
+
+    #Highlight: Hyperparameter optimization:
 
     #TODO: Dictionary that gathers the results from each fold
     start = time.time()
@@ -1038,8 +1223,8 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     info_file.write("\n ------------------------------------- \n ")
     info_file.write("\n Total number parameters: {} \n ".format(total_number_parameters))
 
-    VegvisirPlots.plot_classification_metrics(args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold))
-    VegvisirPlots.plot_classification_metrics(args,valid_summary_dict,"all",results_dir,mode=mode)
+    train_metrics_summary_dict = VegvisirPlots.plot_classification_metrics(args,train_summary_dict,"{}".format(fold),results_dir,mode="Train{}".format(fold))
+    valid_metrics_summary_dict = VegvisirPlots.plot_classification_metrics(args,valid_summary_dict,"{}".format(fold),results_dir,mode=mode)
     #VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,train_summary_dict,"all",results_dir,mode="Train{}".format(fold),per_sample=False)
     #VegvisirPlots.plot_classification_metrics_per_species(dataset_info,args,valid_summary_dict,"all",results_dir,mode=mode,per_sample=False)
 
@@ -1050,6 +1235,18 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
         VegvisirPlots.plot_classification_metrics(args, test_train_summary_dict, "viral_dataset3_test_in_train", results_dir,mode="Test")
         VegvisirPlots.plot_classification_metrics(args, test_valid_summary_dict, "viral_dataset3_test_in_valid", results_dir,mode="Test")
         VegvisirPlots.plot_classification_metrics(args, test_all_summary_dict, "viral_dataset3_test_in_train_and_valid", results_dir,mode="Test")
+
+    if args.hpo:
+        metrics_summary_dict = {"train_loss":train_epoch_loss,
+             "ROC_AUC_train": train_metrics_summary_dict["samples"]["ALL"]["roc_auc"],
+             "average_precision_train": train_metrics_summary_dict["samples"]["ALL"]["average_precision"],
+             "valid_loss": valid_epoch_loss,
+             "ROC_AUC_valid": valid_metrics_summary_dict["samples"]["ALL"]["roc_auc"],
+             "average_precision_valid": valid_metrics_summary_dict["samples"]["ALL"]["average_precision"],
+             }
+
+
+
     stop = time.time()
     print('Final timing: {}'.format(str(datetime.timedelta(seconds=stop-start))))
     print("Clearing CPU , GPU memory allocations. Clearing Pyro parameter store")
@@ -1074,6 +1271,9 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     print(torch.cuda.memory_summary(device=None, abbreviated=False))
     gc.collect()
     print("Remaining objects AFTER clearing: {}".format(len(gc.get_objects())))
+
+    if args.hpo:
+        session.report(metrics_summary_dict)
 def train_model_old(dataset_info,additional_info,args):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
@@ -1121,7 +1321,7 @@ def train_model_old(dataset_info,additional_info,args):
             print("Joining Training & validation datasets to perform testing...")
         train_idx = (train_idx.int() + valid_idx.int()).bool()
         epoch_loop(train_idx, test_idx, dataset_info, args, additional_info,mode="Test")
-def train_model(dataset_info,additional_info,args):
+def train_model(config=None,dataset_info=None,additional_info=None,args=None):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
     data_blosum = dataset_info.data_array_blosum_encoding
@@ -1171,25 +1371,25 @@ def train_model(dataset_info,additional_info,args):
     else:
         if not args.test and args.validate:
             print("Only Training & Validation")
-            epoch_loop( train_idx, valid_idx, dataset_info, args, additional_info)
+            epoch_loop( train_idx, valid_idx, dataset_info, args, additional_info,config=config)
         elif args.test and args.validate:
             print("Training, Validation and testing")
             print("FIRST: Training & Validation")
-            epoch_loop( train_idx, valid_idx, dataset_info, args, additional_info,mode="Valid")
+            epoch_loop( train_idx, valid_idx, dataset_info, args, additional_info,mode="Valid",config=config)
             print("SECOND: Training + Validation & Testing")
             if args.dataset_name == "viral_dataset7" and not args.test:
                 warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
             else:
                 print("Joining Training & validation datasets to perform testing...")
             train_idx = (train_idx.int() + valid_idx.int()).bool()
-            epoch_loop(train_idx, test_idx, dataset_info, args, additional_info, mode="Test")
+            epoch_loop(train_idx, test_idx, dataset_info, args, additional_info, mode="Test",config=config)
         else:
             if args.dataset_name == "viral_dataset7" and not args.test:
                 warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
             else:
                 print("Joining Training & validation datasets to perform testing...")
             train_idx = (train_idx.int() + valid_idx.int()).bool()
-            epoch_loop(train_idx, test_idx, dataset_info, args, additional_info,mode="Test")
+            epoch_loop(train_idx, test_idx, dataset_info, args, additional_info,mode="Test",config=config)
 def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid",fold=""):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into pre-trained model...")

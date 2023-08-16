@@ -64,9 +64,9 @@ class Attention2(nn.Module):
         self.temperature = self.hidden_dim ** 0.5
         self.dropout = nn.Dropout(attn_dropout)
         #self.attention = nn.Linear(3 * self.hidden_dim, self.hidden_dim)
-        self.weight_q = nn.Parameter(torch.randn((self.hidden_dim + self.z_dim, self.hidden_dim)), requires_grad=True).to(self.device)
-        self.weight_k = nn.Parameter(torch.randn((self.hidden_dim + self.z_dim, self.hidden_dim)), requires_grad=True).to(self.device)
-        self.weight_v = nn.Parameter(torch.randn((self.hidden_dim + self.z_dim, self.hidden_dim)), requires_grad=True).to(self.device)
+        self.weight_q = nn.Parameter(torch.randn((self.hidden_dim + self.z_dim, self.hidden_dim)), requires_grad=True).to(device=self.device)
+        self.weight_k = nn.Parameter(torch.randn((self.hidden_dim + self.z_dim, self.hidden_dim)), requires_grad=True).to(device=self.device)
+        self.weight_v = nn.Parameter(torch.randn((self.hidden_dim + self.z_dim, self.hidden_dim)), requires_grad=True).to(device=self.device)
         self.v = nn.Linear(hidden_dim, 1, bias=False)
 
     def forward(self, encoder_hidden_state,decoder_hidden_state, latent_z_seq, mask=None):
@@ -110,9 +110,9 @@ class Attention3(nn.Module):
         self.temperature = self.hidden_dim ** 0.5
         self.dropout = nn.Dropout(attn_dropout)
         #self.attention = nn.Linear(3 * self.hidden_dim, self.hidden_dim)
-        self.weight_q = nn.Parameter(torch.randn((self.hidden_dim, self.hidden_dim)), requires_grad=True).to(self.device)
-        self.weight_k = nn.Parameter(torch.randn((self.hidden_dim, self.hidden_dim)), requires_grad=True).to(self.device)
-        self.weight_v = nn.Parameter(torch.randn((self.z_dim, self.z_dim)), requires_grad=True).to(self.device)
+        self.weight_q = nn.Parameter(torch.randn((self.hidden_dim, self.hidden_dim)), requires_grad=True).to(device=self.device)
+        self.weight_k = nn.Parameter(torch.randn((self.hidden_dim, self.hidden_dim)), requires_grad=True).to(device=self.device)
+        self.weight_v = nn.Parameter(torch.randn((self.z_dim, self.z_dim)), requires_grad=True).to(device=self.device)
         #self.v = nn.Linear(hidden_dim, 1, bias=False)
 
     def forward(self, encoder_rnn_out,decoder_rnn_out, latent_z_seq, mask=None):
@@ -160,9 +160,9 @@ class Attention4(nn.Module):
         self.temperature = self.gru_hidden_dim ** 0.5
         self.dropout = nn.Dropout(attn_dropout)
         #self.attention = nn.Linear(3 * self.hidden_dim, self.hidden_dim)
-        self.weight_q = nn.Parameter(torch.randn((self.gru_hidden_dim, self.gru_hidden_dim)), requires_grad=True).to(self.device)
-        self.weight_k = nn.Parameter(torch.randn((self.gru_hidden_dim, self.gru_hidden_dim)), requires_grad=True).to(self.device)
-        self.weight_v = nn.Parameter(torch.randn((self.z_dim, self.z_dim)), requires_grad=True).to(self.device)
+        self.weight_q = nn.Parameter(torch.randn((self.gru_hidden_dim, self.gru_hidden_dim)), requires_grad=True).to(device=self.device)
+        self.weight_k = nn.Parameter(torch.randn((self.gru_hidden_dim, self.gru_hidden_dim)), requires_grad=True).to(device=self.device)
+        self.weight_v = nn.Parameter(torch.randn((self.z_dim, self.z_dim)), requires_grad=True).to(device=self.device)
 
     def forward(self, encoder_rnn_hidden_states,encoder_final_hidden_state, latent_z_seq, mask=None,guide_estimates=None):
         src_len = latent_z_seq.shape[1]
@@ -210,13 +210,14 @@ class Attention5(nn.Module):
         self.temperature = self.gru_hidden_dim ** 0.5
         self.dropout = nn.Dropout(attn_dropout)
         #self.attention = nn.Linear(3 * self.hidden_dim, self.hidden_dim)
-        self.weight_q = nn.Parameter(torch.randn((self.gru_hidden_dim, self.gru_hidden_dim)), requires_grad=True).to(self.device)
-        self.weight_k = nn.Parameter(torch.randn((self.gru_hidden_dim, self.gru_hidden_dim)), requires_grad=True).to(self.device)
-        self.weight_v = nn.Parameter(torch.randn((self.z_dim, self.z_dim)), requires_grad=True).to(self.device)
+        self.weight_q = nn.Parameter(torch.randn((self.gru_hidden_dim, self.gru_hidden_dim)), requires_grad=True).to(device=self.device)
+        self.weight_k = nn.Parameter(torch.randn((self.gru_hidden_dim, self.gru_hidden_dim)), requires_grad=True).to(device=self.device)
+        self.weight_v = nn.Parameter(torch.randn((self.z_dim, self.z_dim)), requires_grad=True).to(device=self.device)
 
     def forward(self, encoder_hidden_states,decoder_hidden_states,decoder_final_hidden_state,latent_z_seq, mask=None):
         src_len = latent_z_seq.shape[1]
         #decoder_final_hidden_state = decoder_final_hidden_state.unsqueeze(1).repeat(1, src_len, 1)   # repeat decoder final hidden state src_len times
+
         k = torch.matmul(encoder_hidden_states,self.weight_k)
         q = torch.matmul(decoder_hidden_states,self.weight_q)
         v = torch.matmul(latent_z_seq,self.weight_v)
@@ -250,7 +251,7 @@ class Init_Hidden(nn.Module):
     def forward(self,input):
         output = self.fc1(input)
         if output.shape[0] > 1:
-            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+            output = nn.BatchNorm1d(output.size()[1]).to(device=self.device)(output)
         output = self.leakyrelu(output)
         return output
 
@@ -268,11 +269,11 @@ class MLP(nn.Module):
 
         output = self.fc1(input)
         if output.shape[0] > 1:
-            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+            output = nn.BatchNorm1d(output.size()[1]).to(device=self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc2(output)
         if output.shape[0] > 1:
-            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+            output = nn.BatchNorm1d(output.size()[1]).to(device=self.device)(output)
         output = self.leakyrelu(output)
         return output
 
@@ -294,15 +295,15 @@ class FCL1(nn.Module):
 
         output = self.fc1(input)
         if output.shape[0] > 1:
-            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+            output = nn.BatchNorm1d(output.size()[1]).to(device=self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc2(output)
         if output.shape[0] > 1:
-            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+            output = nn.BatchNorm1d(output.size()[1]).to(device=self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc3(output)
         if output.shape[0] > 1:
-            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+            output = nn.BatchNorm1d(output.size()[1]).to(device=self.device)(output)
         output = self.leakyrelu(output)
         output = self.logsoftmax(output)
         return output
@@ -324,11 +325,11 @@ class FCL2(nn.Module):
 
         output = self.fc1(input)
         if output.shape[0] > 1:
-            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+            output = nn.BatchNorm1d(output.size()[1]).to(device=self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc2(output)
         if output.shape[0] > 1:
-            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+            output = nn.BatchNorm1d(output.size()[1]).to(device=self.device)(output)
         # U, S, VT = torch.linalg.svd(output)
         # output = output @ VT
         output = self.leakyrelu(output)
@@ -351,11 +352,11 @@ class FCL3(nn.Module):
 
         output = self.fc1(input)
         if output.shape[0] > 1:
-            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+            output = nn.BatchNorm1d(output.size()[1]).to(device=self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc2(output)
         if output.shape[0] > 1:
-            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+            output = nn.BatchNorm1d(output.size()[1]).to(device=self.device)(output)
         output = self.leakyrelu(output)
         return output
 
@@ -688,7 +689,7 @@ class RNN_model4(nn.Module):
         self.max_len = max_len
         self.aa_types = aa_types
         #self.embedding = nn.Linear(self.aa_types,self.aa_types)
-        self.attention = Attention3(self.gru_hidden_dim,self.z_dim,self.device)
+        self.attention = Attention3(self.gru_hidden_dim,self.z_dim,self.device).to(device=self.device)
         self.num_layers = 1
         self.rnn = nn.GRU(input_size=self.input_dim,
                           hidden_size=self.gru_hidden_dim,
@@ -765,7 +766,7 @@ class RNN_model5(nn.Module):
                           dropout=0.,
                           bidirectional=self.bidirectional
                           )
-        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
+        self.bnn = nn.BatchNorm1d(self.max_len).to(device=self.device)
         self.softplus = nn.Softplus()
         self.h = self.gru_hidden_dim
         self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
@@ -796,8 +797,10 @@ class RNN_model5(nn.Module):
         z_attn_weighted, attn_weights = self.attention(encoder_hidden_states,encoder_final_hidden, z, mask,guide_estimates)
         assert not torch.isnan(z_attn_weighted).any(), "found nan in z_attn_weighted"
         rnn_input = z_attn_weighted
+        #rnn_input_packed = torch.nn.utils.rnn.pack_padded_sequence(rnn_input,x_lens.cpu(),batch_first=True,enforce_sorted=False)
         rnn_input_packed = torch.nn.utils.rnn.pack_padded_sequence(rnn_input,x_lens.cpu(),batch_first=True,enforce_sorted=False)
         #init_z = self.init_hidden(z[:,0]).expand(self.num_layers * 2, x.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
+
         packed_decoder_hidden_states, decoder_final_hidden = self.rnn(rnn_input_packed,encoder_rnn_hidden)
         decoder_hidden_states, seq_sizes = torch.nn.utils.rnn.pad_packed_sequence(packed_decoder_hidden_states, batch_first=True,total_length=self.max_len)
         #rnn_input = torch.cat((x_attn_weighted, x_embedded), dim=2)
@@ -835,7 +838,7 @@ class RNN_model6(nn.Module):
         self.gru_hidden_dim = gru_hidden_dim
         self.max_len = max_len
         self.aa_types = aa_types
-        self.attention = Attention5(self.gru_hidden_dim,self.z_dim,self.device)
+        self.attention = Attention5(self.gru_hidden_dim,self.z_dim,self.device).to(device=self.device)
         self.num_layers = 1
         self.bidirectional = True
         self.rnn = nn.GRU(input_size=self.input_dim,
@@ -844,13 +847,13 @@ class RNN_model6(nn.Module):
                           num_layers=self.num_layers,
                           dropout=0.,
                           bidirectional=self.bidirectional
-                          )
-        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
+                          ).to(device=self.device)
+        self.bnn = nn.BatchNorm1d(self.max_len).to(device=self.device)
         self.softplus = nn.Softplus()
         self.h = self.z_dim + self.gru_hidden_dim
-        self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
-        self.fc2 = nn.Linear(int(self.h/2),int(self.h/4),bias=False)
-        self.fc3 = nn.Linear(int(self.h/4),self.aa_types,bias=False)
+        self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False).to(device=self.device)
+        self.fc2 = nn.Linear(int(self.h/2),int(self.h/4),bias=False).to(device=self.device)
+        self.fc3 = nn.Linear(int(self.h/4),self.aa_types,bias=False).to(device=self.device)
         self.dropout = nn.Dropout(0.2)
 
     def forward(self,x,x_lens,init_h_0_decoder,z=None,mask=None,guide_estimates=None):
@@ -860,22 +863,22 @@ class RNN_model6(nn.Module):
         """
 
         if isinstance(guide_estimates, dict):
-            encoder_final_hidden = guide_estimates["rnn_final_hidden"]
-            encoder_hidden_states_bidirectional = guide_estimates["rnn_hidden_states_bidirectional"]
-            encoder_hidden_states = guide_estimates["rnn_hidden_states"]
-            encoder_rnn_hidden = guide_estimates["rnn_hidden"]
+            encoder_final_hidden = guide_estimates["rnn_final_hidden"].to(device=self.device)
+            encoder_hidden_states_bidirectional = guide_estimates["rnn_hidden_states_bidirectional"].to(device=self.device)
+            encoder_hidden_states = guide_estimates["rnn_hidden_states"].to(device=self.device)
+            encoder_rnn_hidden = guide_estimates["rnn_hidden"].to(device=self.device)
         else:
             #print("NO guide estimates")
-            encoder_rnn_hidden = init_h_0_decoder #TODO: pick only one direction? and sort of predict backwards?
-            encoder_final_hidden =torch.ones((x.shape[0],self.gru_hidden_dim))
-            encoder_hidden_states_bidirectional = torch.ones((x.shape[0],2,self.max_len,self.gru_hidden_dim))
-            encoder_hidden_states = torch.ones((x.shape[0],x.shape[1],self.gru_hidden_dim))
+            encoder_rnn_hidden = init_h_0_decoder.to(device=self.device) #TODO: pick only one direction? and sort of predict backwards?
+            encoder_final_hidden =torch.ones((x.shape[0],self.gru_hidden_dim)).to(device=self.device)
+            encoder_hidden_states_bidirectional = torch.ones((x.shape[0],2,self.max_len,self.gru_hidden_dim)).to(device=self.device)
+            encoder_hidden_states = torch.ones((x.shape[0],x.shape[1],self.gru_hidden_dim)).to(device=self.device)
         #x_reverse = ReverseSequence(x,x_lens).run()
         #x_embedded = self.dropout(self.embedding(x_reverse))
         assert not torch.isnan(encoder_rnn_hidden).any(), "found nan in init_h_0"
         assert not torch.isnan(z).any(), "found nan in latent space"
 
-        rnn_input_packed = torch.nn.utils.rnn.pack_padded_sequence(z,x_lens.cpu(),batch_first=True,enforce_sorted=False)
+        rnn_input_packed = torch.nn.utils.rnn.pack_padded_sequence(z,x_lens.cpu(),batch_first=True,enforce_sorted=False).to(device=self.device)
         packed_decoder_hidden_states, decoder_final_hidden = self.rnn(rnn_input_packed,encoder_rnn_hidden)
         decoder_hidden_states, seq_sizes = torch.nn.utils.rnn.pad_packed_sequence(packed_decoder_hidden_states, batch_first=True,total_length=self.max_len)
         seq_idx = torch.arange(seq_sizes.shape[0])
@@ -921,7 +924,7 @@ class RNN_model7(nn.Module):
         self.gru_hidden_dim = gru_hidden_dim
         self.max_len = max_len
         self.aa_types = aa_types
-        self.attention = Attention5(self.gru_hidden_dim,self.z_dim,self.device)
+        self.attention = Attention5(self.gru_hidden_dim,self.z_dim,self.device).to(device=self.device)
         self.num_layers = 1
         self.bidirectional = True
         self.rnn = nn.GRU(input_size=self.input_dim,
@@ -930,8 +933,8 @@ class RNN_model7(nn.Module):
                           num_layers=self.num_layers,
                           dropout=0.,
                           bidirectional=self.bidirectional
-                          )
-        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
+                          ).to(device=self.device)
+        self.bnn = nn.BatchNorm1d(self.max_len).to(device=self.device)
         self.softplus = nn.Softplus()
         self.h = self.z_dim + self.gru_hidden_dim
         self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
@@ -947,24 +950,25 @@ class RNN_model7(nn.Module):
 
         if isinstance(guide_estimates, dict):
             #print("WITH guide estimates")
-            encoder_final_hidden = guide_estimates["rnn_final_hidden"]
-            encoder_final_hidden_bidirectional = guide_estimates["rnn_final_hidden_bidirectional"]
-            encoder_hidden_states_bidirectional = guide_estimates["rnn_hidden_states_bidirectional"]
-            encoder_hidden_states = guide_estimates["rnn_hidden_states"]
-            encoder_rnn_hidden = guide_estimates["rnn_hidden"]
+            encoder_final_hidden = guide_estimates["rnn_final_hidden"].to(device=self.device)
+            encoder_final_hidden_bidirectional = guide_estimates["rnn_final_hidden_bidirectional"].to(device=self.device)
+            encoder_hidden_states_bidirectional = guide_estimates["rnn_hidden_states_bidirectional"].to(device=self.device)
+            encoder_hidden_states = guide_estimates["rnn_hidden_states"].to(device=self.device)
+            encoder_rnn_hidden = guide_estimates["rnn_hidden"].to(device=self.device)
         else:
             #print("NO guide estimates")
-            encoder_rnn_hidden = init_h_0_decoder #TODO: pick only one direction? and sort of predict backwards?
-            encoder_final_hidden =torch.ones((x.shape[0],self.gru_hidden_dim))
-            encoder_final_hidden_bidirectional = init_h_0_decoder
-            encoder_hidden_states_bidirectional = torch.ones((x.shape[0],2,self.max_len,self.gru_hidden_dim))
-            encoder_hidden_states = torch.ones((x.shape[0],x.shape[1],self.gru_hidden_dim))
+            encoder_rnn_hidden = init_h_0_decoder.to(device=self.device) #TODO: pick only one direction? and sort of predict backwards?
+            encoder_final_hidden =torch.ones((x.shape[0],self.gru_hidden_dim)).to(device=self.device)
+            encoder_final_hidden_bidirectional = init_h_0_decoder.to(device=self.device)
+            encoder_hidden_states_bidirectional = torch.ones((x.shape[0],2,self.max_len,self.gru_hidden_dim)).to(device=self.device)
+            encoder_hidden_states = torch.ones((x.shape[0],x.shape[1],self.gru_hidden_dim)).to(device=self.device)
         #x_reverse = ReverseSequence(x,x_lens).run()
         #x_embedded = self.dropout(self.embedding(x_reverse))
         assert not torch.isnan(encoder_rnn_hidden).any(), "found nan in init_h_0"
         assert not torch.isnan(z).any(), "found nan in latent space"
 
-        rnn_input_packed = torch.nn.utils.rnn.pack_padded_sequence(z,x_lens.cpu(),batch_first=True,enforce_sorted=False)
+        rnn_input_packed = torch.nn.utils.rnn.pack_padded_sequence(z,x_lens.cpu(),batch_first=True,enforce_sorted=False).to(device=self.device)
+        #rnn_input_packed = torch.nn.utils.rnn.pack_padded_sequence(z,x_lens,batch_first=True,enforce_sorted=False)
 
         packed_decoder_hidden_states, decoder_final_hidden = self.rnn(rnn_input_packed,encoder_rnn_hidden) #Highlight: I switched encoder_final_hidden_bidir to encoder_rnn_hidden
         decoder_hidden_states, seq_sizes = torch.nn.utils.rnn.pad_packed_sequence(packed_decoder_hidden_states, batch_first=True,total_length=self.max_len)
@@ -1008,7 +1012,7 @@ class RNN_guide1a(nn.Module):
                           dropout=0.,
                           bidirectional=self.bidirectional
                           )
-        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
+        self.bnn = nn.BatchNorm1d(self.max_len).to(device=self.device)
         self.softplus = nn.Softplus()
         self.h = self.gru_hidden_dim
         self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
@@ -1048,13 +1052,13 @@ class RNN_guide1b(nn.Module):
                           num_layers=self.num_layers,
                           dropout=0.,
                           bidirectional=self.bidirectional
-                          )
-        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
+                          ).to(self.device)
+        self.bnn = nn.BatchNorm1d(self.max_len).to(device=self.device)
         self.softplus = nn.Softplus()
         self.h = self.gru_hidden_dim
-        self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
-        self.fc2a = nn.Linear(int(self.h/2),self.z_dim,bias=False)
-        self.fc2b = nn.Linear(int(self.h/2),self.z_dim,bias=False)
+        self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False).to(device=self.device)
+        self.fc2a = nn.Linear(int(self.h/2),self.z_dim,bias=False).to(device=self.device)
+        self.fc2b = nn.Linear(int(self.h/2),self.z_dim,bias=False).to(device=self.device)
 
 
     def forward(self,input,input_lens,init_h_0):
@@ -1073,9 +1077,10 @@ class RNN_guide1b(nn.Module):
         return z_mean,z_scale,rnn_hidden_states,rnn_hidden,rnn_final_hidden_state,None
 
 class RNN_guide2(nn.Module):
-    def __init__(self,input_dim,max_len,gru_hidden_dim,z_dim,device):
+    def __init__(self,input_dim,max_len,gru_hidden_dim,z_dim,device,tensor_type):
         super(RNN_guide2, self).__init__()
         self.device = device
+        self.tensor_type = tensor_type
         self.input_dim = input_dim
         self.z_dim = z_dim
         self.gru_hidden_dim = gru_hidden_dim
@@ -1088,20 +1093,21 @@ class RNN_guide2(nn.Module):
                           num_layers=self.num_layers,
                           dropout=0.,
                           bidirectional=self.bidirectional
-                          )
-        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
+                          ).to(device=self.device,dtype=torch.float64)
+        self.bnn = nn.BatchNorm1d(self.max_len).to(device=self.device)
         self.softplus = nn.Softplus()
         self.h = self.gru_hidden_dim
-        self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False)
-        self.fc2a = nn.Linear(int(self.h/2),self.z_dim,bias=False)
-        self.fc2b = nn.Linear(int(self.h/2),self.z_dim,bias=False)
+        self.fc1 = nn.Linear(self.h,int(self.h/2),bias=False).to(device=self.device)
+        self.fc2a = nn.Linear(int(self.h/2),self.z_dim,bias=False).to(device=self.device)
+        self.fc2b = nn.Linear(int(self.h/2),self.z_dim,bias=False).to(device=self.device)
 
 
     def forward(self,input,input_lens,init_h_0):
         "Bidirectional GRU with pack and padded sequences"
         #input = ReverseSequence(input,input_lens).run()
 
-        input_packed = torch.nn.utils.rnn.pack_padded_sequence(input,input_lens.cpu(),batch_first=True,enforce_sorted=False)
+        input_packed = torch.nn.utils.rnn.pack_padded_sequence(input,input_lens.cpu(),batch_first=True,enforce_sorted=False).to(device=self.device)
+
         packed_output, rnn_hidden = self.rnn1(input_packed,init_h_0)
         rnn_hidden_states, seq_sizes = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
         seq_idx = torch.arange(seq_sizes.shape[0])
@@ -1141,7 +1147,7 @@ class RNN_classifier(nn.Module):
                           dropout=0.,
                           bidirectional=True
                           )
-        self.bnn = nn.BatchNorm1d(self.max_len).to(self.device)
+        self.bnn = nn.BatchNorm1d(self.max_len).to(device=self.device)
         self.softplus = nn.Softplus()
         self.leakyrelu = nn.LeakyReLU()
         self.h = self.max_len*self.gru_hidden_dim
@@ -1402,7 +1408,7 @@ class NNAlign(nn.Module):
         #output = output.mean(1) #Highlight: Mask does not seem to be necessary in the second round, since the "padded kmers" have been excluded on the first average
         output = output.flatten(start_dim=1)
         if output.shape[0] > 1:
-            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+            output = nn.BatchNorm1d(output.size()[1]).to(device=self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc1(output)
         output = self.leakyrelu(output)
@@ -1420,7 +1426,7 @@ class NNAlign2(nn.Module):
         self.device = device
         self.max_len = max_len
         self.ksize = 4
-        self.weight = nn.Parameter(torch.DoubleTensor(self.input_dim,self.hidden_dim),requires_grad=True).to(device)
+        self.weight = nn.Parameter(torch.DoubleTensor(self.input_dim,self.hidden_dim),requires_grad=True).to(device=self.device)
         self.bias = nn.Parameter(torch.FloatTensor(self.hidden_dim,), requires_grad=True).to(device)
         #self.bias = torch.nn.init.kaiming_normal_(bias.data, nonlinearity='leaky_relu') #if you we do this we cannot
         self.fc1 = nn.Linear(self.hidden_dim*self.ksize,int(self.hidden_dim/2))
@@ -1463,7 +1469,7 @@ class NNAlign2(nn.Module):
         #output = output.mean(1) #Highlight: Mask does not seem to be necessary in the second round, since the "padded kmers" have been excluded on the first average
         output = output.flatten(start_dim=2)
         if output.shape[0] > 1:
-            output = nn.BatchNorm1d(output.size()[1]).to(self.device)(output)
+            output = nn.BatchNorm1d(output.size()[1]).to(device=self.device)(output)
         output = self.leakyrelu(output)
         output = self.fc1(output)
         output = self.leakyrelu(output)
