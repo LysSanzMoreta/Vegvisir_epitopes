@@ -172,7 +172,8 @@ def analysis_models():
                                                     "random-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_18h00min16s910930ms_60epochs_supervised_Icore_blosum_random_TESTING_9mers",
                                                     "shuffled-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_18h59min48s556463ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
                                                     "shuffled-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_20h35min30s186381ms_60epochs_supervised_Icore_blosum_shuffled_TESTING_9mers",
-                                                    "raw-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_13_22h08min17s858639ms_60epochs_supervised_Icore_blosum_TESTING_lk80",
+                                                    #"raw-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_13_22h08min17s858639ms_60epochs_supervised_Icore_blosum_TESTING_lk80",
+                                                    "raw-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_21h41min01s940264ms_60epochs_supervised_Icore_blosum_TESTING",
                                                     "raw-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_23h20min57s783599ms_60epochs_supervised_Icore_blosum_TESTING_9mers",
                                                      "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_15_00h27min33s253377ms_60epochs_supervised_Icore_onehot_TESTING",
                                                      "raw-onehot-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_15_02h04min06s395090ms_60epochs_supervised_Icore_onehot_TESTING_9mers"
@@ -210,12 +211,54 @@ def analysis_models():
                                          }}
 
 
+    #Highlight: Likelihood 60:
+
+    dict_results_predefined_partitions_60 = {"Icore":{
+                                                    "random-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_15_23h23min22s794823ms_60epochs_supervised_Icore_blosum_random_TESTING",
+                                                    "random-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_01h10min32s340159ms_60epochs_supervised_Icore_blosum_random_TESTING_9mers",
+                                                    "shuffled-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_02h23min08s887505ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
+                                                    "shuffled-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_03h46min01s482802ms_60epochs_supervised_Icore_blosum_shuffled_TESTING_9mers",
+                                                    "raw-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_04h43min52s657889ms_60epochs_supervised_Icore_blosum_TESTING",
+                                                    "raw-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_06h06min06s120049ms_60epochs_supervised_Icore_blosum_TESTING_9mers",
+                                                     "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_07h15min00s364188ms_60epochs_supervised_Icore_onehot_TESTING",
+                                                     "raw-onehot-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_08h42min55s171815ms_60epochs_supervised_Icore_onehot_TESTING_9mers"
+                                                   },
+                                         "Icore_non_anchor":{
+                                                     "random-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_16_15h34min52s686599ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING",
+                                                     "random-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_16_17h55min59s277441ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING_8mers",
+                                                     "shuffled-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_16_18h36min54s466004ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING",
+                                                     "shuffled-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_16_22h24min27s815811ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING_8mers",
+                                                     "raw-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_16_23h00min36s001099ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING",
+                                                     "raw-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_17_00h34min23s937002ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING_8mers",
+                                                     "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_17_01h10min24s412028ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING",
+                                                     "raw-onehot-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_17_02h38min57s577222ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING_8mers"
+                                         }}
+
+    dict_results_random_stratified_partitions_60 = {"Icore":{
+                                                    "random-blosum-variable-length":"",
+                                                    "random-blosum-9mers":"",
+                                                    "shuffled-blosum-variable-length":"",
+                                                    "shuffled-blosum-9mers":"",
+                                                    "raw-blosum-variable-length":"",
+                                                    "raw-blosum-9mers":"",
+                                                     "raw-onehot-variable-length":"",
+                                                     "raw-onehot-9mers":""
+                                                   },
+                                         "Icore_non_anchor":{
+                                                     "random-blosum-variable-length": "",
+                                                     "random-blosum-8mers": "",
+                                                     "shuffled-blosum-variable-length": "",
+                                                     "shuffled-blosum-8mers": "",
+                                                     "raw-blosum-variable-length": "",
+                                                     "raw-blosum-8mers": "",
+                                                     "raw-onehot-variable-length":"",
+                                                     "raw-onehot-8mers":""
+                                         }}
 
 
     #VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_likelihood,kfolds=5,results_folder = "Benchmark/Plots",title="likelihood_tuning",overwrite=False)
 
-
-
+    #VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_60,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_likelihood_60",overwrite=False)
 
     # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_100,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_likelihood_100",overwrite=False)
     # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_random_stratified_partitions_100,kfolds=5,results_folder = "Benchmark/Plots",title="random_stratified_partitions_likelihood_100",overwrite=False)
@@ -226,10 +269,10 @@ def analysis_models():
 
     # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_80,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_likelihood_80",overwrite=False)
     # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_random_stratified_partitions_80,kfolds=5,results_folder = "Benchmark/Plots",title="random_stratified_partitions_likelihood_80",overwrite=False)
-
+    #
     # VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_80,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_likelihood_80",overwrite_correlations=False,overwrite_all=False)
     # VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_random_stratified_partitions_80,kfolds=5,results_folder="Benchmark/Plots",subtitle="random_stratified_partitions_likelihood_80",overwrite_correlations=False,overwrite_all=False)
-
+    #
 
 
     exit()
@@ -240,9 +283,16 @@ def analysis_models():
     }
 
 
-    VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,folder="Benchmark")
+    VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,folder="Benchmark/Plots")
 
 
+def hierarchical_clustering():
+
+    vegvisir_folder = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_21h41min01s940264ms_60epochs_supervised_Icore_blosum_TESTING"
+
+    embedded_epitopes = "{}/vegvisir/src/vegvisir/data/viral_dataset9/similarities/Icore/All/diff_allele/diff_len/neighbours1/all/EMBEDDED_epitopes.tsv".format(script_dir)
+
+    VegvisirPlots.plot_hierarchical_clustering(vegvisir_folder, embedded_epitopes,folder="/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
@@ -406,6 +456,7 @@ if __name__ == "__main__":
     if args.train:
         main()
     else:
-        analysis_models()
+        #analysis_models()
+        hierarchical_clustering()
 
 

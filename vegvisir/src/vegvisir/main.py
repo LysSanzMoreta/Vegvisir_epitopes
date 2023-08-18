@@ -23,20 +23,20 @@ AdditionalInfo = namedtuple("AdditionalInfo",["results_dir"])
 
 
 def hyperparameter_optimization(dataset_info,additional_info,args):
-    """Initiates Hyperparameter search with Ray-tune"""
-    num_samples = 1
-    max_num_epochs = 30
-    gpus_per_trial = 1
+    """Initiates Hyperparameter search with Ray-tune
+    Notes:
+        -Adam parameters: https://www.kdnuggets.com/2022/12/tuning-adam-optimizer-parameters-pytorch.html
+    """
 
     config1 = {
         "lr":tune.choice([1e-4,1e-3,1e-2]),
-        "beta1": tune.randn(0.95,0.05),
-        "beta2": tune.randn(0.999,0.001),
-        "eps": tune.choice([1e-8, 1e-7,1e-6]),
-        "weight_decay": tune.randn(0,0.05),
-        "clip_norm":tune.randn(10,2),
-        "lrd":tune.randn(1,2),
-        "z_dim":tune.choice([2*i for i in range(20)]),
+        "beta1": tune.choice([0.9,0.91,0.92,0.93,0.94]),
+        "beta2": tune.choice([0.999,0.9999]),
+        "eps": tune.choice([1e-8]), #not tuning parameter, avoids division by 0
+        "weight_decay": tune.choice([0]),
+        "clip_norm":tune.choice([10]), #not used with pyro
+        "lrd":tune.choice([1]),
+        "z_dim":tune.choice([2*i for i in range(1,20)]),
         "gru_hidden_dim":tune.choice(np.arange(50,90,10)),
         "momentum":tune.randn(0.9,0.1)
     }
@@ -44,6 +44,7 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
         "encoding":tune.choice(["blosum","onehot"]),
         "likelihood_scale":tune.choice(np.arange(40,100,10)),
         "num_epochs":tune.choice([2]),
+        "num_samples":tune.choice([30,40,50]),
         "hidden_dim":tune.choice(np.arange(20,45,10)),
         }
 
@@ -53,6 +54,8 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
     args_dict = {**args_dict,**config2}
     args = Namespace(**args_dict)
 
+    num_ray_samples = 5
+    max_num_epochs = 30
     scheduler = ASHAScheduler(
         metric="valid_loss",
         mode="min",
@@ -60,7 +63,6 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
         grace_period=1,
         reduction_factor=2,
     )
-
 
 
     ray.init(runtime_env={"working_dir": "{}/vegvisir/src".format(dataset_info.script_dir),'excludes':["/vegvisir/data/"]})
@@ -71,33 +73,24 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
         tune.with_parameters(VegvisirTrainSVI.train_model, dataset_info=dataset_info,additional_info=additional_info,args=args),
         resources_per_trial={"cpu":30,"gpu":1,"accelerator_type:RTX":1},
         config={**config1,**config2},
-        num_samples=num_samples,
+        num_samples=num_ray_samples,
         scheduler=scheduler,
         max_failures=0,
-        stop={}
+        stop={}, #stop if some criteria in the metrics is met
+        fail_fast=True
     )
 
     print(result)
     best_trial = result.get_best_trial("valid_loss", "min", "last")
     print(f"Best trial config: {best_trial.config}")
-    print(f"Best trial final validation loss: {best_trial.last_result['loss']}")
-    print(f"Best trial final validation accuracy: {best_trial.last_result['accuracy']}")
+    print(f"Best trial final validation loss: {best_trial.last_result['valid_loss']}")
+    print(f"Best trial final validation ROC AUC: {best_trial.last_result['ROC_AUC_valid']}")
 
-    # best_trained_model = Net(best_trial.config["l1"], best_trial.config["l2"])
-    # device = "cpu"
-    # if torch.cuda.is_available():
-    #     device = "cuda:0"
-    #     if gpus_per_trial > 1:
-    #         best_trained_model = nn.DataParallel(best_trained_model)
-    # best_trained_model.to(device)
-    #
-    # best_checkpoint = best_trial.checkpoint.to_air_checkpoint()
-    # best_checkpoint_data = best_checkpoint.to_dict()
-    #
-    # best_trained_model.load_state_dict(best_checkpoint_data["net_state_dict"])
-    #
-    # test_acc = test_accuracy(best_trained_model, device)
-    # print("Best trial test set accuracy: {}".format(test_acc))
+    best_trial = result.get_best_trial("ROC_AUC_valid", "min", "last")
+    print(f"Best trial config: {best_trial.config}")
+    print(f"Best trial final validation loss: {best_trial.last_result['valid_loss']}")
+    print(f"Best trial final validation ROC AUC: {best_trial.last_result['ROC_AUC_valid']}")
+
 
 
 def run(dataset_info,results_dir,args):

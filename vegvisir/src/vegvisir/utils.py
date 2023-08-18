@@ -24,7 +24,7 @@ from scipy import stats
 from joblib import Parallel, delayed
 import multiprocessing
 from collections import namedtuple
-PeptideFeatures = namedtuple("PeptideFeatures",["hydrophobicity_dict","volume_dict","radius_dict","side_chain_pka_dict","isoelectric_dict","bulkiness_dict"])
+PeptideFeatures = namedtuple("PeptideFeatures",["gravy_dict","volume_dict","radius_dict","side_chain_pka_dict","isoelectric_dict","bulkiness_dict"])
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 def str2bool(v):
     """Converts a string into a boolean, useful for boolean arguments
@@ -96,6 +96,7 @@ def aminoacid_names_dict(aa_types,zero_characters = []):
     :param int aa_types: amino acid probabilities, this number correlates to the number of different aa types in the input alignment
     :param list zero_characters: character(s) to be set to 0
     """
+    #TODO: Can be improved, no need to assign R to 0
     if aa_types == 20 :
         assert len(zero_characters) == 0, "No zero characters allowed, please set zero_characters to empty list"
         aminoacid_names = {"R":0,"H":1,"K":2,"D":3,"E":4,"S":5,"T":6,"N":7,"Q":8,"C":9,"G":10,"P":11,"A":12,"V":13,"I":14,"L":15,"M":16,"F":17,"Y":18,"W":19}
@@ -1147,7 +1148,7 @@ class CalculatePeptideFeatures(object):
         self.list_sequences = list_sequences
         self.corrected_aa_types = len(set().union(*self.list_sequences))
         self.aminoacids_list = aminoacid_names_dict(self.corrected_aa_types)
-        self.gravy_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["gravy_index"].values.tolist()))
+        self.gravy_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["Hydropathy_index"].values.tolist()))
         self.volume_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["Volume(A3)"].values.tolist()))
         self.radius_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["Radius"].values.tolist()))
         self.side_chain_pka_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["side_chain_pka"].values.tolist()))
@@ -1189,9 +1190,9 @@ class CalculatePeptideFeatures(object):
         side_chain_pka = sum(list( map(lambda aa: self.side_chain_pka_dict[aa], list(seq))) + pads)/len(seq)
         aromaticity = calculate_aromaticity(seq)
         extintion_coefficient_reduced,extintion_coefficient_cystines = calculate_extintioncoefficient(seq)
-        aminoacid_frequencies = list(map(lambda aa,seq: seq.count(aa)/len(seq),self.aminoacids_list,[seq]*len(self.aminoacids_list)))
-        aminoacid_frequencies_dict = dict(zip(self.aminoacids_list,aminoacid_frequencies))
-        return molecular_weight,volume,radius,bulkiness,isoelectric,gravy,side_chain_pka,aromaticity,extintion_coefficient_reduced,extintion_coefficient_cystines,aminoacid_frequencies_dict
+        #aminoacid_frequencies = list(map(lambda aa,seq: seq.count(aa)/len(seq),self.aminoacids_list,[seq]*len(self.aminoacids_list)))
+        #aminoacid_frequencies_dict = dict(zip(self.aminoacids_list,aminoacid_frequencies))
+        return molecular_weight,volume,radius,bulkiness,isoelectric,gravy,side_chain_pka,aromaticity,extintion_coefficient_reduced,extintion_coefficient_cystines#,aminoacid_frequencies_dict
 
     def calculate_aminoacid_frequencies(self,seq,seq_max_len):
 
@@ -1200,7 +1201,6 @@ class CalculatePeptideFeatures(object):
         aminoacid_frequencies_dict = dict(zip(self.aminoacids_list,aminoacid_frequencies))
 
         return aminoacid_frequencies_dict
-
 
     def volumetrics_summary(self):
 
@@ -1218,7 +1218,6 @@ class CalculatePeptideFeatures(object):
                                 "bulkiness":None}
 
         return volumetrics_dict
-
 
     def features_summary(self):
 
@@ -1260,6 +1259,14 @@ class CalculatePeptideFeatures(object):
             return aminoacid_frequencies_dict
         else:
             raise ValueError("sequences list is empty")
+
+    def aminoacid_embedding(self):
+        if self.list_sequences:
+            results = list(map(lambda seq: self.calculate_features(seq,self.seq_max_len), self.list_sequences))
+            return results
+
+        else:
+            return None
 
 
 
@@ -1321,7 +1328,7 @@ def calculate_correlations(feat1,feat2,method="pearson"):
     return result
 
 
-#TODO: Put into plots_utils, however right now it is annoying to change the structure because of dill
+#TODO: Put into new plots_utils.py, however right now it is annoying to change the structure because of dill
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import seaborn as sns;sns.set()
@@ -1336,6 +1343,13 @@ class SeabornFig2Grid():
             self._movegrid()
         elif isinstance(self.sg, sns.axisgrid.JointGrid):
             self._movejointgrid()
+        elif isinstance(self.sg, sns.matrix.ClusterGrid):#https://github1s.com/mwaskom/seaborn/blob/master/seaborn/matrix.py#L696
+            # print(dir(self.sg))
+            # print(dir(self.sg.figure))
+            self._moveclustergrid()
+        else:
+            print("what am i")
+
         self._finalize()
 
     def _movegrid(self):
@@ -1359,6 +1373,19 @@ class SeabornFig2Grid():
         self._moveaxes(self.sg.ax_joint, self.subgrid[1:, :-1])
         self._moveaxes(self.sg.ax_marg_x, self.subgrid[0, :-1])
         self._moveaxes(self.sg.ax_marg_y, self.subgrid[1:, -1])
+
+    def _moveclustergrid(self):
+        """Move cluster grid"""
+        r = len(self.sg.figure.axes)
+        self.subgrid = gridspec.GridSpecFromSubplotSpec(r, r + 10, subplot_spec=self.subplot)
+        subplots_axes = self.sg.figure.axes
+        self._resize()
+        self._moveaxes(subplots_axes[0], self.subgrid[1:, 0:3]) #left cladogram #ax_row_dendrogram
+        self._moveaxes(subplots_axes[1], self.subgrid[0, 4:-2]) #top cladogram #ax_col_dendrogram
+        self._moveaxes(subplots_axes[2], self.subgrid[1:, 3]) #labels bar
+        self._moveaxes(subplots_axes[3], self.subgrid[1:, 4:-2]) #heatmap #ax_heatmap
+        self._moveaxes(subplots_axes[4], self.subgrid[1:, -1]) #colorbar
+
 
     def _moveaxes(self, ax, gs):
         #https://stackoverflow.com/a/46906599/4124317

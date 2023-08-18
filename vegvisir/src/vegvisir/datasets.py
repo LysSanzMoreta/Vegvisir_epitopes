@@ -1657,8 +1657,12 @@ def data_volumetrics(seq_max_len,epitopes_list,data,epitopes_array_mask,storage_
         else:
             use_precomputed_features = True
         #Highlight: All
-        features_dict_all = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw.tolist(),storage_folder).features_summary()
         subfolders = "{}/All/{}/neighbours1/all".format(args.sequence_type,analysis_mode)
+        feature_embedded_peptides =  VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw.tolist(),storage_folder).aminoacid_embedding()
+        feature_embedded_peptides_df = pd.DataFrame({"{}".format(args.sequence_type):epitopes_array_raw.tolist(), "Embedding":feature_embedded_peptides, "target_corrected":labels_arr})
+        feature_embedded_peptides_df.to_csv("{}/{}/similarities/{}/EMBEDDED_epitopes.tsv".format(storage_folder,args.dataset_name,subfolders),sep="\t")
+
+        features_dict_all = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw.tolist(),storage_folder).features_summary()
         VegvisirPlots.plot_features_covariance(epitopes_array_raw.tolist(),features_dict_all,seq_max_len,immunodominance_scores,storage_folder,args,subfolders,tag="_immunodominance_scores",use_precomputed_features=use_precomputed_features)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw.tolist(),features_dict_all,seq_max_len,labels_arr,storage_folder,args,subfolders,tag="_binary_labels",use_precomputed_features=use_precomputed_features)
 
@@ -2228,7 +2232,6 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
     #Highlight: Features correlations
     #data_volumetrics(seq_max_len,epitopes_list, data, epitopes_mask, storage_folder, args, filters_dict,analysis_mode,plot_volumetrics=False,plot_covariance=True)
-    #exit()
 
     if args.dataset_name not in  ["viral_dataset6","viral_dataset8","viral_dataset10","viral_dataset11"]:
         try:

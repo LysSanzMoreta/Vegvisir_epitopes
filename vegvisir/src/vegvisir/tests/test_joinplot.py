@@ -34,6 +34,8 @@ class SeabornFig2Grid():
         h= self.sg.ax_joint.get_position().height
         h2= self.sg.ax_marg_x.get_position().height
         r = int(np.round(h/h2))
+        print(r)
+        exit()
         self._resize()
         self.subgrid = gridspec.GridSpecFromSubplotSpec(r+1,r+1, subplot_spec=self.subplot)
 

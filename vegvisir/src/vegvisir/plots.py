@@ -271,7 +271,6 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     plt.clf()
     plt.close(fig)
 
-
 def plot_data_information_reduced(data, filters_dict, storage_folder, args, name_suffix):
     """"""
     ndata = data.shape[0]
@@ -1847,6 +1846,8 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
 
     spearman_coefficients = np.array(spearman_correlations[0])
     spearman_coefficients = np.round(spearman_coefficients,2)
+    spearman_pvalues = np.array(spearman_correlations[1])
+    spearman_pvalues = np.round(spearman_pvalues,3)
     #spearman_corr_idx = np.argwhere((spearman_correlations >= 0.1) | (spearman_correlations <-0.1))
     if filter_correlations:
         spearman_coefficients = spearman_coefficients[pearson_coef_idx]
@@ -1913,7 +1914,10 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
                 "features_names":features_names,
                 "pearson_coefficients":pearson_coefficients,
                 "pearson_pvalues":pearson_pvalues,
-                "spearman_coefficients":spearman_coefficients}
+                "spearman_coefficients":spearman_coefficients,
+                "spearman_pvalues":spearman_pvalues
+                
+                }
 
 def plot_latent_space(args,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4,plot_correlations=True):
     """
@@ -2226,8 +2230,6 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
             print("---------------- {} data points ----------------\n ".format(idx_name))
             print("---------------- {} data points ----------------\n ".format(idx_name),file=open("{}/AUC_out.txt".format(results_dir), "a"))
 
-
-            #for key_name_1,stats_name_1 in zip(["samples_average_prob","single_sample_prob"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"]):
             if predictions_dict[prob_mode] is not None:
                 #fpr, tpr, threshold = roc_curve(y_true=onehot_labels[idx], y_score=predictions_dict[stats_name][idx])
                 try:
@@ -2317,8 +2319,6 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
                 metrics_summary_dict[sample_mode][idx_name]["precision"] = ap_dict["precision"]
                 metrics_summary_dict[sample_mode][idx_name]["recall"] = ap_dict["recall"]
                 metrics_summary_dict[sample_mode][idx_name]["average_precision"] = ap_dict["average_precision"]
-
-
 
             #for key_name_2,stats_name_2 in zip(["samples_mode","single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
             if predictions_dict[binary_mode] is not None:
@@ -3741,18 +3741,24 @@ def plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covaria
                 covariances_dict_train[learning_type][name]["features_names"].append(correlations_dict["features_names"])
                 covariances_dict_train[learning_type][name]["pearson_coefficients"].append(np.abs(correlations_dict["pearson_coefficients"]))
                 covariances_dict_train[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
+                covariances_dict_train[learning_type][name]["spearman_coefficients"].append(np.abs(correlations_dict["spearman_coefficients"]))
+                covariances_dict_train[learning_type][name]["spearman_pvalues"].append(correlations_dict["spearman_pvalues"])
                 covariances_dict_train[learning_type][name]["umap_1d"].append(umap_proj_1d)
             elif mode == "valid":
                 covariances_dict_valid[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"]))
                 covariances_dict_valid[learning_type][name]["features_names"].append(correlations_dict["features_names"])
                 covariances_dict_valid[learning_type][name]["pearson_coefficients"].append(np.abs(correlations_dict["pearson_coefficients"]))
                 covariances_dict_valid[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
+                covariances_dict_valid[learning_type][name]["spearman_coefficients"].append(np.abs(correlations_dict["spearman_coefficients"]))
+                covariances_dict_valid[learning_type][name]["spearman_pvalues"].append(correlations_dict["spearman_pvalues"])
                 covariances_dict_valid[learning_type][name]["umap_1d"].append(umap_proj_1d)
             elif mode == "test":
                 covariances_dict_test[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"]))
                 covariances_dict_test[learning_type][name]["features_names"].append(correlations_dict["features_names"])
                 covariances_dict_test[learning_type][name]["pearson_coefficients"].append(np.abs(correlations_dict["pearson_coefficients"]))
                 covariances_dict_test[learning_type][name]["pearson_pvalues"].append(correlations_dict["pearson_pvalues"])
+                covariances_dict_test[learning_type][name]["spearman_coefficients"].append(np.abs(correlations_dict["spearman_coefficients"]))
+                covariances_dict_test[learning_type][name]["spearman_pvalues"].append(correlations_dict["spearman_pvalues"])
                 covariances_dict_test[learning_type][name]["umap_1d"].append(umap_proj_1d)
 
     return covariances_dict_train,covariances_dict_valid,covariances_dict_test
@@ -3776,13 +3782,16 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
      covariances_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
      pearson_coefficients_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
      pearson_pvalues_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
+     spearman_coefficients_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
+     spearman_pvalues_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
+
 
      covariances_dict_train= defaultdict(lambda :defaultdict(lambda : defaultdict(lambda : [])))
      covariances_dict_valid= defaultdict(lambda :defaultdict(lambda : defaultdict(lambda : [])))
      covariances_dict_test= defaultdict(lambda :defaultdict(lambda : defaultdict(lambda : [])))
      reducer = umap.UMAP(n_components=1)
      tuples_idx = []
-     plot_all = False
+     plot_all = True
      for learning_type, values in dict_results.items():
          for name, folder in values.items():
              tuples_idx.append((learning_type,name,"train"))
@@ -3883,6 +3892,15 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
                 pearson_coefficients_all[learning_type][name]["valid"] = np.mean([coefficients for coefficients in covariances_dict_valid[learning_type][name]["pearson_coefficients"]],axis=0)
              pearson_coefficients_all[learning_type][name]["test"] = np.mean([coefficients for coefficients in covariances_dict_test[learning_type][name]["pearson_coefficients"]],axis=0)
 
+             spearman_pvalues_all[learning_type][name]["train"] = np.mean([pvalues for pvalues in covariances_dict_train[learning_type][name]["spearman_pvalues"]], axis=0)
+             if plot_all:
+                 spearman_pvalues_all[learning_type][name]["valid"] = np.mean([pvalues for pvalues in covariances_dict_valid[learning_type][name]["spearman_pvalues"]], axis=0)
+             spearman_pvalues_all[learning_type][name]["test"] = np.mean([pvalues for pvalues in covariances_dict_test[learning_type][name]["spearman_pvalues"]], axis=0)
+
+             spearman_coefficients_all[learning_type][name]["train"] = np.mean([coefficients for coefficients in covariances_dict_train[learning_type][name]["spearman_coefficients"]],axis=0)
+             if plot_all:
+                 spearman_coefficients_all[learning_type][name]["valid"] = np.mean([coefficients for coefficients in covariances_dict_valid[learning_type][name]["spearman_coefficients"]], axis=0)
+             spearman_coefficients_all[learning_type][name]["test"] = np.mean([coefficients for coefficients in covariances_dict_test[learning_type][name]["spearman_coefficients"]],axis=0)
 
              if covariances_dict_train[learning_type][name]["features_names"]: #UMAP-1D
                  features_names = covariances_dict_train[learning_type][name]["features_names"][0][1:] # remove UMAP-1D
@@ -3907,6 +3925,30 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
              if plot_all:
                 pearson_coefficients_all[learning_type][name]["valid"] = dict(zip(features_names,np.round(pearson_coefficients_all[learning_type][name]["valid"],3).tolist())) if features_names else dict(zip(features_names,[np.nan]*n_feats))
              pearson_coefficients_all[learning_type][name]["test"] = dict(zip(features_names,np.round(pearson_coefficients_all[learning_type][name]["test"],3).tolist())) if features_names and type(pearson_coefficients_all[learning_type][name]["test"]) != np.float64 else dict(zip(features_names,[np.nan]*n_feats))
+
+             spearman_pvalues_all[learning_type][name]["train"] = dict(zip(features_names, np.round(
+                 spearman_pvalues_all[learning_type][name]["train"], 3).tolist())) if features_names else dict(
+                 zip(features_names, [np.nan] * n_feats))
+             if plot_all:
+                 spearman_pvalues_all[learning_type][name]["valid"] = dict(zip(features_names, np.round(
+                     spearman_pvalues_all[learning_type][name]["valid"], 3).tolist())) if features_names else dict(
+                     zip(features_names, [np.nan] * n_feats))
+             spearman_pvalues_all[learning_type][name]["test"] = dict(zip(features_names, np.round(
+                 spearman_pvalues_all[learning_type][name]["test"], 3).tolist())) if features_names and type(
+                 spearman_pvalues_all[learning_type][name]["test"]) != np.float64 else dict(
+                 zip(features_names, [np.nan] * n_feats))
+
+             spearman_coefficients_all[learning_type][name]["train"] = dict(zip(features_names, np.round(
+                 spearman_coefficients_all[learning_type][name]["train"], 3).tolist())) if features_names else dict(
+                 zip(features_names, [np.nan] * n_feats))
+             if plot_all:
+                 spearman_coefficients_all[learning_type][name]["valid"] = dict(zip(features_names, np.round(
+                     spearman_coefficients_all[learning_type][name]["valid"], 3).tolist())) if features_names else dict(
+                     zip(features_names, [np.nan] * n_feats))
+             spearman_coefficients_all[learning_type][name]["test"] = dict(zip(features_names, np.round(
+                 spearman_coefficients_all[learning_type][name]["test"], 3).tolist())) if features_names and type(
+                 spearman_coefficients_all[learning_type][name]["test"]) != np.float64 else dict(
+                 zip(features_names, [np.nan] * n_feats))
 
              # covariances_all_latex[learning_type][name]["train"] = np.mean(covariances_dict_train[learning_type][name]["covariance"]) +"$\pm$" + np.mean(covariances_dict_train[learning_type][name]["covariance"])
              # covariances_all_latex[learning_type][name]["valid"] = np.mean(covariances_dict_valid[learning_type][name]["covariance"]) +"$\pm$" + np.mean(covariances_dict_valid[learning_type][name]["covariance"])
@@ -3944,6 +3986,9 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
      process_dict(covariances_all,"Latent_covariances",subtitle)
      process_dict(pearson_pvalues_all,"Latent_pearson_pvalues",subtitle)
      process_dict(pearson_coefficients_all,"Latent_pearson_coefficients",subtitle)
+     process_dict(spearman_pvalues_all,"Latent_spearman_pvalues",subtitle)
+     process_dict(spearman_coefficients_all,"Latent_spearman_coefficients",subtitle)
+
 
 def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark"):
     """"""
@@ -4159,6 +4204,60 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark
 
 
     plt.savefig("{}/{}/Benchmarking".format(script_dir,folder),dpi=600)
+
+
+def plot_hierarchical_clustering(vegvisir_folder,embedded_epitopes,folder):
+
+    fold = 0
+    train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(vegvisir_folder, fold)) #should be the same training dataset all the time
+    test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(vegvisir_folder, fold))
+
+    train_data = train_out["summary_dict"]["data_int_samples"]
+    train_latent = train_out["latent_space"]
+    corrected_aa_types = train_out["dataset_info"].corrected_aa_types
+
+    test_data = test_out["summary_dict"]["data_int_samples"]
+    test_latent = test_out["latent_space"]
+    
+    data = np.concatenate([train_data,test_data],axis=0)
+    sequences = data[:,1]
+    latent = np.concatenate([train_latent,test_latent],axis=0)[:,5:]
+
+    aminoacids_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types,zero_characters = ["#"])
+    aminoacids_dict_reversed = {val:key for key,val in aminoacids_dict.items()}
+    sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(sequences)
+    sequences_list = sequences_raw.tolist()
+
+    sequences_list = list(map(lambda seq: ("".join(seq)).replace("#",""),sequences_list))
+    latent_df = pd.DataFrame({"Icore":sequences_list,"latent":latent.tolist()})
+    features_df = pd.read_csv(embedded_epitopes,sep="\t")
+    combined_df = latent_df.merge(features_df,on=["Icore"],how="left")
+
+    labels = combined_df["target_corrected"]
+    embedding = combined_df["Embedding"].apply(eval).apply(np.array).tolist()
+    embedding = np.array(embedding)
+    colors_labels = np.vectorize(colors_dict_labels.get)(labels)
+
+    fig = plt.figure(figsize=(15, 8))
+
+
+    # First create the clustermap figure
+    g1 = sns.clustermap(latent,metric="cosine",row_colors=colors_labels,cmap="crest")
+    g1.ax_heatmap.tick_params(tick2On=False, labelsize=False,labelbottom=False,labelright=False)
+    g1.ax_col_dendrogram.set_title("Cluster heatmap of latent representations")
+    g2 = sns.clustermap(embedding,metric="cosine",row_colors=colors_labels,cmap="crest")
+    g2.ax_heatmap.tick_params(tick2On=False, labelsize=False,labelbottom=False,labelright=False)
+    g2.ax_col_dendrogram.set_title("Cluster heatmap of feature embeddings")
+
+    fig = plt.figure(figsize=(15, 8))
+    gs = gridspec.GridSpec(1, 2, width_ratios=[3,3])
+
+    mg0 = VegvisirUtils.SeabornFig2Grid(g1, fig, gs[0, 0])
+    mg1 = VegvisirUtils.SeabornFig2Grid(g2, fig, gs[0, 1])
+
+    fig.suptitle("Cosine similarity cluster heatmaps")
+
+    plt.savefig("{}/Clustermaps.png".format(folder))
 
 
 
