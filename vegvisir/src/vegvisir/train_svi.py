@@ -683,7 +683,7 @@ def select_model(model_load,results_dir,fold,args):
 def config_build(args,results_dir):
     """Select a default configuration dictionary. It can load a string dictionary from the command line (using json) or use the default parameters
     :param namedtuple args"""
-    if args.hpo:
+    if args.hpo or args.config_dict:
         #config = json.loads(args.config_dict)
         config = args.config_dict
     else:
@@ -696,8 +696,6 @@ def config_build(args,results_dir):
             "weight_decay": 0,#weight_decay: weight decay (L2 penalty) (default: 0)
             "clip_norm": 10,#clip_norm: magnitude of norm to which gradients are clipped (default: 10.0)
             "lrd": 1,#0.1 ** (1 / args.num_epochs), #rate at which learning rate decays (default: 1.0) #https://pyro.ai/examples/svi_part_iv.html
-            "z_dim": 30,
-            "gru_hidden_dim": 60, #60
             "momentum":0.9
         }
         json.dump(config, open('{}/params_dict.txt'.format(results_dir), 'w'), indent=2)
@@ -729,12 +727,67 @@ def clip_backprop(model, clip_value):
             handle = p.register_hook(func)
             handles.append(handle)
     return handles
-def kfold_loop(kfolds,dataset_info, args, additional_info):
+def set_configuration(args,config,results_dir):
+    """Sets the hyperparameter values, either to
+    i) values sampled to perform Hyperparameter Optimization with Ray Tune
+    ii) The best configuration defined via HPO
+    iii) the values set via args NamedTuple in Vegvisir_example.py
+    :param Namedtuple args: Current hyperparameter configuration defined in Vegvisir_example (general configuration) and config_build (sets optimizer hyperparameters)
+    :param dict or None. If None, not HPO is running
+
+    """
+    keys_list = ["batch_size", "likelihood_scale", "encoding", "num_epochs", "hidden_dim", "num_samples","z_dim"]
+    if config is not None: #i
+        print("Using hyperparameter search from Ray-tune")
+        args_dict = vars(args)
+        config_dict1 = config.copy()
+        for key in keys_list:
+            args_dict[key] = config[key] #add the sampled hyperparam
+            config_dict1.pop(key,None)
+        args_dict["config_dict"] = config_dict1
+        #print(args_dict)
+        #print("---------------")
+        args = Namespace(**args_dict)
+        pyro.enable_validation(False)
+        if args.use_cuda:
+            torch.set_default_tensor_type(torch.cuda.DoubleTensor)
+        else:
+            torch.set_default_tensor_type(torch.DoubleTensor)
+        #json.dump(args.__dict__, open('{}/commandline_args.txt'.format(results_dir), 'w'), indent=2)
+        return args
+    elif args.config_dict is not None: #ii
+        print("Using best hyperparameter set defined by Ray Tune (or some dict provided by args.config_dict, set to None otherwise)")
+        if isinstance(args.config_dict,str):#if both validate and test == True, the first time we load it from a str path, the second time, we already have load it
+            best_hyperparameters_dict = json.load(open(args.config_dict,"r+")) #contains all the hyperparameters
+            general_config = best_hyperparameters_dict["general_config"] #batch_size, num_samples ...
+            optimizer_config = best_hyperparameters_dict["optimizer_config"] #learning rate, momemtum ...
+            args_dict = vars(args)
+            for key in keys_list:
+                args_dict[key] = general_config[key] #change values to the optimized one
+            args_dict["config_dict"] = optimizer_config #
+            args = Namespace(**args_dict)
+            return args
+        else:
+            print("Second time loading args")
+            return args
+    else:  #iii
+        return args
+
+def kfold_loop(kfolds,dataset_info, args, additional_info,config=None):
     """K-fold cross validation training loop"""
+
+    keys_list = ["train_loss","ROC_AUC_train","average_precision_train","valid_loss","ROC_AUC_valid","average_precision_valid"]
+    metrics_summary_dict = dict.fromkeys(keys_list,0)
     for fold, (train_idx, valid_idx) in enumerate(kfolds): #returns k-splits for train and validation
-        epoch_loop(train_idx, valid_idx, dataset_info, args, additional_info, mode="Valid_fold_{}".format(fold),fold="_fold_{}".format(fold))
+        fold_metrics_summary_dict = epoch_loop(train_idx, valid_idx, dataset_info, args, additional_info, mode="Valid_fold_{}".format(fold),fold="_fold_{}".format(fold),config=config)
+        for key,val in metrics_summary_dict.items():
+            metrics_summary_dict[key] += fold_metrics_summary_dict[key]
         torch.cuda.empty_cache()
-def kfold_crossvalidation(dataset_info,additional_info,args):
+    if args.hpo:
+        for key,val in metrics_summary_dict.items():
+            metrics_summary_dict[key] = val/args.k_folds #report the average
+        session.report(metrics=metrics_summary_dict)
+def kfold_crossvalidation(config=None,dataset_info=None,additional_info=None,args=None):
     """Set up k-fold cross validation for the training loop"""
     print("Loading dataset into model...")
     data_blosum = dataset_info.data_array_blosum_encoding
@@ -768,46 +821,32 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
     print('\t Number Train-valid data points: {}; Proportion: {}'.format(traineval_data_blosum.shape[0],(traineval_data_blosum.shape[0]*100)/traineval_data_blosum.shape[0]))
     if not args.test and args.validate:
         print("K-fold cross validation (Training & Validation)")
-        kfold_loop(kfolds, dataset_info, args, additional_info)
+        kfold_loop(kfolds, dataset_info, args, additional_info,config)
     elif args.test and args.validate:
         print("Training, Validation and testing")
         print("FIRST: Training & Validation")
-        kfold_loop(kfolds, dataset_info, args, additional_info)
+        kfold_loop(kfolds, dataset_info, args, additional_info,config)
         print("SECOND: Training + Validation & Testing")
         if args.dataset_name == "viral_dataset7" and not args.test:
             warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
         else:
             print("Joining Training & validation datasets to perform testing...")
         for fold in range(args.k_folds):
-            epoch_loop(traineval_idx, test_idx, dataset_info, args, additional_info,mode="Test_fold_{}".format(fold),fold="_fold_{}".format(fold))
+            epoch_loop(traineval_idx, test_idx, dataset_info, args, additional_info,mode="Test_fold_{}".format(fold),fold="_fold_{}".format(fold),config=config)
     else:
         if args.dataset_name == "viral_dataset7":
             warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
         else:
-            print("Training & testing  ...")
+            print("Training & testing  (not validation) ...")
         for fold in range(args.k_folds):
-            epoch_loop(traineval_idx, test_idx, dataset_info, args, additional_info,mode="Test_fold_{}".format(fold),fold="_fold_{}".format(fold))
+            epoch_loop(traineval_idx, test_idx, dataset_info, args, additional_info,mode="Test_fold_{}".format(fold),fold="_fold_{}".format(fold),config=config)
 def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid",fold="",config=None):
     print("Remaining objects: {}".format(len(gc.get_objects())))
-    if config is not None:
-        print("Using hyperparameter search from Ray-tune")
-        args_dict = vars(args)
-        keys_list = ["batch_size","likelihood_scale","encoding","num_epochs","hidden_dim","num_samples"]
-        config_dict1 = config.copy()
-        for key in keys_list:
-            args_dict[key] = config[key]
-            config_dict1.pop(key,None)
-        args_dict["config_dict"] = config_dict1
-        print(args_dict)
-        print("---------------")
-        args = Namespace(**args_dict)
-        pyro.enable_validation(False) #TODO: Reactivate
 
-        if args.use_cuda:
-            torch.set_default_tensor_type(torch.cuda.DoubleTensor)
-        else:
-            torch.set_default_tensor_type(torch.DoubleTensor)
-
+    args = set_configuration(args,config,additional_info.results_dir)
+    print("Fold {} configuration".format(fold))
+    print(args)
+    print("------------------------------------------")
     #Split the rest of the data (train_data) for train and validation
     data_blosum = dataset_info.data_array_blosum_encoding
     data_int = dataset_info.data_array_int
@@ -1116,54 +1155,10 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     print("Remaining objects AFTER clearing: {}".format(len(gc.get_objects())))
 
     if args.hpo:
-        session.report(metrics=metrics_summary_dict)
-def train_model_old(dataset_info,additional_info,args):
-    """Set up k-fold cross validation and the training loop"""
-    print("Loading dataset into model...")
-    data_blosum = dataset_info.data_array_blosum_encoding
-    seq_max_len = dataset_info.seq_max_len
-    results_dir = additional_info.results_dir
-    #Highlight: Train- Test split and kfold generator
-    partitioning_method = "predefined_partitions" if args.test else"predefined_partitions_discard_test"
-    if args.dataset_name in ["viral_dataset6","viral_dataset7"]:
-        partitioning_method = "predefined_partitions_diffused_test_create_new_test" if args.test else "predefined_partitions_diffused_test"
-
-    train_data_blosum,valid_data_blosum,test_data_blosum = VegvisirLoadUtils.trainevaltest_split(data_blosum,
-                                                                                                 args,results_dir,
-                                                                                                 seq_max_len,dataset_info.max_len,
-                                                                                                 dataset_info.features_names,
-                                                                                                 None,method=partitioning_method)
-
-    #Highlight:Also split the rest of arrays
-    train_idx = (data_blosum[:,0,0,1][..., None] == train_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
-    valid_idx = (data_blosum[:,0,0,1][..., None] == valid_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
-    test_idx = (data_blosum[:,0,0,1][..., None] == test_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
-
-    print('\t Number train data points: {}; Proportion: {}'.format(train_data_blosum.shape[0],(train_data_blosum.shape[0]*100)/train_data_blosum.shape[0]))
-    print('\t Number eval data points: {}; Proportion: {}'.format(valid_data_blosum.shape[0],(valid_data_blosum.shape[0]*100)/valid_data_blosum.shape[0]))
-    print('\t Number test data points: {}; Proportion: {}'.format(test_data_blosum.shape[0],(test_data_blosum.shape[0]*100)/test_data_blosum.shape[0]))
-
-    if not args.test and args.validate:
-        print("Only Training & Validation")
-        epoch_loop( train_idx, valid_idx, dataset_info, args, additional_info)
-    elif args.test and args.validate:
-        print("Training, Validation and testing")
-        print("FIRST: Training & Validation")
-        epoch_loop( train_idx, valid_idx, dataset_info, args, additional_info,mode="Valid")
-        print("SECOND: Training + Validation & Testing")
-        if args.dataset_name == "viral_dataset7" and not args.test:
-            warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
+        if args.k_folds <= 1:
+            session.report(metrics=metrics_summary_dict)
         else:
-            print("Joining Training & validation datasets to perform testing...")
-        train_idx = (train_idx.int() + valid_idx.int()).bool()
-        epoch_loop(train_idx, test_idx, dataset_info, args, additional_info, mode="Test")
-    else:
-        if args.dataset_name == "viral_dataset7" and not args.test:
-            warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
-        else:
-            print("Joining Training & validation datasets to perform testing...")
-        train_idx = (train_idx.int() + valid_idx.int()).bool()
-        epoch_loop(train_idx, test_idx, dataset_info, args, additional_info,mode="Test")
+            return metrics_summary_dict
 def train_model(config=None,dataset_info=None,additional_info=None,args=None):
     """Set up k-fold cross validation and the training loop"""
     print("Loading dataset into model...")
