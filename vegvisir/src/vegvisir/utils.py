@@ -417,7 +417,7 @@ def view1D(a): # a is array #TODO: Remove or investigate, is supposed to speed t
     void_dt = np.dtype((np.void, a.dtype.itemsize * a.shape[1]))
     return a.view(void_dt).ravel()
 
-def calculate_similarity_matrix_slow(array, max_len, array_mask, batch_size=200, ksize=3):
+def calculate_similarity_matrix_slow(array, max_len, array_mask, batch_size=200, ksize=3): #TODO: Remove
     """Batched method to calculate the cosine similarity and percent identity/pairwise distance between the blosum encoded sequences.
     :param numpy array: Integer representation [n,max_len] or Blosum encoded [n,max_len,aa_types]
     NOTE: Use smaller batches for faster results ( obviously to certain extent, check into balancing the batch size and the number of for loops)
@@ -569,9 +569,9 @@ def calculate_similarity_matrix_slow(array, max_len, array_mask, batch_size=200,
     print("Cosine similarity")
     print(cosine_similarity_mean[1][0:4])
     return np.ma.getdata(percent_identity_mean), np.ma.getdata(cosine_similarity_mean), np.ma.getdata(
-        kmers_pid_similarity), np.ma.getdata(kmers_cosine_similarity)
+        kmers_pid_similarity), np.ma.getdata(kmers_cosine_similarity)#TO#TTODO: remove
 
-def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksize=3):
+def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksize=3):#TODO: Remove
     """Batched method to calculate the cosine similarity and percent identity/pairwise distance between the blosum encoded sequences.
     :param numpy array: Blosum encoded sequences [n,max_len,aa_types] NOTE: TODO fix to make it work with: Integer representation [n,max_len] ?
     NOTE: Use smaller batches for faster results ( obviously to certain extent, check into balancing the batch size and the number of for loops)
@@ -804,11 +804,11 @@ def euclidean_2d_norm(A,B,squared=True):
     else:
         return distance.clip(min=0)
 
-def manage_predictions(samples_dict,args,predictions_dict):
+def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None):
     """
 
     :param samples_dict: Collects the binary, logits and probabilities predicted for args.num_samples  from the posterior predictive after training
-    :param args:
+    :param NamedTuple args:
     :param predictions_dict: Collects the binary, logits and probabilities predicted for 1 sample ("single sample") from the posterior predictive during training
     :return:
     """
@@ -824,6 +824,19 @@ def manage_predictions(samples_dict,args,predictions_dict):
 
     class_logits_predictions_samples_argmax = np.argmax(logits_predictions_samples,axis=-1)
     class_logits_predictions_samples_argmax_mode = stats.mode(class_logits_predictions_samples_argmax, axis=1,keepdims=True).mode.squeeze(-1)
+
+    if generative_dict is not None:
+        class_logits_predictions_generative_argmax = np.argmax(generative_dict["logits"], axis=-1)
+        class_logits_predictions_generative_argmax_mode = stats.mode(class_logits_predictions_generative_argmax, axis=1,
+                                                                  keepdims=True).mode.squeeze(-1)
+        probs_predictions_generative = generative_dict["probs"]
+
+    else:
+        class_logits_predictions_generative_argmax = None
+        class_logits_predictions_generative_argmax_mode = None
+        probs_predictions_generative = None
+
+
     binary_predictions_samples_mode = stats.mode(binary_predictions_samples, axis=1,keepdims=True).mode.squeeze(-1)
 
     # binary_frequencies = torch.stack([torch.bincount(x_i, minlength=args.num_classes) for i, x_i in
@@ -831,6 +844,9 @@ def manage_predictions(samples_dict,args,predictions_dict):
     #                                            0)], dim=0)
     binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=binary_predictions_samples.astype("int64"))
     binary_frequencies = binary_frequencies / args.num_samples
+
+
+
     # argmax_frequencies = torch.stack([torch.bincount(x_i, minlength=args.num_classes) for i, x_i in
     #                                   enumerate(torch.unbind(class_logits_predictions_samples_argmax.type(torch.int64), dim=0),
     #                                             0)], dim=0)
@@ -876,6 +892,22 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         "encoder_final_hidden_state_samples": samples_dict["encoder_final_hidden_state"],
                         "decoder_final_hidden_state_single_sample": predictions_dict["decoder_final_hidden_state"],
                         "decoder_final_hidden_state_samples": samples_dict["decoder_final_hidden_state"],
+
+                        "data_int_generated": generative_dict["reconstructed_sequences"] if generative_dict is not None else None,
+                        "data_mask_generated": generative_dict["reconstructed_sequences"].astype(bool) if generative_dict is not None else None,
+                        "class_binary_predictions_generated": generative_dict["true"],
+                        "class_binary_predictions_generated_mode": stats.mode(generative_dict["binary"], axis=1,keepdims=True).mode.squeeze(-1),
+                        "class_binary_prediction_generated_frequencies": None,
+                        "class_logits_predictions_generated": generative_dict["logits"] if generative_dict is not None else None,
+                        "class_logits_predictions_generated_argmax": class_logits_predictions_generative_argmax,
+                        "class_logits_predictions_generated_argmax_frequencies": None,
+                        "class_logits_predictions_generative_argmax_mode": class_logits_predictions_generative_argmax_mode,
+                        "class_probs_predictions_generative": probs_predictions_generative,
+                        "class_probs_predictions_generative_average": np.mean(probs_predictions_generative, axis=1),
+                        "class_binary_predictions_generative_logits_average_argmax": np.argmax(
+                            np.mean(probs_predictions_generative, axis=1), axis=1),
+
+
                         }
     else:
         summary_dict = {"data_int_single_sample":None,
@@ -916,6 +948,18 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         "encoder_final_hidden_state_samples": samples_dict["encoder_final_hidden_state"],
                         "decoder_final_hidden_state_single_sample": None,
                         "decoder_final_hidden_state_samples": samples_dict["decoder_final_hidden_state"],
+                        "data_int_generated": generative_dict["reconstructed_sequences"] if generative_dict is not None else None,
+                        "data_mask_generated": generative_dict["reconstructed_sequences"].astype(bool) if generative_dict is not None else None,
+                        "class_binary_predictions_generated": generative_dict["true"],
+                        "class_binary_predictions_generated_mode": stats.mode(generative_dict["binary"], axis=1,keepdims=True).mode.squeeze(-1),
+                        "class_binary_prediction_generated_frequencies": None,
+                        "class_logits_predictions_generated": generative_dict["logits"] if generative_dict is not None else None,
+                        "class_logits_predictions_generated_argmax": class_logits_predictions_generative_argmax,
+                        "class_logits_predictions_generated_argmax_frequencies": None,
+                        "class_logits_predictions_generative_argmax_mode": class_logits_predictions_generative_argmax_mode,
+                        "class_probs_predictions_generative": probs_predictions_generative,
+                        "class_probs_predictions_generative_average": np.mean(probs_predictions_generative, axis=1),
+                        "class_binary_predictions_generative_logits_average_argmax": np.argmax(np.mean(probs_predictions_generative, axis=1), axis=1),
                         }
 
     return summary_dict
@@ -1326,6 +1370,25 @@ def calculate_correlations(feat1,feat2,method="pearson"):
         else:
             result =  scipy.stats.spearmanr(feat1, feat2)
     return result
+
+
+def generate_mask(max_len, length):
+    seq_mask = np.array([True] * (length) + [False] * (max_len - length))
+    return seq_mask[None, :]
+
+def clean_generated_sequences(seq_int,seq_mask,zero_character,min_len):
+    """"""
+    seq_mask = np.array(seq_mask)
+    seq_int = np.array(seq_int)
+    idx = np.where(seq_int == zero_character)[0]
+    if idx.size == 0:
+        seq_mask = np.ones_like(seq_int).astype(bool)
+        return (seq_int[None,:],seq_mask[None,:])
+    else:
+        if idx[0] > min_len -1: #truncate sequences (else completely discard)
+            seq_int[idx[0]:] = zero_character
+            seq_mask[idx[0]:] = False
+            return (seq_int[None,:],seq_mask[None,:])
 
 
 #TODO: Put into new plots_utils.py, however right now it is annoying to change the structure because of dill

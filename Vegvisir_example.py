@@ -279,15 +279,20 @@ def analysis_models():
     #
 
 
-    exit()
 
     dict_results_benchmark= { "Icore" :{
-        "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/Likelihood_tuning/PLOTS_Vegvisir_viral_dataset9_2023_08_03_19h21min17s085055ms_60epochs_supervised_Icore_blosum_TESTING_likelihood_40"
+        "raw-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_04h43min52s657889ms_60epochs_supervised_Icore_blosum_TESTING"
     }
     }
 
 
-    VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,folder="Benchmark/Plots")
+    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,folder="Benchmark/Plots")
+
+
+    VegvisirPlots.plot_model_stressing_comparison(dict_results_predefined_partitions_60,script_dir,folder="Benchmark/Plots")
+
+
+    exit()
 
 
 def hierarchical_clustering():
@@ -322,7 +327,7 @@ if __name__ == "__main__":
                              "<no>: Keep all \n"
                              "<insert_number>: Keep first <n> data points")
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1')
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=3, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=60, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-encoding', type=str, nargs='?', default="blosum", help='<blosum> Use the matrix selected in args.subs_matrix to encode the sequences as blosum vectors'
                                                                                  '<onehot> One hot encoding of the sequences  ')
@@ -331,7 +336,7 @@ if __name__ == "__main__":
     parser.add_argument('-subs_matrix', default="BLOSUM62", type=str,
                         help='blosum matrix to create blosum embeddings, choose one from /home/lys/anaconda3/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data')
 
-    parser.add_argument('-k-folds', type=int, nargs='?', default=2, help='Number of k-folds for k-fold cross validation.\n '
+    parser.add_argument('-k-folds', type=int, nargs='?', default=1, help='Number of k-folds for k-fold cross validation.\n '
                                                                          'If set to 1 is a single run where 1 of the partitions is selected randomly'
                                                                          'as the validation')
     parser.add_argument('-batch-size', type=int, nargs='?', default=100, help='Batch size')
@@ -356,8 +361,10 @@ if __name__ == "__main__":
 
     parser.add_argument('-train', type=str2bool, nargs='?', default=True ,help='<True> Run the model \n <False> Make models comparison or load previous model if pargs.pretrained_model is not None ')
     parser.add_argument('-validate', type=str2bool, nargs='?', default=True, help='Evaluate the model on the validation dataset')
-    parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
-    parser.add_argument('-hpo', type=str2bool, nargs='?', default=True, help='Hyperparameter optimization with Ray Tune')
+    parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
+    parser.add_argument('-hpo', type=str2bool, nargs='?', default=False, help='Hyperparameter optimization with Ray Tune')
+    parser.add_argument('-generate', type=str2bool, nargs='?', default=True, help='<True> Generate new neo-epitopes labelled and with a confidence score'
+                                                                                   '<False> Do nothing')
     best_config = {0:"/home/lys/Dropbox/PostDoc/vegvisir/BEST_hyperparameter_dict.p",1:None}
     parser.add_argument('-config-dict', nargs='?', default=best_config[1],type=str2None, help='Path to optimized hyperparameter dict')
     unobserved_sequences = {0:"/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/custom_dataset/unobserved_grouped_alleles_train.tsv",1:None}
@@ -389,7 +396,7 @@ if __name__ == "__main__":
     parser.add_argument('-idx-mutations','--idx_mutations', type=str, nargs='?', default=None, help='Positions where to perform the mutations for model stress-testing. Indicated as string of format [2,5,3], Set to None otherwise')
 
     parser.add_argument('-z-dim','--z-dim', type=int, nargs='?', default=30, help='Latent space dimension')
-    parser.add_argument('-likelihood-scale', type=int, nargs='?', default=80, help='Scaling the log p( class | Z) of the variational autoencoder (cold posterior)'
+    parser.add_argument('-likelihood-scale', type=int, nargs='?', default=50, help='Scaling the log p( class | Z) of the variational autoencoder (cold posterior)'
                                                                                    '100: Assign likelihood to batch size')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=40, help='Embedding dimensions, use with self-attention. NOT USED---> DELETE SOOn')
@@ -405,7 +412,7 @@ if __name__ == "__main__":
     parser.add_argument('-glitch','--glitch', type=str2bool, nargs='?', default=False, help='NOT USED at the moment, does not seem necessary. Only works with blosum encodings'
                                                                                            '<True>: Applies a random noise distortion (via rotations) to the encoded vector within the conserved positions of the sequences (mainly anchor points)  \n'
                                                                                            '<False>: The blosum encodings are left untouched')
-    parser.add_argument('-num-samples','-num_samples', type=int, nargs='?', default=30, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
+    parser.add_argument('-num-samples','-num_samples', type=int, nargs='?', default=3, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
 
     pretrained_model = {0:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_08_14_23h17min39s118041ms_60epochs_supervised_Icore_blosum_TESTING_pretty_plots",1:None}
     parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="{}".format(pretrained_model[1]),help='Load the checkpoints (state_dict and optimizer) from a previous run \n'
@@ -461,7 +468,7 @@ if __name__ == "__main__":
     if args.train:
         main()
     else:
-        #analysis_models()
-        hierarchical_clustering()
+        analysis_models()
+        #hierarchical_clustering()
 
 

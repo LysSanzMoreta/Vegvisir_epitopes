@@ -12,6 +12,8 @@ import operator
 import pickle
 import warnings
 from collections import defaultdict
+from glob import glob
+from pathlib import Path
 
 import dill
 import matplotlib.pyplot as plt
@@ -42,6 +44,8 @@ import vegvisir.similarities as VegvisirSimilarities
 from collections import namedtuple
 import dataframe_image as dfi
 import statsmodels.api as sm
+import logomaker
+
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
 colors_dict = {0: "green", 1: "red",2:"navajowhite"}
@@ -699,6 +703,9 @@ def plot_heatmap(array, title,file_name):
     plt.savefig(file_name)
     plt.clf()
     plt.close(fig)
+
+def plot_logos():
+    """"""
 
 def plot_umap1(array,labels,storage_folder,args,title_name,file_name):
     from matplotlib.colors import ListedColormap
@@ -3117,7 +3124,6 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
                 if summary_dict is not None:
                     labels = summary_dict["true_samples"]
                     onehot_labels = summary_dict["true_onehot_samples"]
-                    # confidence_scores = summary_dict["confidence_scores_samples"]
                     prob_mode = "class_probs_predictions_samples_average"
                     idx_all = np.ones_like(labels).astype(bool)
                     if args.num_classes > args.num_obs_classes:
@@ -3344,9 +3350,7 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
         "valid-auc-0":valid_folds_roc_auc_class_0,
         "valid-auc-1":valid_folds_roc_auc_class_1,
         "test-auc-0": test_folds_roc_auc_class_0,
-        "test-auc-1": test_folds_roc_auc_class_1,
-
-            }
+        "test-auc-1": test_folds_roc_auc_class_1}
 
 def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_folder="Benchmark",title="",overwrite=False):
     """Compares average ROC AUC, Average Precision and Precision across runs"""
@@ -3439,8 +3443,7 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
                 np.round((np.mean(np.array(metrics_results_test["ap_class_0"])) + np.mean(
                     np.array(metrics_results_test["ap_class_1"]))) / 2, 2)) + " $\pm$ " + str(
                 np.round((np.std(np.array(metrics_results_test["ap_class_0"])) + np.std(
-                    np.array(metrics_results_test["ap_class_1"]))) / 2, 2)) if metrics_results_test[
-                                                                                     "ap_class_0"] is not None else metrics_results_test["ap_class_0"]
+                    np.array(metrics_results_test["ap_class_1"]))) / 2, 2)) if metrics_results_test["ap_class_0"] is not None else metrics_results_test["ap_class_0"]
             
                                                                                      
             #Highlight: Train-species
@@ -3696,17 +3699,12 @@ def plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covaria
             side_chain_pka_scores = np.ma.mean(side_chain_pka_scores,
                                                axis=1)  # Highlight: before I was doing just the sum
 
-            isoelectric_scores = np.array(
-                list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_list)))
-            aromaticity_scores = np.array(
-                list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_list)))
+            isoelectric_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_isoelectric(seq), sequences_list)))
+            aromaticity_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_aromaticity(seq), sequences_list)))
             gravy_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_gravy(seq), sequences_list)))
-            molecular_weight_scores = np.array(
-                list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_list)))
-            extintion_coefficient_reduced_scores = np.array(
-                list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[0], sequences_list)))
-            extintion_coefficient_cystines_scores = np.array(
-                list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[1], sequences_list)))
+            molecular_weight_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_molecular_weight(seq), sequences_list)))
+            extintion_coefficient_reduced_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[0], sequences_list)))
+            extintion_coefficient_cystines_scores = np.array(list(map(lambda seq: VegvisirUtils.calculate_extintioncoefficient(seq)[1], sequences_list)))
 
             settings = {"features_dict": {"gravy_scores": gravy_scores,
                                           "isoelectric_scores": isoelectric_scores,
@@ -3990,38 +3988,134 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
      process_dict(spearman_coefficients_all,"Latent_spearman_coefficients",subtitle)
 
 
-def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark"):
-    """"""
 
-    #Highlight: vegvisir results
+def calculate_auc(targets, predictions):
+    """Calculates the ROC AUC"""
+    try:
+        targets = targets.to_numpy()
+        predictions = predictions.to_numpy()
+        predictions_nan = np.isnan(predictions)
+        targets = targets[~predictions_nan]
+        predictions = predictions[~predictions_nan]
+        fpr, tpr, _ = roc_curve(targets, predictions)
+        roc_auc = auc(fpr, tpr)
+        return roc_auc
+    except:
+        return np.nan
+
+def calculate_ppv(targets, predictions):
+    """Estimates the PPV (Precision) value"""
+    targets = targets.to_numpy()
+    predictions = predictions.to_numpy()
+    try:
+        try:
+            binary_predictions = np.where(predictions >= 0.5, 1,
+                                          0)  # for the rank this is useless, but I want to preserve the error
+        except:
+            binary_predictions = predictions
+        binary_predictions_nan = pd.isnull(binary_predictions)
+        targets = targets[~binary_predictions_nan]
+        binary_predictions = binary_predictions[~binary_predictions_nan]
+        tn, fp, fn, tp = confusion_matrix(y_true=targets, y_pred=binary_predictions).ravel()
+        precision = tp / (tp + fp)
+        return precision
+    except:
+        return np.nan
+
+def calculate_ap(targets, predictions):
+    """Estimates the Average Precision"""
+    targets = targets.to_numpy()
+    predictions = predictions.to_numpy()
+    try:
+        try:
+            binary_predictions = np.where(predictions >= 0.5, 1,
+                                          0)  # for the rank this is useless, but I want to preserve the error
+        except:
+            binary_predictions = predictions
+        # precision, recall, _ = precision_recall_curve(targets, predictions)
+        average_precision = average_precision_score(targets, predictions)
+        return average_precision
+    except:
+        return np.nan
+
+
+def process_nnalign(results_path, seqs_df):
+    nnalign_results_full = pd.read_csv(results_path, sep="\t", header=0)  # ["true_samples"]
+    nnalign_results_full = nnalign_results_full[["Peptide", "Prediction"]]
+    nnalign_results_full.columns = ["Icore", "Prediction"]
+
+    nnalign_results_full = nnalign_results_full.merge(seqs_df, on="Icore", how="left")
+
+    auc_results = calculate_auc(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
+    auc_dict = {"NNAlign2.1": auc_results}
+
+    ppv_results = calculate_ppv(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
+    ppv_dict = {"NNAlign2.1": ppv_results}
+
+    ap_results = calculate_ap(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
+    ap_dict = {"NNAlign2.1": ap_results}
+
+    return auc_dict, ppv_dict, ap_dict
+
+def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark"):
+    """Compare results across different programns on the -golden- dataset that is built from the Icore sequence and sequences of variable length 8-11"""
+
+    #Highlight: Vegvisir results
 
     metrics_keys = ["ppv","fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1","pval_class_0","pval_class_1"]
 
-    metrics_results_dict = plot_kfold_comparison_helper(metrics_keys, script_dir, folder=dict_results_vegvisir["viral-dataset9-likelihood-40"], overwrite=False, kfolds=5)
+    vegvisir_folder = dict_results_vegvisir["Icore"]["raw-blosum-variable-length"]
+    train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(vegvisir_folder, 0))
+    #valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(vegvisir_folder, 0))
+    test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(vegvisir_folder, 0))
 
+    #Highlight: extract the original sequences and the true labels to use them with NNAlign
+    dataset_info = train_out["dataset_info"]
+    custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
+    aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
+    
+    train_sequences = train_out["summary_dict"]["data_int_samples"][:, 1:].squeeze(1)
+    train_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(train_sequences)
+    train_sequences_raw = list(map(lambda seq: "".join(seq).replace("#",""),train_sequences_raw))
+
+    train_labels = train_out["summary_dict"]["true_samples"]
+    train_df = pd.DataFrame({"Icore":train_sequences_raw,"targets":train_labels})
+    
+    test_sequences = test_out["summary_dict"]["data_int_samples"][:, 1:].squeeze(1)
+    test_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(test_sequences)
+    test_sequences_raw = list(map(lambda seq: "".join(seq).replace("#",""),test_sequences_raw))
+    test_labels = test_out["summary_dict"]["true_samples"]
+    test_df = pd.DataFrame({"Icore":test_sequences_raw,"targets":test_labels})
+
+
+    metrics_results_dict = plot_kfold_comparison_helper(metrics_keys, script_dir, folder=vegvisir_folder, overwrite=False, kfolds=5)
     metrics_results_train = metrics_results_dict["train"]
     #metrics_results_valid = metrics_results_dict["valid"]
     metrics_results_test = metrics_results_dict["test"]
 
+
+
     vegvisir_results_auc_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train["roc_auc_class_1"])))/2, 2)}
+    vegvisir_results_ap_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["ap_class_0"])) + np.mean(np.array(metrics_results_train["ap_class_1"])))/2, 2)}
     vegvisir_results_ppv_train = {"Vegvisir":np.round(np.mean(np.array(metrics_results_train["ppv"])), 2)}
     vegvisir_results_auc_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test["roc_auc_class_1"])))/2, 2)}
+    vegvisir_results_ap_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["ap_class_0"])) + np.mean(np.array(metrics_results_test["ap_class_1"])))/2, 2)}
     vegvisir_results_ppv_test = {"Vegvisir":np.round(np.mean(np.array(metrics_results_test["ppv"])), 2)}
 
 
+
     #Highlight: NNalign results
-    nnalign_results_path = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/report_models"
+    # nnalign_results_path_train = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/report_models_CV_train"
+    # nnalign_results_path_test = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/report_models_eval"
 
-    nnalign_results = pd.read_csv(nnalign_results_path,sep="\s+")
-    nnalign_results = nnalign_results.groupby('DATASET', as_index=False)[["AUC01_train", "AUC_train","PPV_train","AUC01_eval","AUC_eval","PPV_eval"]].agg(lambda x: sum(list(x))/len(list(x)))
-    nnalign_results =nnalign_results[nnalign_results["DATASET"]=="sequences_viral_dataset9"]
-    nnalign_results_train_auc_dict = {"NNAlign2.1":nnalign_results["AUC_train"].item()}
-    nnalign_results_train_ppv_dict = {"NNAlign2.1":nnalign_results["PPV_train"].item()}
-    nnalign_results_test_auc_dict = {"NNAlign2.1":nnalign_results["AUC_eval"].item()}
-    nnalign_results_test_ppv_dict = {"NNAlign2.1":nnalign_results["PPV_eval"].item()}
+    nnalign_results_path_train_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_30845/nnalign_peplen_8-11_iter_100_30845.lg8.sorted.pred"
+    nnalign_results_path_test_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_30845/nnalign_peplen_8-11_iter_100_30845.evalset.txt"
 
+    nnalign_results_train_auc_dict, nnalign_results_train_ppv_dict, nnalign_results_train_ap_dict = process_nnalign(nnalign_results_path_train_full,train_df)
+    nnalign_results_test_auc_dict, nnalign_results_test_ppv_dict, nnalign_results_test_ap_dict = process_nnalign(nnalign_results_path_test_full,test_df)
 
-    other_programs_results_path = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/sequences_viral_dataset9_predictors.tsv"
+    #Highlight: Other programs
+    other_programs_results_path = "{}/Benchmark/Other_Programs/sequences_viral_dataset9_predictors_other_models.tsv".format(script_dir)
 
     other_programs_results = pd.read_csv(other_programs_results_path,sep="\t")
 
@@ -4047,66 +4141,43 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark
     programs_list = ["PRIME_rank","PRIME_score","MixMHCpred_rank_binding","IEDB_immuno","DeepImmuno","DeepNetBim_binding","DeepNetBim_immuno","DeepNetBim_immuno_probability"]
 
 
-    def calculate_auc(targets,predictions):
-        try:
-            targets = targets.to_numpy()
-            predictions = predictions.to_numpy()
-            predictions_nan = np.isnan(predictions)
-            targets = targets[~predictions_nan]
-            predictions = predictions[~predictions_nan]
-            fpr, tpr, _ = roc_curve(targets, predictions)
-            roc_auc = auc(fpr, tpr)
-            return roc_auc
-        except:
-            return np.nan
-
-
-
-    def calculate_ppv(targets,predictions):
-        targets = targets.to_numpy()
-        predictions = predictions.to_numpy()
-        try:
-            try:
-                binary_predictions = np.where(predictions >=0.5 , 1, 0) #for the rank this is useless, but I want to preserve the error
-            except:
-                binary_predictions = predictions
-            binary_predictions_nan = pd.isnull(binary_predictions)
-            targets = targets[~binary_predictions_nan]
-            binary_predictions = binary_predictions[~binary_predictions_nan]
-            tn, fp, fn, tp = confusion_matrix(y_true=targets, y_pred=binary_predictions).ravel()
-            precision = tp / (tp + fp)
-            return precision
-        except:
-            return np.nan
-
-    ppv_results_train = list(map(lambda program: calculate_ppv(other_programs_results_train["target_corrected"],other_programs_results_train[program]),programs_list ))
-    ppv_results_test = list(map(lambda program: calculate_ppv(other_programs_results_test["target_corrected"],other_programs_results_test[program]),programs_list ))
-
-    ppv_results_train_dict = dict(zip(programs_list,ppv_results_train))
-    ppv_results_test_dict = dict(zip(programs_list,ppv_results_test))
-
-
+    #Highlight: ROC-AUC
     auc_results_train = list(map(lambda program: calculate_auc(other_programs_results_train["target_corrected"],other_programs_results_train[program]),programs_list ))
     auc_results_test = list(map(lambda program: calculate_auc(other_programs_results_test["target_corrected"],other_programs_results_test[program]),programs_list ))
 
     auc_results_train_dict = dict(zip(programs_list,auc_results_train))
     auc_results_test_dict = dict(zip(programs_list,auc_results_test))
 
-    ppv_results_train_dict = dict(zip(programs_list, ppv_results_train_dict))
-    ppv_results_test_dict = dict(zip(programs_list, ppv_results_test_dict))
+
+    #Highlight: PPV
+    ppv_results_train = list(map(lambda program: calculate_ppv(other_programs_results_train["target_corrected"],other_programs_results_train[program]),programs_list ))
+    ppv_results_test = list(map(lambda program: calculate_ppv(other_programs_results_test["target_corrected"],other_programs_results_test[program]),programs_list ))
+
+    ppv_results_train_dict = dict(zip(programs_list,ppv_results_train))
+    ppv_results_test_dict = dict(zip(programs_list,ppv_results_test))
+
+    #Highlight: AP
+
+    ap_results_train = list(map(lambda program: calculate_ap(other_programs_results_train["target_corrected"],other_programs_results_train[program]),programs_list ))
+    ap_results_test = list(map(lambda program: calculate_ap(other_programs_results_test["target_corrected"],other_programs_results_test[program]),programs_list ))
+
+    ap_results_train_dict = dict(zip(programs_list,ap_results_train))
+    ap_results_test_dict = dict(zip(programs_list,ap_results_test))
+
 
 
     auc_results_train_dict = {**vegvisir_results_auc_train,**nnalign_results_train_auc_dict,**auc_results_train_dict,}
     auc_results_test_dict = {**vegvisir_results_auc_test,**nnalign_results_test_auc_dict,**auc_results_test_dict}
 
-
     ppv_results_train_dict = {**vegvisir_results_ppv_train,**nnalign_results_train_ppv_dict,**ppv_results_train_dict,}
     ppv_results_test_dict = {**vegvisir_results_ppv_test,**nnalign_results_test_ppv_dict,**ppv_results_test_dict}
 
+    ap_results_train_dict = {**vegvisir_results_ap_train, **nnalign_results_train_ap_dict,**ap_results_train_dict, }
+    ap_results_test_dict = {**vegvisir_results_ap_test, **nnalign_results_test_ap_dict, **ap_results_test_dict}
 
     names_dict = {"Vegvisir":"Vegvisir",
                   "NNAlign2.1":"NNAlign2.1",
-                  "PRIME_rank":"PRIME \n (MHC binding rank)",
+                  "PRIME_rank":"PRIME \n (rank)",
                   "PRIME_score":"PRIME \n (probability)",
                   "MixMHCpred_rank_binding":"MixMHCpred \n (MHC binding rank)",
                   "IEDB_immuno":"IEDB immuno",
@@ -4115,17 +4186,28 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark
                   "DeepNetBim_immuno":"DeepNetBim \n (binary prediction)",
                   "DeepNetBim_immuno_probability":"DeepNetBim \n (probability)"}
 
-    plot_only_auc = True
+    plot_only_auc = False
+
+    rank_programs = ["MixMHCpred_rank_binding","PRIME_rank","DeepNetBim_immuno","DeepNetBim_binding"]
+    benchmark_programs_list = [program for program in names_dict.keys() if program not in rank_programs]
+
+    auc_results_train_dict = {key:val for key,val in auc_results_train_dict.items() if key in benchmark_programs_list}
+    auc_results_test_dict = {key:val for key,val in auc_results_test_dict.items() if key in benchmark_programs_list}
+
+    ppv_results_train_dict = {key: val for key, val in ppv_results_train_dict.items() if key in benchmark_programs_list}
+    ppv_results_test_dict = {key: val for key, val in ppv_results_test_dict.items() if key in benchmark_programs_list}
+
+    ap_results_train_dict = {key: val for key, val in ap_results_train_dict.items() if key in benchmark_programs_list}
+    ap_results_test_dict = {key: val for key, val in ap_results_test_dict.items() if key in benchmark_programs_list}
+
+    colors_dict = {"Train":"skyblue","Test":"tomato"}
+
     if plot_only_auc:
         fig, ax1 = plt.subplots(nrows=1, ncols=1, figsize=(15, 18))
         i = 0
         positions = []
         labels = []
-        for (program_train, auc_train), auc_test, ppv_train, ppv_test in zip(auc_results_train_dict.items(),
-                                                                             auc_results_test_dict.values(),
-                                                                             ppv_results_train_dict.values(),
-                                                                             ppv_results_test_dict.values()):
-
+        for (program_train, auc_train), auc_test in zip(auc_results_train_dict.items(),auc_results_test_dict.values()):
             if np.isnan(auc_train) or np.isnan(auc_test):
                 pass
             else:
@@ -4138,35 +4220,45 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark
                     rect = bar[0]  # single rectangle
                     ax1.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=12)
+                             ha='center', va='center', fontsize=12,weight='bold')
 
 
-        ax1.set_yticks(positions, labels=labels, fontsize=15)
+        ax1.set_yticks(positions, labels=labels, fontsize=15,weight='bold')
         ax1.tick_params(axis='x', labelsize=15)
 
         ax1.axvline(x=0.5, color='goldenrod', linestyle='--')
         transformation = transforms.blended_transform_factory(ax1.get_yticklabels()[0].get_transform(), ax1.transData)
         ax1.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=15)
-        ax1.set_title("ROC-AUC", fontsize=18)
-        ax1.margins(x=0.2)
+        ax1.set_title("ROC-AUC", fontsize=20)
+        ax1.margins(x=0.15)
 
-        plt.subplots_adjust(left=0.2, wspace=0.4)
+        plt.subplots_adjust(left=0.15, wspace=0.4,right=0.85)
+        legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in colors_dict.items()]
+        fig.legend(handles=legends, prop={'size': 20}, loc='center right', bbox_to_anchor=(1.0, 0.5))
+        fig.suptitle("Benchmarking", fontsize=20)
+
 
     else:
 
-        fig,[ax1,ax2] = plt.subplots(nrows=1,ncols=2,figsize=(20,18))
+        fig,[ax1,ax2,ax3] = plt.subplots(nrows=1,ncols=3,figsize=(25,16))
         i= 0
         positions = []
         labels = []
-        for (program_train,auc_train),auc_test,ppv_train,ppv_test in zip(auc_results_train_dict.items(),auc_results_test_dict.values(),ppv_results_train_dict.values(),ppv_results_test_dict.values()):
-
+        for (program_train, auc_train), auc_test, ppv_train, ppv_test, ap_train,ap_test in zip(auc_results_train_dict.items(),
+                                                                             auc_results_test_dict.values(),
+                                                                             ppv_results_train_dict.values(),
+                                                                             ppv_results_test_dict.values(),
+                                                                             ap_results_train_dict.values(),
+                                                                             ap_results_test_dict.values()):
             if np.isnan(auc_train) or np.isnan(auc_test):
                 pass
             else:
                 bar_train_auc= ax1.barh(i,width=auc_train,color="skyblue",height=0.2)
-                #bar_train_ppv= ax2.barh(i,width=ppv_train,color="skyblue",height=0.2)
+                bar_train_ppv= ax2.barh(i,width=ppv_train,color="skyblue",height=0.2)
+                bar_train_ap= ax3.barh(i,width=ap_train,color="skyblue",height=0.2)
                 bar_test_auc = ax1.barh(i + 0.2,width=auc_test,height=0.2,color="tomato")
-                #bar_test_ppv = ax2.barh(i + 0.2,width=ppv_test,height=0.2,color="tomato")
+                bar_test_ppv = ax2.barh(i + 0.2,width=ppv_test,height=0.2,color="tomato")
+                bar_test_ap = ax3.barh(i + 0.2,width=ap_test,height=0.2,color="tomato")
                 positions.append(i)
                 i += 1
                 labels.append(names_dict[program_train])
@@ -4174,37 +4266,179 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark
                     rect = bar[0] #single rectangle
                     ax1.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(),2)),
-                             ha='center', va='center',fontsize=12)
-                # for bar in [bar_train_ppv.patches,bar_test_ppv.patches]:
-                #     rect = bar[0] #single rectangle
-                #     ax2.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
-                #              '{}'.format(round(rect.get_width(),2)),
-                #              ha='center', va='center',fontsize=12)
+                             ha='center', va='center',fontsize=12,weight='bold')
+                for bar in [bar_train_ppv.patches,bar_test_ppv.patches]:
+                    rect = bar[0] #single rectangle
+                    ax2.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
+                             '{}'.format(round(rect.get_width(),2)),
+                             ha='center', va='center',fontsize=12,weight='bold')
+                for bar in [bar_train_ap.patches,bar_test_ap.patches]:
+                    rect = bar[0] #single rectangle
+                    ax3.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
+                             '{}'.format(round(rect.get_width(),2)),
+                             ha='center', va='center',fontsize=12,weight='bold')
 
-        ax1.set_yticks(positions,labels=labels,fontsize=15)
+        ax1.set_yticks(positions,labels=labels,fontsize=15,weight='bold')
         ax1.tick_params(axis='x', labelsize=15)
 
         ax1.axvline(x=0.5, color='goldenrod', linestyle='--')
         transformation = transforms.blended_transform_factory(ax1.get_yticklabels()[0].get_transform(), ax1.transData)
         ax1.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center",transform=transformation,fontsize=15)
-        ax1.set_title("ROC-AUC",fontsize=18)
+        ax1.set_title("ROC-AUC",fontsize=20)
         ax1.margins(x=0.2)
 
 
-        ax2.set_yticks(positions,labels=labels,fontsize=15)
-        ax2.set_title("Precision(PPV)",fontsize=18)
+        ax2.set_yticks(positions,labels=labels,fontsize=15,weight='bold')
+        ax2.set_title("Precision (PPV)",fontsize=20)
         ax2.margins(x=0.2)
 
-        plt.subplots_adjust(left=0.2,wspace=0.4)
+        ax3.set_yticks(positions,labels=labels,fontsize=15,weight='bold')
+        transformation = transforms.blended_transform_factory(ax3.get_yticklabels()[0].get_transform(), ax3.transData)
+        ax3.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center",transform=transformation,fontsize=15)
+        ax3.set_title("Average Precision (AP)",fontsize=20)
+        ax3.margins(x=0.2)
 
-    colors_dict = {"Train":"skyblue","Test":"tomato"}
-    legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in colors_dict.items()]
-    fig.legend(handles=legends, prop={'size': 12}, loc='center right', bbox_to_anchor=(0.9, 0.5))
-    fig.suptitle("Benchmarking",fontsize=20)
+        plt.subplots_adjust(wspace=0.5 )
+
+        legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in colors_dict.items()]
+        fig.legend(handles=legends, prop={'size': 20}, loc='center right', bbox_to_anchor=(0.98, 0.5))
+        fig.suptitle("Benchmarking",fontsize=20)
+
+    plt.savefig("{}/{}/Benchmarking_NEW".format(script_dir,folder),dpi=600)
+
+def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Benchmark"):
+
+    """"""
+
+    stress_mode_dict = {"random-blosum-variable-length":"random_variable_length_Icore_sequences_viral_dataset9",
+                        "random-blosum-9mers":"random_fixed_length_Icore_sequences_viral_dataset9",
+                        "random-blosum-8mers":"random_fixed_length_Icore_sequences_viral_dataset9", #I keep Icore instead of Ocore_non_anchor for convenience  later
+                        "shuffled-blosum-variable-length":"shuffled_variable_length_Icore_sequences_viral_dataset9",
+                        "shuffled-blosum-9mers":"shuffled_fixed_length_Icore_sequences_viral_dataset9",
+                        "shuffled-blosum-8mers":"shuffled_fixed_length_Icore_sequences_viral_dataset9",
+                        "raw-blosum-variable-length":"variable_length_Icore_sequences_viral_dataset9",
+                        "raw-blosum-9mers":"fixed_length_Icore_sequences_viral_dataset9",
+                        "raw-blosum-8mers":"fixed_length_Icore_sequences_viral_dataset9",
+                         #"raw-onehot-variable-length":"",
+                         #"raw-onehot-9mers":""
+                         }
+
+    stress_testing_auc = defaultdict(lambda :defaultdict(lambda : defaultdict(lambda :defaultdict())))
+    stress_testing_ppv = defaultdict(lambda :defaultdict(lambda : defaultdict(lambda: defaultdict())))
+    stress_testing_ap = defaultdict(lambda :defaultdict(lambda : defaultdict(lambda: defaultdict())))
+
+    metrics_keys = ["ppv", "fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1", "pval_class_0", "pval_class_1"]
+    fig, [ax1,ax2] = plt.subplots(nrows=1, ncols=2, figsize=(18, 15))
+    i = 0
+    positions = []
+    labels = []
+    for sequence_type in dict_results_vegvisir.keys():
+        print("Analyzing {} datasets".format(sequence_type))
+        for stress_mode in dict_results_vegvisir[sequence_type].keys():
+            if "onehot" not in stress_mode:
+                # Highlight: Vegvisir results
+                print("Analizing {}".format(stress_mode))
+                vegvisir_folder = dict_results_vegvisir[sequence_type][stress_mode]
+                train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(vegvisir_folder, 0))
+                # valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(vegvisir_folder, 0))
+                test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(vegvisir_folder, 0))
+
+                # Highlight: extract the original sequences and the true labels to use them with NNAlign
+                dataset_info = train_out["dataset_info"]
+                custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
+                aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
+
+                train_sequences = train_out["summary_dict"]["data_int_samples"][:, 1:].squeeze(1)
+                train_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(train_sequences)
+                train_sequences_raw = list(map(lambda seq: "".join(seq).replace("#", ""), train_sequences_raw))
+
+                train_labels = train_out["summary_dict"]["true_samples"]
+                train_df = pd.DataFrame({"Icore": train_sequences_raw, "targets": train_labels})
+
+                test_sequences = test_out["summary_dict"]["data_int_samples"][:, 1:].squeeze(1)
+                test_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(test_sequences)
+                test_sequences_raw = list(map(lambda seq: "".join(seq).replace("#", ""), test_sequences_raw))
+                test_labels = test_out["summary_dict"]["true_samples"]
+                test_df = pd.DataFrame({"Icore": test_sequences_raw, "targets": test_labels})
+
+                metrics_results_dict = plot_kfold_comparison_helper(metrics_keys, script_dir, folder=vegvisir_folder,
+                                                                    overwrite=False, kfolds=5)
+                metrics_results_train = metrics_results_dict["train"]
+                # metrics_results_valid = metrics_results_dict["valid"]
+                metrics_results_test = metrics_results_dict["test"]
+
+                vegvisir_results_auc_train = {"Vegvisir": np.round((np.mean(np.array(metrics_results_train["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train["roc_auc_class_1"]))) / 2, 2)}
+                stress_testing_auc["vegvisir"][sequence_type][stress_mode]["train"] = vegvisir_results_auc_train
+                vegvisir_results_ap_train = {"Vegvisir": np.round((np.mean(np.array(metrics_results_train["ap_class_0"])) + np.mean(np.array(metrics_results_train["ap_class_1"]))) / 2, 2)}
+                stress_testing_ap["vegvisir"][sequence_type][stress_mode]["train"] = vegvisir_results_ap_train
+                vegvisir_results_ppv_train = {"Vegvisir": np.round(np.mean(np.array(metrics_results_train["ppv"])), 2)}
+                stress_testing_ppv["vegvisir"][sequence_type][stress_mode]["train"] = vegvisir_results_ppv_train
+                vegvisir_results_auc_test = {"Vegvisir": np.round((np.mean(np.array(metrics_results_test["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test["roc_auc_class_1"]))) / 2, 2)}
+                stress_testing_auc["vegvisir"][sequence_type][stress_mode]["test"] = vegvisir_results_auc_test
+                vegvisir_results_ap_test = {"Vegvisir": np.round((np.mean(np.array(metrics_results_test["ap_class_0"])) + np.mean(np.array(metrics_results_test["ap_class_1"]))) / 2, 2)}
+                stress_testing_ap["vegvisir"][sequence_type][stress_mode]["test"] = vegvisir_results_ap_test
+                vegvisir_results_ppv_test = {"Vegvisir": np.round(np.mean(np.array(metrics_results_test["ppv"])), 2)}
+                stress_testing_ppv["vegvisir"][sequence_type][stress_mode]["test"] = vegvisir_results_ppv_test
+
+                stress_dataset = stress_mode_dict[stress_mode].replace("Icore",sequence_type) #This is weird, but i do not feel like making it better
+                folders_list = glob("/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/{}/{}/*/".format(sequence_type,stress_dataset),recursive=True)
+                folder_name = Path(folders_list[0]).parts[-1]
 
 
-    plt.savefig("{}/{}/Benchmarking".format(script_dir,folder),dpi=600)
+                nnalign_results_path_train_full = "{}{}.lg8.sorted.pred".format(folders_list[0],folder_name)
+                nnalign_results_path_test_full = "{}{}.evalset.txt".format(folders_list[0],folder_name)
 
+                nnalign_results_train_auc_dict, nnalign_results_train_ppv_dict, nnalign_results_train_ap_dict = process_nnalign(nnalign_results_path_train_full, train_df)
+                stress_testing_auc["nnalign"][sequence_type][stress_mode]["train"] = nnalign_results_train_auc_dict
+                stress_testing_ppv["nnalign"][sequence_type][stress_mode]["train"] = nnalign_results_train_ppv_dict
+                stress_testing_ap["nnalign"][sequence_type][stress_mode]["train"] = nnalign_results_train_ap_dict
+                nnalign_results_test_auc_dict, nnalign_results_test_ppv_dict, nnalign_results_test_ap_dict = process_nnalign(nnalign_results_path_test_full, test_df)
+                stress_testing_auc["nnalign"][sequence_type][stress_mode]["test"] = nnalign_results_test_auc_dict
+                stress_testing_ppv["nnalign"][sequence_type][stress_mode]["test"] = nnalign_results_test_ppv_dict
+                stress_testing_ap["nnalign"][sequence_type][stress_mode]["test"] = nnalign_results_test_ap_dict
+
+
+                bar_train_auc1 = ax1.barh(i, width=nnalign_results_train_auc_dict["NNAlign2.1"], color="plum", height=0.2)
+                bar_train_auc2 = ax1.barh(i + 0.2, width=vegvisir_results_auc_train["Vegvisir"], color="darkturquoise", height=0.2)
+
+                bar_test_auc1 = ax2.barh(i, width=nnalign_results_test_auc_dict["NNAlign2.1"], height=0.2, color="plum")
+                bar_test_auc2 = ax2.barh(i + 0.2, width=vegvisir_results_auc_test["Vegvisir"], height=0.2, color="darkturquoise")
+
+                positions.append(i)
+                labels.append("{}\n{}".format(sequence_type,stress_mode))
+                i += 1
+                for bar in [bar_train_auc1.patches,bar_train_auc2.patches]:
+                    rect = bar[0]  # single rectangle
+                    ax1.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
+                             '{}'.format(round(rect.get_width(), 2)),
+                             ha='center', va='center', fontsize=12, weight='bold')
+                for bar in [bar_test_auc1.patches,bar_test_auc2.patches]:
+                    rect = bar[0]  # single rectangle
+                    ax2.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
+                             '{}'.format(round(rect.get_width(), 2)),
+                             ha='center', va='center', fontsize=12, weight='bold')
+
+    ax1.set_yticks(positions, labels=labels, fontsize=15, weight='bold')
+    ax1.tick_params(axis='x', labelsize=15)
+
+    ax1.axvline(x=0.5, color='goldenrod', linestyle='--')
+    transformation = transforms.blended_transform_factory(ax1.get_yticklabels()[0].get_transform(), ax1.transData)
+    ax1.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=15)
+    ax1.set_title("Train", fontsize=20)
+    ax1.margins(x=0.15)
+
+    ax2.axvline(x=0.5, color='goldenrod', linestyle='--')
+    ax2.set_title("Test",fontsize=20)
+    ax2.margins(x=0.15)
+
+
+    plt.subplots_adjust(left=0.25, wspace=0.2, right=0.84)
+    legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in {"Vegvisir":"darkturquoise","NNAlign2.1":"plum"}.items()]
+    fig.legend(handles=legends, prop={'size': 20}, loc='center right', bbox_to_anchor=(1.0, 0.5))
+    fig.suptitle("Stress testing", fontsize=25)
+
+
+    plt.savefig("")
 
 def plot_hierarchical_clustering(vegvisir_folder,embedded_epitopes,folder):
 

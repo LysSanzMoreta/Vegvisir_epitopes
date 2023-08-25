@@ -6,7 +6,7 @@ from pyro.nn import PyroModule
 import  vegvisir
 from vegvisir.utils import extract_windows_vectorized
 from collections import namedtuple
-OutputNN = namedtuple("OutputNN",["output","attn_weights","encoder_hidden_states","decoder_hidden_states","encoder_final_hidden","decoder_final_hidden"])
+OutputNN = namedtuple("OutputNN",["output","attn_weights","encoder_hidden_states","decoder_hidden_states","encoder_final_hidden","decoder_final_hidden","init_h_0_decoder"])
 
 class Attention1(nn.Module):
     ''' Scaled Dot-Product Attention as in Attention is all You need, which is based on Dot-product Attention from Luong 2015, and scaled by Vaswani in 2017
@@ -949,14 +949,12 @@ class RNN_model7(nn.Module):
         """
 
         if isinstance(guide_estimates, dict):
-            #print("WITH guide estimates")
             encoder_final_hidden = guide_estimates["rnn_final_hidden"].to(device=self.device)
             encoder_final_hidden_bidirectional = guide_estimates["rnn_final_hidden_bidirectional"].to(device=self.device)
             encoder_hidden_states_bidirectional = guide_estimates["rnn_hidden_states_bidirectional"].to(device=self.device)
             encoder_hidden_states = guide_estimates["rnn_hidden_states"].to(device=self.device)
             encoder_rnn_hidden = guide_estimates["rnn_hidden"].to(device=self.device)
-        else:
-            #print("NO guide estimates")
+        else: #for epitope generation and model drawing
             encoder_rnn_hidden = init_h_0_decoder.to(device=self.device) #TODO: pick only one direction? and sort of predict backwards?
             encoder_final_hidden =torch.ones((x.shape[0],self.gru_hidden_dim)).to(device=self.device)
             encoder_final_hidden_bidirectional = init_h_0_decoder.to(device=self.device)
@@ -992,7 +990,13 @@ class RNN_model7(nn.Module):
                             encoder_hidden_states=encoder_hidden_states_bidirectional,
                             decoder_hidden_states=decoder_hidden_states_bidirectional,
                             encoder_final_hidden=encoder_final_hidden,
-                            decoder_final_hidden=decoder_final_hidden)
+                            decoder_final_hidden=decoder_final_hidden,
+                            init_h_0_decoder = encoder_rnn_hidden, #Highlight: Update the init_decoder with the guide estimates values to perform peptide generation later on
+
+                            )
+
+
+
         return outputnn
 
 class RNN_guide1a(nn.Module):

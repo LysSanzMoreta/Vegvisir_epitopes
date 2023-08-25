@@ -43,7 +43,11 @@ DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_arra
                                         "data_array_onehot_encoding",
                                         "data_array_onehot_encoding_mask",
                                         "data_array_blosum_norm","blosum",
-                                        "n_data","seq_max_len","max_len","corrected_aa_types","input_dim","positional_weights","positional_weights_mask","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity","features_names"])
+                                        "n_data","seq_max_len",
+                                        "max_len",
+                                        "corrected_aa_types","input_dim","positional_weights",
+                                        "positional_weights_mask","percent_identity_mean","cosine_similarity_mean",
+                                        "kmers_pid_similarity","kmers_cosine_similarity","features_names","unique_lens"])
 DatasetDivision = namedtuple("DatasetDivision",["all","all_mask","positives","positives_mask","positives_idx","negatives","negatives_mask","negatives_idx","high_confidence_negatives","high_confidence_negatives_mask","high_conf_negatives_idx"])
 SimilarityResults = namedtuple("SimilarityResults",["positional_weights","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity"])
 
@@ -2361,7 +2365,8 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
                             cosine_similarity_mean= all_sim_results.cosine_similarity_mean,
                             kmers_pid_similarity=all_sim_results.kmers_pid_similarity,
                             kmers_cosine_similarity=all_sim_results.kmers_cosine_similarity,
-                            features_names = features_names)
+                            features_names = features_names,
+                            unique_lens=unique_lens)
 
     if not os.path.exists("{}/{}/umap_data_norm.png".format(storage_folder,args.dataset_name)):
         VegvisirPlots.plot_data_umap(data_array_blosum_norm,data_info.seq_max_len,data_info.max_len,storage_folder,args.dataset_name)
