@@ -705,7 +705,10 @@ def plot_heatmap(array, title,file_name):
     plt.close(fig)
 
 def plot_logos():
-    """"""
+    """
+    https://github.com/jbkinney/logomaker/blob/master/logomaker/examples/logos_from_datafiles.ipynb
+    :return:
+    """
 
 def plot_umap1(array,labels,storage_folder,args,title_name,file_name):
     from matplotlib.colors import ListedColormap
@@ -1213,9 +1216,8 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
     print("Plotting scatter UMAP of {}...".format(vector_name))
 
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:, 0])
-    if method == "_single_sample":
-        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
-            predictions_dict["class_binary_prediction_single_sample"])
+    if sample_mode== "single_sample":
+        colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_dict["class_binary_predictions_single_sample"])
     else:
         colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_dict["class_binary_predictions_samples_mode"])
         #colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_dict["class_binary_predictions_samples_logits_average_argmax"])
@@ -1235,21 +1237,19 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
     colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
     colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
     # Highlight: Frequency scores per class: https://stackoverflow.com/questions/65927253/linearsegmentedcolormap-to-list
-    frequency_class0_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 0]).tolist()
+    frequency_class0_unique = np.unique(predictions_dict["class_binary_predictions_samples_frequencies"][:, 0]).tolist()
     colormap_frequency_class0 = matplotlib.cm.get_cmap('BuGn',
                                                        len(frequency_class0_unique))  # This one is  a LinearSegmentedColor map and works slightly different
-    colormap_frequency_class0_array = np.array(
-        [colormap_frequency_class0(i) for i in range(colormap_frequency_class0.N)])
+    colormap_frequency_class0_array = np.array([colormap_frequency_class0(i) for i in range(colormap_frequency_class0.N)])
     colors_dict = dict(zip(frequency_class0_unique, colormap_frequency_class0_array))
     colors_frequency_class0 = np.vectorize(colors_dict.get, signature='()->(n)')(
-        predictions_dict["class_binary_prediction_samples_frequencies"][:, 0])
-    frequency_class1_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 1]).tolist()
+        predictions_dict["class_binary_predictions_samples_frequencies"][:, 0])
+    frequency_class1_unique = np.unique(predictions_dict["class_binary_predictions_samples_frequencies"][:, 1]).tolist()
     colormap_frequency_class1 = matplotlib.cm.get_cmap('OrRd', len(frequency_class1_unique))
     colormap_frequency_class1_array = np.array(
         [colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
     colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
-    colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(
-        predictions_dict["class_binary_prediction_samples_frequencies"][:, 1])
+    colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_binary_predictions_samples_frequencies"][:, 1])
     alpha = 0.7
     size = 5
     fig, [[ax1, ax2, ax3, ax4],
@@ -1265,7 +1265,7 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
     ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:, 2], alpha=alpha, s=size)
 
     ax1.set_title("Binary targets", fontsize=20)
-    if method == "_single_sample":
+    if sample_mode == "single_sample":
         #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax2, cmap="Blues", n_levels=30, fill=True,thresh=0.05, alpha=0.5)  # cmap='Blues'
         ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha, s=size)
         ax2.set_title("Predicted binary targets \n (single sample)", fontsize=20)
@@ -1387,8 +1387,8 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
                   "encoder_final_hidden_state":"Encoder Hf",
                   "decoder_final_hidden_state": "Decoder Hf"}
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:, 0])
-    if method == "_single_sample":
-        predictions_binary = predictions_dict["class_binary_prediction_single_sample"]
+    if sample_mode == "single_sample":
+        predictions_binary = predictions_dict["class_binary_predictions_single_sample"]
         colors_predicted_binary = np.vectorize(colors_dict_labels.get)(predictions_binary)
     else:
         predictions_binary = predictions_dict["class_binary_predictions_samples_mode"]
@@ -1400,8 +1400,8 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
                               "Binary targets":latent_space[:, 0],
                               "predictions_binary":predictions_binary,
                               "Immunodominance":latent_space[:, 3],
-                              "frequency_0":predictions_dict["class_binary_prediction_samples_frequencies"][:, 0],
-                              "frequency_1":predictions_dict["class_binary_prediction_samples_frequencies"][:, 1]
+                              "frequency_0":predictions_dict["class_binary_predictions_samples_frequencies"][:, 0],
+                              "frequency_1":predictions_dict["class_binary_predictions_samples_frequencies"][:, 1]
                              })
 
     # Highlight: Immunodominance scores colors
@@ -1413,25 +1413,26 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
     colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
     colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
     # Highlight: Frequency scores per class: https://stackoverflow.com/questions/65927253/linearsegmentedcolormap-to-list
-    frequency_class0_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 0]).tolist()
+    frequency_class0_unique = np.unique(predictions_dict["class_binary_predictions_samples_frequencies"][:, 0]).tolist()
     colormap_frequency_class0 = matplotlib.cm.get_cmap('BuGn',len(frequency_class0_unique))  # This one is  a LinearSegmentedColor map and works slightly different
     colormap_frequency_class0_array = np.array([colormap_frequency_class0(i) for i in range(colormap_frequency_class0.N)])
     colors_dict = dict(zip(frequency_class0_unique, colormap_frequency_class0_array))
     colors_frequency_class0 = np.vectorize(colors_dict.get, signature='()->(n)')(
-        predictions_dict["class_binary_prediction_samples_frequencies"][:, 0])
-    frequency_class1_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 1]).tolist()
+        predictions_dict["class_binary_predictions_samples_frequencies"][:, 0])
+    frequency_class1_unique = np.unique(predictions_dict["class_binary_predictions_samples_frequencies"][:, 1]).tolist()
     colormap_frequency_class1 = matplotlib.cm.get_cmap('OrRd', len(frequency_class1_unique))
     colormap_frequency_class1_array = np.array(
         [colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
     colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
-    colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_binary_prediction_samples_frequencies"][:, 1])
+    colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_binary_predictions_samples_frequencies"][:, 1])
 
     alpha = 0.7
     size = 4
     # Highlight: Scatter and density plot
+
     g0 = sns.jointplot(data=dataframe, x="UMAP_x", y="UMAP_y", hue="Binary targets", alpha=alpha, s=8,
                         palette=list(colors_dict_labels.values()),
-                        hue_order=[0,1]
+                        hue_order=[0,1,2]
                         )
     g0.ax_joint.legend(fancybox=True, framealpha=0.5)
     g0.ax_joint.axis("off")
@@ -1521,9 +1522,9 @@ def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,
     print("Plotting scatter (quantiles) UMAP of {}...".format(vector_name))
 
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:, 0])
-    if method == "_single_sample":
+    if sample_mode == "single_sample":
         colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
-            predictions_dict["class_binary_prediction_single_sample"])
+            predictions_dict["class_binary_predictions_single_sample"])
     else:
         colors_predicted_binary = np.vectorize(colors_dict_labels.get)(
             predictions_dict["class_binary_predictions_samples_mode"])
@@ -1543,21 +1544,21 @@ def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,
     colors_dict = dict(zip(immunodominance_scores_unique, colormap_immunodominance.colors))
     colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
     # Highlight: Frequency scores per class: https://stackoverflow.com/questions/65927253/linearsegmentedcolormap-to-list
-    frequency_class0_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 0]).tolist()
+    frequency_class0_unique = np.unique(predictions_dict["class_binary_predictions_samples_frequencies"][:, 0]).tolist()
     colormap_frequency_class0 = matplotlib.cm.get_cmap('BuGn',
                                                        len(frequency_class0_unique))  # This one is  a LinearSegmentedColor map and works slightly different
     colormap_frequency_class0_array = np.array(
         [colormap_frequency_class0(i) for i in range(colormap_frequency_class0.N)])
     colors_dict = dict(zip(frequency_class0_unique, colormap_frequency_class0_array))
     colors_frequency_class0 = np.vectorize(colors_dict.get, signature='()->(n)')(
-        predictions_dict["class_binary_prediction_samples_frequencies"][:, 0])
-    frequency_class1_unique = np.unique(predictions_dict["class_binary_prediction_samples_frequencies"][:, 1]).tolist()
+        predictions_dict["class_binary_predictions_samples_frequencies"][:, 0])
+    frequency_class1_unique = np.unique(predictions_dict["class_binary_predictions_samples_frequencies"][:, 1]).tolist()
     colormap_frequency_class1 = matplotlib.cm.get_cmap('OrRd', len(frequency_class1_unique))
     colormap_frequency_class1_array = np.array(
         [colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
     colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
     colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(
-        predictions_dict["class_binary_prediction_samples_frequencies"][:, 1])
+        predictions_dict["class_binary_predictions_samples_frequencies"][:, 1])
     alpha = 0.7
     size = 5
     fig, [[ax1, ax2, ax3, ax4],
@@ -1573,7 +1574,7 @@ def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,
     ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:, 2], alpha=alpha, s=size)
 
     ax1.set_title("True labels", fontsize=20)
-    if method == "_single_sample":
+    if sample_mode == "single_sample":
         #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax2, cmap="Blues", n_levels=30, fill=True,thresh=0.05, alpha=0.5)  # cmap='Blues'
         ax2.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_predicted_binary, alpha=alpha, s=size)
         ax2.set_title("Predicted labels \n (single sample)", fontsize=20)
@@ -2220,11 +2221,11 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
     evaluation_modes = ["samples","single_sample"] if predictions_dict["true_single_sample"] is not None else ["samples"]
     probability_modes = ["class_probs_predictions_samples_average","class_probs_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_probs_predictions_samples_average"]
     binary_modes = ["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_mode"]
-    #binary_modes = ["class_binary_predictions_samples_logits_average_argmax","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_logits_average_argmax"]
+    #binary_modes = ["class_binary_predictions_samples_logits_average_argmax","class_binary_predictions_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_logits_average_argmax"]
 
     metrics_summary_dict = defaultdict(lambda:defaultdict(lambda : defaultdict()))
     for sample_mode,prob_mode,binary_mode in zip(evaluation_modes,probability_modes,binary_modes):
-    #for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
+    #for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_predictions_single_sample"]):
         labels = predictions_dict["true_{}".format(sample_mode)]
         onehot_labels = predictions_dict["true_onehot_{}".format(sample_mode)]
         confidence_scores = predictions_dict["confidence_scores_{}".format(sample_mode)]
@@ -2327,7 +2328,7 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
                 metrics_summary_dict[sample_mode][idx_name]["recall"] = ap_dict["recall"]
                 metrics_summary_dict[sample_mode][idx_name]["average_precision"] = ap_dict["average_precision"]
 
-            #for key_name_2,stats_name_2 in zip(["samples_mode","single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
+            #for key_name_2,stats_name_2 in zip(["samples_mode","single_sample"],["class_binary_predictions_samples_mode","class_binary_predictions_single_sample"]):
             if predictions_dict[binary_mode] is not None:
                 targets = labels[idx]
                 scores = predictions_dict[binary_mode][idx]
@@ -2396,10 +2397,10 @@ def plot_classification_metrics_per_species(dataset_info,args,predictions_dict,f
 
     evaluation_modes = ["samples","single_sample"] if predictions_dict["true_single_sample"] is not None else ["samples"]
     probability_modes = ["class_probs_predictions_samples_average","class_probs_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_probs_predictions_samples_average"]
-    binary_modes = ["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_mode"]
-    #binary_modes = ["class_binary_predictions_samples_logits_average_argmax","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_logits_average_argmax"]
+    binary_modes = ["class_binary_predictions_samples_mode","class_binary_predictions_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_mode"]
+    #binary_modes = ["class_binary_predictions_samples_logits_average_argmax","class_binary_predictions_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_logits_average_argmax"]
 
-    #for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"]):
+    #for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_predictions_single_sample"]):
     for sample_mode,prob_mode,binary_mode in zip(evaluation_modes,probability_modes,binary_modes):
         data_int = predictions_dict["data_int_{}".format(sample_mode)]
         org_name = data_int[:,0,6]

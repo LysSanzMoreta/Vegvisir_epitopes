@@ -804,6 +804,40 @@ def euclidean_2d_norm(A,B,squared=True):
     else:
         return distance.clip(min=0)
 
+def manage_predictions_generative(args,generative_dict):
+
+    mode = "samples" if args.generate_num_samples > 1 else "single_sample"
+    class_logits_predictions_generative_argmax = np.argmax(generative_dict["logits"], axis=-1)
+    #class_logits_predictions_generative_argmax_mode = stats.mode(class_logits_predictions_generative_argmax, axis=1,keepdims=True).mode.squeeze(-1)
+    class_logits_predictions_generative_argmax_mode = class_logits_predictions_generative_argmax
+    probs_predictions_generative = generative_dict["probs"]
+    #
+    binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=generative_dict["binary"].astype("int64"))
+    binary_frequencies = binary_frequencies / args.generate_num_samples
+
+
+    #Highlight: Stack 2 data_int to maintain the latter format
+
+    data_int = np.concatenate([generative_dict["data_int"][:,None],generative_dict["data_int"][:,None]],axis=1)
+
+    generative_dict = {"data_int_{}".format(mode): data_int,
+                        "data_mask_{}".format(mode): generative_dict["data_mask"],
+                        "class_binary_predictions_{}".format(mode): generative_dict["binary"] if args.generate_num_samples > 1 else generative_dict["binary"].squeeze(1) ,
+                        "true_{}".format(mode): generative_dict["true"],
+                        "class_binary_predictions_{}_mode".format(mode): stats.mode(generative_dict["binary"], axis=1,keepdims=True).mode.squeeze(-1),
+                        "class_binary_predictions_samples_frequencies": binary_frequencies, #I name it samples to avoid errors
+                        "class_logits_predictions_{}".format(mode): generative_dict["logits"],
+                        "class_logits_predictions_{}_argmax".format(mode): class_logits_predictions_generative_argmax,
+                        "class_logits_predictions_{}_argmax_frequencies".format(mode): None,
+                        "class_logits_predictions_{}_argmax_mode".format(mode): class_logits_predictions_generative_argmax_mode,
+                        "class_probs_predictions_{}".format(mode): probs_predictions_generative,
+                        "class_probs_predictions_{}_average".format(mode): np.mean(probs_predictions_generative, axis=1) if args.generate_num_samples > 1 else probs_predictions_generative,
+                        "class_binary_predictions_{}_logits_average_argmax".format(mode): np.argmax(np.mean(probs_predictions_generative, axis=1), axis=1) if args.generate_num_samples > 1 else np.argmax(probs_predictions_generative, axis=1)
+                       }
+
+
+    return generative_dict
+
 def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None):
     """
 
@@ -824,17 +858,6 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
 
     class_logits_predictions_samples_argmax = np.argmax(logits_predictions_samples,axis=-1)
     class_logits_predictions_samples_argmax_mode = stats.mode(class_logits_predictions_samples_argmax, axis=1,keepdims=True).mode.squeeze(-1)
-
-    if generative_dict is not None:
-        class_logits_predictions_generative_argmax = np.argmax(generative_dict["logits"], axis=-1)
-        class_logits_predictions_generative_argmax_mode = stats.mode(class_logits_predictions_generative_argmax, axis=1,
-                                                                  keepdims=True).mode.squeeze(-1)
-        probs_predictions_generative = generative_dict["probs"]
-
-    else:
-        class_logits_predictions_generative_argmax = None
-        class_logits_predictions_generative_argmax_mode = None
-        probs_predictions_generative = None
 
 
     binary_predictions_samples_mode = stats.mode(binary_predictions_samples, axis=1,keepdims=True).mode.squeeze(-1)
@@ -860,7 +883,7 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
                         "data_mask_samples": samples_dict["data_mask"],
                         "class_binary_predictions_samples": binary_predictions_samples,
                         "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
-                        "class_binary_prediction_samples_frequencies": binary_frequencies,
+                        "class_binary_predictions_samples_frequencies": binary_frequencies,
                         "class_logits_predictions_samples": logits_predictions_samples,
                         "class_logits_predictions_samples_argmax": class_logits_predictions_samples_argmax,
                         "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
@@ -893,21 +916,6 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
                         "decoder_final_hidden_state_single_sample": predictions_dict["decoder_final_hidden_state"],
                         "decoder_final_hidden_state_samples": samples_dict["decoder_final_hidden_state"],
 
-                        "data_int_generated": generative_dict["reconstructed_sequences"] if generative_dict is not None else None,
-                        "data_mask_generated": generative_dict["reconstructed_sequences"].astype(bool) if generative_dict is not None else None,
-                        "class_binary_predictions_generated": generative_dict["true"],
-                        "class_binary_predictions_generated_mode": stats.mode(generative_dict["binary"], axis=1,keepdims=True).mode.squeeze(-1),
-                        "class_binary_prediction_generated_frequencies": None,
-                        "class_logits_predictions_generated": generative_dict["logits"] if generative_dict is not None else None,
-                        "class_logits_predictions_generated_argmax": class_logits_predictions_generative_argmax,
-                        "class_logits_predictions_generated_argmax_frequencies": None,
-                        "class_logits_predictions_generative_argmax_mode": class_logits_predictions_generative_argmax_mode,
-                        "class_probs_predictions_generative": probs_predictions_generative,
-                        "class_probs_predictions_generative_average": np.mean(probs_predictions_generative, axis=1),
-                        "class_binary_predictions_generative_logits_average_argmax": np.argmax(
-                            np.mean(probs_predictions_generative, axis=1), axis=1),
-
-
                         }
     else:
         summary_dict = {"data_int_single_sample":None,
@@ -916,7 +924,7 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
                         "data_mask_samples": samples_dict["data_mask"],
                         "class_binary_predictions_samples": binary_predictions_samples,
                         "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
-                        "class_binary_prediction_samples_frequencies": binary_frequencies,
+                        "class_binary_predictions_samples_frequencies": binary_frequencies,
                         "class_logits_predictions_samples": logits_predictions_samples,
                         "class_logits_predictions_samples_argmax": class_logits_predictions_samples_argmax,
                         "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
@@ -948,18 +956,6 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
                         "encoder_final_hidden_state_samples": samples_dict["encoder_final_hidden_state"],
                         "decoder_final_hidden_state_single_sample": None,
                         "decoder_final_hidden_state_samples": samples_dict["decoder_final_hidden_state"],
-                        "data_int_generated": generative_dict["reconstructed_sequences"] if generative_dict is not None else None,
-                        "data_mask_generated": generative_dict["reconstructed_sequences"].astype(bool) if generative_dict is not None else None,
-                        "class_binary_predictions_generated": generative_dict["true"],
-                        "class_binary_predictions_generated_mode": stats.mode(generative_dict["binary"], axis=1,keepdims=True).mode.squeeze(-1),
-                        "class_binary_prediction_generated_frequencies": None,
-                        "class_logits_predictions_generated": generative_dict["logits"] if generative_dict is not None else None,
-                        "class_logits_predictions_generated_argmax": class_logits_predictions_generative_argmax,
-                        "class_logits_predictions_generated_argmax_frequencies": None,
-                        "class_logits_predictions_generative_argmax_mode": class_logits_predictions_generative_argmax_mode,
-                        "class_probs_predictions_generative": probs_predictions_generative,
-                        "class_probs_predictions_generative_average": np.mean(probs_predictions_generative, axis=1),
-                        "class_binary_predictions_generative_logits_average_argmax": np.argmax(np.mean(probs_predictions_generative, axis=1), axis=1),
                         }
 
     return summary_dict
@@ -1312,8 +1308,6 @@ class CalculatePeptideFeatures(object):
         else:
             return None
 
-
-
 def build_features_dicts(dataset_info):
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
     features_dicts = CalculatePeptideFeatures(dataset_info.seq_max_len,[],storage_folder).return_dicts()
@@ -1371,7 +1365,6 @@ def calculate_correlations(feat1,feat2,method="pearson"):
             result =  scipy.stats.spearmanr(feat1, feat2)
     return result
 
-
 def generate_mask(max_len, length):
     seq_mask = np.array([True] * (length) + [False] * (max_len - length))
     return seq_mask[None, :]
@@ -1389,6 +1382,7 @@ def clean_generated_sequences(seq_int,seq_mask,zero_character,min_len):
             seq_int[idx[0]:] = zero_character
             seq_mask[idx[0]:] = False
             return (seq_int[None,:],seq_mask[None,:])
+
 
 
 #TODO: Put into new plots_utils.py, however right now it is annoying to change the structure because of dill

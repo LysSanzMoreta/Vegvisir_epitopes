@@ -23,7 +23,7 @@ class VEGVISIRGUIDES(EasyGuide):
         """The guide provides a valid joint probability density over all the latent random variables in the model or variational distribution."""
         super(VEGVISIRGUIDES, self).__init__(vegvisir_model)
         #self.guide_type = ModelLoad.args.select_guide
-        #self.Vegvisir = Vegvisir
+        self.vegvisir_model = Vegvisir
         self.blosum = model_load.blosum
         self.learning_type = model_load.args.learning_type
         self.glitch = model_load.args.glitch
@@ -53,6 +53,7 @@ class VEGVISIRGUIDES(EasyGuide):
         self.encoder_guide = RNN_guide2(self.aa_types, self.max_len, self.gru_hidden_dim, self.z_dim, self.device,self.tensor_type).to(device=self.device)
         if self.use_cuda:
             self.to(device=self.device)
+        self.vegvisir_model.build([self.h_0_GUIDE],"guide")
 
     def guide_supervised_glitch(self, batch_data, batch_mask, epoch,guide_estimates, sample=False):
         """

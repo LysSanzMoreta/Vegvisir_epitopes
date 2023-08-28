@@ -36,6 +36,7 @@ class VEGVISIRModelClass(nn.Module):
         self.use_cuda = model_load.args.use_cuda
         self.tensor_type = torch.cuda.DoubleTensor if self.use_cuda else torch.DoubleTensor
         #self.dropout = model_load.args.dropout
+        self.generate_num_samples = model_load.args.generate_num_samples
         self.num_classes = model_load.args.num_obs_classes
         self.embedding_dim = model_load.args.embedding_dim
         self.blosum = model_load.blosum
@@ -53,6 +54,12 @@ class VEGVISIRModelClass(nn.Module):
         self.visualization_dict = {}
         self.parameters_dict = {}
         self._parameters = {}
+
+    def build(self,parameter_list,suffix):
+        """Function designed to store nn.Parameters"""
+        self.wt_dict = nn.ParameterDict()
+        for i,param in enumerate(parameter_list):
+            self.wt_dict["weight_{}_{}".format(suffix,i)] = param
     @abstractmethod
     def forward(self,batch_data,batch_mask):
         raise NotImplementedError
@@ -754,11 +761,13 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         #self.classifier_model = RNN_classifier(self.aa_types,self.max_len,self.gru_hidden_dim,self.num_classes,self.z_dim,self.device) #input_dim,max_len,gru_hidden_dim,aa_types,z_dim,device
         #self.h_0_MODEL_encoder = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
         self.bidirectional = [2 if self.decoder.bidirectional else 1][0]
-        self.h_0_MODEL_decoder = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=False).to(self.device) #this is used only for generative purposes, not training
+        self.h_0_MODEL_decoder = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device) #this is used only for generative purposes, not training
         #self.h_0_MODEL_classifier = nn.Parameter(torch.randn(self.gru_hidden_dim), requires_grad=True).to(self.device)
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
         #self.init_hidden = Init_Hidden(self.z_dim, self.max_len, self.gru_hidden_dim, self.device)
+        self.build([self.h_0_MODEL_decoder],suffix="_model")
+
 
     # def model_non_glitch(self,batch_data,batch_mask,epoch,guide_estimates,sample=False):
     #     """
@@ -943,28 +952,25 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
             outputnn = self.decoder(batch_sequences_blosum, batch_sequences_lens, init_h_0_decoder, z=latent_z_seq,
                                     mask=batch_mask_len, guide_estimates=guide_estimates)
 
-            pyro.deterministic("attn_weights", outputnn.attn_weights,
-                               event_dim=0)  # should be event_dim = 2, but for sampling convenience we leave it here
-            pyro.deterministic("encoder_hidden_states", outputnn.encoder_hidden_states,
-                               event_dim=0)  # should be event_dim = 3
-            pyro.deterministic("decoder_hidden_states", outputnn.decoder_hidden_states,
-                               event_dim=0)  # should be event_dim = 3
-            pyro.deterministic("encoder_final_hidden", outputnn.encoder_final_hidden,
-                               event_dim=0)  # should be event_dim = 2
-            pyro.deterministic("decoder_final_hidden", outputnn.decoder_final_hidden,
-                               event_dim=0)  # should be event_dim = 2
+            pyro.deterministic("attn_weights", outputnn.attn_weights,event_dim=0)  # should be event_dim = 2, but for sampling convenience we leave it here
+            pyro.deterministic("encoder_hidden_states", outputnn.encoder_hidden_states,event_dim=0)  # should be event_dim = 3
+            pyro.deterministic("decoder_hidden_states", outputnn.decoder_hidden_states,event_dim=0)  # should be event_dim = 3
+            pyro.deterministic("encoder_final_hidden", outputnn.encoder_final_hidden,event_dim=0)  # should be event_dim = 2
+            pyro.deterministic("decoder_final_hidden", outputnn.decoder_final_hidden,event_dim=0)  # should be event_dim = 2
             sequences_logits = self.logsoftmax(outputnn.output)
             pyro.deterministic("sequences_logits", sequences_logits, event_dim=0)  # should be event_dim = 2
 
-            generated_sequences = pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=None if sample else batch_sequences_int)
+            #generated_sequences = pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=None if sample else batch_sequences_int)
+            generated_sequences = dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1).sample([self.generate_num_samples])
             # init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             class_logits = self.classifier_model(latent_space, None)
             class_logits = self.logsoftmax(class_logits)  # [N,num_classes]
             pyro.deterministic("class_logits", class_logits, event_dim=0)  # should be event_dim = 1
 
+
             with pyro.poutine.scale(None, self.likelihood_scale): #with pyro.poutine.mask(mask=confidence_mask_true):
-                pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),
-                            obs=None if sample else true_labels)
+                #binary_predictions = pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=None if sample else true_labels)
+                binary_predictions = dist.Categorical(logits=class_logits).to_event(1).sample([self.generate_num_samples])
 
         return {"attn_weights": outputnn.attn_weights,
                 "encoder_hidden_states": outputnn.encoder_hidden_states,
@@ -973,7 +979,9 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
                 "decoder_final_hidden": outputnn.decoder_final_hidden,
                 "sequences_logits": sequences_logits,
                 "class_logits": class_logits,
-                "generated_sequences":generated_sequences}
+                "binary_predictions":binary_predictions,
+                "generated_sequences":generated_sequences,
+                "latent_z":latent_space}
 
 
     def loss(self):
@@ -1004,6 +1012,8 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
         #self.init_hidden = Init_Hidden(self.z_dim,self.max_len,self.gru_hidden_dim,self.device)
+        self.build([self.h_0_MODEL_decoder],suffix="_model")
+
     # def model_non_glitched(self,batch_data,batch_mask,epoch,guide_estimates,sample=False):
     #     """
     #     :param batch_data:
@@ -1172,6 +1182,8 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.losses = VegvisirLosses(self.seq_max_len, self.input_dim)
         #self.init_hidden = Init_Hidden(self.z_dim, self.max_len, self.gru_hidden_dim, self.device)
+        self.build([self.h_0_MODEL_decoder],suffix="_model")
+
 
     def model_glitched(self,batch_data,batch_mask,epoch,guide_estimates,sample=False):
         """
@@ -1197,8 +1209,6 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
         batch_sequences_lens = batch_mask_len.sum(dim=1)
         batch_mask_len_true = torch.ones_like(batch_mask_len).bool()
         true_labels = batch_data["blosum"][:, 0, 0, 0]
-        #onehot_true_labels = torch.zeros((b_size,3))
-        #onehot_true_labels[torch.arange(b_size),true_labels.long()] = 1
         #immunodominance_scores = batch_data["blosum"][:,0,0,4]
         confidence_scores = batch_data["blosum"][:, 0, 0, 5]
         #confidence_mask = (confidence_scores[..., None] >= 0.35).any(-1)  # now we try to predict those with a low confidence score

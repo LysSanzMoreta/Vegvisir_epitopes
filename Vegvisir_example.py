@@ -82,16 +82,17 @@ def main():
             if args.test:
                 VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Test_fold_{}".format(kfold)), script_dir)
                 if args.validate:
-                    VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Valid_fold_{}".format(kfold)),
-                                          script_dir)
-
+                    VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Valid_fold_{}".format(kfold)),script_dir)
             else:
                 VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Valid_fold_{}".format(kfold)),script_dir)
-
+        if args.generate:
+            VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Generated"), script_dir)
     else:
         VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Train"), script_dir)
         VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Valid"), script_dir)
         VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Test"), script_dir)
+        if args.generate:
+            VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Generated"), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Vegvisir_checkpoints"), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Scripts"), script_dir)
 
@@ -360,11 +361,13 @@ if __name__ == "__main__":
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
 
     parser.add_argument('-train', type=str2bool, nargs='?', default=True ,help='<True> Run the model \n <False> Make models comparison or load previous model if pargs.pretrained_model is not None ')
-    parser.add_argument('-validate', type=str2bool, nargs='?', default=True, help='Evaluate the model on the validation dataset')
+    parser.add_argument('-validate', type=str2bool, nargs='?', default=False, help='Evaluate the model on the validation dataset')
     parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
     parser.add_argument('-hpo', type=str2bool, nargs='?', default=False, help='Hyperparameter optimization with Ray Tune')
-    parser.add_argument('-generate', type=str2bool, nargs='?', default=True, help='<True> Generate new neo-epitopes labelled and with a confidence score'
-                                                                                   '<False> Do nothing')
+    parser.add_argument('-generate', type=str2bool, nargs='?', default=True, help='<True> Generate new neo-epitopes labelled and with a confidence score. Please use args.validate False''<False> Do nothing')
+    parser.add_argument('-num_synthetic_peptides', type=int, nargs='?', default=250, help='<True> Generate new neo-epitopes labelled and with a confidence score. Please use args.validate False''<False> Do nothing')
+    parser.add_argument('-generate-num-samples', type=str2bool, nargs='?', default=1, help='If generate, then per generated sequence, produce n samples to calculate a class probability')
+
     best_config = {0:"/home/lys/Dropbox/PostDoc/vegvisir/BEST_hyperparameter_dict.p",1:None}
     parser.add_argument('-config-dict', nargs='?', default=best_config[1],type=str2None, help='Path to optimized hyperparameter dict')
     unobserved_sequences = {0:"/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/custom_dataset/unobserved_grouped_alleles_train.tsv",1:None}
@@ -374,7 +377,7 @@ if __name__ == "__main__":
                                                                                                 '<False> Performs a random stratified train, validation and test split')
 
 
-    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=False, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1, it saturates the CPU & GPU memory'
+    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=True, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1, it saturates the CPU & GPU memory'
                                                                                                 'False: Only plots the computationally inexpensive ROC curves')
 
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. \n'
