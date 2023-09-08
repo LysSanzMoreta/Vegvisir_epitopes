@@ -38,7 +38,7 @@ now = datetime.datetime.now()
 def define_suffix(args):
     kmers = "_{}mers".format("9" if args.sequence_type == "Icore" else "8") if args.filter_kmers else ""
     #kmers_name = "_{}mers".format("9" if args.sequence_type == "Icore" else "8") if args.filter_kmers else "variable-length"
-    encoding = "_{}".format(args.encoding)
+    encoding = "_{}".format("hpo_encoding" if args.hpo else args.encoding)
     num_unobserved = "_{}_unobserved".format(args.num_unobserved) if args.learning_type == "semisupervised" else ""
     if args.shuffle_sequence:
         if args.test:
@@ -73,7 +73,7 @@ def main():
     if args.hpo:
         train_config = "HPO"
     else:
-        train_config = "{}epochs".format(args.num_epochs)
+        train_config = "{}epochs".format( json.load(open(args.config_dict,"r+"))["general_config"]["num_epochs"] if args.config_dict is not None else args.num_epochs)
     results_dir = "{}/PLOTS_Vegvisir_{}_{}_{}_{}_{}{}".format(script_dir, args.dataset_name, now.strftime("%Y_%m_%d_%Hh%Mmin%Ss%fms"),train_config,args.learning_type,args.sequence_type,suffix)
     VegvisirUtils.folders(ntpath.basename(results_dir), script_dir)
     if args.k_folds > 1:
@@ -108,189 +108,64 @@ def main():
 def analysis_models():
     """Analyses the results of all possible model combinations (stress testing)"""
 
+    #Highlight: Likelihood HPO
 
 
-    dict_results_likelihood = {"supervised(Icore)":
-                            {"vd9-10":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/Likelihood_tuning/PLOTS_Vegvisir_viral_dataset9_2023_08_03_14h37min35s894838ms_60epochs_supervised_Icore_blosum_TESTING_likelihood_10",
-                            "vd9-20":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/Likelihood_tuning/PLOTS_Vegvisir_viral_dataset9_2023_08_03_16h14min44s785096ms_60epochs_supervised_Icore_blosum_TESTING_likelihood_20",
-                            "vd9-30":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/Likelihood_tuning/PLOTS_Vegvisir_viral_dataset9_2023_08_03_17h48min26s866987ms_60epochs_supervised_Icore_blosum_TESTING_likelihood_30",
-                            "vd9-40":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/Likelihood_tuning/PLOTS_Vegvisir_viral_dataset9_2023_08_03_19h21min17s085055ms_60epochs_supervised_Icore_blosum_TESTING_likelihood_40",
-                            "vd3-30": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/Likelihood_tuning/PLOTS_Vegvisir_viral_dataset3_2023_08_03_21h44min10s036982ms_60epochs_supervised_Icore_blosum_TESTING_likelihood_30",
-                            "vd3-40": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/Likelihood_tuning/PLOTS_Vegvisir_viral_dataset3_2023_08_03_23h04min07s833125ms_60epochs_supervised_Icore_blosum_TESTING_likelihood_40",
-                            "vd3-50": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/Likelihood_tuning/PLOTS_Vegvisir_viral_dataset3_2023_08_04_00h25min53s635200ms_60epochs_supervised_Icore_blosum_TESTING_likelihood_50",
-                            "vd3-60":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Supervised/Icore/Likelihood_tuning/PLOTS_Vegvisir_viral_dataset3_2023_08_04_01h47min14s179667ms_60epochs_supervised_Icore_blosum_TESTING_likelihood_60"
-                             }}
-
-
-
-    #Highlight: Likelihood 100
-    dict_results_predefined_partitions_100 = {"Icore":{
-                                                    "random-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_00h21min39s228581ms_60epochs_supervised_Icore_blosum_random_TESTING",
-                                                    "random-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_02h02min31s779860ms_60epochs_supervised_Icore_blosum_random_TESTING_9mers",
-                                                    "shuffled-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_03h09min53s385938ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
-                                                    "shuffled-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_04h47min05s598852ms_60epochs_supervised_Icore_blosum_shuffled_TESTING_9mers",
-                                                    "raw-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_05h53min07s553393ms_60epochs_supervised_Icore_blosum_TESTING",
-                                                    "raw-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_07h30min17s042073ms_60epochs_supervised_Icore_blosum_TESTING_9mers",
-                                                     "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_08h35min44s182897ms_60epochs_supervised_Icore_onehot_TESTING",
-                                                     "raw-onehot-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_10h14min30s578730ms_60epochs_supervised_Icore_onehot_TESTING_9mers"
+    dict_results_predefined_partitions = {"Icore":{
+                                                    "random-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_29_22h43min33s935024ms_60epochs_supervised_Icore_blosum_random_TESTING",
+                                                    "random-onehot-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_00h02min34s769003ms_60epochs_supervised_Icore_blosum_random_TESTING_9mers",
+                                                    "shuffled-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_00h56min37s868085ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
+                                                    "shuffled-onehot-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_02h13min16s897762ms_60epochs_supervised_Icore_blosum_shuffled_TESTING_9mers",
+                                                    "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_03h07min36s214823ms_60epochs_supervised_Icore_blosum_TESTING",
+                                                    "raw-onehot-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_04h26min47s161308ms_60epochs_supervised_Icore_blosum_TESTING_9mers",
                                                    },
                                          "Icore_non_anchor":{
-                                                     "random-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_11h21min04s589546ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING",
-                                                     "random-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_13h00min11s055366ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING_8mers",
-                                                     "shuffled-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_13h32min18s725061ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING",
-                                                     "shuffled-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_15h11min03s424849ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING_8mers",
-                                                     "raw-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_15h45min21s460981ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING",
-                                                     "raw-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_17h22min59s537148ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING_8mers",
-                                                     "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_19h11min15s401671ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING",
-                                                     "raw-onehot-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_20h49min36s271884ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING_8mers"
+                                                     "random-onehot-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_30_05h20min45s177235ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING",
+                                                     "random-onehot-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_30_06h37min30s804204ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING_8mers",
+                                                     "shuffled-onehot-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_30_07h05min42s608732ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING",
+                                                     "shuffled-onehot-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_30_08h20min28s072463ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING_8mers",
+                                                     "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_30_08h49min11s108414ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING",
+                                                     "raw-onehot-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_30_10h04min22s042493ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING_8mers"
+                                         }}
+
+    dict_results_random_stratified_partitions = {"Icore":{
+                                                        "random-onehot-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_19h24min13s555928ms_60epochs_supervised_Icore_blosum_random_TESTING",
+                                                        "random-onehot-9mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_20h34min04s389783ms_60epochs_supervised_Icore_blosum_random_TESTING_9mers",
+                                                        "shuffled-onehot-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_21h26min34s973459ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
+                                                        "shuffled-onehot-9mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_22h34min59s255207ms_60epochs_supervised_Icore_blosum_shuffled_TESTING_9mers",
+                                                        "raw-onehot-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_23h21min22s981405ms_60epochs_supervised_Icore_blosum_TESTING",
+                                                        "raw-onehot-9mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_31_00h33min58s021227ms_60epochs_supervised_Icore_blosum_TESTING_9mers",
+                                                   },
+                                         "Icore_non_anchor":{
+                                                     "random-onehot-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_31_01h20min23s474294ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING",
+                                                     "random-onehot-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_31_02h31min58s722045ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING_8mers",
+                                                     "shuffled-onehot-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_31_02h57min21s149063ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING",
+                                                     "shuffled-onehot-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_31_04h07min10s887834ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING_8mers",
+                                                     "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_31_04h30min30s086587ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING",
+                                                     "raw-onehot-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_31_05h37min53s060750ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING_8mers"
                                          }}
 
 
 
 
-    dict_results_random_stratified_partitions_100 = {"Icore":{
-                                                    "random-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_00h21min41s081591ms_60epochs_supervised_Icore_blosum_random_TESTING",
-                                                    "random-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_01h58min21s438713ms_60epochs_supervised_Icore_blosum_random_TESTING_9mers",
-                                                    "shuffled-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_03h03min37s477755ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
-                                                    "shuffled-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_04h37min19s658399ms_60epochs_supervised_Icore_blosum_shuffled_TESTING_9mers",
-                                                    "raw-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_05h41min19s365333ms_60epochs_supervised_Icore_blosum_TESTING",
-                                                    "raw-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_07h13min19s842305ms_60epochs_supervised_Icore_blosum_TESTING_9mers",
-                                                     "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_08h17min38s989963ms_60epochs_supervised_Icore_onehot_TESTING",
-                                                     "raw-onehot-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_11_09h49min01s283379ms_60epochs_supervised_Icore_onehot_TESTING_9mers"
-                                                   },
-                                         "Icore_non_anchor":{
-                                                     "random-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_10h53min57s031443ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING",
-                                                     "random-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_12h27min47s743657ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING_8mers",
-                                                     "shuffled-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_13h01min00s990819ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING",
-                                                     "shuffled-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_14h34min45s419777ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING_8mers",
-                                                     "raw-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_15h07min24s308813ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING",
-                                                     "raw-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_16h37min00s237374ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING_8mers",
-                                                     "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_19h11min45s466440ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING",
-                                                     "raw-onehot-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_100/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_11_20h46min22s152822ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING_8mers"
-                                         }}
-
-
-
-    #Highlight: Likelihood 80
-    dict_results_predefined_partitions_80 = {"Icore":{
-                                                    "random-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_16h22min50s455264ms_60epochs_supervised_Icore_blosum_random_TESTING",
-                                                    "random-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_18h00min16s910930ms_60epochs_supervised_Icore_blosum_random_TESTING_9mers",
-                                                    "shuffled-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_18h59min48s556463ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
-                                                    "shuffled-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_20h35min30s186381ms_60epochs_supervised_Icore_blosum_shuffled_TESTING_9mers",
-                                                    #"raw-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_13_22h08min17s858639ms_60epochs_supervised_Icore_blosum_TESTING_lk80",
-                                                    "raw-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_21h41min01s940264ms_60epochs_supervised_Icore_blosum_TESTING",
-                                                    "raw-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_23h20min57s783599ms_60epochs_supervised_Icore_blosum_TESTING_9mers",
-                                                     "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_15_00h27min33s253377ms_60epochs_supervised_Icore_onehot_TESTING",
-                                                     "raw-onehot-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_15_02h04min06s395090ms_60epochs_supervised_Icore_onehot_TESTING_9mers"
-                                                   },
-                                         "Icore_non_anchor":{
-                                                     "random-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_03h11min14s891078ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING",
-                                                     "random-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_04h47min43s218957ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING_8mers",
-                                                     "shuffled-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_05h19min21s010814ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING",
-                                                     "shuffled-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_06h56min53s143680ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING_8mers",
-                                                     "raw-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_07h30min54s481085ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING",
-                                                     "raw-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_09h06min53s142223ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING_8mers",
-                                                     "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_09h40min41s329685ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING",
-                                                     "raw-onehot-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_11h15min29s130588ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING_8mers"
-                                         }}
-
-    dict_results_random_stratified_partitions_80 = {"Icore":{
-                                                    "random-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_15_01h06min29s238603ms_60epochs_supervised_Icore_blosum_random_TESTING",
-                                                    "random-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_15_02h40min26s491870ms_60epochs_supervised_Icore_blosum_random_TESTING_9mers",
-                                                    "shuffled-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_15_03h45min58s786810ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
-                                                    "shuffled-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_15_05h17min55s585799ms_60epochs_supervised_Icore_blosum_shuffled_TESTING_9mers",
-                                                    "raw-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_15_06h21min58s024047ms_60epochs_supervised_Icore_blosum_TESTING",
-                                                    "raw-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_15_07h58min09s427052ms_60epochs_supervised_Icore_blosum_TESTING_9mers",
-                                                     "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_15_09h01min57s241008ms_60epochs_supervised_Icore_onehot_TESTING",
-                                                     "raw-onehot-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_15_10h31min10s087815ms_60epochs_supervised_Icore_onehot_TESTING_9mers"
-                                                   },
-                                         "Icore_non_anchor":{
-                                                     "random-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_11h37min19s196100ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING",
-                                                     "random-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_13h01min31s378988ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING_8mers",
-                                                     "shuffled-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_13h35min14s337920ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING",
-                                                     "shuffled-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_15h07min22s959488ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING_8mers",
-                                                     "raw-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_15h37min52s131820ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING",
-                                                     "raw-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_17h15min35s592585ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING_8mers",
-                                                     "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_17h46min54s694050ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING",
-                                                     "raw-onehot-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Random_stratified/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_15_19h11min20s045530ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING_8mers"
-                                         }}
-
-
-    #Highlight: Likelihood 60:
-
-    dict_results_predefined_partitions_60 = {"Icore":{
-                                                    "random-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_15_23h23min22s794823ms_60epochs_supervised_Icore_blosum_random_TESTING",
-                                                    "random-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_01h10min32s340159ms_60epochs_supervised_Icore_blosum_random_TESTING_9mers",
-                                                    "shuffled-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_02h23min08s887505ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
-                                                    "shuffled-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_03h46min01s482802ms_60epochs_supervised_Icore_blosum_shuffled_TESTING_9mers",
-                                                    "raw-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_04h43min52s657889ms_60epochs_supervised_Icore_blosum_TESTING",
-                                                    "raw-blosum-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_06h06min06s120049ms_60epochs_supervised_Icore_blosum_TESTING_9mers",
-                                                     "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_07h15min00s364188ms_60epochs_supervised_Icore_onehot_TESTING",
-                                                     "raw-onehot-9mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_08h42min55s171815ms_60epochs_supervised_Icore_onehot_TESTING_9mers"
-                                                   },
-                                         "Icore_non_anchor":{
-                                                     "random-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_16_15h34min52s686599ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING",
-                                                     "random-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_16_17h55min59s277441ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING_8mers",
-                                                     "shuffled-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_16_18h36min54s466004ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING",
-                                                     "shuffled-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_16_22h24min27s815811ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING_8mers",
-                                                     "raw-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_16_23h00min36s001099ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING",
-                                                     "raw-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_17_00h34min23s937002ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING_8mers",
-                                                     "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_17_01h10min24s412028ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING",
-                                                     "raw-onehot-8mers":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore_non_anchor/PLOTS_Vegvisir_viral_dataset9_2023_08_17_02h38min57s577222ms_60epochs_supervised_Icore_non_anchor_onehot_TESTING_8mers"
-                                         }}
-
-    dict_results_random_stratified_partitions_60 = {"Icore":{
-                                                    "random-blosum-variable-length":"",
-                                                    "random-blosum-9mers":"",
-                                                    "shuffled-blosum-variable-length":"",
-                                                    "shuffled-blosum-9mers":"",
-                                                    "raw-blosum-variable-length":"",
-                                                    "raw-blosum-9mers":"",
-                                                     "raw-onehot-variable-length":"",
-                                                     "raw-onehot-9mers":""
-                                                   },
-                                         "Icore_non_anchor":{
-                                                     "random-blosum-variable-length": "",
-                                                     "random-blosum-8mers": "",
-                                                     "shuffled-blosum-variable-length": "",
-                                                     "shuffled-blosum-8mers": "",
-                                                     "raw-blosum-variable-length": "",
-                                                     "raw-blosum-8mers": "",
-                                                     "raw-onehot-variable-length":"",
-                                                     "raw-onehot-8mers":""
-                                         }}
-
-
-    #VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_likelihood,kfolds=5,results_folder = "Benchmark/Plots",title="likelihood_tuning",overwrite=False)
-
-    #VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_60,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_likelihood_60",overwrite=False)
-
-    # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_100,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_likelihood_100",overwrite=False)
-    # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_random_stratified_partitions_100,kfolds=5,results_folder = "Benchmark/Plots",title="random_stratified_partitions_likelihood_100",overwrite=False)
+    # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_HPO",overwrite=False)
+    # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_random_stratified_partitions,kfolds=5,results_folder = "Benchmark/Plots",title="random_stratified_partitions_HPO",overwrite=False)
     #
-    # VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_random_stratified_partitions_100,kfolds=5,results_folder="Benchmark/Plots",subtitle="random_stratified_partitions_likelihood_100",overwrite_correlations=False,overwrite_all=False)
-    # VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_100,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_likelihood_100",overwrite_correlations=False,overwrite_all=False)
-
-
-    # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_80,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_likelihood_80",overwrite=False)
-    # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_random_stratified_partitions_80,kfolds=5,results_folder = "Benchmark/Plots",title="random_stratified_partitions_likelihood_80",overwrite=False)
+    # VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_HPO",overwrite_correlations=False,overwrite_all=False)
+    # VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_random_stratified_partitions,kfolds=5,results_folder="Benchmark/Plots",subtitle="random_stratified_partitions_HPO",overwrite_correlations=False,overwrite_all=False)
     #
-    # VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_80,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_likelihood_80",overwrite_correlations=False,overwrite_all=False)
-    # VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_random_stratified_partitions_80,kfolds=5,results_folder="Benchmark/Plots",subtitle="random_stratified_partitions_likelihood_80",overwrite_correlations=False,overwrite_all=False)
-    #
-
 
 
     dict_results_benchmark= { "Icore" :{
-        "raw-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_60/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_16_04h43min52s657889ms_60epochs_supervised_Icore_blosum_TESTING"
-    }
-    }
+        "raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_03h07min36s214823ms_60epochs_supervised_Icore_blosum_TESTING",
+        #"raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Random_stratified/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_23h21min22s981405ms_60epochs_supervised_Icore_blosum_TESTING",
+    }}
 
 
-    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,folder="Benchmark/Plots")
+    VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,folder="Benchmark/Plots",title="")
 
 
-    VegvisirPlots.plot_model_stressing_comparison(dict_results_predefined_partitions_60,script_dir,folder="Benchmark/Plots")
+    VegvisirPlots.plot_model_stressing_comparison(dict_results_predefined_partitions,script_dir,folder="Benchmark/Plots")
 
 
     exit()
@@ -298,7 +173,8 @@ def analysis_models():
 
 def hierarchical_clustering():
 
-    vegvisir_folder = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_21h41min01s940264ms_60epochs_supervised_Icore_blosum_TESTING"
+    #vegvisir_folder = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_21h41min01s940264ms_60epochs_supervised_Icore_blosum_TESTING"
+    vegvisir_folder = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_03h07min36s214823ms_60epochs_supervised_Icore_blosum_TESTING"
 
     embedded_epitopes = "{}/vegvisir/src/vegvisir/data/viral_dataset9/similarities/Icore/All/diff_allele/diff_len/neighbours1/all/EMBEDDED_epitopes.tsv".format(script_dir)
 
@@ -310,7 +186,7 @@ if __name__ == "__main__":
                         default="viral_dataset9",
                         help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data \n'
                              'custom_dataset: Perform training or prediction (by setting the args.pretrained_model to the folder path with the model checkpoints). Define also train_path, test_path'
-                             'viral_dataset3 : Only sequences, partitioned into train,validation and (old) test.If args.test = True, then the (old) assigned test is used \n'
+                             'viral_dataset3 : Supervised learning. Only sequences, partitioned into train,validation and (old) test.If args.test = True, then the (old) assigned test is used \n'
                              'viral_dataset4 : viral_dataset3 sequences + Features \n '
                              'viral_dataset5: Contains additional artificially generated negative data points in the (old) test dataset \n'
                              'viral_dataset6: Contains additional unobserved data points for semi supervised learning. Train, validation and (old) test are mixed. If args.test = True, then 1 partition is selected as test \n'
@@ -365,8 +241,8 @@ if __name__ == "__main__":
     parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
     parser.add_argument('-hpo', type=str2bool, nargs='?', default=False, help='Hyperparameter optimization with Ray Tune')
     parser.add_argument('-generate', type=str2bool, nargs='?', default=True, help='<True> Generate new neo-epitopes labelled and with a confidence score. Please use args.validate False''<False> Do nothing')
-    parser.add_argument('-num_synthetic_peptides', type=int, nargs='?', default=250, help='<True> Generate new neo-epitopes labelled and with a confidence score. Please use args.validate False''<False> Do nothing')
-    parser.add_argument('-generate-num-samples', type=str2bool, nargs='?', default=1, help='If generate, then per generated sequence, produce n samples to calculate a class probability')
+    parser.add_argument('-num_synthetic_peptides', type=int, nargs='?', default=5000, help='<True> Generate new neo-epitopes labelled and with a confidence score. Please use args.validate False''<False> Do nothing')
+    parser.add_argument('-generate-num-samples', type=str2bool, nargs='?', default=50, help='If generate, then per generated sequence, produce n samples to calculate a class probability')
 
     best_config = {0:"/home/lys/Dropbox/PostDoc/vegvisir/BEST_hyperparameter_dict.p",1:None}
     parser.add_argument('-config-dict', nargs='?', default=best_config[1],type=str2None, help='Path to optimized hyperparameter dict')
@@ -382,7 +258,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. \n'
                                                                            ' If the sequence contains gaps, the script will use 20 aa + 1 gap character. The script automatically corrects issues ')
-    parser.add_argument('-filter-kmers', type=str2bool, nargs='?', default=False, help="Filters the dataset to 9-mers only")
+    parser.add_argument('-filter-kmers', type=str2bool, nargs='?', default=True, help="Filters the dataset to 9-mers only")
 
     parser.add_argument('-st','--sequence-type', type=str, nargs='?', default="Icore", help='Define the type of peptide sequence to use:\n'
                                                                                 'Icore: Full peptide '
@@ -399,8 +275,7 @@ if __name__ == "__main__":
     parser.add_argument('-idx-mutations','--idx_mutations', type=str, nargs='?', default=None, help='Positions where to perform the mutations for model stress-testing. Indicated as string of format [2,5,3], Set to None otherwise')
 
     parser.add_argument('-z-dim','--z-dim', type=int, nargs='?', default=30, help='Latent space dimension')
-    parser.add_argument('-likelihood-scale', type=int, nargs='?', default=50, help='Scaling the log p( class | Z) of the variational autoencoder (cold posterior)'
-                                                                                   '100: Assign likelihood to batch size')
+    parser.add_argument('-likelihood-scale', type=int, nargs='?', default=50, help='Scaling the log p( class | Z) of the variational autoencoder (cold posterior)')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=40, help='Embedding dimensions, use with self-attention. NOT USED---> DELETE SOOn')
     parser.add_argument('-save-all', type=str2bool, nargs='?', default=False, help='<True> Saves every matrix output from the model'
@@ -417,7 +292,8 @@ if __name__ == "__main__":
                                                                                            '<False>: The blosum encodings are left untouched')
     parser.add_argument('-num-samples','-num_samples', type=int, nargs='?', default=3, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
 
-    pretrained_model = {0:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_08_14_23h17min39s118041ms_60epochs_supervised_Icore_blosum_TESTING_pretty_plots",1:None}
+    #pretrained_model = {0:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_08_14_23h17min39s118041ms_60epochs_supervised_Icore_blosum_TESTING_pretty_plots",1:None}
+    pretrained_model = {0:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_09_04_20h03min00s277351ms_20epochs_supervised_Icore_blosum_TESTING_9mers",1:None}
     parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="{}".format(pretrained_model[1]),help='Load the checkpoints (state_dict and optimizer) from a previous run \n'
                                                                                                 '<None>: Trains model from scratch \n'
                                                                                                 '<str path>: Loads pre-trained model from given path \n')

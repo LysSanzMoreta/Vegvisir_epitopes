@@ -811,7 +811,7 @@ def manage_predictions_generative(args,generative_dict):
     #class_logits_predictions_generative_argmax_mode = stats.mode(class_logits_predictions_generative_argmax, axis=1,keepdims=True).mode.squeeze(-1)
     class_logits_predictions_generative_argmax_mode = class_logits_predictions_generative_argmax
     probs_predictions_generative = generative_dict["probs"]
-    #
+
     binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=generative_dict["binary"].astype("int64"))
     binary_frequencies = binary_frequencies / args.generate_num_samples
 
@@ -820,19 +820,30 @@ def manage_predictions_generative(args,generative_dict):
 
     data_int = np.concatenate([generative_dict["data_int"][:,None],generative_dict["data_int"][:,None]],axis=1)
 
-    generative_dict = {"data_int_{}".format(mode): data_int,
-                        "data_mask_{}".format(mode): generative_dict["data_mask"],
+    generative_dict = {
+                        "data_int_single_sample": data_int,
+                        "data_int_samples": data_int,
+                        "data_mask_single_sample": generative_dict["data_mask"],
+                        "data_mask_samples": generative_dict["data_mask"],
                         "class_binary_predictions_{}".format(mode): generative_dict["binary"] if args.generate_num_samples > 1 else generative_dict["binary"].squeeze(1) ,
-                        "true_{}".format(mode): generative_dict["true"],
+                        "true_single_sample": generative_dict["true"],
+                        "true_samples": generative_dict["true"],
                         "class_binary_predictions_{}_mode".format(mode): stats.mode(generative_dict["binary"], axis=1,keepdims=True).mode.squeeze(-1),
                         "class_binary_predictions_samples_frequencies": binary_frequencies, #I name it samples to avoid errors
-                        "class_logits_predictions_{}".format(mode): generative_dict["logits"],
-                        "class_logits_predictions_{}_argmax".format(mode): class_logits_predictions_generative_argmax,
-                        "class_logits_predictions_{}_argmax_frequencies".format(mode): None,
-                        "class_logits_predictions_{}_argmax_mode".format(mode): class_logits_predictions_generative_argmax_mode,
-                        "class_probs_predictions_{}".format(mode): probs_predictions_generative,
-                        "class_probs_predictions_{}_average".format(mode): np.mean(probs_predictions_generative, axis=1) if args.generate_num_samples > 1 else probs_predictions_generative,
-                        "class_binary_predictions_{}_logits_average_argmax".format(mode): np.argmax(np.mean(probs_predictions_generative, axis=1), axis=1) if args.generate_num_samples > 1 else np.argmax(probs_predictions_generative, axis=1)
+                        "class_logits_predictions_single_sample": generative_dict["logits"],
+                        "class_logits_predictions_samples": generative_dict["logits"],
+                        "class_logits_predictions_single_sample_argmax": class_logits_predictions_generative_argmax,
+                        "class_logits_predictions_samples_argmax": class_logits_predictions_generative_argmax,
+                        "class_logits_predictions_single_sample_argmax_frequencies".format(mode): None,
+                        "class_logits_predictions_samples_argmax_frequencies".format(mode): None,
+                        "class_logits_predictions_single_sample_argmax_mode": class_logits_predictions_generative_argmax_mode,
+                        "class_logits_predictions_samples_argmax_mode": class_logits_predictions_generative_argmax_mode,
+                        "class_probs_predictions_single_sample": probs_predictions_generative,
+                        "class_probs_predictions_samples": probs_predictions_generative,
+                        #"class_probs_predictions_{}_average".format(mode): np.mean(probs_predictions_generative, axis=1) if args.generate_num_samples > 1 else probs_predictions_generative,
+                        "class_probs_predictions_{}_average".format(mode): probs_predictions_generative,
+                        #"class_binary_predictions_{}_logits_average_argmax".format(mode): np.argmax(np.mean(probs_predictions_generative, axis=1), axis=1) if args.generate_num_samples > 1 else np.argmax(probs_predictions_generative, axis=1)
+                        "class_binary_predictions_{}_logits_average_argmax".format(mode): np.argmax(probs_predictions_generative, axis=1)
                        }
 
 
@@ -891,11 +902,11 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
                         "class_probs_predictions_samples": probs_predictions_samples,
                         "class_probs_predictions_samples_average": np.mean(probs_predictions_samples,axis=1),
                         "class_binary_predictions_samples_logits_average_argmax": np.argmax(np.mean(probs_predictions_samples,axis=1),axis=1),
-                        "class_binary_prediction_single_sample": predictions_dict["binary"],
-                        "class_logits_prediction_single_sample": predictions_dict["logits"],
-                        "class_logits_prediction_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
-                        "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),predictions_dict["observed"].astype(int)],
-                        "class_probs_prediction_single_sample": predictions_dict["probs"],
+                        "class_binary_predictions_single_sample": predictions_dict["binary"],
+                        "class_logits_predictions_single_sample": predictions_dict["logits"],
+                        "class_logits_predictions_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
+                        "class_probs_predictions_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),predictions_dict["observed"].astype(int)],
+                        "class_probs_predictions_single_sample": predictions_dict["probs"],
                         "samples_average_accuracy":samples_dict["accuracy"],
                         "true_samples": true_labels_samples,
                         "true_onehot_samples": samples_dict["true_onehot"],
@@ -929,14 +940,14 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
                         "class_logits_predictions_samples_argmax": class_logits_predictions_samples_argmax,
                         "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
                         "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
-                        "class_probs_predictions_samples": probs_predictions_samples,
+                        "class_probs_predictionss_samples": probs_predictions_samples,
                         "class_probs_predictions_samples_average": np.mean(probs_predictions_samples, axis=1),
                         "class_binary_predictions_samples_logits_average_argmax": np.argmax(np.mean(probs_predictions_samples, axis=1),axis=1),
-                        "class_binary_prediction_single_sample": None,
-                        "class_logits_prediction_single_sample": None,
-                        "class_logits_prediction_single_sample_argmax": None,
-                        "class_probs_prediction_single_sample_true": None,
-                        "class_probs_prediction_single_sample": None,
+                        "class_binary_predictions_single_sample": None,
+                        "class_logits_predictions_single_sample": None,
+                        "class_logits_predictions_single_sample_argmax": None,
+                        "class_probs_predictions_single_sample_true": None,
+                        "class_probs_predictions_single_sample": None,
                         "samples_average_accuracy": samples_dict["accuracy"],
                         "true_samples": true_labels_samples,
                         "true_onehot_samples": samples_dict["true_onehot"],
@@ -1383,7 +1394,45 @@ def clean_generated_sequences(seq_int,seq_mask,zero_character,min_len):
             seq_mask[idx[0]:] = False
             return (seq_int[None,:],seq_mask[None,:])
 
+def numpy_to_fasta(aa_sequences,binary_pedictions,probabilities,results_dir,title_name=""):
+    print("Saving generated sequences to fasta & text files ")
+    f1 = open("{}/generated_epitopes{}.fasta".format(results_dir,title_name), "a+")
+    f2 = open("{}/generated_epitopes{}.txt".format(results_dir,title_name), "a+")
 
+    headers_list  = list(map(lambda idx,label,prob: ">Epitope_{}_class_{}_probability_{}\n".format(idx,label,prob), list(range(aa_sequences.shape[0])),binary_pedictions.tolist(),probabilities.tolist()))
+
+    sequences_list = list(map(lambda seq: "{}\n".format("".join(seq).replace("#","-")), aa_sequences.tolist()))
+
+    headers_sequences_list = [None]*len(headers_list) + [None]*len(sequences_list)
+
+    headers_sequences_list[::2] = headers_list
+    headers_sequences_list[1::2] = sequences_list
+
+    f1.write("".join(headers_sequences_list))
+    f2.write("".join(sequences_list))
+
+    df = pd.DataFrame({"Epitopes":sequences_list,"Negative_score":probabilities[:,0].tolist(),"Positive_score":probabilities[:,1].tolist()})
+    df["Epitopes"] = df["Epitopes"].str.replace("\n","")
+    df.to_csv("{}/generated_epitopes{}.tsv".format(results_dir,title_name),sep="\t",index=False)
+
+    VegvisirPlots.plot_logos(sequences_list,results_dir,title_name)
+
+def squeeze_tensor(required_ndims,tensor):
+    """Squeezes a tensor to match ndim"""
+    size = torch.tensor(tensor.shape)
+    ndims = len(size)
+    if ndims > required_ndims:
+        while ndims > required_ndims:
+            if tensor.shape[0] == 1:
+                tensor = tensor.squeeze(0)
+                size = torch.tensor(tensor.shape)
+                ndims = len(size)
+            else:
+                ndims = required_ndims
+
+        return tensor
+    else:
+        return tensor
 
 #TODO: Put into new plots_utils.py, however right now it is annoying to change the structure because of dill
 import matplotlib.pyplot as plt

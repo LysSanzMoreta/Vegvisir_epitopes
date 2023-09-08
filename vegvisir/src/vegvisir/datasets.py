@@ -87,7 +87,7 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
     if args.learning_type == "semisupervised":
         if args.dataset_name in ["viral_dataset3","viral_dataset7","viral_dataset9"]:
-            raise ValueError("Please select viral_dataset6 or viral_dataset8 or viral_dataset8 for semisupervised learning, else select supervised learning")
+            raise ValueError("Please select viral_dataset6 or viral_dataset8 or viral_dataset10 for semisupervised learning, else select supervised learning")
     if args.dataset_name in ["viral_dataset6","viral_dataset8","viral_dataset10","viral_dataset11"]:
         assert args.learning_type == "semisupervised", "Please select semisupervised learning for dataset {}".format(args.dataset_name)
     if args.dataset_name == "viral_dataset12" and args.learning_type not in ["unsupervised","supervised"]:
@@ -1242,7 +1242,6 @@ def viral_dataset10(script_dir,storage_folder,args,results_dir):
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
 
-    exit()
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
@@ -1761,7 +1760,7 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
         print("Folder structure existing")
 
     plot_mi,plot_frequencies,plot_cosine_similarity = False,False,False
-    #plot_mi,plot_frequencies,plot_cosine_similarity = True,True,True
+    #plot_mi,plot_frequencies,plot_cosine_similarity = False,False,True
     #Highlight: Encode amino acid raw
 
     #Highlight: Encode amino acid by chemical group
@@ -2146,7 +2145,7 @@ def process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,sequences_
         print("All sequences found to have the same length")
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types)
         if args.random_sequences:
-            warnings.warn("Randomizing the sequence. If you do not wish to randomize the sequence please set args.random_sequences to False")
+            warnings.warn("Randomizing the sequence for model-stress testing purposes. If you do not wish to randomize the sequence please set args.random_sequences to False")
             sequences_pad_result = VegvisirLoadUtils.SequenceRandomGeneration(sequences_list,seq_max_len,"no_padding").run()
         elif args.num_mutations > 0:
             warnings.warn("Performing {} mutations to your sequence. If you do not wish to mutate your sequence please set n_mutations to 0".format(args.num_mutations))
@@ -2174,6 +2173,8 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     sequence_column = filters_dict["filter_kmers"][2]
 
     epitopes_list = data[sequence_column].values.tolist()
+
+
     #epitopes_list = functools.reduce(operator.iconcat, epitopes_list, [])  # flatten list of lists
 
     seq_max_len = len(max(epitopes_list, key=len)) #Highlight: If this gives an error there are some nan values
@@ -2182,9 +2183,11 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
 
     corrected_aa_types = len(set().union(*epitopes_list))
     corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
-    epitopes_padded, epitopes_padded_mask, aa_dict, blosum_array, blosum_dict, blosum_array_dict = process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,epitopes_list,data)
+    epitopes_padded, epitopes_padded_mask, aa_dict, blosum_array, blosum_dict, blosum_array_dict = process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,epitopes_list,data,storage_folder)
 
-    save_intermediate_dataset = True
+    #VegvisirPlots.plot_logos(list(map(lambda seq: "".join(seq),epitopes_padded)),"{}/{}".format(storage_folder,args.dataset_name),"_{}_filter_kmers_{}".format(sequence_column,args.filter_kmers))
+
+    save_intermediate_dataset = False
     if save_intermediate_dataset:
         intermediate_dataset = pd.DataFrame({"{}".format(sequence_column):list(map(lambda seq:"".join(seq).replace("#",""),epitopes_padded)),
                                              "target_corrected": data["target_corrected"],
@@ -2204,7 +2207,6 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
         intermediate_dataset.to_csv("{}/benchmark_dataset/{}sequences_{}.tsv".format(storage_folder,prefix,args.dataset_name),sep="\t",index=False)
         intermediate_dataset_train.to_csv("{}/benchmark_dataset/{}sequences_{}_TRAIN.tsv".format(storage_folder,prefix,args.dataset_name),sep="\t",index=False)
         intermediate_dataset_test.to_csv("{}/benchmark_dataset/{}sequences_{}_TEST.tsv".format(storage_folder,prefix,args.dataset_name),sep="\t",index=False)
-        # # exit()
 
     epitopes_array_raw = np.array(epitopes_padded)
 
@@ -2237,12 +2239,20 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     #Highlight: Features correlations
     #data_volumetrics(seq_max_len,epitopes_list, data, epitopes_mask, storage_folder, args, filters_dict,analysis_mode,plot_volumetrics=False,plot_covariance=True)
 
+    # all_sim_results = data_exploration(data, epitopes_array_blosum, epitopes_array_int, epitopes_mask, aa_dict, aa_list,
+    #                                    blosum_norm, seq_max_len, storage_folder, args, corrected_aa_types,
+    #                                    analysis_mode, filters_dict)
+    # positional_weights = all_sim_results.positional_weights
+    # positional_weights_mask = (positional_weights[..., None] > 0.6).any(-1)
+    #
+
     if args.dataset_name not in  ["viral_dataset6","viral_dataset8","viral_dataset10","viral_dataset11"]:
         try:
             all_sim_results = data_exploration(data, epitopes_array_blosum, epitopes_array_int, epitopes_mask, aa_dict, aa_list,
                              blosum_norm, seq_max_len, storage_folder, args, corrected_aa_types,analysis_mode,filters_dict)
             positional_weights = all_sim_results.positional_weights
-            positional_weights_mask = (positional_weights[..., None] > 0.6).any(-1)
+            mean_weight= np.mean(positional_weights)
+            positional_weights_mask = (positional_weights[..., None] > mean_weight).any(-1)
         except:
             warnings.warn("Created dummy positional weights")
             all_sim_results = SimilarityResults(positional_weights=np.ones((n_data, seq_max_len)),
@@ -2408,6 +2418,7 @@ def prepare_nnalign(args,storage_folder,data,column_names,no_test=True):
     VegvisirNNalign.run_nnalign(args,storage_folder)
 
 def set_confidence_score(data):
+    pd.options.mode.chained_assignment = None #supresses some warnings
 
     nmax_tested = data["Assay_number_of_subjects_tested"].max()
     # data.loc[(data["Assay_number_of_subjects_tested"] < 50) & (data["Assay_number_of_subjects_responded"] == 0), "confidence_score"] = data.loc[(data["Assay_number_of_subjects_tested"] < 50) & (data["Assay_number_of_subjects_responded"] == 0),"Assay_number_of_subjects_tested"]/nmax_tested

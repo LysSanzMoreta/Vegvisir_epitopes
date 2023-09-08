@@ -931,7 +931,7 @@ class RNN_model7(nn.Module):
                           hidden_size=self.gru_hidden_dim,
                           batch_first=True,
                           num_layers=self.num_layers,
-                          dropout=0.,
+                          dropout=0,
                           bidirectional=self.bidirectional
                           ).to(device=self.device)
         self.bnn = nn.BatchNorm1d(self.max_len).to(device=self.device)
@@ -953,13 +953,18 @@ class RNN_model7(nn.Module):
             encoder_final_hidden_bidirectional = guide_estimates["rnn_final_hidden_bidirectional"].to(device=self.device)
             encoder_hidden_states_bidirectional = guide_estimates["rnn_hidden_states_bidirectional"].to(device=self.device)
             encoder_hidden_states = guide_estimates["rnn_hidden_states"].to(device=self.device)
-            encoder_rnn_hidden = guide_estimates["rnn_hidden"].to(device=self.device)
+            if guide_estimates["rnn_hidden"] is not None:
+                encoder_rnn_hidden = guide_estimates["rnn_hidden"].to(device=self.device)
+            else:
+                encoder_rnn_hidden = init_h_0_decoder.to(device=self.device)
+
         else: #for epitope generation and model drawing
-            encoder_rnn_hidden = init_h_0_decoder.to(device=self.device) #TODO: pick only one direction? and sort of predict backwards?
             encoder_final_hidden =torch.ones((x.shape[0],self.gru_hidden_dim)).to(device=self.device)
             encoder_final_hidden_bidirectional = init_h_0_decoder.to(device=self.device)
             encoder_hidden_states_bidirectional = torch.ones((x.shape[0],2,self.max_len,self.gru_hidden_dim)).to(device=self.device)
             encoder_hidden_states = torch.ones((x.shape[0],x.shape[1],self.gru_hidden_dim)).to(device=self.device)
+            encoder_rnn_hidden = init_h_0_decoder.to(device=self.device)
+
         #x_reverse = ReverseSequence(x,x_lens).run()
         #x_embedded = self.dropout(self.embedding(x_reverse))
         assert not torch.isnan(encoder_rnn_hidden).any(), "found nan in init_h_0"
@@ -1095,7 +1100,7 @@ class RNN_guide2(nn.Module):
                           hidden_size=self.gru_hidden_dim,
                           batch_first=True,
                           num_layers=self.num_layers,
-                          dropout=0.,
+                          dropout=0,
                           bidirectional=self.bidirectional
                           ).to(device=self.device,dtype=torch.float64)
         self.bnn = nn.BatchNorm1d(self.max_len).to(device=self.device)

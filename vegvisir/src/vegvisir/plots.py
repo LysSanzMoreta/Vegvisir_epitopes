@@ -636,6 +636,7 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
         plt.close(fig)
 
 def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,analysis_mode,mode):
+    """Creates a bar plot per position in the sequence to show the amino acid frequencies"""
 
     aa_groups_colors_dict,aa_groups_dict,groups_names_colors_dict,aa_by_groups_dict = VegvisirUtils.aminoacids_groups(aa_dict)
     reverse_aa_dict = {val:key for key,val in aa_dict.items()}
@@ -704,11 +705,19 @@ def plot_heatmap(array, title,file_name):
     plt.clf()
     plt.close(fig)
 
-def plot_logos():
+def plot_logos(sequences_list,results_dir,filename=""):
     """
-    https://github.com/jbkinney/logomaker/blob/master/logomaker/examples/logos_from_datafiles.ipynb
+    Notes:
+    -https://github.com/jbkinney/logomaker/blob/master/logomaker/examples/logos_from_datafiles.ipynb
+    -https://stackoverflow.com/questions/42615527/sequence-logos-in-matplotlib-aligning-xticks
     :return:
     """
+    print("Generating logos plots")
+    sequences_list = list(map(lambda seq: seq.replace("\n",""), sequences_list))
+    ww_counts_df = logomaker.alignment_to_matrix(sequences=sequences_list, to_type='counts', characters_to_ignore='.-X\n')
+
+    logomaker.Logo(ww_counts_df,color_scheme="chemistry")
+    plt.savefig("{}/Logos{}.png".format(results_dir,filename))
 
 def plot_umap1(array,labels,storage_folder,args,title_name,file_name):
     from matplotlib.colors import ListedColormap
@@ -2219,9 +2228,9 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
     :return:
     """
     evaluation_modes = ["samples","single_sample"] if predictions_dict["true_single_sample"] is not None else ["samples"]
-    probability_modes = ["class_probs_predictions_samples_average","class_probs_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_probs_predictions_samples_average"]
-    binary_modes = ["class_binary_predictions_samples_mode","class_binary_prediction_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_mode"]
-    #binary_modes = ["class_binary_predictions_samples_logits_average_argmax","class_binary_predictions_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_logits_average_argmax"]
+    probability_modes = ["class_probs_predictions_samples_average","class_probs_predictions_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_probs_predictions_samples_average"]
+    #binary_modes = ["class_binary_predictions_samples_mode","class_binary_predictions_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_mode"]
+    binary_modes = ["class_binary_predictions_samples_logits_average_argmax","class_binary_predictions_single_sample"] if predictions_dict["true_single_sample"] is not None else ["class_binary_predictions_samples_logits_average_argmax"]
 
     metrics_summary_dict = defaultdict(lambda:defaultdict(lambda : defaultdict()))
     for sample_mode,prob_mode,binary_mode in zip(evaluation_modes,probability_modes,binary_modes):
@@ -3989,7 +3998,6 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
      process_dict(spearman_coefficients_all,"Latent_spearman_coefficients",subtitle)
 
 
-
 def calculate_auc(targets, predictions):
     """Calculates the ROC AUC"""
     try:
@@ -4029,12 +4037,11 @@ def calculate_ap(targets, predictions):
     predictions = predictions.to_numpy()
     try:
         try:
-            binary_predictions = np.where(predictions >= 0.5, 1,
-                                          0)  # for the rank this is useless, but I want to preserve the error
+            binary_predictions = np.where(predictions >= 0.5, 1,0)  # for the rank this is useless, but I want to preserve the error
         except:
             binary_predictions = predictions
         # precision, recall, _ = precision_recall_curve(targets, predictions)
-        average_precision = average_precision_score(targets, predictions)
+        average_precision = average_precision_score(targets, binary_predictions)
         return average_precision
     except:
         return np.nan
@@ -4058,14 +4065,17 @@ def process_nnalign(results_path, seqs_df):
 
     return auc_dict, ppv_dict, ap_dict
 
-def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark"):
-    """Compare results across different programns on the -golden- dataset that is built from the Icore sequence and sequences of variable length 8-11"""
+def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark",title=""):
+    """Compare results across different programns on the -golden- dataset that is built from the Icore sequence and sequences of variable length 8-11
+    -Notes:
+        https://towardsdatascience.com/what-metrics-should-we-use-on-imbalanced-data-set-precision-recall-roc-e2e79252aeba
+    """
 
     #Highlight: Vegvisir results
 
     metrics_keys = ["ppv","fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1","pval_class_0","pval_class_1"]
 
-    vegvisir_folder = dict_results_vegvisir["Icore"]["raw-blosum-variable-length"]
+    vegvisir_folder = dict_results_vegvisir["Icore"]["raw-onehot-variable-length"]
     train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(vegvisir_folder, 0))
     #valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(vegvisir_folder, 0))
     test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(vegvisir_folder, 0))
@@ -4112,8 +4122,9 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark
     nnalign_results_path_train_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_30845/nnalign_peplen_8-11_iter_100_30845.lg8.sorted.pred"
     nnalign_results_path_test_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_30845/nnalign_peplen_8-11_iter_100_30845.evalset.txt"
 
-    nnalign_results_train_auc_dict, nnalign_results_train_ppv_dict, nnalign_results_train_ap_dict = process_nnalign(nnalign_results_path_train_full,train_df)
-    nnalign_results_test_auc_dict, nnalign_results_test_ppv_dict, nnalign_results_test_ap_dict = process_nnalign(nnalign_results_path_test_full,test_df)
+    train_test_df = pd.concat([train_df,test_df],axis=0)
+    nnalign_results_train_auc_dict, nnalign_results_train_ppv_dict, nnalign_results_train_ap_dict = process_nnalign(nnalign_results_path_train_full,train_test_df)
+    nnalign_results_test_auc_dict, nnalign_results_test_ppv_dict, nnalign_results_test_ap_dict = process_nnalign(nnalign_results_path_test_full,train_test_df)
 
     #Highlight: Other programs
     other_programs_results_path = "{}/Benchmark/Other_Programs/sequences_viral_dataset9_predictors_other_models.tsv".format(script_dir)
@@ -4169,6 +4180,8 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark
 
     auc_results_train_dict = {**vegvisir_results_auc_train,**nnalign_results_train_auc_dict,**auc_results_train_dict,}
     auc_results_test_dict = {**vegvisir_results_auc_test,**nnalign_results_test_auc_dict,**auc_results_test_dict}
+
+
 
     ppv_results_train_dict = {**vegvisir_results_ppv_train,**nnalign_results_train_ppv_dict,**ppv_results_train_dict,}
     ppv_results_test_dict = {**vegvisir_results_ppv_test,**nnalign_results_test_ppv_dict,**ppv_results_test_dict}
@@ -4288,11 +4301,12 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark
         ax1.set_title("ROC-AUC",fontsize=20)
         ax1.margins(x=0.2)
 
-
+        ax2.axvline(x=0.5, color='goldenrod', linestyle='--')
         ax2.set_yticks(positions,labels=labels,fontsize=15,weight='bold')
         ax2.set_title("Precision (PPV)",fontsize=20)
         ax2.margins(x=0.2)
 
+        ax3.axvline(x=0.5, color='goldenrod', linestyle='--')
         ax3.set_yticks(positions,labels=labels,fontsize=15,weight='bold')
         transformation = transforms.blended_transform_factory(ax3.get_yticklabels()[0].get_transform(), ax3.transData)
         ax3.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center",transform=transformation,fontsize=15)
@@ -4305,23 +4319,23 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark
         fig.legend(handles=legends, prop={'size': 20}, loc='center right', bbox_to_anchor=(0.98, 0.5))
         fig.suptitle("Benchmarking",fontsize=20)
 
-    plt.savefig("{}/{}/Benchmarking_NEW".format(script_dir,folder),dpi=600)
+    plt.savefig("{}/{}/Benchmarking_{}".format(script_dir,folder,title),dpi=800)
 
-def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Benchmark"):
+def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Benchmark/Plots",title=""):
 
     """"""
 
-    stress_mode_dict = {"random-blosum-variable-length":"random_variable_length_Icore_sequences_viral_dataset9",
-                        "random-blosum-9mers":"random_fixed_length_Icore_sequences_viral_dataset9",
-                        "random-blosum-8mers":"random_fixed_length_Icore_sequences_viral_dataset9", #I keep Icore instead of Ocore_non_anchor for convenience  later
-                        "shuffled-blosum-variable-length":"shuffled_variable_length_Icore_sequences_viral_dataset9",
-                        "shuffled-blosum-9mers":"shuffled_fixed_length_Icore_sequences_viral_dataset9",
-                        "shuffled-blosum-8mers":"shuffled_fixed_length_Icore_sequences_viral_dataset9",
-                        "raw-blosum-variable-length":"variable_length_Icore_sequences_viral_dataset9",
-                        "raw-blosum-9mers":"fixed_length_Icore_sequences_viral_dataset9",
-                        "raw-blosum-8mers":"fixed_length_Icore_sequences_viral_dataset9",
-                         #"raw-onehot-variable-length":"",
-                         #"raw-onehot-9mers":""
+    encoding_dict = {0:"onehot",1:"blosum"}
+    encoding = encoding_dict[0]
+    stress_mode_dict = {"random-{}-variable-length".format(encoding):"random_variable_length_Icore_sequences_viral_dataset9",
+                        "random-{}-9mers".format(encoding):"random_fixed_length_Icore_sequences_viral_dataset9",
+                        "random-{}-8mers".format(encoding):"random_fixed_length_Icore_sequences_viral_dataset9", #I keep Icore instead of Ocore_non_anchor for convenience  later
+                        "shuffled-{}-variable-length".format(encoding):"shuffled_variable_length_Icore_sequences_viral_dataset9",
+                        "shuffled-{}-9mers".format(encoding):"shuffled_fixed_length_Icore_sequences_viral_dataset9",
+                        "shuffled-{}-8mers".format(encoding):"shuffled_fixed_length_Icore_sequences_viral_dataset9",
+                        "raw-{}-variable-length".format(encoding):"variable_length_Icore_sequences_viral_dataset9",
+                        "raw-{}-9mers".format(encoding):"fixed_length_Icore_sequences_viral_dataset9",
+                        "raw-{}-8mers".format(encoding):"fixed_length_Icore_sequences_viral_dataset9",
                          }
 
     stress_testing_auc = defaultdict(lambda :defaultdict(lambda : defaultdict(lambda :defaultdict())))
@@ -4336,7 +4350,7 @@ def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Ben
     for sequence_type in dict_results_vegvisir.keys():
         print("Analyzing {} datasets".format(sequence_type))
         for stress_mode in dict_results_vegvisir[sequence_type].keys():
-            if "onehot" not in stress_mode:
+            if encoding_dict[1] not in stress_mode:
                 # Highlight: Vegvisir results
                 print("Analizing {}".format(stress_mode))
                 vegvisir_folder = dict_results_vegvisir[sequence_type][stress_mode]
@@ -4406,7 +4420,7 @@ def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Ben
                 bar_test_auc2 = ax2.barh(i + 0.2, width=vegvisir_results_auc_test["Vegvisir"], height=0.2, color="darkturquoise")
 
                 positions.append(i)
-                labels.append("{}\n{}".format(sequence_type,stress_mode))
+                labels.append("{}\n{}".format(sequence_type,stress_mode.replace("{}-".format(encoding),"")))
                 i += 1
                 for bar in [bar_train_auc1.patches,bar_train_auc2.patches]:
                     rect = bar[0]  # single rectangle
@@ -4439,7 +4453,7 @@ def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Ben
     fig.suptitle("Stress testing", fontsize=25)
 
 
-    plt.savefig("")
+    plt.savefig("{}/{}/Benchmarking_stress_testing_{}.png".format(script_dir,folder,title),dpi=600)
 
 def plot_hierarchical_clustering(vegvisir_folder,embedded_epitopes,folder):
 
