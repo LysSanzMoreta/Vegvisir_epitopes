@@ -258,7 +258,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. \n'
                                                                            ' If the sequence contains gaps, the script will use 20 aa + 1 gap character. The script automatically corrects issues ')
-    parser.add_argument('-filter-kmers', type=str2bool, nargs='?', default=True, help="Filters the dataset to 9-mers only")
+    parser.add_argument('-filter-kmers', type=str2bool, nargs='?', default=False, help="Filters the dataset to 9-mers only")
 
     parser.add_argument('-st','--sequence-type', type=str, nargs='?', default="Icore", help='Define the type of peptide sequence to use:\n'
                                                                                 'Icore: Full peptide '

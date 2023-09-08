@@ -598,8 +598,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
         else:
             binary_predictions = sampling_output["predictions"].squeeze(1).detach().cpu().permute(1, 0).numpy()
         binary_mode = stats.mode(binary_predictions, axis=1, keepdims=True).mode.squeeze(-1)
-        binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1,
-                                                 arr=binary_predictions.astype("int64"))
+        binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1,arr=binary_predictions.astype("int64"))
         binary_frequencies = binary_frequencies / args.generate_num_samples
 
         VegvisirUtils.numpy_to_fasta(generated_sequences_raw, binary_mode, binary_frequencies,"{}/Generated".format(additional_info.results_dir),"_NOT_FILTERED")
@@ -607,23 +606,20 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
         # Highlight: Remove inner duplicates (before discarding the ones that have # in strange places)
         unique_sequences, unique_idx = np.unique(generated_sequences_int, axis=0, return_index=True)
         # Highlight: Remove identical sequences to the training dataset
-        train_dataset= torch.concatenate([batch_data["batch_data_int"][:,1].squeeze(1) for batch_data in data_loader],dim=0).detach().cpu().numpy()
-        #train_raw = np.vectorize(aminoacids_dict_reversed.get)(train_dataset)
-        #VegvisirPlots.plot_logos(list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), train_raw.tolist())), additional_info.results_dir, "_TRAIN_raw")
+        train_dataset = torch.concatenate([batch_data["batch_data_int"][:, 1].squeeze(1) for batch_data in data_loader],dim=0).detach().cpu().numpy()
+        # train_raw = np.vectorize(aminoacids_dict_reversed.get)(train_dataset)
+        # VegvisirPlots.plot_logos(list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), train_raw.tolist())), additional_info.results_dir, "_TRAIN_raw")
 
-        identical_to_train_bool = np.any(np.array(generated_sequences_int[:,None] == train_dataset[None,:]).all((-1))==True,axis=0)
+        identical_to_train_bool = np.any(np.array(generated_sequences_int[:, None] == train_dataset[None, :]).all((-1)) == True, axis=0)
         identical_to_train_idx, = np.where(identical_to_train_bool == True)
 
         unique_idx = np.array(np.arange(num_synthetic_peptides)[..., None] == unique_idx).any(-1)
         identical_to_train_idx = np.invert(np.array(np.arange(num_synthetic_peptides)[..., None] == identical_to_train_idx).any(-1))
 
-        #Highlight: Merge the indicators of the NON duplicates (discard the duplicates, keep the unique ones)
+        # Highlight: Merge the indicators of the NON duplicates (discard the duplicates, keep the unique ones)
         unique_idx = unique_idx * identical_to_train_idx
 
-        generated_sequences_int = generated_sequences_int[unique_idx]
-        batch_mask = batch_mask[unique_idx]
-
-
+        #Highlight: Remove the sequences that have a gap in positions < 8
         if zero_character is not None:
             clean_results = list(map(lambda seq_int,seq_mask: VegvisirUtils.clean_generated_sequences(seq_int,seq_mask,zero_character,min_len=8), generated_sequences_int.tolist(),batch_mask.numpy().tolist()))
             discarded_sequences =  list(map(lambda v,i: i if v is None else None, clean_results,list(range(len(clean_results)))))
@@ -631,23 +627,33 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
             clean_results = list(filter(lambda v: v is not None, clean_results))
 
             clean_results = list(zip(*clean_results))
-            clean_generated_sequences = clean_results[0]
+            #clean_generated_sequences = clean_results[0]
             clean_generated_masks = clean_results[1]
-            generated_sequences_int = np.concatenate(clean_generated_sequences,axis=0)
-            generated_sequences_mask = np.concatenate(clean_generated_masks,axis=0)
+            #generated_sequences_int = np.concatenate(clean_generated_sequences,axis=0)
+            generated_sequences_mask = np.concatenate(clean_generated_masks,axis=0) #contains the truncated masks
+
+            keep_idx = np.invert((np.arange(num_synthetic_peptides)[..., None] == discarded_sequences).any(-1))
+            batch_mask = batch_mask.numpy()
+            batch_mask[keep_idx] = generated_sequences_mask
+
         else:
             generated_sequences_mask = np.ones_like(generated_sequences_int).astype(bool)
-            discarded_sequences = None
-
-
-    if discarded_sequences is not None:
-        if discarded_sequences.size != 0:
-            keep_idx = np.invert((np.arange(num_synthetic_peptides)[..., None] == discarded_sequences).any(-1))
-        else:
+            #discarded_sequences = None
             keep_idx = np.ones(num_synthetic_peptides).astype(bool)
-    else:
-        keep_idx = np.ones(num_synthetic_peptides).astype(bool)
+
+
     keep_idx = keep_idx * unique_idx
+
+    generated_sequences_int = generated_sequences_int[keep_idx]
+    batch_mask = generated_sequences_mask = batch_mask[keep_idx]
+
+
+
+    print("Here ..............")
+    print(generated_sequences_int.shape)
+    print(batch_mask.shape)
+
+
 
     generated_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(generated_sequences_int)
     generated_sequences_blosum = np.vectorize(blosum_array_dict.get, signature='()->(n)')(generated_sequences_int)
@@ -655,7 +661,6 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
     batch_size = 100 if generated_sequences_blosum.shape[0] > 100 else generated_sequences_blosum.shape[0]
     positional_weights = VegvisirSimilarities.importance_weight(generated_sequences_cosine_similarity, model_load.seq_max_len, generated_sequences_mask,batch_size=batch_size, neighbours=1)
     VegvisirPlots.plot_heatmap(positional_weights, "Cosine similarity \n positional weights","{}/Generated/Generated_epitopes_positional_weights.png".format(additional_info.results_dir))
-
 
     n_seqs_clean = generated_sequences_int.shape[0]
     class_logits = sampling_output["class_logits"].detach().cpu().permute(1,0,2)
@@ -665,7 +670,6 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
         binary_predictions = sampling_output["predictions"].detach().cpu().permute(1,0).numpy()[keep_idx]
     else:
         binary_predictions = sampling_output["predictions"].squeeze(1).detach().cpu().permute(1,0).numpy()[keep_idx]
-
 
     confidence_score = torch.zeros(n_seqs_clean).detach().cpu()
     #Highlight: Label the generated sequences as unobserved
@@ -678,8 +682,6 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
     binary_frequencies = binary_frequencies / args.generate_num_samples
 
     VegvisirUtils.numpy_to_fasta(generated_sequences_raw,binary_mode,binary_frequencies,"{}/Generated".format(additional_info.results_dir))
-
-
 
     #Highlight: Save sequences
     #TODO: Finish dict and look into transferrin the h_0_encoder to h_0_decoder somehow
@@ -706,6 +708,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
     partitions = torch.ones(n_seqs_clean).detach().cpu()
     immunodominace_score = torch.zeros(n_seqs_clean).detach().cpu()
     latent_space = torch.column_stack([torch.from_numpy(true_labels).detach().cpu(), identifiers, partitions, immunodominace_score, confidence_score, latent_space])
+
     return generated_out_dict,latent_space.numpy()
 
 def save_script(results_dir,output_name,script_name):

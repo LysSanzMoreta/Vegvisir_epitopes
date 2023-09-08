@@ -1074,7 +1074,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
 
         batch_sequences_lens = batch_mask_len.sum(dim=1)
         batch_mask_len_true = torch.ones_like(batch_mask_len).bool()
-        #batch_positional_mask = batch_data["positional_mask"]
+        batch_positional_mask = batch_data["positional_mask"]
 
         true_labels = batch_data["blosum"][:, 0, 0, 0]
         # immunodominance_scores = batch_data["blosum"][:,0,0,4]
