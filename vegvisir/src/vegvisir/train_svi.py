@@ -1,5 +1,6 @@
 import gc
 import json
+import signal
 import warnings
 from argparse import Namespace
 
@@ -528,14 +529,11 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
                         "latent_z":latent_arr
                         }
     return sample_loss, target_accuracy, predictions_dict, latent_arr, reconstruction_accuracies_dict
-
-
-
 def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_info,additional_info,train_predictive_samples_dict):
     Vegvisir.train(False)
     Vegvisir.eval()
     num_synthetic_peptides = args.num_synthetic_peptides
-    argmax = False
+    argmax = args.generate_argmax
     with torch.no_grad():  # do not update parameters with the evaluation data
         #Highlight: Initalize fake dummy data (not used)
         batch_data = {"blosum":torch.randint(low=-7,high=7,size=(num_synthetic_peptides,2,model_load.seq_max_len,model_load.aa_types)).double().to(device=args.device),
@@ -569,8 +567,8 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
 
 
         guide_estimates = {
-                           "rnn_hidden":h_0_GUIDE.expand(1 * 2, num_synthetic_peptides,args.hidden_dim*2).contiguous(),
-                           #"rnn_hidden":None,
+                           #"rnn_hidden":h_0_GUIDE.expand(1 * 2, num_synthetic_peptides,args.hidden_dim*2).contiguous(),
+                           "rnn_hidden":None,
                            "rnn_final_hidden":torch.ones((num_synthetic_peptides, args.hidden_dim*2)).to(device=args.device),
                            "rnn_final_hidden_bidirectional": h_0_GUIDE.expand(1 * 2, num_synthetic_peptides,args.hidden_dim*2).contiguous(),#Highlight: Not used
                            "rnn_hidden_states_bidirectional" : torch.ones((num_synthetic_peptides, 2, dataset_info.seq_max_len, args.hidden_dim*2)).to(device=args.device),
@@ -586,9 +584,15 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
         custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
         aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
 
-        generated_sequences_int = sampling_output["sequences"].detach().cpu().permute(1,0,2)
-        #Highlight: majority vote?
-        generated_sequences_int = torch.mode(generated_sequences_int,dim=1).values.numpy()
+        #Highlight: majority vote? most likely?
+        if argmax:
+            sequences_logits = sampling_output["sequences_logits"].detach().cpu().permute(1,0,2,3)
+            generated_sequences_int = torch.argmax(sequences_logits,dim=-1).numpy()
+            generated_sequences_int = torch.mode(generated_sequences_int,dim=1).values.numpy()
+        else:
+            generated_sequences_int = sampling_output["sequences"].detach().cpu().permute(1, 0, 2)
+            generated_sequences_int = torch.mode(generated_sequences_int,dim=1).values.numpy()
+
 
         #Highlight: Plot before removing duplicates
         generated_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(generated_sequences_int)
@@ -648,19 +652,29 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
     batch_mask = generated_sequences_mask = batch_mask[keep_idx]
 
 
-
-    print("Here ..............")
-    print(generated_sequences_int.shape)
-    print(batch_mask.shape)
-
-
-
     generated_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(generated_sequences_int)
     generated_sequences_blosum = np.vectorize(blosum_array_dict.get, signature='()->(n)')(generated_sequences_int)
-    generated_sequences_cosine_similarity = VegvisirSimilarities.cosine_similarity(generated_sequences_blosum, generated_sequences_blosum, correlation_matrix=False,parallel=False)
-    batch_size = 100 if generated_sequences_blosum.shape[0] > 100 else generated_sequences_blosum.shape[0]
-    positional_weights = VegvisirSimilarities.importance_weight(generated_sequences_cosine_similarity, model_load.seq_max_len, generated_sequences_mask,batch_size=batch_size, neighbours=1)
-    VegvisirPlots.plot_heatmap(positional_weights, "Cosine similarity \n positional weights","{}/Generated/Generated_epitopes_positional_weights.png".format(additional_info.results_dir))
+
+    if generated_sequences_blosum.shape[0] < 10000:
+        print(generated_sequences_blosum.shape[0])
+
+        def handle_timeout(signum, frame):
+            raise TimeoutError
+
+        signal.signal(signal.SIGALRM, handle_timeout)
+        signal.alarm(600)  # 10 minutes
+        try:
+            generated_sequences_cosine_similarity = VegvisirSimilarities.cosine_similarity(generated_sequences_blosum,
+                                                                                           generated_sequences_blosum,
+                                                                                           correlation_matrix=False,
+                                                                                           parallel=False)
+            batch_size = 100 if generated_sequences_blosum.shape[0] > 100 else generated_sequences_blosum.shape[0]
+            positional_weights = VegvisirSimilarities.importance_weight(generated_sequences_cosine_similarity, model_load.seq_max_len, generated_sequences_mask,batch_size=batch_size, neighbours=1)
+            VegvisirPlots.plot_heatmap(positional_weights, "Cosine similarity \n positional weights","{}/Generated/Generated_epitopes_positional_weights.png".format(additional_info.results_dir))
+        except:
+            print("Could not calculate conservational positional weights. Time exceeded or some other error")
+        finally:
+            signal.alarm(0)
 
     n_seqs_clean = generated_sequences_int.shape[0]
     class_logits = sampling_output["class_logits"].detach().cpu().permute(1,0,2)
@@ -710,7 +724,6 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
     latent_space = torch.column_stack([torch.from_numpy(true_labels).detach().cpu(), identifiers, partitions, immunodominace_score, confidence_score, latent_space])
 
     return generated_out_dict,latent_space.numpy()
-
 def save_script(results_dir,output_name,script_name):
     """Saves the python script and its contents"""
     out_file = open("{}/{}.py".format(results_dir,output_name), "a+")

@@ -1125,7 +1125,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
             #with pyro.poutine.mask(mask=confidence_mask_true):
                 #pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=None if sample else true_labels)  # [N,]
             with pyro.poutine.scale(None,self.likelihood_scale):
-                pyro.sample("predictions", dist.Categorical(logits=class_logits),obs=None if sample else true_labels) #TODO: removed .to_event(1)
+                pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=None if sample else true_labels) #TODO: removed .to_event(1)
 
         return {"attn_weights": outputnn.attn_weights,
                 "encoder_hidden_states":outputnn.encoder_hidden_states,

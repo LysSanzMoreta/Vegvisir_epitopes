@@ -674,6 +674,13 @@ class ReverseSequence(object):
         seq_reversed[:seq_len] = seq[:seq_len].flip(dims=[0])
         return seq_reversed[None,:]
 
+
+class CausalCNN(nn.Module):
+    def __init__(self,input_dim,max_len,hidden_dim,num_classes,device,loss_type="elbo"):
+        super(CausalCNN, self).__init__()
+    def forward(self):
+        """"""
+
 class RNN_model4(nn.Module):
     """
     Attention-RNN following Attention is all you need "Self attention mechanism"

@@ -42,19 +42,30 @@ def best_params():
     config_df.columns = [col.replace("config/","") for col in config_df.columns]
 
     print(config_df[["lr","beta1","beta2","eps","weight_decay","clip_norm","lrd","z_dim","momentum","batch_size","encoding",
-                                        "likelihood_scale","num_epochs","num_samples","hidden_dim"]].head(1))
-
-    best_optimizer_config = config_df[["lr","beta1","beta2","eps","weight_decay","clip_norm","lrd","momentum"]].head(1).to_dict(orient="records")[0]
-
-    print(best_optimizer_config)
-
-    best_general_config = config_df[["batch_size", "encoding","likelihood_scale", "num_epochs", "num_samples", "hidden_dim","z_dim"]].head(1).to_dict(orient="records")[0]
-
-    best_hyper_param_dict = {"optimizer_config":best_optimizer_config,
-                             "general_config":best_general_config}
+                                        "likelihood_scale","num_epochs","num_samples","hidden_dim"]].head(20))
 
 
-    json.dump(best_hyper_param_dict,open("BEST_hyperparameter_dict.p","w+"),indent=2)
+
+
+    onehot_encoding = config_df[config_df["encoding"] == "onehot"]
+    blosum_encoding = config_df[config_df["encoding"] == "blosum"]
+
+    def save_best(config_df,name=""):
+
+        best_optimizer_config = config_df[["lr","beta1","beta2","eps","weight_decay","clip_norm","lrd","momentum"]].head(1).to_dict(orient="records")[0]
+
+        best_general_config = config_df[["batch_size", "encoding","likelihood_scale", "num_epochs", "num_samples", "hidden_dim","z_dim"]].head(1).to_dict(orient="records")[0]
+
+        best_hyper_param_dict = {"optimizer_config":best_optimizer_config,
+                                 "general_config":best_general_config}
+
+        json.dump(best_hyper_param_dict,open("BEST_hyperparameter_dict_{}.p".format(name),"w+"),indent=2)
+
+
+    save_best(onehot_encoding,"onehot")
+    save_best(blosum_encoding,"blosum")
+
+
 
 def analysis_models():
     """Analyses the results of all possible model combinations (stress testing)"""

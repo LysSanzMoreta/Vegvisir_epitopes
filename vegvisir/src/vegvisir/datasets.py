@@ -21,8 +21,6 @@ except:
     print("Could not import UMAP because of numpy incompatibility")
     pass
 import hdbscan
-
-
 import scipy
 import seaborn as sns
 import dataframe_image as dfi
@@ -204,6 +202,18 @@ def check_overlap(data):
     overlap = pd.merge(train,test,on = ["Icore"],how="inner")
     assert overlap.size == 0, "Test data points included in the train dataset"
 
+def save_alleles(data,storage_folder,args):
+    alleles_counts = data.value_counts("allele")
+    most_common_allele = alleles_counts.index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
+    alleles_list = alleles_counts.index.tolist()
+    alleles_list = "".join(list(map(lambda seq: seq[:7] + ":" + seq[7:] + ",",alleles_list)))
+    alleles_file = open("{}/{}/alleles_list.txt".format(storage_folder,args.dataset_name),"w+")
+    n=20*11
+    splitted_alleles = [alleles_list[i:i + n] for i in range(0, len(alleles_list), n)]
+    for segment in splitted_alleles:
+        alleles_file.write("{}\n".format(segment))
+    return most_common_allele
+
 def custom_dataset(script_dir,storage_folder,args,results_dir):
     """
     ####################
@@ -358,7 +368,8 @@ def viral_dataset3(script_dir,storage_folder,args,results_dir):
     filters_dict,analysis_mode = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
 
-    most_common_allele = data.value_counts("allele").index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
+    most_common_allele = save_alleles(data,storage_folder,args)
+
 
     if filters_dict["filter_alleles"][0]:
         data = data[data["allele"] == most_common_allele]
@@ -441,8 +452,8 @@ def viral_dataset4(script_dir,storage_folder,args,results_dir):
     filters_dict,analysis_mode = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
 
-    allele_counts = data.value_counts("allele")
-    most_common_allele = allele_counts.index[0]
+    most_common_allele = save_alleles(data,storage_folder,args)
+
     if filters_dict["filter_alleles"][0]:
         data = data[data["allele"] == most_common_allele]
 
@@ -517,8 +528,10 @@ def viral_dataset5(script_dir,storage_folder,args,results_dir):
     data_species = data_species[["Icore","allele","org_name"]]
     filters_dict,analysis_mode = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
-    allele_counts = data.value_counts("allele")
-    most_common_allele = allele_counts.index[0]
+
+    most_common_allele = save_alleles(data,storage_folder,args)
+
+
     if filters_dict["filter_alleles"][0]:
         data = data[data["allele"] == most_common_allele]
 
@@ -639,8 +652,8 @@ def viral_dataset6(script_dir,storage_folder,args,results_dir):
     # anchors_per_allele = pd.read_csv("{}/anchor_info_content/anchors_per_allele_average.txt".format(storage_folder),sep="\s+",header=0)
     # anchors_per_allele=anchors_per_allele[anchors_per_allele[["allele"]].isin(data_allele_types).any(axis=1)]
     # allele_anchors_dict = dict(zip(anchors_per_allele["allele"],anchors_per_allele["anchors"]))
-    allele_counts = data.value_counts("allele")
-    most_common_allele = allele_counts.index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
+    most_common_allele = save_alleles(data,storage_folder,args)
+
     #data_allele_types = allele_counts.index.tolist() #alleles present in this dataset
     if filters_dict["filter_alleles"][0]:
         data = data[data["allele"] == most_common_allele]
@@ -739,7 +752,8 @@ def viral_dataset7(script_dir,storage_folder,args,results_dir):
     filters_dict,analysis_mode = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
 
-    most_common_allele = data.value_counts("allele").index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
+    most_common_allele = save_alleles(data,storage_folder,args)
+
 
     if filters_dict["filter_alleles"][0]:
         data = data[data["allele"] == most_common_allele]
@@ -857,9 +871,9 @@ def viral_dataset8(script_dir,storage_folder,args,results_dir):
     # anchors_per_allele = pd.read_csv("{}/anchor_info_content/anchors_per_allele_average.txt".format(storage_folder),sep="\s+",header=0)
     # anchors_per_allele=anchors_per_allele[anchors_per_allele[["allele"]].isin(data_allele_types).any(axis=1)]
     # allele_anchors_dict = dict(zip(anchors_per_allele["allele"],anchors_per_allele["anchors"]))
-    allele_counts = data.value_counts("allele")
-    most_common_allele = allele_counts.index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
-    #data_allele_types = allele_counts.index.tolist() #alleles present in this dataset
+    most_common_allele = save_alleles(data,storage_folder,args)
+
+
     if filters_dict["filter_alleles"][0]:
         data = data[data["allele"] == most_common_allele]
 
@@ -1013,7 +1027,7 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir):
     filters_dict,analysis_mode = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
 
-    most_common_allele = data.value_counts("allele").index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
+    most_common_allele = save_alleles(data,storage_folder,args)
 
     if filters_dict["filter_alleles"][0]:
         data = data[data["allele"] == most_common_allele]
@@ -1138,8 +1152,8 @@ def viral_dataset10(script_dir,storage_folder,args,results_dir):
     # anchors_per_allele = pd.read_csv("{}/anchor_info_content/anchors_per_allele_average.txt".format(storage_folder),sep="\s+",header=0)
     # anchors_per_allele=anchors_per_allele[anchors_per_allele[["allele"]].isin(data_allele_types).any(axis=1)]
     # allele_anchors_dict = dict(zip(anchors_per_allele["allele"],anchors_per_allele["anchors"]))
-    allele_counts = data.value_counts("allele") #do this for train data only
-    most_common_allele = allele_counts.index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
+    most_common_allele = save_alleles(data,storage_folder,args)
+
     #data_allele_types = allele_counts.index.tolist() #alleles present in this dataset
 
 
