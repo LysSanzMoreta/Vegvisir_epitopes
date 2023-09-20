@@ -51,6 +51,7 @@ SimilarityResults = namedtuple("SimilarityResults",["positional_weights","percen
 
 def available_datasets():
     """Prints the available datasets"""
+    #TODO: Print description
     datasets = {0:"custom",
                 1:"viral_dataset3",
                 2:"viral_dataset4",
@@ -97,7 +98,6 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     data_load_function = dataset_load_fx(func_dict[dataset_name],script_dir,storage_folder,args,results_dir)
     dataset = data_load_function(script_dir,storage_folder,args,results_dir)
     print("Data retrieved")
-
     return dataset
 
 def select_filters(args):

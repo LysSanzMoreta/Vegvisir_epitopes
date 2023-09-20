@@ -567,8 +567,8 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
 
 
         guide_estimates = {
-                           #"rnn_hidden":h_0_GUIDE.expand(1 * 2, num_synthetic_peptides,args.hidden_dim*2).contiguous(),
-                           "rnn_hidden":None,
+                           "rnn_hidden":h_0_GUIDE.expand(1 * 2, num_synthetic_peptides,args.hidden_dim*2).contiguous(),
+                           #"rnn_hidden":None,
                            "rnn_final_hidden":torch.ones((num_synthetic_peptides, args.hidden_dim*2)).to(device=args.device),
                            "rnn_final_hidden_bidirectional": h_0_GUIDE.expand(1 * 2, num_synthetic_peptides,args.hidden_dim*2).contiguous(),#Highlight: Not used
                            "rnn_hidden_states_bidirectional" : torch.ones((num_synthetic_peptides, 2, dataset_info.seq_max_len, args.hidden_dim*2)).to(device=args.device),
@@ -587,7 +587,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
         #Highlight: majority vote? most likely?
         if argmax:
             sequences_logits = sampling_output["sequences_logits"].detach().cpu().permute(1,0,2,3)
-            generated_sequences_int = torch.argmax(sequences_logits,dim=-1).numpy()
+            generated_sequences_int = torch.argmax(sequences_logits,dim=-1)
             generated_sequences_int = torch.mode(generated_sequences_int,dim=1).values.numpy()
         else:
             generated_sequences_int = sampling_output["sequences"].detach().cpu().permute(1, 0, 2)

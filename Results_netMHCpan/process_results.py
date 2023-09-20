@@ -1,6 +1,7 @@
 import os
 import io
-
+import argparse
+from argparse import RawTextHelpFormatter
 import matplotlib.pyplot as plt
 import pandas as pd
 import mmap
@@ -80,7 +81,7 @@ def read_dataframe(folder_path):
     strong_binders_count["Binder_type"] = "Strong"
     binders_df = pd.concat([weak_binders_count,strong_binders_count],axis=0)
     binders_df["size"] = ((binders_df["size"]/n_unique)*100).round(2)
-    binders_df = binders_df.sort_values(by=['size'],ascending=False)
+    #binders_df = binders_df.sort_values(by=['size'],ascending=False)
     print(binders_df)
     fig, ax = plt.subplots(figsize=(18, 18))
     #sns.catplot(y='MHC', x='size', hue='Binder_type', kind='bar', data=binders_df,width=1,dodge=True,ax=ax)
@@ -120,7 +121,10 @@ def read_dataframe(folder_path):
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(description="NetMHCpan process results args",formatter_class=RawTextHelpFormatter)
 
     #folder_path = "/home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/PLOTS_Vegvisir_viral_dataset9_2023_09_12_15h33min42s969996ms_60epochs_supervised_Icore_onehot_TESTING"
     folder_path = "/home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/PLOTS_Vegvisir_viral_dataset9_2023_09_19_11h40min14s189602ms_80epochs_supervised_Icore_blosum_TESTING"
-    read_dataframe(folder_path)
+    parser.add_argument('-folder-path',"--folder-path", type=str, nargs='?', default="", help='path to results')
+    args = parser.parse_args()
+    read_dataframe(args.folder_path)

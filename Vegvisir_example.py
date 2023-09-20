@@ -67,7 +67,7 @@ def define_suffix(args):
     #name = args.dataset_name + "-" + encoding + "-" + kmers_name
     return encoding + suffix + num_unobserved
 def main():
-    """Executes nnalignpy:
+    """Executes Vegvisir:
     1) Select the train/validation/test dataset
     2) Process the data and perform exploratory analysis
     2) Execute Vegvisir"""
@@ -248,20 +248,20 @@ if __name__ == "__main__":
     parser.add_argument('-generate', type=str2bool, nargs='?', default=True, help='<True> Generate new neo-epitopes labelled and with a confidence score. Please use args.validate False''<False> Do nothing')
     parser.add_argument('-num_synthetic_peptides', type=int, nargs='?', default=5000, help='<True> Generate new neo-epitopes labelled and with a confidence score. Please use args.validate False''<False> Do nothing')
     parser.add_argument('-generate-num-samples', type=int, nargs='?', default=50, help='If args.generate == True, then per generated sequence, produce n samples to calculate a class probability')
-    parser.add_argument('-generate-argmax', type=str2bool, nargs='?', default=True, help='If args.generate == True,')
+    parser.add_argument('-generate-argmax', type=str2bool, nargs='?', default=False, help='If args.generate == True, ... DO NOT USE')
 
     best_config = {0:"/home/lys/Dropbox/PostDoc/vegvisir/BEST_hyperparameter_dict_onehot.p",
                    1:"/home/lys/Dropbox/PostDoc/vegvisir/BEST_hyperparameter_dict_blosum.p",
                    2:None}
-    parser.add_argument('-config-dict', nargs='?', default=best_config[1],type=str2None, help='Path to optimized hyperparameter dict')
+    parser.add_argument('-config-dict', nargs='?', default=best_config[0],type=str2None, help='Path to optimized hyperparameter dict')
     unobserved_sequences = {0:"/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/custom_dataset/unobserved_grouped_alleles_train.tsv",1:None}
-    parser.add_argument('-train-path', type=str2None, nargs='?', default=unobserved_sequences[1],help="Path to training dataset. Use only for training. ")
+    parser.add_argument('-train-path', type=str2None, nargs='?', default=unobserved_sequences[0],help="Path to training dataset. Use only for training. ")
     parser.add_argument('-test-path', type=str2None, nargs='?', default= "", help='Path to sequences to predict')
     parser.add_argument('-predefined-partitions', type=str2bool, nargs='?', default= True, help='<True> Divides the dataset into train, validation and test according to pre-specified partitions (in the sequences file, use a column named partitions)'
                                                                                                 '<False> Performs a random stratified train, validation and test split')
 
 
-    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=False, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1, it saturates the CPU & GPU memory'
+    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=True, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1, it saturates the CPU & GPU memory'
                                                                                                 'False: Only plots the computationally inexpensive ROC curves')
 
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. \n'
@@ -301,7 +301,8 @@ if __name__ == "__main__":
     parser.add_argument('-num-samples','-num_samples', type=int, nargs='?', default=3, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
 
     #pretrained_model = {0:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_08_14_23h17min39s118041ms_60epochs_supervised_Icore_blosum_TESTING_pretty_plots",1:None}
-    pretrained_model = {0:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_09_12_11h07min45s598775ms_60epochs_supervised_Icore_blosum_TESTING",1:None}
+    pretrained_model = {0:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_09_12_11h07min45s598775ms_60epochs_supervised_Icore_blosum_TESTING",
+                        1:None}
     parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="{}".format(pretrained_model[1]),help='Load the checkpoints (state_dict and optimizer) from a previous run \n'
                                                                                                 '<None>: Trains model from scratch \n'
                                                                                                 '<str path>: Loads pre-trained model from given path \n')
