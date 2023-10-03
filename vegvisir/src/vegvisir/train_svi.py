@@ -533,6 +533,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
     Vegvisir.train(False)
     Vegvisir.eval()
     num_synthetic_peptides = args.num_synthetic_peptides
+    assert num_synthetic_peptides < 10000, "Please generate less than 10000 peptides, otherwise the computations might not be posible"
     argmax = args.generate_argmax
     with torch.no_grad():  # do not update parameters with the evaluation data
         #Highlight: Initalize fake dummy data (not used)
@@ -574,6 +575,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
                            "rnn_hidden_states_bidirectional" : torch.ones((num_synthetic_peptides, 2, dataset_info.seq_max_len, args.hidden_dim*2)).to(device=args.device),
                            "rnn_hidden_states" : torch.ones((num_synthetic_peptides, dataset_info.seq_max_len, args.hidden_dim*2)).to(device=args.device),
                            "latent_z": train_predictive_samples_dict["latent_z"],
+                           "z_scales": train_predictive_samples_dict["z_scales"],
                            "generate":True
                            }
         #guide_estimates = None

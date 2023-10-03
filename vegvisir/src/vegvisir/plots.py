@@ -4065,7 +4065,7 @@ def process_nnalign(results_path, seqs_df):
 
     return auc_dict, ppv_dict, ap_dict
 
-def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark",title=""):
+def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-onehot-variable-length",folder="Benchmark",title=""):
     """Compare results across different programns on the -golden- dataset that is built from the Icore sequence and sequences of variable length 8-11
     -Notes:
         https://towardsdatascience.com/what-metrics-should-we-use-on-imbalanced-data-set-precision-recall-roc-e2e79252aeba
@@ -4075,7 +4075,7 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark
 
     metrics_keys = ["ppv","fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1","pval_class_0","pval_class_1"]
 
-    vegvisir_folder = dict_results_vegvisir["Icore"]["raw-onehot-variable-length"]
+    vegvisir_folder = dict_results_vegvisir["Icore"][keyname]
     train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(vegvisir_folder, 0))
     #valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(vegvisir_folder, 0))
     test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(vegvisir_folder, 0))
@@ -4321,12 +4321,11 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,folder="Benchmark
 
     plt.savefig("{}/{}/Benchmarking_{}".format(script_dir,folder,title),dpi=800)
 
-def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Benchmark/Plots",title=""):
+def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Benchmark/Plots",title="",encoding="blosum"):
 
     """"""
 
-    encoding_dict = {0:"onehot",1:"blosum"}
-    encoding = encoding_dict[0]
+    #encoding_dict = {0:"onehot",1:"blosum"}
     stress_mode_dict = {"random-{}-variable-length".format(encoding):"random_variable_length_Icore_sequences_viral_dataset9",
                         "random-{}-9mers".format(encoding):"random_fixed_length_Icore_sequences_viral_dataset9",
                         "random-{}-8mers".format(encoding):"random_fixed_length_Icore_sequences_viral_dataset9", #I keep Icore instead of Ocore_non_anchor for convenience  later
@@ -4347,10 +4346,12 @@ def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Ben
     i = 0
     positions = []
     labels = []
+
     for sequence_type in dict_results_vegvisir.keys():
         print("Analyzing {} datasets".format(sequence_type))
         for stress_mode in dict_results_vegvisir[sequence_type].keys():
-            if encoding_dict[1] not in stress_mode:
+            print(stress_mode)
+            if encoding in stress_mode:
                 # Highlight: Vegvisir results
                 print("Analizing {}".format(stress_mode))
                 vegvisir_folder = dict_results_vegvisir[sequence_type][stress_mode]
@@ -4376,8 +4377,9 @@ def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Ben
                 test_labels = test_out["summary_dict"]["true_samples"]
                 test_df = pd.DataFrame({"Icore": test_sequences_raw, "targets": test_labels})
 
-                metrics_results_dict = plot_kfold_comparison_helper(metrics_keys, script_dir, folder=vegvisir_folder,
-                                                                    overwrite=False, kfolds=5)
+
+
+                metrics_results_dict = plot_kfold_comparison_helper(metrics_keys, script_dir, folder=vegvisir_folder,overwrite=False, kfolds=5)
                 metrics_results_train = metrics_results_dict["train"]
                 # metrics_results_valid = metrics_results_dict["valid"]
                 metrics_results_test = metrics_results_dict["test"]

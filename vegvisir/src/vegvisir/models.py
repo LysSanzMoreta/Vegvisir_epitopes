@@ -111,7 +111,29 @@ class VEGVISIRModelClass(nn.Module):
         """"""
         torch.save(output_dict, filename,pickle_protocol=4)
 
-    def conditional_sampling(self,n_generated, n_train, guide_estimates):
+    def chebyshev_inverse_3d(self,a, iterations=10):
+        """Computes an approximation of the inverse of a matrix for large matrices
+        alpha = \frac{1}{(||A||_{1})*||A||_{\inf}}
+        \begin{cases}
+           N(0) = alpha.a^T
+           N(t+1) = N(t)(3.In -a\cdotN(t)(3.In - a.N(t)))
+        \end{cases}
+
+        :param a : Matrix
+        :param iterations: Number of chebyshev polynomial series to compute"""
+
+        a_norm_1d = torch.linalg.matrix_norm(a, ord=1)
+        a_norm_inf = torch.linalg.matrix_norm(a, ord=float('inf'))
+        alpha = 1 / (a_norm_1d * a_norm_inf)
+        N_0 = alpha[:, None, None] * a.permute(0, 2, 1)
+        N_t = N_0
+        In = torch.eye(a.shape[1]).expand(a.shape[0], a.shape[1], a.shape[2])
+        for t in range(iterations):
+            N_t_plus_1 = torch.matmul(N_t,(3 * In - torch.matmul(torch.matmul(a, N_t), (3 * In - torch.matmul(a, N_t)))))
+            N_t = N_t_plus_1
+        return N_t
+
+    def conditional_sampling_fast(self,n_generated, n_train, guide_estimates):
         """Conditional sampling the internal nodes given the leaves from a Multivariate Normal according to page 698 at Pattern Recognition and ML (Bishop)
         :param guide_estimates: dictionary conatining the MAP estimates for the OU process parameters
         :param """
@@ -139,8 +161,69 @@ class VEGVISIRModelClass(nn.Module):
 
         latent_space = dist.MultivariateNormal(OU_mean.squeeze(-1),torch.linalg.inv(inverse_generated) + 1e-6).to_event(1).sample()
         latent_space = latent_space.T
+        return latent_space
 
+    def conditional_sampling(self,n_generated, n_train, guide_estimates):
+        """Conditional sampling the synthetic epitopes given the learnt representations from the training dataset from a Multivariate Normal according to page 698 at Pattern Recognition and ML (Bishop)
+        :param guide_estimates: dictionary conatining the MAP estimates for the OU process parameters
+        :param """
+        print("Sampling .........")
+        # Highlight:  See Page 689 at Patter Recongnition and Ml (Bishop)
+        # Highlight: Formula is: p(xa|xb) = N (x|µa|b, Λ−1aa ) , a = test/internal; b= train/leaves
 
+        # Highlight: B.49 Λ−1aa
+        inverse_generated = torch.eye(n_generated)  # [n_test,n_test]
+        inverse_generated = inverse_generated[None,:].expand(self.z_dim,n_generated,n_generated) # [z_dim,n_test,n_test]
+        z_scales = torch.from_numpy(guide_estimates["z_scales"]).mean(0).to(inverse_generated.device) #[z_dim]
+        inverse_generated = z_scales[:,None,None]*inverse_generated
+
+        # Highlight: Conditional mean Mean ---->B-50:  µa|b = µa − Λ−1aa Λab(xb − µb)
+        # Highlight: µa
+        OU_mean_generated = torch.zeros((n_generated,))  # [n_generated,]
+        # Highlight: Λab
+        inverse_generated_train = torch.eye(n_generated, n_train)  # [n_generated,n_train]
+        inverse_generated_train = inverse_generated_train[None,:].expand(self.z_dim,n_generated,n_train) # [z_dim,n_generated,n_train]
+        inverse_generated_train = z_scales[:,None,None]*inverse_generated_train
+
+        # Highlight: xb
+        xb = torch.from_numpy(guide_estimates["latent_z"][:,5:]).T.to(OU_mean_generated.device)  # [z_dim,n_train]
+
+        assert xb.shape == (self.z_dim,n_train), "Perhaps you forgot that the latent space has some columns stacked"
+        # Highlight:µb
+        OU_mean_train = torch.zeros((n_train,))
+        # Highlight:µa|b---> Splitted Equation  B-50
+        part1 = torch.matmul(self.chebyshev_inverse_3d(inverse_generated), inverse_generated_train)  # [z_dim,n_test,n_train]
+        part2 = xb - OU_mean_train[None, :]  # [z_dim,n_train]
+        z_mean = OU_mean_generated[None, :, None] - torch.matmul(part1, part2[:, :,None])  # [:,n_test,:] - [z_dim,n_test,None]
+
+        if n_generated > 3000: #this is very slow
+            batch_size_init = 1000
+            split_size = int(n_generated / batch_size_init) if not batch_size_init > n_generated else 1
+            z_mean = z_mean.squeeze(-1)
+            inverse_generated = self.chebyshev_inverse_3d(inverse_generated)
+            idx = torch.zeros(n_generated).bool()
+            idx0= 0
+            batch_size = batch_size_init
+            latent_space_list = []
+            for i in range(split_size):
+                idx_split = idx.clone()
+                idx_split[idx0:batch_size] = True
+                z_mean_split = z_mean[:,idx_split]
+                inverse_generated_split = inverse_generated[:,idx_split]
+                inverse_generated_split = inverse_generated_split[:,:,idx_split]
+
+                idx0=batch_size
+                batch_size += batch_size_init
+
+                latent_space_split = dist.MultivariateNormal(z_mean_split.squeeze(-1),inverse_generated_split + 1e-6).to_event(1).sample()
+                latent_space_split = latent_space_split.T
+                latent_space_list.append(latent_space_split)
+
+            latent_space = torch.concatenate(latent_space_list,dim=0)
+        else:
+
+            latent_space = dist.MultivariateNormal(z_mean.squeeze(-1),self.chebyshev_inverse_3d(inverse_generated) + 1e-6).to_event(1).sample()
+            latent_space = latent_space.T
         return latent_space
 
 
