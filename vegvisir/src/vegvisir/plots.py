@@ -3116,13 +3116,14 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
 
         for fold in range(kfolds):
             print("-------------FOLD {}--------------".format(fold))
-            if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold)):
-                train_out = torch.load(
-                    "{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold))
-                args = train_out["args"]
-                train_out = train_out["summary_dict"]
+            if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold)): #use the results of the entire training dataset
+                train_load = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(folder, fold))  #TODO: I changed train_out to train_load
+                args = train_load["args"]
+                train_out = train_load["summary_dict"]
             else:
-                train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_valid_fold_{}.p".format(folder, fold))["summary_dict"]
+                train_load = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_valid_fold_{}.p".format(folder, fold))  #use the results of the training dataset minus the validation
+                args = train_load["args"]
+                train_out = train_load["summary_dict"]
             valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(folder, fold))["summary_dict"]
             if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold)):
                 test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(folder, fold))["summary_dict"]
@@ -3137,8 +3138,7 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
                     prob_mode = "class_probs_predictions_samples_average"
                     idx_all = np.ones_like(labels).astype(bool)
                     if args.num_classes > args.num_obs_classes:
-                        idx_all = (labels[..., None] != 2).any(
-                            -1)  # Highlight: unlabelled data has been assigned labelled 2,we skip it
+                        idx_all = (labels[..., None] != 2).any(-1)  # Highlight: unlabelled data has been assigned labelled 2,we skip it
                     idx_name = "all"
                     sample_mode = "samples"
 
@@ -3997,13 +3997,12 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
      process_dict(spearman_pvalues_all,"Latent_spearman_pvalues",subtitle)
      process_dict(spearman_coefficients_all,"Latent_spearman_coefficients",subtitle)
 
-
 def calculate_auc(targets, predictions):
     """Calculates the ROC AUC"""
     try:
         targets = targets.to_numpy()
         predictions = predictions.to_numpy()
-        predictions_nan = np.isnan(predictions)
+        predictions_nan = np.isnan(predictions) #some predictions are not made
         targets = targets[~predictions_nan]
         predictions = predictions[~predictions_nan]
         fpr, tpr, _ = roc_curve(targets, predictions)
@@ -4018,8 +4017,7 @@ def calculate_ppv(targets, predictions):
     predictions = predictions.to_numpy()
     try:
         try:
-            binary_predictions = np.where(predictions >= 0.5, 1,
-                                          0)  # for the rank this is useless, but I want to preserve the error
+            binary_predictions = np.where(predictions >= 0.5, 1,0)  # for the rank this is useless, but I want to preserve the error
         except:
             binary_predictions = predictions
         binary_predictions_nan = pd.isnull(binary_predictions)
@@ -4036,18 +4034,26 @@ def calculate_ap(targets, predictions):
     targets = targets.to_numpy()
     predictions = predictions.to_numpy()
     try:
-        try:
-            binary_predictions = np.where(predictions >= 0.5, 1,0)  # for the rank this is useless, but I want to preserve the error
-        except:
-            binary_predictions = predictions
-        # precision, recall, _ = precision_recall_curve(targets, predictions)
-        average_precision = average_precision_score(targets, binary_predictions)
+        # if len(unique_vals) > 2:
+        #     binary_predictions = np.where(predictions >= 0.5, 1,0)  # for the rank this is useless, but I want to preserve the error
+        #
+        # else:
+        #     binary_predictions = predictions
+        # average_precision = average_precision_score(targets, binary_predictions)
+        average_precision = average_precision_score(targets, predictions)
         return average_precision
     except:
         return np.nan
 
+def calculate_pval(targets,predictions):
+    try:
+        lrm = sm.Logit(targets, predictions).fit(disp=0)
+        pval = lrm.pvalues.item()
+    except:
+        pval = np.nan
+    return pval
 
-def process_nnalign(results_path, seqs_df):
+def process_nnalign(results_path, seqs_df,mode="train",save_plot=True):
     nnalign_results_full = pd.read_csv(results_path, sep="\t", header=0)  # ["true_samples"]
     nnalign_results_full = nnalign_results_full[["Peptide", "Prediction"]]
     nnalign_results_full.columns = ["Icore", "Prediction"]
@@ -4062,13 +4068,46 @@ def process_nnalign(results_path, seqs_df):
 
     ap_results = calculate_ap(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
     ap_dict = {"NNAlign2.1": ap_results}
+    
+    pval_results = calculate_pval(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
+    pval_dict = {"NNAlign2.1": pval_results}
 
-    return auc_dict, ppv_dict, ap_dict
+    precision = defaultdict()
+    recall = defaultdict()
+    average_precision = defaultdict()
+    precision["ordinary"], recall["ordinary"], _ = precision_recall_curve(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
+    average_precision["ordinary"] = average_precision_score(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
+
+
+
+    #if save_plot:
+    # A "micro-average": quantifying score on all classes jointly
+    precision["micro"], recall["micro"], _ = precision_recall_curve(
+        nnalign_results_full["targets"].ravel(), nnalign_results_full["Prediction"].ravel()
+    )
+    average_precision["micro"] = average_precision_score(nnalign_results_full["targets"], nnalign_results_full["Prediction"], average="micro")
+    fig = plt.figure()
+    #Highlight: same results
+    plt.plot(recall["micro"], precision["micro"],label="Average Precision (AP): {}".format(average_precision["micro"]))
+    #plt.plot(recall["ordinary"], precision["ordinary"],label="Average Precision (AP): {}".format(average_precision["ordinary"]))
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    plt.ylabel('Precision', fontsize=20)
+    plt.xlabel('Recall', fontsize=20)
+    plt.legend(loc='lower right', prop={'size': 15})
+    plt.title("Average Precision curves \n NNAlign ({})".format(mode))
+    plt.savefig("/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots/NNAlign_PrecisionRecall_curves_{}".format(mode))
+    plt.clf()
+    plt.close(fig)
+
+
+    return auc_dict, ppv_dict, ap_dict, pval_dict
 
 def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-onehot-variable-length",folder="Benchmark",title=""):
     """Compare results across different programns on the -golden- dataset that is built from the Icore sequence and sequences of variable length 8-11
     -Notes:
         https://towardsdatascience.com/what-metrics-should-we-use-on-imbalanced-data-set-precision-recall-roc-e2e79252aeba
+        https://towardsdatascience.com/imbalanced-data-stop-using-roc-auc-and-use-auprc-instead-46af4910a494
     """
 
     #Highlight: Vegvisir results
@@ -4108,9 +4147,11 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
 
     vegvisir_results_auc_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train["roc_auc_class_1"])))/2, 2)}
     vegvisir_results_ap_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["ap_class_0"])) + np.mean(np.array(metrics_results_train["ap_class_1"])))/2, 2)}
+    vegvisir_results_pval_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["pval_class_0"])) + np.mean(np.array(metrics_results_train["pval_class_1"])))/2, 3)}
     vegvisir_results_ppv_train = {"Vegvisir":np.round(np.mean(np.array(metrics_results_train["ppv"])), 2)}
     vegvisir_results_auc_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test["roc_auc_class_1"])))/2, 2)}
-    vegvisir_results_ap_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["ap_class_0"])) + np.mean(np.array(metrics_results_test["ap_class_1"])))/2, 2)}
+    vegvisir_results_ap_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["ap_class_0"])) + np.mean(np.array(metrics_results_test["ap_class_1"])))/2, 3)}
+    vegvisir_results_pval_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["pval_class_0"])) + np.mean(np.array(metrics_results_test["pval_class_1"])))/2, 2)}
     vegvisir_results_ppv_test = {"Vegvisir":np.round(np.mean(np.array(metrics_results_test["ppv"])), 2)}
 
 
@@ -4123,8 +4164,9 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
     nnalign_results_path_test_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_30845/nnalign_peplen_8-11_iter_100_30845.evalset.txt"
 
     train_test_df = pd.concat([train_df,test_df],axis=0)
-    nnalign_results_train_auc_dict, nnalign_results_train_ppv_dict, nnalign_results_train_ap_dict = process_nnalign(nnalign_results_path_train_full,train_test_df)
-    nnalign_results_test_auc_dict, nnalign_results_test_ppv_dict, nnalign_results_test_ap_dict = process_nnalign(nnalign_results_path_test_full,train_test_df)
+    nnalign_results_train_auc_dict, nnalign_results_train_ppv_dict, nnalign_results_train_ap_dict,nnalign_results_train_pval_dict = process_nnalign(nnalign_results_path_train_full,train_test_df,mode="train")
+    nnalign_results_test_auc_dict, nnalign_results_test_ppv_dict, nnalign_results_test_ap_dict, nnalign_results_test_pval_dict = process_nnalign(nnalign_results_path_test_full,train_test_df,mode="test")
+
 
     #Highlight: Other programs
     other_programs_results_path = "{}/Benchmark/Other_Programs/sequences_viral_dataset9_predictors_other_models.tsv".format(script_dir)
@@ -4167,6 +4209,17 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
 
     ppv_results_train_dict = dict(zip(programs_list,ppv_results_train))
     ppv_results_test_dict = dict(zip(programs_list,ppv_results_test))
+    
+    
+    #Highlight: Pval
+
+    pval_results_train = list(map(lambda program: calculate_pval(other_programs_results_train["target_corrected"],
+                                                               other_programs_results_train[program]), programs_list))
+    pval_results_test = list(map(lambda program: calculate_pval(other_programs_results_test["target_corrected"],
+                                                              other_programs_results_test[program]), programs_list))
+
+    pval_results_train_dict = dict(zip(programs_list, pval_results_train))
+    pval_results_test_dict = dict(zip(programs_list, pval_results_test))
 
     #Highlight: AP
 
@@ -4177,14 +4230,15 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
     ap_results_test_dict = dict(zip(programs_list,ap_results_test))
 
 
-
     auc_results_train_dict = {**vegvisir_results_auc_train,**nnalign_results_train_auc_dict,**auc_results_train_dict,}
     auc_results_test_dict = {**vegvisir_results_auc_test,**nnalign_results_test_auc_dict,**auc_results_test_dict}
 
 
-
     ppv_results_train_dict = {**vegvisir_results_ppv_train,**nnalign_results_train_ppv_dict,**ppv_results_train_dict,}
     ppv_results_test_dict = {**vegvisir_results_ppv_test,**nnalign_results_test_ppv_dict,**ppv_results_test_dict}
+    
+    pval_results_train_dict = {**vegvisir_results_pval_train,**nnalign_results_train_pval_dict,**pval_results_train_dict,}
+    pval_results_test_dict = {**vegvisir_results_pval_test,**nnalign_results_test_pval_dict,**pval_results_test_dict}
 
     ap_results_train_dict = {**vegvisir_results_ap_train, **nnalign_results_train_ap_dict,**ap_results_train_dict, }
     ap_results_test_dict = {**vegvisir_results_ap_test, **nnalign_results_test_ap_dict, **ap_results_test_dict}
@@ -4210,6 +4264,9 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
 
     ppv_results_train_dict = {key: val for key, val in ppv_results_train_dict.items() if key in benchmark_programs_list}
     ppv_results_test_dict = {key: val for key, val in ppv_results_test_dict.items() if key in benchmark_programs_list}
+    
+    pval_results_train_dict = {key: val for key, val in pval_results_train_dict.items() if key in benchmark_programs_list}
+    pval_results_test_dict = {key: val for key, val in pval_results_test_dict.items() if key in benchmark_programs_list}
 
     ap_results_train_dict = {key: val for key, val in ap_results_train_dict.items() if key in benchmark_programs_list}
     ap_results_test_dict = {key: val for key, val in ap_results_test_dict.items() if key in benchmark_programs_list}
@@ -4254,25 +4311,29 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
 
     else:
 
-        fig,[ax1,ax2,ax3] = plt.subplots(nrows=1,ncols=3,figsize=(25,16))
+        fig,[ax1,ax2,ax3,ax4] = plt.subplots(nrows=1,ncols=4,figsize=(28,16))
         i= 0
         positions = []
         labels = []
-        for (program_train, auc_train), auc_test, ppv_train, ppv_test, ap_train,ap_test in zip(auc_results_train_dict.items(),
+        for (program_train, auc_train), auc_test, ppv_train, ppv_test, ap_train,ap_test,pval_train,pval_test in zip(auc_results_train_dict.items(),
                                                                              auc_results_test_dict.values(),
                                                                              ppv_results_train_dict.values(),
                                                                              ppv_results_test_dict.values(),
                                                                              ap_results_train_dict.values(),
-                                                                             ap_results_test_dict.values()):
+                                                                             ap_results_test_dict.values(),
+                                                                             pval_results_train_dict.values(),
+                                                                             pval_results_test_dict.values()):
             if np.isnan(auc_train) or np.isnan(auc_test):
                 pass
             else:
                 bar_train_auc= ax1.barh(i,width=auc_train,color="skyblue",height=0.2)
-                bar_train_ppv= ax2.barh(i,width=ppv_train,color="skyblue",height=0.2)
-                bar_train_ap= ax3.barh(i,width=ap_train,color="skyblue",height=0.2)
+                bar_train_pval= ax1.barh(i,width=pval_train,color="skyblue",height=0.2)
+                bar_train_ppv= ax3.barh(i,width=ppv_train,color="skyblue",height=0.2)
+                bar_train_ap= ax4.barh(i,width=ap_train,color="skyblue",height=0.2)
                 bar_test_auc = ax1.barh(i + 0.2,width=auc_test,height=0.2,color="tomato")
-                bar_test_ppv = ax2.barh(i + 0.2,width=ppv_test,height=0.2,color="tomato")
-                bar_test_ap = ax3.barh(i + 0.2,width=ap_test,height=0.2,color="tomato")
+                bar_test_pval = ax2.barh(i + 0.2,width=pval_test,height=0.2,color="tomato")
+                bar_test_ppv = ax3.barh(i + 0.2,width=ppv_test,height=0.2,color="tomato")
+                bar_test_ap = ax4.barh(i + 0.2,width=ap_test,height=0.2,color="tomato")
                 positions.append(i)
                 i += 1
                 labels.append(names_dict[program_train])
@@ -4281,14 +4342,19 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
                     ax1.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(),2)),
                              ha='center', va='center',fontsize=12,weight='bold')
-                for bar in [bar_train_ppv.patches,bar_test_ppv.patches]:
+                for bar in [bar_train_pval.patches,bar_test_pval.patches]:
                     rect = bar[0] #single rectangle
                     ax2.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(),2)),
                              ha='center', va='center',fontsize=12,weight='bold')
-                for bar in [bar_train_ap.patches,bar_test_ap.patches]:
+                for bar in [bar_train_ppv.patches,bar_test_ppv.patches]:
                     rect = bar[0] #single rectangle
                     ax3.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
+                             '{}'.format(round(rect.get_width(),2)),
+                             ha='center', va='center',fontsize=12,weight='bold')
+                for bar in [bar_train_ap.patches,bar_test_ap.patches]:
+                    rect = bar[0] #single rectangle
+                    ax4.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(),2)),
                              ha='center', va='center',fontsize=12,weight='bold')
 
@@ -4300,19 +4366,28 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
         ax1.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center",transform=transformation,fontsize=15)
         ax1.set_title("ROC-AUC",fontsize=20)
         ax1.margins(x=0.2)
-
-        ax2.axvline(x=0.5, color='goldenrod', linestyle='--')
+        
+        ax2.axvline(x=0.05, color='goldenrod', linestyle='--')
         ax2.set_yticks(positions,labels=labels,fontsize=15,weight='bold')
-        ax2.set_title("Precision (PPV)",fontsize=20)
+        transformation = transforms.blended_transform_factory(ax2.get_yticklabels()[0].get_transform(), ax2.transData)
+        ax2.text(0.05, -0.30, "0.5", color="dimgrey", ha="right", va="center",transform=transformation,fontsize=15)
+        ax2.set_title("P-value",fontsize=20)
+        ax2.set_xlim(0,0.4)
         ax2.margins(x=0.2)
 
         ax3.axvline(x=0.5, color='goldenrod', linestyle='--')
         ax3.set_yticks(positions,labels=labels,fontsize=15,weight='bold')
-        transformation = transforms.blended_transform_factory(ax3.get_yticklabels()[0].get_transform(), ax3.transData)
-        ax3.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center",transform=transformation,fontsize=15)
-        ax3.set_title("Average Precision (AP)",fontsize=20)
+        ax3.set_title("Precision (PPV)",fontsize=20)
         ax3.margins(x=0.2)
 
+        ax4.axvline(x=0.5, color='goldenrod', linestyle='--')
+        ax4.set_yticks(positions,labels=labels,fontsize=15,weight='bold')
+        transformation = transforms.blended_transform_factory(ax4.get_yticklabels()[0].get_transform(), ax4.transData)
+        ax4.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center",transform=transformation,fontsize=15)
+        ax4.set_title("Average Precision (AP)",fontsize=20)
+        ax4.margins(x=0.2)
+
+     
         plt.subplots_adjust(wspace=0.5 )
 
         legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in colors_dict.items()]
@@ -4405,11 +4480,11 @@ def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Ben
                 nnalign_results_path_train_full = "{}{}.lg8.sorted.pred".format(folders_list[0],folder_name)
                 nnalign_results_path_test_full = "{}{}.evalset.txt".format(folders_list[0],folder_name)
 
-                nnalign_results_train_auc_dict, nnalign_results_train_ppv_dict, nnalign_results_train_ap_dict = process_nnalign(nnalign_results_path_train_full, train_df)
+                nnalign_results_train_auc_dict, nnalign_results_train_ppv_dict, nnalign_results_train_ap_dict, nnalign_results_train_pval_dict = process_nnalign(nnalign_results_path_train_full, train_df,mode="train")
                 stress_testing_auc["nnalign"][sequence_type][stress_mode]["train"] = nnalign_results_train_auc_dict
                 stress_testing_ppv["nnalign"][sequence_type][stress_mode]["train"] = nnalign_results_train_ppv_dict
                 stress_testing_ap["nnalign"][sequence_type][stress_mode]["train"] = nnalign_results_train_ap_dict
-                nnalign_results_test_auc_dict, nnalign_results_test_ppv_dict, nnalign_results_test_ap_dict = process_nnalign(nnalign_results_path_test_full, test_df)
+                nnalign_results_test_auc_dict, nnalign_results_test_ppv_dict, nnalign_results_test_ap_dict, nnalign_results_test_pval_dict = process_nnalign(nnalign_results_path_test_full, test_df,mode="test")
                 stress_testing_auc["nnalign"][sequence_type][stress_mode]["test"] = nnalign_results_test_auc_dict
                 stress_testing_ppv["nnalign"][sequence_type][stress_mode]["test"] = nnalign_results_test_ppv_dict
                 stress_testing_ap["nnalign"][sequence_type][stress_mode]["test"] = nnalign_results_test_ap_dict
@@ -4422,7 +4497,7 @@ def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Ben
                 bar_test_auc2 = ax2.barh(i + 0.2, width=vegvisir_results_auc_test["Vegvisir"], height=0.2, color="darkturquoise")
 
                 positions.append(i)
-                labels.append("{}\n{}".format(sequence_type,stress_mode.replace("{}-".format(encoding),"")))
+                labels.append("{}\n{}".format(sequence_type.replace("_","-"),stress_mode.replace("{}-".format(encoding),"")))
                 i += 1
                 for bar in [bar_train_auc1.patches,bar_train_auc2.patches]:
                     rect = bar[0]  # single rectangle
@@ -4457,7 +4532,7 @@ def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Ben
 
     plt.savefig("{}/{}/Benchmarking_stress_testing_{}.png".format(script_dir,folder,title),dpi=600)
 
-def plot_hierarchical_clustering(vegvisir_folder,embedded_epitopes,folder):
+def plot_hierarchical_clustering(vegvisir_folder,embedded_epitopes,folder,title=""):
 
     fold = 0
     train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(vegvisir_folder, fold)) #should be the same training dataset all the time
@@ -4508,7 +4583,7 @@ def plot_hierarchical_clustering(vegvisir_folder,embedded_epitopes,folder):
 
     fig.suptitle("Cosine similarity cluster heatmaps")
 
-    plt.savefig("{}/Clustermaps.png".format(folder))
+    plt.savefig("{}/Clustermaps_{}.png".format(folder,title))
 
 
 
