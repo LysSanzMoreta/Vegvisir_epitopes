@@ -1,0 +1,115 @@
+
+Dictionary with the following structure
+
+{"latent_space": train_latent_space,
+"predictions_dict":train_predictions_dict,
+"summary_dict": train_summary_dict})
+
+
+a) "Latent_space": [N,5+z_dim]Las columnas contienen los siguientes valores
+            [true_labels, identifiers, partitions, immunodominace_score, confidence_score, latent_space])
+
+            El latent space tiene z_dim = 30
+
+b) "Predictions_dict": IGNORE, it is merged into the summary dict.
+            predictions_dict = {"data_int":data_int_arr,
+                        "data_mask": data_mask_arr,
+                        "binary":binary_predictions_arr,
+                        "logits":logits_predictions_arr,
+                        "probs":probs_predictions_arr,
+                        "true":true_labels_arr,
+                        "true_onehot":true_onehot,
+                        "observed":observed_labels,
+                        "confidence_scores":confidence_scores_arr,
+                        "training_assignation":training_assignation_arr,
+                        "attention_weights":attention_weights_arr,
+                        "encoder_hidden_states":encoder_hidden_arr,
+                        "decoder_hidden_states":decoder_hidden_arr,
+                        "encoder_final_hidden_state": encoder_final_hidden_arr,
+                        "decoder_final_hidden_state": decoder_final_hidden_arr,
+                        }
+
+c) Summary_dict: Contains the dataset and all the model output information
+
+        summary_dict = {"data_int_single_sample":predictions_dict["data_int"],
+                "data_int_samples": samples_dict["data_int"],
+                "data_mask_single_sample": predictions_dict["data_mask"],
+                "data_mask_samples": samples_dict["data_mask"],
+                "class_binary_predictions_samples": binary_predictions_samples,
+                "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
+                "class_binary_prediction_samples_frequencies": binary_frequencies,
+                "class_logits_predictions_samples": logits_predictions_samples,
+                "class_logits_predictions_samples_argmax": class_logits_predictions_samples_argmax,
+                "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
+                "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
+                "class_probs_predictions_samples": probs_predictions_samples,
+                "class_probs_predictions_samples_average": np.mean(probs_predictions_samples,axis=1),
+                "class_binary_prediction_single_sample": predictions_dict["binary"],
+                "class_logits_prediction_single_sample": predictions_dict["logits"],
+                "class_logits_prediction_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
+                "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),predictions_dict["observed"].astype(int)],
+                "class_probs_prediction_single_sample": predictions_dict["probs"],
+                "samples_average_accuracy":samples_dict["accuracy"],
+                "true_samples": true_labels_samples,
+                "true_onehot_samples": samples_dict["true_onehot"],
+                "true_single_sample": predictions_dict["true"],
+                "true_onehot_single_sample": predictions_dict["true_onehot"],
+                "confidence_scores_samples": samples_dict["confidence_scores"],
+                "confidence_scores_single_sample": predictions_dict["confidence_scores"],
+                "training_assignation_samples": samples_dict["training_assignation"],
+                "training_assignation_single_sample": predictions_dict["training_assignation"],
+                "attention_weights_single_sample":predictions_dict["attention_weights"],
+                "attention_weights_samples": samples_dict["attention_weights"],
+                "encoder_hidden_states_single_sample":predictions_dict["encoder_hidden_states"],
+                "encoder_hidden_states_samples":samples_dict["encoder_hidden_states"],
+                "decoder_hidden_states_single_sample": predictions_dict["decoder_hidden_states"],
+                "decoder_hidden_states_samples": samples_dict["decoder_hidden_states"],
+                "encoder_final_hidden_state_single_sample": predictions_dict["encoder_final_hidden_state"],
+                "encoder_final_hidden_state_samples": samples_dict["encoder_final_hidden_state"],
+                "decoder_final_hidden_state_single_sample": predictions_dict["decoder_final_hidden_state"],
+                "decoder_final_hidden_state_samples": samples_dict["decoder_final_hidden_state"],
+                }
+
+
+The sequences and their information are contained in dataset_int or dataset_blosum, they have the following format: [N,2,max_len,feat_dim]
+
+Example:
+N= Number off sequences
+max_len = 8
+feat_dim = 1 for dataset_int or 21 for dataset_blosum
+a) Dataset_raw = [N,2,max_len] : Contains the amino acids in 1letter code (string), where "#" means pad
+        [[[label,identifier,partition,training,immunodominance_score,confidence_score,org_name,0],
+        ["A","K","L","R","W","#"]],
+        [[label,identifier,partition,training,immunodominance_score,confidence_score,org_name,0],
+        ["P","H","L","T","W","M"]],
+        ...
+        ]
+b) Dataset_int = [N,2,max_len] :Contains the amino acids in  (integer), where 0 means pad (if the sequences have different lengths, otherwise is amino acid R)
+        [[[label,identifier,partition,training,immunodominance_score,confidence_score,org_name,0],
+        [1,2,5,3,6,0]],
+        [[label,identifier,partition,training,immunodominance_score,confidence_score,org_name,0],
+        [8,10,5,12,6,4]],
+        ...
+        ]
+c) Dataset_blosum = [N,2,max_len,21] : Contains the amino acids en blosum encoded vector, where [-4,-4,-4,...,-4] means pad (if the sequences have different lengths, otherwise is amino acid R)
+
+        [[[label,identifier,partition,training,immunodominance_score,confidence_score,org_name,0],
+        [[-1,-3,....],[4,1,-1,...],[-6,2,3,...],[5,-2,1,....],[-9,-3,....],[-4,-4,-4,...,-4]]],
+        [[label,identifier,partition,training,immunodominance_score,confidence_score,org_name,0],
+        [[-8,1,3,...],[3,-1,4,...],[-1,2,4,...],[-1,2,0,....],[0,-1,2,4,...],[2,3,-1,....]]],
+        ...
+        ]
+
+
+Notes:
+    -Use the _samples values not the _single_sample ones
+
+    -Due to the shuffling of the data points from the dataloaders please only compare things that have the same suffix (_samples, _single_sample)
+
+    -To calculate ROC-AUC using the "probability" (= class weights) values per class use  "class_probs_predictions_samples" o "class_probs_predictions_samples_average" and "true_samples".
+    
+    -To access the encoded species, simply do dataset_blosum[:,0,0,6] o dataset_int[:,0,6]. The dictionary
+
+    -If you are interested in the binary results use "class_binary_predictions_samples"
+
+    -I do it like this: https://github.com/LysSanzMoreta/Vegvisir_epitopes/blob/lys/vegvisir/src/vegvisir/plots.py#L1199

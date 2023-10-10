@@ -7,18 +7,24 @@ Vegvisir :
 import argparse
 import ast,warnings
 import Bio.Align
+from Bio.SeqUtils.IsoelectricPoint import IsoelectricPoint as IP
+from Bio.SeqUtils.ProtParam import ProteinAnalysis
 import numpy as np
 import os,shutil
 from collections import defaultdict
 import time,datetime
 from sklearn import preprocessing
-
+import random
 import pandas as pd
 import torch
+import scipy
 import vegvisir.plots as VegvisirPlots
+import vegvisir.load_utils as VegvisirLoadUtils
 from scipy import stats
 from joblib import Parallel, delayed
 import multiprocessing
+from collections import namedtuple
+PeptideFeatures = namedtuple("PeptideFeatures",["gravy_dict","volume_dict","radius_dict","side_chain_pka_dict","isoelectric_dict","bulkiness_dict"])
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 def str2bool(v):
     """Converts a string into a boolean, useful for boolean arguments
@@ -90,6 +96,7 @@ def aminoacid_names_dict(aa_types,zero_characters = []):
     :param int aa_types: amino acid probabilities, this number correlates to the number of different aa types in the input alignment
     :param list zero_characters: character(s) to be set to 0
     """
+    #TODO: Can be improved, no need to assign R to 0
     if aa_types == 20 :
         assert len(zero_characters) == 0, "No zero characters allowed, please set zero_characters to empty list"
         aminoacid_names = {"R":0,"H":1,"K":2,"D":3,"E":4,"S":5,"T":6,"N":7,"Q":8,"C":9,"G":10,"P":11,"A":12,"V":13,"I":14,"L":15,"M":16,"F":17,"Y":18,"W":19}
@@ -172,7 +179,7 @@ def create_blosum(aa_types,subs_matrix_name,zero_characters=[],include_zero_char
 
     if zero_characters:
         index_gap = aa_list.index("#")
-        aa_list[index_gap] = "*" #in the blosum matrix gaps are represanted as *
+        aa_list[index_gap] = "*" #in the blosum matrix gaps are represented as *
 
     subs_dict = defaultdict()
     subs_array = np.zeros((len(aa_list) , len(aa_list) ))
@@ -211,7 +218,7 @@ def calculate_aa_frequencies(dataset,freq_bins):
     """
 
     freqs = np.apply_along_axis(lambda x: np.bincount(x, minlength=freq_bins), axis=0, arr=dataset.astype("int64")).T
-    #freqs = freqs/dataset.shape[0]
+    freqs = freqs/dataset.shape[0]
     return freqs
 
 class AUK:
@@ -342,10 +349,10 @@ def cosine_similarity(a,b,correlation_matrix=False,parallel=False):
             b = np.concatenate((b,dummy_row),axis=0)
     if np.ndim(a) == 1:
         num = np.dot(a,b)
-        #p1 = np.linalg.norm(a)
-        p1 = np.sqrt(np.sum(a**2))
-        #p2 = np.linalg.norm(b)
-        p2 = np.sqrt(np.sum(b**2))
+        p1 = np.linalg.norm(a)
+        #p1 = np.sqrt(np.sum(a**2))
+        p2 = np.linalg.norm(b)
+        #p2 = np.sqrt(np.sum(b**2))
         cosine_sim = num/(p1*p2)
         return cosine_sim
 
@@ -410,7 +417,7 @@ def view1D(a): # a is array #TODO: Remove or investigate, is supposed to speed t
     void_dt = np.dtype((np.void, a.dtype.itemsize * a.shape[1]))
     return a.view(void_dt).ravel()
 
-def calculate_similarity_matrix_slow(array, max_len, array_mask, batch_size=200, ksize=3):
+def calculate_similarity_matrix_slow(array, max_len, array_mask, batch_size=200, ksize=3): #TODO: Remove
     """Batched method to calculate the cosine similarity and percent identity/pairwise distance between the blosum encoded sequences.
     :param numpy array: Integer representation [n,max_len] or Blosum encoded [n,max_len,aa_types]
     NOTE: Use smaller batches for faster results ( obviously to certain extent, check into balancing the batch size and the number of for loops)
@@ -562,9 +569,9 @@ def calculate_similarity_matrix_slow(array, max_len, array_mask, batch_size=200,
     print("Cosine similarity")
     print(cosine_similarity_mean[1][0:4])
     return np.ma.getdata(percent_identity_mean), np.ma.getdata(cosine_similarity_mean), np.ma.getdata(
-        kmers_pid_similarity), np.ma.getdata(kmers_cosine_similarity)
+        kmers_pid_similarity), np.ma.getdata(kmers_cosine_similarity)#TO#TTODO: remove
 
-def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksize=3):
+def calculate_similarity_matrix(array, max_len, array_mask, batch_size=200, ksize=3):#TODO: Remove
     """Batched method to calculate the cosine similarity and percent identity/pairwise distance between the blosum encoded sequences.
     :param numpy array: Blosum encoded sequences [n,max_len,aa_types] NOTE: TODO fix to make it work with: Integer representation [n,max_len] ?
     NOTE: Use smaller batches for faster results ( obviously to certain extent, check into balancing the batch size and the number of for loops)
@@ -797,11 +804,56 @@ def euclidean_2d_norm(A,B,squared=True):
     else:
         return distance.clip(min=0)
 
-def manage_predictions(samples_dict,args,predictions_dict):
+def manage_predictions_generative(args,generative_dict):
+
+    mode = "samples" if args.generate_num_samples > 1 else "single_sample"
+    class_logits_predictions_generative_argmax = np.argmax(generative_dict["logits"], axis=-1)
+    #class_logits_predictions_generative_argmax_mode = stats.mode(class_logits_predictions_generative_argmax, axis=1,keepdims=True).mode.squeeze(-1)
+    class_logits_predictions_generative_argmax_mode = class_logits_predictions_generative_argmax
+    probs_predictions_generative = generative_dict["probs"]
+
+    binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=generative_dict["binary"].astype("int64"))
+    binary_frequencies = binary_frequencies / args.generate_num_samples
+
+
+    #Highlight: Stack 2 data_int to maintain the latter format
+
+    data_int = np.concatenate([generative_dict["data_int"][:,None],generative_dict["data_int"][:,None]],axis=1)
+
+    generative_dict = {
+                        "data_int_single_sample": data_int,
+                        "data_int_samples": data_int,
+                        "data_mask_single_sample": generative_dict["data_mask"],
+                        "data_mask_samples": generative_dict["data_mask"],
+                        "class_binary_predictions_{}".format(mode): generative_dict["binary"] if args.generate_num_samples > 1 else generative_dict["binary"].squeeze(1) ,
+                        "true_single_sample": generative_dict["true"],
+                        "true_samples": generative_dict["true"],
+                        "class_binary_predictions_{}_mode".format(mode): stats.mode(generative_dict["binary"], axis=1,keepdims=True).mode.squeeze(-1),
+                        "class_binary_predictions_samples_frequencies": binary_frequencies, #I name it samples to avoid errors
+                        "class_logits_predictions_single_sample": generative_dict["logits"],
+                        "class_logits_predictions_samples": generative_dict["logits"],
+                        "class_logits_predictions_single_sample_argmax": class_logits_predictions_generative_argmax,
+                        "class_logits_predictions_samples_argmax": class_logits_predictions_generative_argmax,
+                        "class_logits_predictions_single_sample_argmax_frequencies".format(mode): None,
+                        "class_logits_predictions_samples_argmax_frequencies".format(mode): None,
+                        "class_logits_predictions_single_sample_argmax_mode": class_logits_predictions_generative_argmax_mode,
+                        "class_logits_predictions_samples_argmax_mode": class_logits_predictions_generative_argmax_mode,
+                        "class_probs_predictions_single_sample": probs_predictions_generative,
+                        "class_probs_predictions_samples": probs_predictions_generative,
+                        #"class_probs_predictions_{}_average".format(mode): np.mean(probs_predictions_generative, axis=1) if args.generate_num_samples > 1 else probs_predictions_generative,
+                        "class_probs_predictions_{}_average".format(mode): probs_predictions_generative,
+                        #"class_binary_predictions_{}_logits_average_argmax".format(mode): np.argmax(np.mean(probs_predictions_generative, axis=1), axis=1) if args.generate_num_samples > 1 else np.argmax(probs_predictions_generative, axis=1)
+                        "class_binary_predictions_{}_logits_average_argmax".format(mode): np.argmax(probs_predictions_generative, axis=1)
+                       }
+
+
+    return generative_dict
+
+def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None):
     """
 
     :param samples_dict: Collects the binary, logits and probabilities predicted for args.num_samples  from the posterior predictive after training
-    :param args:
+    :param NamedTuple args:
     :param predictions_dict: Collects the binary, logits and probabilities predicted for 1 sample ("single sample") from the posterior predictive during training
     :return:
     """
@@ -817,6 +869,8 @@ def manage_predictions(samples_dict,args,predictions_dict):
 
     class_logits_predictions_samples_argmax = np.argmax(logits_predictions_samples,axis=-1)
     class_logits_predictions_samples_argmax_mode = stats.mode(class_logits_predictions_samples_argmax, axis=1,keepdims=True).mode.squeeze(-1)
+
+
     binary_predictions_samples_mode = stats.mode(binary_predictions_samples, axis=1,keepdims=True).mode.squeeze(-1)
 
     # binary_frequencies = torch.stack([torch.bincount(x_i, minlength=args.num_classes) for i, x_i in
@@ -824,6 +878,9 @@ def manage_predictions(samples_dict,args,predictions_dict):
     #                                            0)], dim=0)
     binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=binary_predictions_samples.astype("int64"))
     binary_frequencies = binary_frequencies / args.num_samples
+
+
+
     # argmax_frequencies = torch.stack([torch.bincount(x_i, minlength=args.num_classes) for i, x_i in
     #                                   enumerate(torch.unbind(class_logits_predictions_samples_argmax.type(torch.int64), dim=0),
     #                                             0)], dim=0)
@@ -837,18 +894,19 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         "data_mask_samples": samples_dict["data_mask"],
                         "class_binary_predictions_samples": binary_predictions_samples,
                         "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
-                        "class_binary_prediction_samples_frequencies": binary_frequencies,
+                        "class_binary_predictions_samples_frequencies": binary_frequencies,
                         "class_logits_predictions_samples": logits_predictions_samples,
                         "class_logits_predictions_samples_argmax": class_logits_predictions_samples_argmax,
                         "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
                         "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
                         "class_probs_predictions_samples": probs_predictions_samples,
                         "class_probs_predictions_samples_average": np.mean(probs_predictions_samples,axis=1),
-                        "class_binary_prediction_single_sample": predictions_dict["binary"],
-                        "class_logits_prediction_single_sample": predictions_dict["logits"],
-                        "class_logits_prediction_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
-                        "class_probs_prediction_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),predictions_dict["true"].astype(int)],
-                        "class_probs_prediction_single_sample": predictions_dict["probs"],
+                        "class_binary_predictions_samples_logits_average_argmax": np.argmax(np.mean(probs_predictions_samples,axis=1),axis=1),
+                        "class_binary_predictions_single_sample": predictions_dict["binary"],
+                        "class_logits_predictions_single_sample": predictions_dict["logits"],
+                        "class_logits_predictions_single_sample_argmax": np.argmax(predictions_dict["logits"],axis=-1),
+                        "class_probs_predictions_single_sample_true": predictions_dict["probs"][np.arange(0,n_data),predictions_dict["observed"].astype(int)],
+                        "class_probs_predictions_single_sample": predictions_dict["probs"],
                         "samples_average_accuracy":samples_dict["accuracy"],
                         "true_samples": true_labels_samples,
                         "true_onehot_samples": samples_dict["true_onehot"],
@@ -868,6 +926,7 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         "encoder_final_hidden_state_samples": samples_dict["encoder_final_hidden_state"],
                         "decoder_final_hidden_state_single_sample": predictions_dict["decoder_final_hidden_state"],
                         "decoder_final_hidden_state_samples": samples_dict["decoder_final_hidden_state"],
+
                         }
     else:
         summary_dict = {"data_int_single_sample":None,
@@ -876,18 +935,19 @@ def manage_predictions(samples_dict,args,predictions_dict):
                         "data_mask_samples": samples_dict["data_mask"],
                         "class_binary_predictions_samples": binary_predictions_samples,
                         "class_binary_predictions_samples_mode": binary_predictions_samples_mode,
-                        "class_binary_prediction_samples_frequencies": binary_frequencies,
+                        "class_binary_predictions_samples_frequencies": binary_frequencies,
                         "class_logits_predictions_samples": logits_predictions_samples,
                         "class_logits_predictions_samples_argmax": class_logits_predictions_samples_argmax,
                         "class_logits_predictions_samples_argmax_frequencies": argmax_frequencies,
                         "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
-                        "class_probs_predictions_samples": probs_predictions_samples,
+                        "class_probs_predictionss_samples": probs_predictions_samples,
                         "class_probs_predictions_samples_average": np.mean(probs_predictions_samples, axis=1),
-                        "class_binary_prediction_single_sample": None,
-                        "class_logits_prediction_single_sample": None,
-                        "class_logits_prediction_single_sample_argmax": None,
-                        "class_probs_prediction_single_sample_true": None,
-                        "class_probs_prediction_single_sample": None,
+                        "class_binary_predictions_samples_logits_average_argmax": np.argmax(np.mean(probs_predictions_samples, axis=1),axis=1),
+                        "class_binary_predictions_single_sample": None,
+                        "class_logits_predictions_single_sample": None,
+                        "class_logits_predictions_single_sample_argmax": None,
+                        "class_probs_predictions_single_sample_true": None,
+                        "class_probs_predictions_single_sample": None,
                         "samples_average_accuracy": samples_dict["accuracy"],
                         "true_samples": true_labels_samples,
                         "true_onehot_samples": samples_dict["true_onehot"],
@@ -951,7 +1011,7 @@ def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
     Calculates the amount of vector similarity/distance change between the hidden representations of the positions in the sequence for both backward and forward RNN hidden states.
     1) For a given sequence with 2 sequences of hidden states [2,L,Hidden_dim]
 
-        A) Calculate cosine similarities_old for each of the forward and backward hidden states of an RNN
+        A) Calculate cosine similarities for each of the forward and backward hidden states  (vectors) of an RNN
         Forward = Cos_sim([Hidden_states[0],Hidden_states[0]]
         Backward = Cos_sim([Hidden_states[1],Hidden_states[1]]
 
@@ -969,16 +1029,16 @@ def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
         Pos 4 : [3->4]
 
 
-    :param arr:
-    :param arr_mask:
+    :param arr: Hidden states of one sequence
+    :param arr_mask: Boolean indicating the paddings in the sequence
     :param diag_idx_maxlen:
     :param max_len:
     :return:
     """
     forward = None
     backward = None
-    for idx in [0,1]:
-        cos_sim_arr = cosine_similarity(arr[idx],arr[idx],correlation_matrix=False)
+    for idx in [0,1]:#0 is the forward state, 1 is the backward
+        cos_sim_arr = cosine_similarity(arr[idx],arr[idx],correlation_matrix=False) #cosine similarity among all the vectors in the <forward/backward> hidden states
         cos_sim_diag = cos_sim_arr[diag_idx_maxlen[0][:-1],diag_idx_maxlen[1][1:]] #k=1 offset diagonal
         #Highlight: ignore the positions that have paddings
         n_paddings = (arr_mask.shape[0] - arr_mask.sum()) # max_len - true_len
@@ -989,7 +1049,7 @@ def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
             else:
                 backward = np.zeros((max_len-1))
         else:
-            information_shift = 1-cos_sim_diag[:keep] #or cosine distance
+            information_shift = 1-cos_sim_diag[:keep] #or cosine distance , the cosine distancevaries between 0 and 2
             #information_shift = np.abs(cos_sim_diag[:-1] -cos_sim_diag[1:])
             #Highlight: Set to 0 the information gain in the padding positions
             information_shift = np.concatenate([information_shift,np.zeros((n_paddings,))])
@@ -1001,12 +1061,16 @@ def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
 
     #Highlight: Make the arrays overlap
     forward = np.insert(forward,obj=0,values=0,axis=0)
+
     backward = np.append(backward,np.zeros((1,)),axis=0)
-    weights = (forward + backward)/2
+    weights = np.concatenate([forward[None,:],backward[None,:]],axis=0)
+    weights = np.mean(weights,axis=0)
     #weights = np.exp(weights - np.max(weights)) / np.exp(weights - np.max(weights)).sum() #softmax
+    #Highlight: Minmax scaling
     weights = (weights - weights.min()) / (weights - weights.min()).sum()
     weights*= arr_mask
     return weights[None,:]
+
 def information_shift_samples(hidden_states,data_mask_seq,diag_idx_maxlen,seq_max_len):
     # Highlight: Encoder
     encoder_information_shift_weights_seq = Parallel(n_jobs=MAX_WORKERs)(
@@ -1036,3 +1100,417 @@ def compute_sites_entropies(logits, node_names):
 
     seq_entropies = np.concatenate((node_names[:,None],seq_entropies),axis=1)
     return seq_entropies
+
+def convert_to_pandas_dataframe(epitopes_padded,data,storage_folder,args,use_test=True):
+    """"""
+    epitopes_padded = list(map(''.join, epitopes_padded))
+    data["Icore"] = epitopes_padded
+    data["Icore"] = data["Icore"].str.replace('#','')
+
+    column_names = ["Icore","target_corrected","partition"]
+    shift_proportions =False
+    if use_test:
+        data_train = data[data["training"] == True][column_names]
+        data_test = data[data["training"] == False][column_names]
+
+        labels_counts = data_test["target_corrected"].value_counts()
+        n_positives = labels_counts[1.0]
+        n_negatives = labels_counts[0.0]
+        positives_proportion = (n_positives * 100)/data_test.shape[0]
+        negatives_proportion = (n_negatives * 100)/data_test.shape[0]
+
+        if shift_proportions:
+            VegvisirLoadUtils.redefine_class_proportions(data_test,n_positives,n_negatives,positives_proportion,negatives_proportion,drop="positives")
+            shifted = "shifted_proportions"
+        else:
+            shifted = ""
+
+        data_train = data_train.astype({'partition': 'int'})
+        data_test.drop("partition", axis=1, inplace=True)
+        data_train["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder, args.dataset_name), sep="\t",
+                                   index=False, header=None)
+        shuffled = ["shuffled" if args.shuffle_sequence else "non_shuffled"][0]
+        data_train.to_csv("{}/{}/viral_nnalign_input_train_{}.tsv".format(storage_folder, args.dataset_name,shuffled), sep="\t",
+                          index=False, header=None)
+        data_test.to_csv("{}/{}/viral_nnalign_input_valid_{}_{}.tsv".format(storage_folder, args.dataset_name,shuffled,shifted), sep="\t",
+                          index=False, header=None)  # TODO: Header None?
+
+    else:
+        data = data[data["training"] == True]
+        data_train = data[data["partition"] != 4][column_names]
+        data_valid = data[data["partition"] == 4][column_names]
+
+        labels_counts = data_valid["target_corrected"].value_counts()
+        n_positives = labels_counts[1.0]
+        n_negatives = labels_counts[0.0]
+        positives_proportion = (n_positives * 100)/data_valid.shape[0]
+        negatives_proportion = (n_negatives * 100)/data_valid.shape[0]
+
+        if shift_proportions:
+            VegvisirLoadUtils.redefine_class_proportions(data_valid,n_positives,n_negatives,positives_proportion,negatives_proportion,drop="negatives")
+            shifted = "shifted_proportions"
+        else:
+            shifted = ""
+        data_train = data_train.astype({'partition': 'int'})
+        data_valid.drop("partition", axis=1, inplace=True)
+        data_train["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder, args.dataset_name), sep="\t",
+                                   index=False, header=None)
+        shuffled = ["shuffled" if args.shuffle_sequence else "non_shuffled"][0]
+        data_train.to_csv("{}/{}/viral_nnalign_input_train_{}_no_test.tsv".format(storage_folder, args.dataset_name,shuffled),
+                          sep="\t",
+                          index=False, header=None)
+        data_valid.to_csv("{}/{}/viral_nnalign_input_valid_{}_no_test_partition_4_{}.tsv".format(storage_folder, args.dataset_name,shuffled,shifted),
+                          sep="\t",
+                          index=False, header=None)  # TODO: Header None?
+
+def calculate_isoelectric(seq):
+    seq = "".join(seq).replace("#","")
+    isoelectric = IP(seq).pi()
+    return isoelectric
+
+def calculate_molecular_weight(seq):
+    seq = "".join(seq).replace("#","")
+    molecular_weight = ProteinAnalysis(seq).molecular_weight()
+    return molecular_weight
+
+def calculate_aromaticity(seq):
+    seq = "".join(seq).replace("#","")
+    aromaticity = ProteinAnalysis(seq).aromaticity()
+    return aromaticity
+
+def calculate_gravy(seq):
+    "GRAVY (grand average of hydropathy)"
+    seq = "".join(seq).replace("#","")
+    gravy = ProteinAnalysis(seq).gravy()
+    return gravy
+
+def calculate_extintioncoefficient(seq):
+    """Calculates the molar extinction coefficient assuming cysteines (reduced) and cystines residues (Cys-Cys-bond)
+    :param str seq"""
+    seq = "".join(seq).replace("#","")
+    excoef_cysteines, excoef_cystines = ProteinAnalysis(seq).molar_extinction_coefficient()
+    return excoef_cysteines,excoef_cystines
+
+class CalculatePeptideFeatures(object):
+    def __init__(self,seq_max_len,list_sequences,storage_folder):
+        self.storage_folder = storage_folder
+        self.seq_max_len = seq_max_len
+        self.aminoacid_properties = pd.read_csv("{}/aminoacid_properties.txt".format(storage_folder),sep = "\s+")
+        self.list_sequences = list_sequences
+        self.corrected_aa_types = len(set().union(*self.list_sequences))
+        self.aminoacids_list = aminoacid_names_dict(self.corrected_aa_types)
+        self.gravy_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["Hydropathy_index"].values.tolist()))
+        self.volume_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["Volume(A3)"].values.tolist()))
+        self.radius_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["Radius"].values.tolist()))
+        self.side_chain_pka_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["side_chain_pka"].values.tolist()))
+        self.isoelectric_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["isoelectric_point"].values.tolist()))
+        self.bulkiness_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["bulkiness"].values.tolist()))
+    def return_dicts(self):
+
+        return PeptideFeatures(gravy_dict=self.gravy_dict,
+                               volume_dict = self.volume_dict,
+                               radius_dict= self.radius_dict,
+                               side_chain_pka_dict=self.side_chain_pka_dict,
+                               isoelectric_dict= self.isoelectric_dict,
+                               bulkiness_dict=self.bulkiness_dict)
+
+    def calculate_volumetrics(self,seq,seq_max_len):
+        """Calculates molecular weight, volume, radius of each residue in a protein sequence"""
+        seq = "".join(seq).replace("#", "")
+
+        pads = [0] *(seq_max_len-len(seq))
+        molecular_weight = list( map(lambda aa: ProteinAnalysis(aa).molecular_weight(), list(seq))) + pads
+        volume = list( map(lambda aa: self.volume_dict[aa], list(seq))) +  pads
+        radius = list( map(lambda aa: self.radius_dict[aa], list(seq))) + pads
+        bulkiness = list( map(lambda aa: self.bulkiness_dict[aa], list(seq))) + pads
+
+
+        return molecular_weight,volume,radius,bulkiness
+
+    def calculate_features(self,seq,seq_max_len):
+        """Calculates molecular weight, volume, radius, isoelectric point, side chain pka, gravy of each residue in a protein sequence"""
+        seq = "".join(seq).replace("#", "")
+
+        pads = [0] *(seq_max_len-len(seq))
+        molecular_weight = calculate_molecular_weight(seq)
+        volume = sum(list( map(lambda aa: self.volume_dict[aa], list(seq))) +  pads)
+        radius = sum(list( map(lambda aa: self.radius_dict[aa], list(seq))) + pads)
+        bulkiness = sum(list( map(lambda aa: self.bulkiness_dict[aa], list(seq))) + pads)
+        isoelectric = calculate_isoelectric(seq)
+        gravy = calculate_gravy(seq)
+        side_chain_pka = sum(list( map(lambda aa: self.side_chain_pka_dict[aa], list(seq))) + pads)/len(seq)
+        aromaticity = calculate_aromaticity(seq)
+        extintion_coefficient_reduced,extintion_coefficient_cystines = calculate_extintioncoefficient(seq)
+        #aminoacid_frequencies = list(map(lambda aa,seq: seq.count(aa)/len(seq),self.aminoacids_list,[seq]*len(self.aminoacids_list)))
+        #aminoacid_frequencies_dict = dict(zip(self.aminoacids_list,aminoacid_frequencies))
+        return molecular_weight,volume,radius,bulkiness,isoelectric,gravy,side_chain_pka,aromaticity,extintion_coefficient_reduced,extintion_coefficient_cystines#,aminoacid_frequencies_dict
+
+    def calculate_aminoacid_frequencies(self,seq,seq_max_len):
+
+        seq = "".join(seq).replace("#", "")
+        aminoacid_frequencies = list(map(lambda aa,seq: seq.count(aa)/len(seq),self.aminoacids_list,[seq]*len(self.aminoacids_list)))
+        aminoacid_frequencies_dict = dict(zip(self.aminoacids_list,aminoacid_frequencies))
+
+        return aminoacid_frequencies_dict
+
+    def volumetrics_summary(self):
+
+        if self.list_sequences:
+            results = list(map(lambda seq: self.calculate_volumetrics(seq,self.seq_max_len), self.list_sequences))
+            zipped_results = list(zip(*results))
+            volumetrics_dict = {"molecular_weights":np.array(zipped_results[0]),
+                                "volume":np.array(zipped_results[1]),
+                                "radius":np.array(zipped_results[2]),
+                                "bulkiness":np.array(zipped_results[3])}
+        else:
+            volumetrics_dict = {"molecular_weights":None,
+                                "volume":None,
+                                "radius":None,
+                                "bulkiness":None}
+
+        return volumetrics_dict
+
+    def features_summary(self):
+
+        if self.list_sequences:
+            results = list(map(lambda seq: self.calculate_features(seq,self.seq_max_len), self.list_sequences))
+            zipped_results = list(zip(*results))
+            features_dict = {"molecular_weights":np.array(zipped_results[0]),
+                                "volume":np.array(zipped_results[1]),
+                                "radius":np.array(zipped_results[2]),
+                                "bulkiness":np.array(zipped_results[3]),
+                                "isoelectric":np.array(zipped_results[4]),
+                                "gravy":np.array(zipped_results[5]),
+                                "side_chain_pka":np.array(zipped_results[6]),
+                                "aromaticity":np.array(zipped_results[7]),
+                                "extintion_coefficient_cysteines":np.array(zipped_results[8]),
+                                "extintion_coefficient_cystines": np.array(zipped_results[9]),
+                                 #"aminoacid_frequencies_dict":dict(zip(self.list_sequences,zipped_results[10]))
+                                }
+        else:
+            features_dict = {"molecular_weights":None,
+                                "volume":None,
+                                "radius":None,
+                                "bulkiness":None,
+                                "isoelectric": None,
+                                "gravy": None,
+                                "side_chain_pka": None,
+                                "aromaticity":None,
+                                "extintion_coefficient_reduced":None,
+                                "extintion_coefficient_cystines": None,
+                                #"aminoacid_frequencies_dict":None
+                             }
+
+        return features_dict
+
+    def aminoacid_frequencies(self):
+        if self.list_sequences:
+            aminoacid_frequencies_dict= list(map(lambda seq: self.calculate_aminoacid_frequencies(seq,self.seq_max_len), self.list_sequences))
+
+            return aminoacid_frequencies_dict
+        else:
+            raise ValueError("sequences list is empty")
+
+    def aminoacid_embedding(self):
+        if self.list_sequences:
+            results = list(map(lambda seq: self.calculate_features(seq,self.seq_max_len), self.list_sequences))
+            return results
+
+        else:
+            return None
+
+def build_features_dicts(dataset_info):
+    storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
+    features_dicts = CalculatePeptideFeatures(dataset_info.seq_max_len,[],storage_folder).return_dicts()
+    gravy_dict = features_dicts.gravy_dict
+    volume_dict = features_dicts.volume_dict
+    radius_dict = features_dicts.radius_dict
+    side_chain_pka_dict = features_dicts.side_chain_pka_dict
+    isoelectric_dict = features_dicts.isoelectric_dict
+    bulkiness_dict = features_dicts.bulkiness_dict
+
+
+    if dataset_info.corrected_aa_types == 20:
+        aminoacids_dict = aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=[])
+    else:
+        aminoacids_dict = aminoacid_names_dict(dataset_info.corrected_aa_types, zero_characters=["#"])
+        gravy_dict["#"] = 0
+        volume_dict["#"] = 0
+        radius_dict["#"] = 0
+        side_chain_pka_dict["#"] = 0
+        isoelectric_dict["#"] = 0
+        bulkiness_dict["#"] = 0
+
+    aminoacids_dict_reversed = {val:key for key,val in aminoacids_dict.items()}
+    gravy_dict = {aminoacids_dict[key]:value for key,value in gravy_dict.items()}
+    volume_dict = {aminoacids_dict[key]:value for key,value in volume_dict.items()}
+    radius_dict = {aminoacids_dict[key]:value for key,value in radius_dict.items()}
+    side_chain_pka_dict = {aminoacids_dict[key]:value for key,value in side_chain_pka_dict.items()}
+    isoelectric_dict = {aminoacids_dict[key]:value for key,value in isoelectric_dict.items()}
+    bulkiness_dict = {aminoacids_dict[key]:value for key,value in bulkiness_dict.items()}
+
+    return {"aminoacids_dict_reversed":aminoacids_dict_reversed,
+            "gravy_dict":gravy_dict,
+            "volume_dict":volume_dict,
+            "radius_dict":radius_dict,
+            "side_chain_pka_dict":side_chain_pka_dict,
+            "isoelectric_dict":isoelectric_dict,
+            "bulkiness_dict":bulkiness_dict}
+
+def merge_in_left_order(x, y, on=None):
+    x = x.copy()
+    x["Order"] = np.arange(len(x))
+    z = x.merge(y, how='left', on=on).set_index("Order").loc[np.arange(len(x)), :]
+    return z
+
+def calculate_correlations(feat1,feat2,method="pearson"):
+    unique_vals = np.unique(feat2)
+    if (unique_vals.astype(int) == unique_vals).sum() == len(unique_vals): #if the variable is categorical
+        #print("found categorical variable")
+        result =  scipy.stats.pointbiserialr(feat1, feat2)
+    else:
+        #print("continuous variable")
+        if method == "pearson":
+            result =  scipy.stats.pearsonr(feat1, feat2)
+        else:
+            result =  scipy.stats.spearmanr(feat1, feat2)
+    return result
+
+def generate_mask(max_len, length):
+    seq_mask = np.array([True] * (length) + [False] * (max_len - length))
+    return seq_mask[None, :]
+
+def clean_generated_sequences(seq_int,seq_mask,zero_character,min_len):
+    """"""
+    seq_mask = np.array(seq_mask)
+    seq_int = np.array(seq_int)
+    idx = np.where(seq_int == zero_character)[0]
+    if idx.size == 0:
+        seq_mask = np.ones_like(seq_int).astype(bool)
+        return (seq_int[None,:],seq_mask[None,:])
+    else:
+        if idx[0] > min_len -1: #truncate sequences (else completely discard)
+            seq_int[idx[0]:] = zero_character
+            seq_mask[idx[0]:] = False
+            return (seq_int[None,:],seq_mask[None,:])
+
+def numpy_to_fasta(aa_sequences,binary_pedictions,probabilities,results_dir,title_name=""):
+    print("Saving generated sequences to fasta & text files ")
+    f1 = open("{}/generated_epitopes{}.fasta".format(results_dir,title_name), "a+")
+    f2 = open("{}/generated_epitopes{}.txt".format(results_dir,title_name), "a+")
+
+    headers_list  = list(map(lambda idx,label,prob: ">Epitope_{}_class_{}_probability_{}\n".format(idx,label,prob), list(range(aa_sequences.shape[0])),binary_pedictions.tolist(),probabilities.tolist()))
+
+    sequences_list = list(map(lambda seq: "{}\n".format("".join(seq).replace("#","-")), aa_sequences.tolist()))
+
+    headers_sequences_list = [None]*len(headers_list) + [None]*len(sequences_list)
+
+    headers_sequences_list[::2] = headers_list
+    headers_sequences_list[1::2] = sequences_list
+
+    f1.write("".join(headers_sequences_list))
+    f2.write("".join(sequences_list))
+
+    df = pd.DataFrame({"Epitopes":sequences_list,"Negative_score":probabilities[:,0].tolist(),"Positive_score":probabilities[:,1].tolist()})
+    df["Epitopes"] = df["Epitopes"].str.replace("\n","")
+    df.to_csv("{}/generated_epitopes{}.tsv".format(results_dir,title_name),sep="\t",index=False)
+
+    VegvisirPlots.plot_logos(sequences_list,results_dir,title_name)
+
+def squeeze_tensor(required_ndims,tensor):
+    """Squeezes a tensor to match ndim"""
+    size = torch.tensor(tensor.shape)
+    ndims = len(size)
+    if ndims > required_ndims:
+        while ndims > required_ndims:
+            if tensor.shape[0] == 1:
+                tensor = tensor.squeeze(0)
+                size = torch.tensor(tensor.shape)
+                ndims = len(size)
+            else:
+                ndims = required_ndims
+
+        return tensor
+    else:
+        return tensor
+
+#TODO: Put into new plots_utils.py, however right now it is annoying to change the structure because of dill
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import seaborn as sns;sns.set()
+class SeabornFig2Grid():
+    """Class from https://stackoverflow.com/questions/47535866/how-to-iteratively-populate-matplotlib-gridspec-with-a-multipart-seaborn-plot/47624348#47624348"""
+    def __init__(self, seaborngrid, fig,  subplot_spec):
+        self.fig = fig
+        self.sg = seaborngrid
+        self.subplot = subplot_spec
+        if isinstance(self.sg, sns.axisgrid.FacetGrid) or \
+            isinstance(self.sg, sns.axisgrid.PairGrid):
+            self._movegrid()
+        elif isinstance(self.sg, sns.axisgrid.JointGrid):
+            self._movejointgrid()
+        elif isinstance(self.sg, sns.matrix.ClusterGrid):#https://github1s.com/mwaskom/seaborn/blob/master/seaborn/matrix.py#L696
+            # print(dir(self.sg))
+            # print(dir(self.sg.figure))
+            self._moveclustergrid()
+        else:
+            print("what am i")
+
+        self._finalize()
+
+    def _movegrid(self):
+        """ Move PairGrid or Facetgrid """
+        self._resize()
+        n = self.sg.axes.shape[0]
+        m = self.sg.axes.shape[1]
+        self.subgrid = gridspec.GridSpecFromSubplotSpec(n,m, subplot_spec=self.subplot)
+        for i in range(n):
+            for j in range(m):
+                self._moveaxes(self.sg.axes[i,j], self.subgrid[i,j])
+
+    def _movejointgrid(self):
+        """ Move Jointgrid """
+        h= self.sg.ax_joint.get_position().height
+        h2= self.sg.ax_marg_x.get_position().height
+        r = int(np.round(h/h2))
+        self._resize()
+        self.subgrid = gridspec.GridSpecFromSubplotSpec(r+1,r+1, subplot_spec=self.subplot)
+
+        self._moveaxes(self.sg.ax_joint, self.subgrid[1:, :-1])
+        self._moveaxes(self.sg.ax_marg_x, self.subgrid[0, :-1])
+        self._moveaxes(self.sg.ax_marg_y, self.subgrid[1:, -1])
+
+    def _moveclustergrid(self):
+        """Move cluster grid"""
+        r = len(self.sg.figure.axes)
+        self.subgrid = gridspec.GridSpecFromSubplotSpec(r, r + 10, subplot_spec=self.subplot)
+        subplots_axes = self.sg.figure.axes
+        self._resize()
+        self._moveaxes(subplots_axes[0], self.subgrid[1:, 0:3]) #left cladogram #ax_row_dendrogram
+        self._moveaxes(subplots_axes[1], self.subgrid[0, 4:-2]) #top cladogram #ax_col_dendrogram
+        self._moveaxes(subplots_axes[2], self.subgrid[1:, 3]) #labels bar
+        self._moveaxes(subplots_axes[3], self.subgrid[1:, 4:-2]) #heatmap #ax_heatmap
+        self._moveaxes(subplots_axes[4], self.subgrid[1:, -1]) #colorbar
+
+
+    def _moveaxes(self, ax, gs):
+        #https://stackoverflow.com/a/46906599/4124317
+        ax.remove()
+        ax.figure=self.fig
+        self.fig.axes.append(ax)
+        self.fig.add_axes(ax)
+        ax._subplotspec = gs
+        ax.set_position(gs.get_position(self.fig))
+        ax.set_subplotspec(gs)
+
+    def _finalize(self):
+        plt.close(self.sg.fig)
+        self.fig.canvas.mpl_connect("resize_event", self._resize)
+        self.fig.canvas.draw()
+
+    def _resize(self, evt=None):
+        self.sg.fig.set_size_inches(self.fig.get_size_inches())
+
+
+
+

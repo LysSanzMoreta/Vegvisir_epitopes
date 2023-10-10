@@ -177,6 +177,68 @@ def rotate_blosum_batch(data,data_mask):
     return data_transformed
 
 
+def batch_multiplication_new(self,a, b, n_data, L, feat_dim):
+    """Inspired by https://github.com/pytorch/pytorch/issues/3172"""
+    c = torch.bmm(a[:, :, :, None].view(n_data, -1, 1), b[:, None, :, :].view(n_data, 1, -1))
+    c = c.view(n_data, L, feat_dim, L, feat_dim)
+    c = c.permute(0, 1, 3, 2, 4)[:, torch.arange(L), torch.arange(L)]
+
+    return c
+
+def rotate_blosum_batch_new(self,data, data_mask):
+    """
+
+    :return:
+
+    Notes:
+        -https://www.rollpie.com/post/311
+        -https://math.stackexchange.com/questions/2144153/n-dimensional-rotation-matrix
+        -https://analyticphysics.com/Higher%20Dimensions/Rotations%20in%20Higher%20Dimensions.htm
+    """
+    n_data, L, feat_dim = data.shape
+
+    # input vectors
+    v2 = torch.ones_like(data)  # [N,L,feat_dim]
+
+    # Gram-Schmidt orthogonalization
+
+    n1 = data / torch.nan_to_num(torch.linalg.norm(data, dim=2)[:, :, None], nan=1e-6,posinf=1e-6,neginf=-1e-6) # [N,L,feat_dim]
+    n1 = torch.nan_to_num(n1, nan=1e-6,posinf=1e-6,neginf=-1e-6) #Calculating the norm and dividing by 0 generates nan values
+
+    v2 = v2 - torch.matmul(n1, v2[0, 0])[:, :, None] * n1  # works [N,L,feat_dim]
+    v2 = torch.nan_to_num(v2, nan=1e-6,posinf=1e-6,neginf=-1e-6)
+
+
+    n2 = v2 / torch.nan_to_num(torch.linalg.norm(v2, dim=2)[:, :, None], nan=1e-6,posinf=1e-6,neginf=-1e-6)
+    n2  = torch.nan_to_num(n2, nan=1e-6,posinf=1e-6,neginf=-1e-6)
+    # rotation by pi/2 (np.pi = 180)
+    sign = torch.randn(1) > 0
+    # sign = torch.Tensor([True])
+    degree = torch.rand(1)  # A degree 0 will not rotate the vector
+    #degree = 0.8 #approx 40 degrees
+    #degree = 0
+    sign_dict = {True: torch.tensor([-1]), False: torch.tensor([1])}
+    a = sign_dict[sign.item()] * (torch.pi * degree)  # TODO: Also randomly change degrees of rotation
+    # a = torch.rand(-1,1,(1))*torch.pi #degrees
+    I = torch.eye(feat_dim)
+
+    one = self.batch_multiplication(n2, n1, n_data, L, feat_dim)
+    two = self.batch_multiplication(n1, n2, n_data, L, feat_dim)
+    three = self.batch_multiplication(n1, n1, n_data, L, feat_dim)
+    four = self.batch_multiplication(n2, n2, n_data, L, feat_dim)
+
+    R = I + (one - two) * torch.sin(a) + (three + four) * (torch.cos(a) - 1)
+
+    # check result
+    data_rotated = torch.matmul(R, n1[:, :, :, None]).squeeze(-1)
+    data_rotated_unnormalized = data_rotated * torch.nan_to_num(torch.linalg.norm(data, dim=2)[:, :, None], nan=1e-6,posinf=1e-6,neginf=-1e-6)
+    data_rotated_unnormalized = torch.nan_to_num(data_rotated_unnormalized, nan=1e-6,posinf=1e-6,neginf=-1e-6)
+    data_mask = torch.tile(data_mask[:, :, None], (1, 1, data.shape[-1]))
+    data[~data_mask] = 0
+    data_rotated_unnormalized[data_mask] = 0
+    data_transformed = data  + data_rotated_unnormalized
+
+    return data_transformed
 
 def rotate_conserved( dataset, dataset_mask):
     """Calculates a frequency for each of the aa & gap at each position.The number of bins (of size 1) is one larger than the largest value in x. This is done for torch tensors

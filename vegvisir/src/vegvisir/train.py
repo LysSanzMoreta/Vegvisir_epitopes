@@ -294,7 +294,7 @@ def train_model(dataset_info,additional_info,args):
                                                            data_blosum_norm[valid_idx],
                                                            data_array_blosum_encoding_mask[valid_idx])
 
-    train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
+    train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffled_Ibel? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
     valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device),**kwargs)
 
 
@@ -444,7 +444,7 @@ def kfold_crossvalidation(dataset_info,additional_info,args):
                                                                fold_valid_data_onehot,
                                                                traineval_data_norm[valid_idx],
                                                                traineval_mask[valid_idx])
-        train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffle? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
+        train_loader = DataLoader(custom_dataset_train, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device), **kwargs)  # also shuffled_Ibel? collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x))
         valid_loader = DataLoader(custom_dataset_valid, batch_size=batch_size,shuffle=True,generator=torch.Generator(device=args.device),**kwargs)
 
 

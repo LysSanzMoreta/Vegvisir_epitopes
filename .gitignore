@@ -8,9 +8,32 @@ vegvisir/src/vegvisir.egg-info/*
 vegvisir/src/vegvisir/__pycache__
 PLOTS_*
 *.pdf
-
+*.tex
 vegvisir/src/vegvisir/tests/toyexample.py
 
 vegvisir/src/vegvisir/tests/test_masking.py
 
 *.png
+
+vegvisir/src/vegvisir/tests/utils/mnist_cached.py
+
+vegvisir/src/vegvisir/tests/utils/custom_mlp.py
+
+vegvisir/src/vegvisir/tests/utils/__init__.py
+
+vegvisir/src/vegvisir/tests/test_semisupervised.py
+
+vegvisir/src/vegvisir/tests/utils/vae_plots.py
+
+run0.sh
+
+run1.sh
+
+vegvisir/src/vegvisir/tests/plot_computational_complexity.py
+
+PRIME-master/*
+
+MixMHCpred-master/*
+
+Benchmark/*
+*.p

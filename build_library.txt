@@ -1,4 +1,4 @@
-DRAUPNIR: "Beta library version for performing ASR using a tree-structured Variational Autoencoder"
+VEGVISIR: "Beta library version for performing T-cell epitope prediction using a classifier Variational Autoencoder"
 
 #Package configuration files CHANGES.txt: log of changes with each release LICENSE.txt: text of the license you choose (do choose one!)
 MANIFEST.in: description of what non-code files to include README.txt: description of the package – should be written in ReST or Markdown (for PyPi): setup.py: the script for building/installing package. Describes your package, and tells setuptools how to package, build and install it bin/: This is where you put top-level scripts docs/: the documentation package_name/: The main package – this is where the code goes. test/: your unit tests. setup.cfg¶: Provides a way to give the end user some ability to customize the install
@@ -13,3 +13,26 @@ python -m twine upload --repository pypi dist/* -u ... -p ...
  # for new version of package
  python -m twine upload --skip-existing --repository pypi dist/* -u ... -p ... #to re-upload same version
 
+
+
+{
+  "optimizer_config": {
+    "lr": 0.001,
+    "beta1": 0.91,
+    "beta2": 0.9999,
+    "eps": 1e-08,
+    "weight_decay": 0,
+    "clip_norm": 10,
+    "lrd": 1,
+    "momentum": 0.9971307489623908
+  },
+  "general_config": {
+    "batch_size": 140,
+    "encoding": "onehot",
+    "likelihood_scale": 50,
+    "num_epochs": 60,
+    "num_samples": 50,
+    "hidden_dim": 20,
+    "z_dim": 34
+  }
+}
