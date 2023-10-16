@@ -118,7 +118,8 @@ class VEGVISIRModelClass(nn.Module):
            N(0) = alpha.a^T
            N(t+1) = N(t)(3.In -a\cdotN(t)(3.In - a.N(t)))
         \end{cases}
-
+        REFERENCES:
+            "Chebyshev-type methods and preconditioning techniques", Hou-Biao Li, Ting-Zhu Huang, Yong Zhang, Xing-Ping Liu, Tong-Xiang Gu
         :param a : Matrix
         :param iterations: Number of chebyshev polynomial series to compute"""
 
@@ -127,10 +128,11 @@ class VEGVISIRModelClass(nn.Module):
         alpha = 1 / (a_norm_1d * a_norm_inf)
         N_0 = alpha[:, None, None] * a.permute(0, 2, 1)
         N_t = N_0
-        In = torch.eye(a.shape[1]).expand(a.shape[0], a.shape[1], a.shape[2])
+        In = torch.eye(a.shape[1]).expand(a.shape[0], a.shape[1], a.shape[2]).detach()
         for t in range(iterations):
-            N_t_plus_1 = torch.matmul(N_t,(3 * In - torch.matmul(torch.matmul(a, N_t), (3 * In - torch.matmul(a, N_t)))))
+            N_t_plus_1 = torch.matmul(N_t,(3 * In - torch.matmul(torch.matmul(a, N_t), (3 * In - torch.matmul(a, N_t))))).detach()
             N_t = N_t_plus_1
+            torch.cuda.empty_cache()
         return N_t
 
     def conditional_sampling_fast(self,n_generated, n_train, guide_estimates):
@@ -163,18 +165,23 @@ class VEGVISIRModelClass(nn.Module):
         latent_space = latent_space.T
         return latent_space
 
-    def conditional_sampling(self,n_generated, n_train, guide_estimates):
+    def conditional_sampling(self,n_generated, guide_estimates):
         """Conditional sampling the synthetic epitopes given the learnt representations from the training dataset from a Multivariate Normal according to page 698 at Pattern Recognition and ML (Bishop)
         :param guide_estimates: dictionary conatining the MAP estimates for the OU process parameters
         :param """
         print("Sampling .........")
+        n_train = guide_estimates["latent_z"].shape[0]
+        idx_train = np.array(np.random.randn(n_train) > 0)
+        n_train = guide_estimates["latent_z"][idx_train].shape[0]
         # Highlight:  See Page 689 at Patter Recongnition and Ml (Bishop)
         # Highlight: Formula is: p(xa|xb) = N (x|µa|b, Λ−1aa ) , a = test/internal; b= train/leaves
 
         # Highlight: B.49 Λ−1aa
         inverse_generated = torch.eye(n_generated)  # [n_test,n_test]
-        inverse_generated = inverse_generated[None,:].expand(self.z_dim,n_generated,n_generated) # [z_dim,n_test,n_test]
-        z_scales = torch.from_numpy(guide_estimates["z_scales"]).mean(0).to(inverse_generated.device) #[z_dim]
+        inverse_generated = inverse_generated[None,:].expand(self.z_dim,n_generated,n_generated).detach() # [z_dim,n_test,n_test]
+
+
+        z_scales = torch.from_numpy(guide_estimates["z_scales"][idx_train]).mean(0).to(inverse_generated.device).detach() #[z_dim] #fill in the diagonal with an average of the inferred z_scales
         inverse_generated = z_scales[:,None,None]*inverse_generated
 
         # Highlight: Conditional mean Mean ---->B-50:  µa|b = µa − Λ−1aa Λab(xb − µb)
@@ -182,11 +189,11 @@ class VEGVISIRModelClass(nn.Module):
         OU_mean_generated = torch.zeros((n_generated,))  # [n_generated,]
         # Highlight: Λab
         inverse_generated_train = torch.eye(n_generated, n_train)  # [n_generated,n_train]
-        inverse_generated_train = inverse_generated_train[None,:].expand(self.z_dim,n_generated,n_train) # [z_dim,n_generated,n_train]
+        inverse_generated_train = inverse_generated_train[None,:].expand(self.z_dim,n_generated,n_train).detach() # [z_dim,n_generated,n_train]
         inverse_generated_train = z_scales[:,None,None]*inverse_generated_train
 
         # Highlight: xb
-        xb = torch.from_numpy(guide_estimates["latent_z"][:,5:]).T.to(OU_mean_generated.device)  # [z_dim,n_train]
+        xb = torch.from_numpy(guide_estimates["latent_z"][idx_train][:,5:]).T.to(OU_mean_generated.device)  # [z_dim,n_train]
 
         assert xb.shape == (self.z_dim,n_train), "Perhaps you forgot that the latent space has some columns stacked"
         # Highlight:µb
@@ -196,36 +203,36 @@ class VEGVISIRModelClass(nn.Module):
         part2 = xb - OU_mean_train[None, :]  # [z_dim,n_train]
         z_mean = OU_mean_generated[None, :, None] - torch.matmul(part1, part2[:, :,None])  # [:,n_test,:] - [z_dim,n_test,None]
 
-        if n_generated > 3000: #this is very slow
-            batch_size_init = 1000
+        if n_generated > 3000: #this is slower but works for larger amounts of sequences
+            batch_size_init = 1000 #splits the process of conditional sampling
             split_size = int(n_generated / batch_size_init) if not batch_size_init > n_generated else 1
             z_mean = z_mean.squeeze(-1)
             inverse_generated = self.chebyshev_inverse_3d(inverse_generated)
-            idx = torch.zeros(n_generated).bool()
+            idx = torch.zeros(n_generated).bool().detach()
             idx0= 0
             batch_size = batch_size_init
             latent_space_list = []
             for i in range(split_size):
                 idx_split = idx.clone()
-                idx_split[idx0:batch_size] = True
+                idx_split[idx0:batch_size] = True #select these sequences
                 z_mean_split = z_mean[:,idx_split]
                 inverse_generated_split = inverse_generated[:,idx_split]
                 inverse_generated_split = inverse_generated_split[:,:,idx_split]
 
-                idx0=batch_size
+                idx0=batch_size  #new starting point
                 batch_size += batch_size_init
 
-                latent_space_split = dist.MultivariateNormal(z_mean_split.squeeze(-1),inverse_generated_split + 1e-6).to_event(1).sample()
+                latent_space_split = dist.MultivariateNormal(z_mean_split.squeeze(-1),inverse_generated_split + 1e-6).to_event(1).sample().detach()
                 latent_space_split = latent_space_split.T
                 latent_space_list.append(latent_space_split)
 
             latent_space = torch.concatenate(latent_space_list,dim=0)
         else:
 
-            latent_space = dist.MultivariateNormal(z_mean.squeeze(-1),self.chebyshev_inverse_3d(inverse_generated) + 1e-6).to_event(1).sample()
+            latent_space = dist.MultivariateNormal(z_mean.squeeze(-1),self.chebyshev_inverse_3d(inverse_generated) + 1e-6).to_event(1).sample().detach()
             latent_space = latent_space.T
-        return latent_space
-
+        torch.cuda.empty_cache()
+        return latent_space.detach()
 
 class VegvisirModel1(VEGVISIRModelClass):
     """
@@ -1169,7 +1176,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         with pyro.plate("plate_batch", dim=-1, device=self.device):
 
             if guide_estimates is not None and "generate" in guide_estimates.keys():
-                latent_space = self.conditional_sampling(batch_size,guide_estimates["latent_z"].shape[0],guide_estimates)
+                latent_space = self.conditional_sampling(batch_size,guide_estimates)
                 pyro.deterministic("latent_z", latent_space,event_dim=0)  # should be event_dim = 2, but for sampling convenience we leave it as it is
 
             else:
@@ -1534,7 +1541,14 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
         # init_h_0_encoder = self.h_0_MODEL_encoder.expand(self.encoder.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
         z_mean, z_scale = torch.zeros((batch_size, self.z_dim)).to(device=self.device), torch.ones((batch_size, self.z_dim)).to(device=self.device)
         with pyro.plate("plate_batch", dim=-1, device=self.device):
-            latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale).to_event(1))  # [n,z_dim]
+            if guide_estimates is not None and "generate" in guide_estimates.keys():
+                latent_space = self.conditional_sampling(batch_size,guide_estimates)
+                pyro.deterministic("latent_z", latent_space,event_dim=0)  # should be event_dim = 2, but for sampling convenience we leave it as it is
+            else:
+                if self.num_iafs > 0:
+                    latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale))  # [n,z_dim]
+                else:
+                    latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale).to_event(1))  # [n,z_dim]
 
             latent_z_seq = latent_space.repeat(1, self.seq_max_len).reshape(batch_size, self.max_len,
                                                                             self.z_dim)  # [N,L,z_dim]

@@ -2917,8 +2917,10 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
     :param labels: immunodominance scores or  binary targets
     """
 
+
     label_names = {"_immunodominance_scores":"Immunodominance",
                    "_binary_labels":"Binary targets"}
+
     if (not args.shuffle_sequence) and (not args.random_sequences) and (not args.num_mutations != 0) and (args.sequence_type == "Icore"):
         if (args.num_classes == args.num_obs_classes) and use_precomputed_features:
             sequences_raw = list(map(lambda seq: "".join(seq).replace("#", ""), sequences_raw))
@@ -2939,81 +2941,91 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
 
 
     if tag == "_immunodominance_scores" and features_dict["volume"] is not None:
-        pearson_correlations = list(map(lambda feat1,feat2: VegvisirUtils.calculate_correlations(feat1, feat2),[labels]*len(features_dict.keys()),list(features_dict.values())))
-        pearson_correlations = list(zip(*pearson_correlations))
-        pearson_coefficients = np.array(pearson_correlations[0])
-        pearson_coefficients = np.round(pearson_coefficients,2)
-        pearson_pvalues = np.array(pearson_correlations[1])
-        pearson_pvalues = np.round(pearson_pvalues,3)
+        spearman_correlations = list(map(lambda feat1,feat2: VegvisirUtils.calculate_correlations(feat1, feat2,method="spearman"),[labels]*len(features_dict.keys()),list(features_dict.values())))
+        spearman_correlations = list(zip(*spearman_correlations))
+        spearman_coefficients = np.array(spearman_correlations[0])
+        spearman_coefficients = np.round(spearman_coefficients,2)
+        spearman_pvalues = np.array(spearman_correlations[1])
+        spearman_pvalues = np.round(spearman_pvalues,3)
     else:
         if features_dict["volume"] is not None:
-            pearson_correlations = list(map(lambda feat1,feat2: VegvisirUtils.calculate_correlations(feat2, feat1),[labels]*len(features_dict.keys()),list(features_dict.values())))
-            pearson_correlations = list(zip(*pearson_correlations))
-            pearson_coefficients = np.array(pearson_correlations[0])
-            pearson_coefficients = np.round(pearson_coefficients,2)
-            pearson_pvalues = np.array(pearson_correlations[1])
-            pearson_pvalues = np.round(pearson_pvalues,3)
+            spearman_correlations = list(map(lambda feat1,feat2: VegvisirUtils.calculate_correlations(feat2, feat1),[labels]*len(features_dict.keys()),list(features_dict.values())))
+            spearman_correlations = list(zip(*spearman_correlations))
+            spearman_coefficients = np.array(spearman_correlations[0])
+            spearman_coefficients = np.round(spearman_coefficients,2)
+            spearman_pvalues = np.array(spearman_correlations[1])
+            spearman_pvalues = np.round(spearman_pvalues,3)
 
     if features_dict["volume"] is not None:
-        fig, [ax1, ax2] = plt.subplots(nrows=1, ncols=2, figsize=(25, 20), gridspec_kw={'width_ratios': [4.5, 1]})
-        features_names = list(features_dict.keys()) + [tag.replace("_","")]
-        features_matrix = np.array(list(features_dict.values()))
-        features_matrix = np.vstack([features_matrix,labels[None,:]])
-        features_covariance = np.cov(features_matrix)
+        with plt.style.context('classic'):
+            fig, [ax1, ax2] = plt.subplots(nrows=1, ncols=2, figsize=(25, 20), gridspec_kw={'width_ratios': [4.5, 1]})
+            features_names = list(features_dict.keys()) + [tag.replace("_","")]
+            features_matrix = np.array(list(features_dict.values()))
+            features_matrix = np.vstack([features_matrix,labels[None,:]])
+            features_covariance = np.cov(features_matrix)
 
 
-        #norm = plt.Normalize(0, 1)
-        norm= None
-        cmap = sns.color_palette("rocket_r", as_cmap=True)
-        cbar = True
+            #norm = plt.Normalize(0, 1)
+            norm= None
+            cmap = sns.color_palette("rocket_r", as_cmap=True)
+            cbar = True
 
-        sns.heatmap(features_covariance, ax=ax1, cbar=cbar, cmap=cmap,norm=norm,annot=True,annot_kws={"fontsize":14},fmt=".2f")
-        ax1.set_xticks(np.arange(len(features_names)) ,labels=features_names,rotation=45,fontsize=18)
-        ax1.spines['left'].set_visible(False)
-        #ax1.yaxis.set_ticklabels([])
-        ax1.set_yticks(np.arange(len(features_names)) + 0.5,labels=features_names,rotation=360,fontsize=18)
-        ymax=len(features_names)-1
-        xpos=0
-        ax1.add_patch(matplotlib.patches.Rectangle((ymax, xpos), 1, len(features_names), fill=False, edgecolor='green', lw=3))
-        ax1.set_title("Covariance matrix features ({})".format(subfolders.replace("/",",")),fontsize=20)
+            sns.heatmap(features_covariance, ax=ax1, cbar=cbar, cmap=cmap,norm=norm,annot=True,annot_kws={"fontsize":14},fmt=".2f")
+            ax1.set_xticks(np.arange(len(features_names)) ,labels=features_names,rotation=45,fontsize=18)
+            ax1.spines['left'].set_visible(False)
+            #ax1.yaxis.set_ticklabels([])
+            ax1.set_yticks(np.arange(len(features_names)) + 0.5,labels=features_names,rotation=360,fontsize=18)
+            ymax=len(features_names)-1
+            xpos=0
+            ax1.add_patch(matplotlib.patches.Rectangle((ymax, xpos), 1, len(features_names), fill=False, edgecolor='green', lw=3))
+            ax1.set_title("Covariance matrix features ({})".format(subfolders.replace("/",",")),fontsize=20)
 
-        ax2.axis("off")
-        fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.2)
-        #fig.suptitle("Features covariance")
-        plt.savefig("{}/{}/similarities/{}/HEATMAP_features_covariance{}.png".format(storage_folder,args.dataset_name,subfolders,tag))
-        plt.clf()
-        plt.close(fig)
+            ax2.axis("off")
+            fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.2)
+            #fig.suptitle("Features covariance")
+            plt.savefig("{}/{}/similarities/{}/HEATMAP_features_covariance{}.png".format(storage_folder,args.dataset_name,subfolders,tag))
+            plt.clf()
+            plt.close(fig)
 
         #Highlight: Plot correlations
+        with plt.style.context('classic'):
+            fig, ax1 = plt.subplots(nrows=1, ncols=1, figsize=(15, 12),sharey="all") #gridspec_kw={'width_ratios': [4.5, 0.5]}
 
-        fig, ax1 = plt.subplots(nrows=1, ncols=1, figsize=(15, 12)) #gridspec_kw={'width_ratios': [4.5, 0.5]}
+            n_feats = len(features_dict.keys())
+            index = np.arange(n_feats)
+            positive_idx = np.array(spearman_coefficients >= 0)
+            right_arr = np.zeros(n_feats)
+            left_arr = np.zeros(n_feats)
+            right_arr[positive_idx] = spearman_coefficients[positive_idx]
+            left_arr[~positive_idx] = spearman_coefficients[~positive_idx]
 
-        i=0
-        j = 0
-        position_labels = []
-        for feat_name,coeff,pval in zip(features_dict.keys(),pearson_coefficients,pearson_pvalues):
-            position_labels.append(i)
-            ax1.bar(i,coeff,label=feat_name,width = 0.1,color=colors_list_aa[j])
-            i += 0.2
-            j +=1
+            ax1.barh(index,left_arr, align="center",color="mediumorchid",zorder=1) #zorder indicates the plotting order, supposedly
+            ax1.barh(index,right_arr, align="center",color="seagreen",zorder=2)
 
-        ax1.xaxis.set_ticks(position_labels)
-        def clean_labels(label):
-            if label == "extintion_coefficient_cystines":
-                label = "extintion coefficient \n (cystines)"
-            elif label == "extintion_coefficient_cysteines":
-                label = "extintion coefficient \n (cysteines)"
-            else:
-                label = label.replace("_"," ")
-            return label
-        labels_names = list(map(lambda label: clean_labels(label), list(features_dict.keys())))
-        ax1.set_xticklabels(labels_names,fontsize=25,rotation=80)
-        ax1.tick_params(axis="y",labelsize=30)
-        plt.subplots_adjust(top=0.9,bottom=0.35)
+            position_labels = list(range(0,n_feats))
+            ax1.axvline(0)
+            def clean_labels(label):
+                if label == "extintion_coefficient_cystines":
+                    label = "extintion coefficient \n (cystines)"
+                elif label == "extintion_coefficient_cysteines":
+                    label = "extintion coefficient \n (cysteines)"
+                else:
+                    label = label.replace("_"," ")
 
-        fig.suptitle("Correlation coefficients: Features vs {}".format(label_names[tag]),fontsize=30)
+                return label
+            labels_names = list(map(lambda label: clean_labels(label), list(features_dict.keys())))
+            ax1.yaxis.set_ticks(position_labels)
+            ax1.set_yticklabels(labels_names,fontsize=25,rotation=0)
+            ax1.tick_params(axis="x",labelsize=30)
+            plt.subplots_adjust(left=0.28)
+            #ax1.margins(y=0.15)
+            #plt.gca().axes.yaxis.set_ticklabels([])
+            ax1.spines[['right', 'top','left']].set_visible(False)
 
-        plt.savefig("{}/{}/similarities/{}/HISTOGRAM_features_correlations{}.png".format(storage_folder,args.dataset_name,subfolders,tag))
+            fig.suptitle("Correlation coefficients: Features vs {}".format(label_names[tag]),fontsize=30)
+
+            plt.savefig("{}/{}/similarities/{}/HISTOGRAM_features_correlations{}.png".format(storage_folder,args.dataset_name,subfolders,tag),dpi=600)
+
 
 def calculate_species_roc_auc_helper(summary_dict,args,script_dir,idx_all,fold,prob_mode,sample_mode,mode="train_species"):
     
@@ -3652,7 +3664,7 @@ def plot_kfold_comparisons(args, script_dir, dict_results, kfolds=5, results_fol
         idx = df.index.get_level_values(0)
         css = [{'selector': f'.row{i}.level0', 'props': [('background-color', c[v])]} for i, v in enumerate(idx)]
         df_styled = df.style.format(na_rep="-", escape="latex",precision=2).background_gradient(axis=None,cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" for pandas 2.1
-        dfi.export(df_styled, '{}/{}/metrics_comparison_{}.png'.format(script_dir, results_folder,title), max_cols=-1,max_rows=-1)
+        dfi.export(df_styled, '{}/{}/metrics_comparison_{}.png'.format(script_dir, results_folder,title), max_cols=-1,max_rows=-1,dpi=600)
 
 
     process_dict(metrics_auc_all, "ROC_AUC_{}".format(title))
@@ -4327,9 +4339,10 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
                 pass
             else:
                 bar_train_auc= ax1.barh(i,width=auc_train,color="skyblue",height=0.2)
-                bar_train_pval= ax1.barh(i,width=pval_train,color="skyblue",height=0.2)
+                bar_train_pval= ax2.barh(i,width=pval_train,color="skyblue",height=0.2)
                 bar_train_ppv= ax3.barh(i,width=ppv_train,color="skyblue",height=0.2)
                 bar_train_ap= ax4.barh(i,width=ap_train,color="skyblue",height=0.2)
+
                 bar_test_auc = ax1.barh(i + 0.2,width=auc_test,height=0.2,color="tomato")
                 bar_test_pval = ax2.barh(i + 0.2,width=pval_test,height=0.2,color="tomato")
                 bar_test_ppv = ax3.barh(i + 0.2,width=ppv_test,height=0.2,color="tomato")

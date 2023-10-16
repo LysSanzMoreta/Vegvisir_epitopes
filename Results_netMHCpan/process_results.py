@@ -69,9 +69,9 @@ def read_dataframe(folder_path):
 
     alleles_dataframes[["%Rank_EL","Score_EL"]] = alleles_dataframes[["%Rank_EL","Score_EL"]].astype(float)
     n_unique = len(alleles_dataframes["Epitopes"].unique())
-    weak_binders = alleles_dataframes[(alleles_dataframes["%Rank_EL"] < 2.0) & (alleles_dataframes["%Rank_EL"] > 0.5) ]
+    weak_binders = alleles_dataframes[(alleles_dataframes["%Rank_EL"] <= 2.0) & (alleles_dataframes["%Rank_EL"] > 0.5) ]
     #weak_binders.to_csv("{}/weak_binders.tsv".format(folder_path),sep="\t") #find alternative
-    strong_binders = alleles_dataframes[alleles_dataframes["%Rank_EL"] < 0.5 ]
+    strong_binders = alleles_dataframes[alleles_dataframes["%Rank_EL"] <= 0.5 ]
     #strong_binders.to_csv("{}/strong_binders.tsv".format(folder_path),sep="\t")
 
     weak_binders_count = weak_binders.groupby('MHC', as_index=False)[["Icore"]].size()
@@ -81,20 +81,31 @@ def read_dataframe(folder_path):
     strong_binders_count["Binder_type"] = "Strong"
     binders_df = pd.concat([weak_binders_count,strong_binders_count],axis=0)
     binders_df["size"] = ((binders_df["size"]/n_unique)*100).round(2)
-    #binders_df = binders_df.sort_values(by=['size'],ascending=False)
+    #binders_df = binders_df.sort_values(by=['size'],ascending=False) #Highlight: Activate if want to order by counts
     print(binders_df)
+    # nrows_empty = len(binders_df["size"])
+    # size_with_empty_rows = [0]*nrows_empty*2
+    # size_with_empty_rows[::2] = binders_df["size"].values.tolist()
+    #
+    # mhc_with_empty_rows = [0]*nrows_empty*2
+    # mhc_with_empty_rows[::2] = binders_df["MHC"].values.tolist()
+    #
+    # binder_type_with_empty_rows = [0] * nrows_empty * 2
+    # binder_type_with_empty_rows[::2] = binders_df["Binder_type"].values.tolist()
+    # binders_df_empty_rows = pd.DataFrame({"size":size_with_empty_rows,"MHC":mhc_with_empty_rows,"Binder_type":binder_type_with_empty_rows})
+
     fig, ax = plt.subplots(figsize=(18, 18))
     #sns.catplot(y='MHC', x='size', hue='Binder_type', kind='bar', data=binders_df,width=1,dodge=True,ax=ax)
-    sns.barplot(y='MHC', x='size', hue='Binder_type', data=binders_df,width=1,dodge=True,ax=ax)
-
+    sns.barplot(y='MHC', x='size', hue='Binder_type', data=binders_df,width=0.8,dodge=True,ax=ax)
+    ax.spines[['right', 'top']].set_visible(False)
+    #ax.axes.set_ylim(-0.5, n_unique)
+    ax.set_xlabel('Percentage of binders', fontsize=15)
     def change_width(ax, new_value):
         for patch in ax.patches:
             current_width = patch.get_width()
             diff = current_width - new_value
-
             # we change the bar width
             patch.set_width(new_value)
-
             # we recenter the bar
             patch.set_x(patch.get_x() + diff * .5)
 
@@ -110,7 +121,7 @@ def read_dataframe(folder_path):
             patch.set_y(patch.get_y() + diff * .5)
 
     #change_width(ax, 1.5)
-    change_height(ax, 1.5)
+    #change_height(ax, 1.5)
     plt.xticks(fontsize=20)
     plt.title("MHC-binding count from generated epitopes",fontsize=20)
     plt.legend(bbox_to_anchor=(1.05, 0.5), loc='upper right',fontsize=20)

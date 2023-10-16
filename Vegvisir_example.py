@@ -31,7 +31,7 @@ if "CUDA_VISIBLE_DEVICES" in os.environ:
 else:
     print("Cuda device has not been specified in your environment variables, setting it to cuda device 0")
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
+#os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:20000" #Not useful to prevent memory crashes :(
 print("Loading Vegvisir module from {}".format(vegvisir.__file__))
 now = datetime.datetime.now()
 
@@ -186,11 +186,12 @@ def analysis_models():
 
 
 
-
+    #Highlight: K-fold comparisons
 
     # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_HPO_blosum",overwrite=False)
-    # VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_random_stratified_partitions_blosum,kfolds=5,results_folder = "Benchmark/Plots",title="random_stratified_partitions_HPO_blosum",overwrite=False)
-    #
+    VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_random_stratified_partitions_blosum,kfolds=5,results_folder = "Benchmark/Plots",title="random_stratified_partitions_HPO_blosum",overwrite=False)
+
+    exit()
     # VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_HPO_blosum",overwrite_correlations=False,overwrite_all=False)
     # VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_random_stratified_partitions_blosum,kfolds=5,results_folder="Benchmark/Plots",subtitle="random_stratified_partitions_HPO_blosum",overwrite_correlations=False,overwrite_all=False)
 
@@ -201,13 +202,13 @@ def analysis_models():
         "raw-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_09_30_23h31min43s312787ms_60epochs_supervised_Icore_blosum_TESTING",
     }}
 
+    #Highlight: Benchmarking
+    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-blosum-variable-length",folder="Benchmark/Plots",title="HPO_blosum_new")
 
-    VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-blosum-variable-length",folder="Benchmark/Plots",title="HPO_blosum_new")
 
-
+    #Highlight: Model stress comparison
     #VegvisirPlots.plot_model_stressing_comparison(dict_results_predefined_partitions_blosum,script_dir,folder="Benchmark/Plots",encoding="blosum",title="HPO_blosum")
     #VegvisirPlots.plot_model_stressing_comparison(dict_results_predefined_partitions_onehot,script_dir,folder="Benchmark/Plots",encoding="onehot",title="HPO_onehot")
-
 
     exit()
 
@@ -278,7 +279,7 @@ if __name__ == "__main__":
     parser.add_argument('-guide', type=str, nargs='?', default="custom", help='<custom>: See guides.py \n'
                                                                               '<autodelta> : Automatic guide for amortized inference in Pyro see pyro.autoguides. Does not work with mini-batching, (perhaps subsampling in the plate)')
 
-    parser.add_argument('-train', type=str2bool, nargs='?', default=False ,help='<True> Run the model \n <False> Make models comparison or load previous model if pargs.pretrained_model is not None ')
+    parser.add_argument('-train', type=str2bool, nargs='?', default=True,help='<True> Run the model \n <False> Make models comparison or load previous model if pargs.pretrained_model is not None ')
     parser.add_argument('-validate', type=str2bool, nargs='?', default=False, help='Evaluate the model on the validation dataset')
     parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
     parser.add_argument('-hpo', type=str2bool, nargs='?', default=False, help='Hyperparameter optimization with Ray Tune')

@@ -26,7 +26,6 @@ import vegvisir.plots as VegvisirPlots
 import vegvisir.models as VegvisirModels
 import vegvisir.guides as VegvisirGuides
 import vegvisir.similarities as VegvisirSimilarities
-
 from ray.air import Checkpoint, session
 
 ModelLoad = namedtuple("ModelLoad",["args","max_len","seq_max_len","n_data","input_dim","aa_types","blosum","class_weights"])
@@ -535,13 +534,14 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
     num_synthetic_peptides = args.num_synthetic_peptides
     assert num_synthetic_peptides < 10000, "Please generate less than 10000 peptides, otherwise the computations might not be posible"
     argmax = args.generate_argmax
+    maxlen_generated = model_load.seq_max_len
     with torch.no_grad():  # do not update parameters with the evaluation data
         #Highlight: Initalize fake dummy data (not used)
-        batch_data = {"blosum":torch.randint(low=-7,high=7,size=(num_synthetic_peptides,2,model_load.seq_max_len,model_load.aa_types)).double().to(device=args.device),
-                      "onehot":torch.randint(low=0,high=1,size=(num_synthetic_peptides,2,model_load.seq_max_len,model_load.aa_types)).double().to(device=args.device),
-                      "norm": torch.randn(size=(num_synthetic_peptides,2,model_load.seq_max_len,model_load.aa_types)).double().to(device=args.device),
-                      "int": torch.randint(low=0,high=21,size=(num_synthetic_peptides,2,model_load.seq_max_len,model_load.aa_types)).double().to(device=args.device),
-                      "positional_mask": torch.ones((num_synthetic_peptides,model_load.seq_max_len)).bool().to(device=args.device),
+        batch_data = {"blosum":torch.randint(low=-7,high=7,size=(num_synthetic_peptides,2,maxlen_generated,model_load.aa_types)).double().to(device=args.device).detach(),
+                      "onehot":torch.randint(low=0,high=1,size=(num_synthetic_peptides,2,maxlen_generated,model_load.aa_types)).double().to(device=args.device).detach(),
+                      "norm": torch.randn(size=(num_synthetic_peptides,2,maxlen_generated,model_load.aa_types)).double().to(device=args.device).detach(),
+                      "int": torch.randint(low=0,high=21,size=(num_synthetic_peptides,2,maxlen_generated,model_load.aa_types)).double().to(device=args.device).detach(),
+                      "positional_mask": torch.ones((num_synthetic_peptides,maxlen_generated)).bool().to(device=args.device).detach(),
                       }
         if len(dataset_info.unique_lens) > 1:
             lenghts_sample = np.random.choice([8,9,10,11],(num_synthetic_peptides,),replace=True,p=[0.1,0.7,0.1,0.1]).tolist()
@@ -550,18 +550,18 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
                                                                                        zero_characters=["#"],
                                                                                        include_zero_characters=True)
             zero_character = 0
-        else:
-            lenghts_sample = np.ones((num_synthetic_peptides,))*model_load.seq_max_len
+        else: #TODO:
+            lenghts_sample = np.ones((num_synthetic_peptides,))*maxlen_generated
             lenghts_sample = lenghts_sample.astype(int)
             blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(dataset_info.corrected_aa_types,
                                                                                        args.subs_matrix,
                                                                                        zero_characters=[],
                                                                                        include_zero_characters=False)
             zero_character = None
-        batch_mask = list(map(lambda length: VegvisirUtils.generate_mask(model_load.seq_max_len,length),lenghts_sample))
+        batch_mask = list(map(lambda length: VegvisirUtils.generate_mask(maxlen_generated,length),lenghts_sample))
         batch_mask = torch.from_numpy(np.concatenate(batch_mask,axis=0))
 
-        batch_mask_blosum = np.broadcast_to(batch_mask[:, None, :, None], (num_synthetic_peptides, 2, model_load.seq_max_len,model_load.aa_types)).copy()
+        batch_mask_blosum = np.broadcast_to(batch_mask[:, None, :, None], (num_synthetic_peptides, 2, maxlen_generated,model_load.aa_types)).copy()
         batch_mask_blosum = torch.from_numpy(batch_mask_blosum).to(args.device)
 
         h_0_GUIDE = [param for key,param in guide.named_parameters() if key == "h_0_GUIDE"][0]
@@ -573,7 +573,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
                            "rnn_final_hidden":torch.ones((num_synthetic_peptides, args.hidden_dim*2)).to(device=args.device),
                            "rnn_final_hidden_bidirectional": h_0_GUIDE.expand(1 * 2, num_synthetic_peptides,args.hidden_dim*2).contiguous(),#Highlight: Not used
                            "rnn_hidden_states_bidirectional" : torch.ones((num_synthetic_peptides, 2, dataset_info.seq_max_len, args.hidden_dim*2)).to(device=args.device),
-                           "rnn_hidden_states" : torch.ones((num_synthetic_peptides, dataset_info.seq_max_len, args.hidden_dim*2)).to(device=args.device),
+                           "rnn_hidden_states" : torch.ones((num_synthetic_peptides, maxlen_generated, args.hidden_dim*2)).to(device=args.device),
                            "latent_z": train_predictive_samples_dict["latent_z"],
                            "z_scales": train_predictive_samples_dict["z_scales"],
                            "generate":True
@@ -659,7 +659,6 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
 
     if generated_sequences_blosum.shape[0] < 10000:
         print(generated_sequences_blosum.shape[0])
-
         def handle_timeout(signum, frame):
             raise TimeoutError
 
@@ -671,7 +670,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
                                                                                            correlation_matrix=False,
                                                                                            parallel=False)
             batch_size = 100 if generated_sequences_blosum.shape[0] > 100 else generated_sequences_blosum.shape[0]
-            positional_weights = VegvisirSimilarities.importance_weight(generated_sequences_cosine_similarity, model_load.seq_max_len, generated_sequences_mask,batch_size=batch_size, neighbours=1)
+            positional_weights = VegvisirSimilarities.importance_weight(generated_sequences_cosine_similarity, maxlen_generated, generated_sequences_mask,batch_size=batch_size, neighbours=1)
             VegvisirPlots.plot_heatmap(positional_weights, "Cosine similarity \n positional weights","{}/Generated/Generated_epitopes_positional_weights.png".format(additional_info.results_dir))
         except:
             print("Could not calculate conservational positional weights. Time exceeded or some other error")
@@ -1133,10 +1132,13 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
             if epoch == args.num_epochs:
                 print("Calculating Monte Carlo estimate of the posterior predictive")
                 train_predictive_samples_loss, train_predictive_samples_accuracy, train_predictive_samples_dict, train_predictive_samples_latent_space,train_predictive_samples_reconstruction_accuracy_dict = sample_loop(svi, Vegvisir, guide, train_loader, args, model_load)
+                torch.cuda.empty_cache()
                 valid_predictive_samples_loss, valid_predictive_samples_accuracy, valid_predictive_samples_dict, valid_predictive_samples_latent_space, valid_predictive_samples_reconstruction_accuracy_dict = sample_loop(svi, Vegvisir, guide, valid_loader, args, model_load)
+                torch.cuda.empty_cache()
                 if args.generate:
                     print("Generating neo-epitopes ...")
                     generative_dict,generated_latent_space = generate_loop(svi, Vegvisir, guide, train_loader, args, model_load,dataset_info,additional_info,train_predictive_samples_dict)
+                    torch.cuda.empty_cache()
                     generative_summary_dict = VegvisirUtils.manage_predictions_generative(args,generative_dict)
                 else:
                     generative_summary_dict = None
