@@ -2134,8 +2134,9 @@ def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,resul
                 onehot_targets.ravel(), target_scores.ravel()
             )
             average_precision["micro"] = average_precision_score(onehot_targets, target_scores, average="micro")
+            average_precision["weighted"] = average_precision_score(onehot_targets, target_scores, average="weighted")
             fig = plt.figure()
-            plt.plot(recall["micro"],precision["micro"], label="Average Precision (AP): {}".format(average_precision["micro"]))
+            plt.plot(recall["micro"],precision["micro"], label="Average Precision (AP): {}".format(average_precision["weighted"]))
             plt.xlim([0, 1])
             plt.ylim([0, 1])
             plt.ylabel('Precision', fontsize=20)
@@ -2155,6 +2156,7 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     tpr = dict()
     roc_auc = dict()
     pvals = dict()
+    ppv_mod = dict()
     labels = labels[idx]
     onehot_targets = onehot_labels[idx]
     target_scores = predictions_dict[stats_name][idx]
@@ -2208,7 +2210,12 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
         print("Regression failed")
         pvals[0] = np.nan
         pvals[1] = np.nan
-    return fpr,tpr,roc_auc,pvals
+
+    for i in range(args.num_obs_classes):
+        ppv_mod[i] = calculate_ppv_modified(onehot_targets[:, i], target_scores[:, i])
+
+
+    return fpr,tpr,roc_auc,pvals,ppv_mod
 
 def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Train",per_sample=False):
     """
@@ -2313,7 +2320,7 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
                 else:
                     auk_score_binary = None
 
-                fpr,tpr,roc_auc,pvals = plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name)
+                fpr,tpr,roc_auc,pvals,ppv_mod = plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name)
                 ap_dict = plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name)
 
                 print("---------------- {} ----------------\n".format(prob_mode))
@@ -2492,7 +2499,7 @@ def plot_classification_metrics_per_species(dataset_info,args,predictions_dict,f
                         auk_score_binary = None
 
 
-                    fpr,tpr,roc_auc,pvals = plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name,save=False)
+                    fpr,tpr,roc_auc,pvals,ppv_mod = plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,sample_mode,prob_mode,idx,idx_name,save=False)
                     for i in range(args.num_obs_classes):
                         plt.plot(fpr[i], tpr[i], label='({})AUC_{}: {}'.format(species_dict[species],i, roc_auc[i]), c=colors_dict[i])
 
@@ -3017,15 +3024,21 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
             ax1.yaxis.set_ticks(position_labels)
             ax1.set_yticklabels(labels_names,fontsize=25,rotation=0)
             ax1.tick_params(axis="x",labelsize=30)
+            ax1.tick_params(
+                axis='y',  # changes apply to the y-axis
+                which='both',  # both major and minor ticks are affected
+                bottom=False,  # ticks along the bottom edge are off
+                top=False,  # ticks along the top edge are off
+                labelbottom=False,
+                left=False,
+                right=False)  # labels along the bottom edge are off
             plt.subplots_adjust(left=0.28)
             #ax1.margins(y=0.15)
-            #plt.gca().axes.yaxis.set_ticklabels([])
             ax1.spines[['right', 'top','left']].set_visible(False)
 
             fig.suptitle("Correlation coefficients: Features vs {}".format(label_names[tag]),fontsize=30)
 
             plt.savefig("{}/{}/similarities/{}/HISTOGRAM_features_correlations{}.png".format(storage_folder,args.dataset_name,subfolders,tag),dpi=600)
-
 
 def calculate_species_roc_auc_helper(summary_dict,args,script_dir,idx_all,fold,prob_mode,sample_mode,mode="train_species"):
     
@@ -3059,7 +3072,7 @@ def calculate_species_roc_auc_helper(summary_dict,args,script_dir,idx_all,fold,p
             idx_name = "all"
             sample_mode = "samples"
 
-            fpr, tpr, roc_auc,pvals = plot_ROC_curves(labels, onehot_labels, summary_dict, args, script_dir, mode, fold,
+            fpr, tpr, roc_auc,pvals,ppv_mod = plot_ROC_curves(labels, onehot_labels, summary_dict, args, script_dir, mode, fold,
                                                 sample_mode,
                                                 prob_mode, idx, idx_name, save=False) #Highlight: We input labels and not species_labels because it is indexed inside the function again
             species_auc_class_0.append(roc_auc[0])
@@ -3091,40 +3104,40 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
     if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder)) and not overwrite:
         print("Loading pre-computed ROC-AUC values")
         metrics_results_train = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_train.p".format(folder), "rb"))
-        train_folds_ap_class_0,train_folds_ap_class_1,train_folds_ppv,train_folds_fpr, train_folds_tpr, train_folds_roc_auc_class_0, train_folds_roc_auc_class_1, train_folds_pvals_class_0, train_folds_pvals_class_1 = metrics_results_train["ap_class_0"],metrics_results_train["ap_class_1"],metrics_results_train["ppv"],metrics_results_train["fpr"], metrics_results_train["tpr"], metrics_results_train["roc_auc_class_0"], metrics_results_train["roc_auc_class_1"], metrics_results_train["pval_class_0"], metrics_results_train["pval_class_1"]
+
+
+        train_folds_ap_class_0,train_folds_ap_class_1,train_folds_ppv,train_folds_ppv_mod_class_0,train_folds_ppv_mod_class_1,train_folds_fpr, train_folds_tpr, train_folds_roc_auc_class_0, train_folds_roc_auc_class_1, train_folds_pvals_class_0, train_folds_pvals_class_1 = (
+            metrics_results_train["ap_class_0"],metrics_results_train["ap_class_1"],metrics_results_train["ppv"],metrics_results_train["ppv_mod_class_0"],metrics_results_train["ppv_mod_class_1"],metrics_results_train["fpr"], metrics_results_train["tpr"], metrics_results_train["roc_auc_class_0"], metrics_results_train["roc_auc_class_1"], metrics_results_train["pval_class_0"], metrics_results_train["pval_class_1"])
 
         metrics_results_train_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_train_species.p".format(folder), "rb"))
-        train_species_folds_ap_class_0,train_species_folds_ap_class_1,train_species_folds_ppv,train_species_folds_fpr, train_species_folds_tpr, train_species_folds_roc_auc_class_0, train_species_folds_roc_auc_class_1,train_species_folds_pvals_class_0, train_species_folds_pvals_class_1 = metrics_results_train_species["ap_class_0"],metrics_results_train_species["ap_class_1"],metrics_results_train_species["ppv"],metrics_results_train_species["fpr"], metrics_results_train_species["tpr"], metrics_results_train_species["roc_auc_class_0"], metrics_results_train_species["roc_auc_class_1"], metrics_results_train_species["pval_class_0"], metrics_results_train_species["pval_class_1"]
+        train_species_folds_ap_class_0,train_species_folds_ap_class_1,train_species_folds_ppv,train_species_folds_ppv_mod_class_0,train_species_folds_ppv_mod_class_1,train_species_folds_fpr, train_species_folds_tpr, train_species_folds_roc_auc_class_0, train_species_folds_roc_auc_class_1,train_species_folds_pvals_class_0, train_species_folds_pvals_class_1 = metrics_results_train_species["ap_class_0"],metrics_results_train_species["ap_class_1"],metrics_results_train_species["ppv"],metrics_results_train_species["ppv_mod_class_0"],metrics_results_train_species["ppv_mod_class_1"],metrics_results_train_species["fpr"], metrics_results_train_species["tpr"], metrics_results_train_species["roc_auc_class_0"], metrics_results_train_species["roc_auc_class_1"], metrics_results_train_species["pval_class_0"], metrics_results_train_species["pval_class_1"]
 
         if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder)):
             metrics_results_valid = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_valid.p".format(folder), "rb"))
-            valid_folds_ap_class_0,valid_folds_ap_class_1,valid_folds_ppv,valid_folds_fpr, valid_folds_tpr, valid_folds_roc_auc_class_0, valid_folds_roc_auc_class_1, train_folds_pvals_class_0, train_folds_pvals_class_1 = \
-            metrics_results_valid["ap_class_0"],metrics_results_valid["ap_class_1"],metrics_results_valid["ppv"],metrics_results_valid["fpr"], metrics_results_valid["tpr"], metrics_results_valid["roc_auc_class_0"], \
+            valid_folds_ap_class_0,valid_folds_ap_class_1,valid_folds_ppv,valid_folds_ppv_mod_class_0,valid_folds_ppv_mod_class_1,valid_folds_fpr, valid_folds_tpr, valid_folds_roc_auc_class_0, valid_folds_roc_auc_class_1, train_folds_pvals_class_0, train_folds_pvals_class_1 = \
+            metrics_results_valid["ap_class_0"],metrics_results_valid["ap_class_1"],metrics_results_valid["ppv"],metrics_results_valid["ppv_mod_class_0"],metrics_results_valid["ppv_mod_class_1"],metrics_results_valid["fpr"], metrics_results_valid["tpr"], metrics_results_valid["roc_auc_class_0"], \
             metrics_results_valid["roc_auc_class_1"], metrics_results_valid["pval_class_0"], metrics_results_valid["pval_class_1"]
             metrics_results_valid_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_valid_species.p".format(folder), "rb"))
-            valid_species_folds_ap_class_0,valid_species_folds_ap_class_1,valid_species_folds_ppv,valid_species_folds_fpr, valid_species_folds_tpr, valid_species_folds_roc_auc_class_0, valid_species_folds_roc_auc_class_1, valid_species_folds_pvals_class_0, valid_species_folds_pvals_class_1 =metrics_results_valid_species["ap_class_0"],metrics_results_valid_species["ap_class_1"],metrics_results_valid_species["ppv"], metrics_results_valid_species["fpr"], metrics_results_valid_species["tpr"],metrics_results_valid_species["roc_auc_class_0"], metrics_results_valid_species["roc_auc_class_1"], metrics_results_valid_species["pval_class_0"], metrics_results_valid_species["pval_class_1"]
+            valid_species_folds_ap_class_0,valid_species_folds_ap_class_1,valid_species_folds_ppv,valid_species_folds_ppv_mod_class_0,valid_species_folds_ppv_mod_class_1,valid_species_folds_fpr, valid_species_folds_tpr, valid_species_folds_roc_auc_class_0, valid_species_folds_roc_auc_class_1, valid_species_folds_pvals_class_0, valid_species_folds_pvals_class_1 =metrics_results_valid_species["ap_class_0"],metrics_results_valid_species["ap_class_1"],metrics_results_valid_species["ppv"],metrics_results_valid_species["ppv_mod_class_0"],metrics_results_valid_species["ppv_mod_class_1"], metrics_results_valid_species["fpr"], metrics_results_valid_species["tpr"],metrics_results_valid_species["roc_auc_class_0"], metrics_results_valid_species["roc_auc_class_1"], metrics_results_valid_species["pval_class_0"], metrics_results_valid_species["pval_class_1"]
 
         if os.path.exists("{}/Vegvisir_checkpoints/roc_auc_test.p".format(folder)):
             metrics_results_test = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_test.p".format(folder), "rb"))
-            test_folds_ap_class_0,test_folds_ap_class_1,test_folds_ppv,test_folds_fpr, test_folds_tpr, test_folds_roc_auc_class_0, test_folds_roc_auc_class_1, test_folds_pvals_class_0, test_folds_pvals_class_1 = \
-                metrics_results_test["ap_class_0"],metrics_results_test["ap_class_1"],metrics_results_test["ppv"],metrics_results_test["fpr"], metrics_results_test["tpr"], metrics_results_test["roc_auc_class_0"], \
+            test_folds_ap_class_0,test_folds_ap_class_1,test_folds_ppv,test_folds_ppv_mod_class_0,test_folds_ppv_mod_class_1,test_folds_fpr, test_folds_tpr, test_folds_roc_auc_class_0, test_folds_roc_auc_class_1, test_folds_pvals_class_0, test_folds_pvals_class_1 = \
+                metrics_results_test["ap_class_0"],metrics_results_test["ap_class_1"],metrics_results_test["ppv"],metrics_results_test["ppv_mod_class_0"],metrics_results_test["ppv_mod_class_1"],metrics_results_test["fpr"], metrics_results_test["tpr"], metrics_results_test["roc_auc_class_0"], \
                     metrics_results_test["roc_auc_class_1"], metrics_results_test["pval_class_0"], metrics_results_test[
                     "pval_class_1"]
 
             metrics_results_test_species = pickle.load(open("{}/Vegvisir_checkpoints/roc_auc_test_species.p".format(folder), "rb"))
-            test_species_folds_ap_class_0,test_species_folds_ap_class_1,test_species_folds_ppv,test_species_folds_fpr, test_species_folds_tpr, test_species_folds_roc_auc_class_0, test_species_folds_roc_auc_class_1, test_species_folds_pvals_class_0, test_species_folds_pvals_class_1 = \
-                metrics_results_test_species["ap_class_0"],metrics_results_test_species["ap_class_1"],metrics_results_test_species["ppv"],metrics_results_test_species["fpr"], metrics_results_test_species["tpr"], metrics_results_test_species[
-                    "roc_auc_class_0"], metrics_results_test_species["roc_auc_class_1"], metrics_results_test_species["pval_class_0"], metrics_results_test_species["pval_class_1"]
-
+            test_species_folds_ap_class_0,test_species_folds_ap_class_1,test_species_folds_ppv,test_species_folds_ppv_mod_class_0,test_species_folds_ppv_mod_class_1,test_species_folds_fpr, test_species_folds_tpr, test_species_folds_roc_auc_class_0, test_species_folds_roc_auc_class_1, test_species_folds_pvals_class_0, test_species_folds_pvals_class_1 = metrics_results_test_species["ap_class_0"],metrics_results_test_species["ap_class_1"],metrics_results_test_species["ppv"],metrics_results_test_species["ppv_mod_class_0"],metrics_results_test_species["ppv_mod_class_1"],metrics_results_test_species["fpr"], metrics_results_test_species["tpr"], metrics_results_test_species["roc_auc_class_0"], metrics_results_test_species["roc_auc_class_1"], metrics_results_test_species["pval_class_0"], metrics_results_test_species["pval_class_1"]
 
     else:
         print("calculating ROC-AUC values")
-        train_folds_ap_class_0,train_folds_ap_class_1,train_folds_ppv,train_folds_fpr, train_folds_tpr, train_folds_roc_auc_class_0, train_folds_roc_auc_class_1, train_folds_pvals_class_0, train_folds_pvals_class_1 = [],[], [], [], [], [], [],[],[]
-        valid_folds_ap_class_0,valid_folds_ap_class_1,valid_folds_ppv,valid_folds_fpr, valid_folds_tpr, valid_folds_roc_auc_class_0, valid_folds_roc_auc_class_1, valid_folds_pvals_class_0, valid_folds_pvals_class_1 = [],[], [], [], [], [], [],[],[]
-        test_folds_ap_class_0,test_folds_ap_class_1,test_folds_ppv,test_folds_fpr, test_folds_tpr, test_folds_roc_auc_class_0, test_folds_roc_auc_class_1, test_folds_pvals_class_0, test_folds_pvals_class_1 =[], [], [], [], [], [], [],[],[]
-        train_species_folds_ap_class_0,train_species_folds_ap_class_1,train_species_folds_ppv,train_species_folds_fpr, train_species_folds_tpr, train_species_folds_roc_auc_class_0, train_species_folds_roc_auc_class_1, train_species_folds_pvals_class_0, train_species_folds_pvals_class_1 = [],[], [], [], [], [], [],[],[]
-        valid_species_folds_ap_class_0,valid_species_folds_ap_class_1,valid_species_folds_ppv,valid_species_folds_fpr, valid_species_folds_tpr, valid_species_folds_roc_auc_class_0, valid_species_folds_roc_auc_class_1, valid_species_folds_pvals_class_0, valid_species_folds_pvals_class_1 = [],[], [], [], [], [], [],[],[]
-        test_species_folds_ap_class_0,test_species_folds_ap_class_1,test_species_folds_ppv,test_species_folds_fpr, test_species_folds_tpr, test_species_folds_roc_auc_class_0, test_species_folds_roc_auc_class_1, test_species_folds_pvals_class_0, test_species_folds_pvals_class_1 = [], [], [],[], [], [], [],[],[]
+        train_folds_ap_class_0,train_folds_ap_class_1,train_folds_ppv,train_folds_ppv_mod_class_0,train_folds_ppv_mod_class_1,train_folds_fpr, train_folds_tpr, train_folds_roc_auc_class_0, train_folds_roc_auc_class_1, train_folds_pvals_class_0, train_folds_pvals_class_1 = [],[], [], [], [], [], [],[],[],[],[]
+        valid_folds_ap_class_0,valid_folds_ap_class_1,valid_folds_ppv,valid_folds_ppv_mod_class_0,valid_folds_ppv_mod_class_1,valid_folds_fpr, valid_folds_tpr, valid_folds_roc_auc_class_0, valid_folds_roc_auc_class_1, valid_folds_pvals_class_0, valid_folds_pvals_class_1 = [],[], [], [], [], [], [],[],[],[],[]
+        test_folds_ap_class_0,test_folds_ap_class_1,test_folds_ppv,test_folds_ppv_mod_class_0,test_folds_ppv_mod_class_1,test_folds_fpr, test_folds_tpr, test_folds_roc_auc_class_0, test_folds_roc_auc_class_1, test_folds_pvals_class_0, test_folds_pvals_class_1 =[], [], [], [], [], [], [],[],[],[],[]
+        train_species_folds_ap_class_0,train_species_folds_ap_class_1,train_species_folds_ppv,train_species_folds_ppv_mod_class_0,train_species_folds_ppv_mod_class_1,train_species_folds_fpr, train_species_folds_tpr, train_species_folds_roc_auc_class_0, train_species_folds_roc_auc_class_1, train_species_folds_pvals_class_0, train_species_folds_pvals_class_1 = [],[], [], [], [], [], [],[],[],[],[]
+        valid_species_folds_ap_class_0,valid_species_folds_ap_class_1,valid_species_folds_ppv,valid_species_folds_ppv_mod_class_0,valid_species_folds_ppv_mod_class_1,valid_species_folds_fpr, valid_species_folds_tpr, valid_species_folds_roc_auc_class_0, valid_species_folds_roc_auc_class_1, valid_species_folds_pvals_class_0, valid_species_folds_pvals_class_1 = [],[], [], [], [], [], [],[],[],[],[]
+        test_species_folds_ap_class_0,test_species_folds_ap_class_1,test_species_folds_ppv,test_species_folds_ppv_mod_class_0,test_species_folds_ppv_mod_class_1,test_species_folds_fpr, test_species_folds_tpr, test_species_folds_roc_auc_class_0, test_species_folds_roc_auc_class_1, test_species_folds_pvals_class_0, test_species_folds_pvals_class_1 = [], [], [],[], [], [], [],[],[],[],[]
 
         for fold in range(kfolds):
             print("-------------FOLD {}--------------".format(fold))
@@ -3154,7 +3167,7 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
                     idx_name = "all"
                     sample_mode = "samples"
 
-                    fpr, tpr, roc_auc, pvals = plot_ROC_curves(labels, onehot_labels, summary_dict, args, script_dir,
+                    fpr, tpr, roc_auc, pvals, ppv_mod = plot_ROC_curves(labels, onehot_labels, summary_dict, args, script_dir,
                                                                mode,
                                                                fold, sample_mode,
                                                                prob_mode, idx_all, idx_name, save=False)
@@ -3167,11 +3180,14 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
                                                 "", prob_mode, idx_all, idx_name, save_plot=False)
 
 
+
                     if mode == "train":
 
                         train_folds_ap_class_0.append(ap_dict["average_precision"][0])
                         train_folds_ap_class_1.append(ap_dict["average_precision"][1])
                         train_folds_ppv.append(precision)
+                        train_folds_ppv_mod_class_0.append(ppv_mod[0])
+                        train_folds_ppv_mod_class_1.append(ppv_mod[1])
                         train_folds_fpr.append(fpr)
                         train_folds_tpr.append(tpr)
                         train_folds_roc_auc_class_0.append(roc_auc[0])
@@ -3185,6 +3201,8 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
                         train_species_folds_ap_class_0.append(np.nan)
                         train_species_folds_ap_class_1.append(np.nan)
                         train_species_folds_ppv.append(np.nan)
+                        train_species_folds_ppv_mod_class_0.append(ppv_mod)
+                        train_species_folds_ppv_mod_class_1.append(ppv_mod)
                         train_species_folds_fpr.append(np.nan)
                         train_species_folds_tpr.append(np.nan)
                         train_species_folds_roc_auc_class_0.append(species_results[0])
@@ -3196,6 +3214,8 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
                         valid_folds_ap_class_0.append(ap_dict["average_precision"][0])
                         valid_folds_ap_class_1.append(ap_dict["average_precision"][1])
                         valid_folds_ppv.append(precision)
+                        valid_folds_ppv_mod_class_0.append(ppv_mod[0])
+                        valid_folds_ppv_mod_class_1.append(ppv_mod[1])
                         valid_folds_fpr.append(fpr)
                         valid_folds_tpr.append(tpr)
                         valid_folds_roc_auc_class_0.append(roc_auc[0])
@@ -3208,6 +3228,8 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
                         valid_species_folds_ap_class_0.append(np.nan)
                         valid_species_folds_ap_class_1.append(np.nan)
                         valid_species_folds_ppv.append(np.nan)
+                        valid_species_folds_ppv_mod_class_0.append(np.nan)
+                        valid_species_folds_ppv_mod_class_1.append(np.nan)
                         valid_species_folds_fpr.append(np.nan)
                         valid_species_folds_tpr.append(np.nan)
                         valid_species_folds_roc_auc_class_0.append(species_results[0])
@@ -3219,6 +3241,8 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
                         test_folds_ap_class_0.append(ap_dict["average_precision"][0])
                         test_folds_ap_class_1.append(ap_dict["average_precision"][1])
                         test_folds_ppv.append(precision)
+                        test_folds_ppv_mod_class_0.append(ppv_mod[0])
+                        test_folds_ppv_mod_class_1.append(ppv_mod[1])
                         test_folds_fpr.append(fpr)
                         test_folds_tpr.append(tpr)
                         test_folds_roc_auc_class_0.append(roc_auc[0])
@@ -3229,6 +3253,8 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
                         test_species_folds_ap_class_0.append(np.nan)
                         test_species_folds_ap_class_1.append(np.nan)
                         test_species_folds_ppv.append(np.nan)
+                        test_species_folds_ppv_mod_class_0.append(np.nan)
+                        test_species_folds_ppv_mod_class_1.append(np.nan)
                         test_species_folds_fpr.append(np.nan)
                         test_species_folds_tpr.append(np.nan)
                         test_species_folds_roc_auc_class_0.append(np.nan)
@@ -3242,6 +3268,9 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
                         valid_folds_ap_class_1.append(np.nan)
                         valid_folds_fpr.append(np.nan)
                         valid_folds_tpr.append(np.nan)
+                        valid_folds_ppv.append(np.nan)
+                        valid_folds_ppv_mod_class_0.append(np.nan)
+                        valid_folds_ppv_mod_class_1.append(np.nan)
                         valid_folds_roc_auc_class_0.append(np.nan)
                         valid_folds_roc_auc_class_1.append(np.nan)
                         valid_folds_pvals_class_0.append(np.nan)
@@ -3258,6 +3287,9 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
                         test_folds_ap_class_1.append(np.nan)
                         test_folds_fpr.append(np.nan)
                         test_folds_tpr.append(np.nan)
+                        test_folds_ppv.append(np.nan)
+                        test_folds_ppv_mod_class_0.append(np.nan)
+                        test_folds_ppv_mod_class_1.append(np.nan)
                         test_folds_roc_auc_class_0.append(np.nan)
                         test_folds_roc_auc_class_1.append(np.nan)
                         test_folds_pvals_class_0.append(np.nan)
@@ -3275,6 +3307,8 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
         metrics_results_train["ap_class_0"] = train_folds_ap_class_0
         metrics_results_train["ap_class_1"] = train_folds_ap_class_1
         metrics_results_train["ppv"] = train_folds_ppv
+        metrics_results_train["ppv_mod_class_0"] = train_folds_ppv_mod_class_0
+        metrics_results_train["ppv_mod_class_1"] = train_folds_ppv_mod_class_1
         metrics_results_train["fpr"] = train_folds_fpr
         metrics_results_train["tpr"] = train_folds_tpr
         metrics_results_train["roc_auc_class_0"] = train_folds_roc_auc_class_0
@@ -3288,6 +3322,8 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
         metrics_results_valid["ap_class_0"] = valid_folds_ap_class_0
         metrics_results_valid["ap_class_1"] = valid_folds_ap_class_1
         metrics_results_valid["ppv"] = valid_folds_ppv
+        metrics_results_valid["ppv_mod_class_0"] = valid_folds_ppv_mod_class_0
+        metrics_results_valid["ppv_mod_class_1"] = valid_folds_ppv_mod_class_1
         metrics_results_valid["fpr"] = valid_folds_fpr
         metrics_results_valid["tpr"] = valid_folds_tpr
         metrics_results_valid["roc_auc_class_0"] = valid_folds_roc_auc_class_0
@@ -3300,6 +3336,8 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
         metrics_results_test["ap_class_0"] = test_folds_ap_class_0
         metrics_results_test["ap_class_1"] = test_folds_ap_class_1
         metrics_results_test["ppv"] = test_folds_ppv
+        metrics_results_test["ppv_mod_class_0"] = test_folds_ppv_mod_class_0
+        metrics_results_test["ppv_mod_class_1"] = test_folds_ppv_mod_class_1
         metrics_results_test["fpr"] = test_folds_fpr
         metrics_results_test["tpr"] = test_folds_tpr
         metrics_results_test["roc_auc_class_0"] = test_folds_roc_auc_class_0
@@ -3314,6 +3352,8 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
         metrics_results_train_species["ap_class_0"] = train_species_folds_ap_class_0
         metrics_results_train_species["ap_class_1"] = train_species_folds_ap_class_1
         metrics_results_train_species["ppv"] = train_species_folds_ppv
+        metrics_results_train_species["ppv_mod_class_0"] = train_species_folds_ppv_mod_class_0
+        metrics_results_train_species["ppv_mod_class_1"] = train_species_folds_ppv_mod_class_1
         metrics_results_train_species["fpr"] = train_species_folds_fpr
         metrics_results_train_species["tpr"] = train_species_folds_tpr
         metrics_results_train_species["roc_auc_class_0"] = train_species_folds_roc_auc_class_0
@@ -3327,6 +3367,8 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
         metrics_results_valid_species["ap_class_0"] = valid_species_folds_ap_class_0
         metrics_results_valid_species["ap_class_1"] = valid_species_folds_ap_class_1
         metrics_results_valid_species["ppv"] = valid_species_folds_ppv
+        metrics_results_valid_species["ppv_mod_class_0"] = valid_species_folds_ppv_mod_class_0
+        metrics_results_valid_species["ppv_mod_class_1"] = valid_species_folds_ppv_mod_class_1
         metrics_results_valid_species["fpr"] = valid_species_folds_fpr
         metrics_results_valid_species["tpr"] = valid_species_folds_tpr
         metrics_results_valid_species["roc_auc_class_0"] = valid_species_folds_roc_auc_class_0
@@ -3340,6 +3382,8 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
         metrics_results_test_species["ap_class_0"] = test_species_folds_ap_class_0
         metrics_results_test_species["ap_class_1"] = test_species_folds_ap_class_1
         metrics_results_test_species["ppv"] = test_species_folds_ppv
+        metrics_results_test_species["ppv_mod_class_0"] = test_species_folds_ppv_mod_class_0
+        metrics_results_test_species["ppv_mod_class_1"] = test_species_folds_ppv_mod_class_1
         metrics_results_test_species["fpr"] = test_species_folds_fpr
         metrics_results_test_species["tpr"] = test_species_folds_tpr
         metrics_results_test_species["roc_auc_class_0"] = test_species_folds_roc_auc_class_0
@@ -4041,6 +4085,27 @@ def calculate_ppv(targets, predictions):
     except:
         return np.nan
 
+def calculate_ppv_modified(targets, predictions):
+    """Estimates the a modified version of the PPV (Precision) value. It is referred as the proportion of true positives among
+    the top N highest scoring predictions, where N is equal to the number of positive peptides in the given data set."""
+    n_pos_data = int(np.sum(targets))
+
+    if not isinstance(targets,np.ndarray):
+        targets = targets.to_numpy()
+    if not isinstance(predictions,np.ndarray):
+        predictions = predictions.to_numpy()
+
+    try:
+        idx_descending = np.argsort(predictions)[::-1]
+        targets = targets[idx_descending]
+        predictions = predictions[idx_descending]
+        targets_topscoring = targets[:n_pos_data]
+        predictions_topscoring = predictions[:n_pos_data]
+        ppv_mod = np.sum(targets_topscoring)/n_pos_data
+        return ppv_mod
+    except:
+        return np.nan
+
 def calculate_ap(targets, predictions):
     """Estimates the Average Precision"""
     targets = targets.to_numpy()
@@ -4052,7 +4117,7 @@ def calculate_ap(targets, predictions):
         # else:
         #     binary_predictions = predictions
         # average_precision = average_precision_score(targets, binary_predictions)
-        average_precision = average_precision_score(targets, predictions)
+        average_precision = average_precision_score(targets, predictions,average="weighted")
         return average_precision
     except:
         return np.nan
@@ -4075,7 +4140,7 @@ def process_nnalign(results_path, seqs_df,mode="train",save_plot=True):
     auc_results = calculate_auc(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
     auc_dict = {"NNAlign2.1": auc_results}
 
-    ppv_results = calculate_ppv(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
+    ppv_results = calculate_ppv_modified(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
     ppv_dict = {"NNAlign2.1": ppv_results}
 
     ap_results = calculate_ap(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
@@ -4088,7 +4153,7 @@ def process_nnalign(results_path, seqs_df,mode="train",save_plot=True):
     recall = defaultdict()
     average_precision = defaultdict()
     precision["ordinary"], recall["ordinary"], _ = precision_recall_curve(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
-    average_precision["ordinary"] = average_precision_score(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
+    average_precision["ordinary"] = average_precision_score(nnalign_results_full["targets"], nnalign_results_full["Prediction"],average="macro")
 
 
 
@@ -4115,7 +4180,7 @@ def process_nnalign(results_path, seqs_df,mode="train",save_plot=True):
 
     return auc_dict, ppv_dict, ap_dict, pval_dict
 
-def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-onehot-variable-length",folder="Benchmark",title=""):
+def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder="Benchmark",title=""):
     """Compare results across different programns on the -golden- dataset that is built from the Icore sequence and sequences of variable length 8-11
     -Notes:
         https://towardsdatascience.com/what-metrics-should-we-use-on-imbalanced-data-set-precision-recall-roc-e2e79252aeba
@@ -4155,17 +4220,17 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
     #metrics_results_valid = metrics_results_dict["valid"]
     metrics_results_test = metrics_results_dict["test"]
 
-
-
     vegvisir_results_auc_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train["roc_auc_class_1"])))/2, 2)}
     vegvisir_results_ap_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["ap_class_0"])) + np.mean(np.array(metrics_results_train["ap_class_1"])))/2, 2)}
     vegvisir_results_pval_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["pval_class_0"])) + np.mean(np.array(metrics_results_train["pval_class_1"])))/2, 3)}
-    vegvisir_results_ppv_train = {"Vegvisir":np.round(np.mean(np.array(metrics_results_train["ppv"])), 2)}
+    vegvisir_results_ppv_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["ppv_mod_class_0"])) + np.mean(np.array(metrics_results_train["ppv_mod_class_1"])))/2, 3)}
+
+
+
     vegvisir_results_auc_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test["roc_auc_class_1"])))/2, 2)}
     vegvisir_results_ap_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["ap_class_0"])) + np.mean(np.array(metrics_results_test["ap_class_1"])))/2, 3)}
     vegvisir_results_pval_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["pval_class_0"])) + np.mean(np.array(metrics_results_test["pval_class_1"])))/2, 2)}
-    vegvisir_results_ppv_test = {"Vegvisir":np.round(np.mean(np.array(metrics_results_test["ppv"])), 2)}
-
+    vegvisir_results_ppv_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["ppv_mod_class_0"])) + np.mean(np.array(metrics_results_test["ppv_mod_class_1"])))/2, 3)}
 
 
     #Highlight: NNalign results
@@ -4177,6 +4242,8 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
 
     train_test_df = pd.concat([train_df,test_df],axis=0)
     nnalign_results_train_auc_dict, nnalign_results_train_ppv_dict, nnalign_results_train_ap_dict,nnalign_results_train_pval_dict = process_nnalign(nnalign_results_path_train_full,train_test_df,mode="train")
+
+
     nnalign_results_test_auc_dict, nnalign_results_test_ppv_dict, nnalign_results_test_ap_dict, nnalign_results_test_pval_dict = process_nnalign(nnalign_results_path_test_full,train_test_df,mode="test")
 
 
@@ -4216,8 +4283,8 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
 
 
     #Highlight: PPV
-    ppv_results_train = list(map(lambda program: calculate_ppv(other_programs_results_train["target_corrected"],other_programs_results_train[program]),programs_list ))
-    ppv_results_test = list(map(lambda program: calculate_ppv(other_programs_results_test["target_corrected"],other_programs_results_test[program]),programs_list ))
+    ppv_results_train = list(map(lambda program: calculate_ppv_modified(other_programs_results_train["target_corrected"],other_programs_results_train[program]),programs_list ))
+    ppv_results_test = list(map(lambda program: calculate_ppv_modified(other_programs_results_test["target_corrected"],other_programs_results_test[program]),programs_list ))
 
     ppv_results_train_dict = dict(zip(programs_list,ppv_results_train))
     ppv_results_test_dict = dict(zip(programs_list,ppv_results_test))
@@ -4266,7 +4333,6 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
                   "DeepNetBim_immuno":"DeepNetBim \n (binary prediction)",
                   "DeepNetBim_immuno_probability":"DeepNetBim \n (probability)"}
 
-    plot_only_auc = False
 
     rank_programs = ["MixMHCpred_rank_binding","PRIME_rank","DeepNetBim_immuno","DeepNetBim_binding"]
     benchmark_programs_list = [program for program in names_dict.keys() if program not in rank_programs]
@@ -4285,17 +4351,31 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
 
     colors_dict = {"Train":"skyblue","Test":"tomato"}
 
-    if plot_only_auc:
-        fig, ax1 = plt.subplots(nrows=1, ncols=1, figsize=(15, 18))
+
+    plot_only_auc_ap = False
+
+    if plot_only_auc_ap:
+        suffix = "auc_ap"
+        fig, [ax1,ax2,ax3] = plt.subplots(nrows=1, ncols=2, figsize=(15, 18))
         i = 0
         positions = []
         labels = []
-        for (program_train, auc_train), auc_test in zip(auc_results_train_dict.items(),auc_results_test_dict.values()):
+        for (program_train, auc_train), auc_test,ap_train,ap_test,ppv_train,ppv_test in zip(auc_results_train_dict.items(),
+                                                                                            auc_results_test_dict.values(),
+                                                                                            ap_results_train_dict.values(),
+                                                                                            ap_results_test_dict.values(),
+                                                                                            ppv_results_train_dict.values(),
+                                                                                            ppv_results_test_dict.values()):
             if np.isnan(auc_train) or np.isnan(auc_test):
                 pass
             else:
                 bar_train_auc = ax1.barh(i, width=auc_train, color="skyblue", height=0.2)
+                bar_train_ap= ax2.barh(i,width=ap_train,color="skyblue",height=0.2)
+                bar_train_ppv= ax3.barh(i,width=ppv_train,color="skyblue",height=0.2)
+
                 bar_test_auc = ax1.barh(i + 0.2, width=auc_test, height=0.2, color="tomato")
+                bar_test_ap = ax2.barh(i + 0.2, width=ap_test, height=0.2, color="tomato")
+                bar_test_ppv = ax3.barh(i + 0.2, width=ppv_test, height=0.2, color="tomato")
                 positions.append(i)
                 i += 1
                 labels.append(names_dict[program_train])
@@ -4304,6 +4384,17 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
                     ax1.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
                              ha='center', va='center', fontsize=12,weight='bold')
+                for bar in [bar_train_ap.patches,bar_test_ap.patches]:
+                    rect = bar[0] #single rectangle
+                    ax2.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
+                             '{}'.format(round(rect.get_width(),2)),
+                             ha='center', va='center',fontsize=12,weight='bold')
+                for bar in [bar_train_ppv.patches,bar_test_ppv.patches]:
+                    rect = bar[0] #single rectangle
+                    ax3.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
+                             '{}'.format(round(rect.get_width(),2)),
+                             ha='center', va='center',fontsize=12,weight='bold')
+
 
 
         ax1.set_yticks(positions, labels=labels, fontsize=15,weight='bold')
@@ -4315,14 +4406,29 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
         ax1.set_title("ROC-AUC", fontsize=20)
         ax1.margins(x=0.15)
 
+        ax2.axvline(x=0.5, color='goldenrod', linestyle='--')
+        ax2.set_yticks(positions, labels=labels, fontsize=15, weight='bold')
+        transformation = transforms.blended_transform_factory(ax2.get_yticklabels()[0].get_transform(), ax2.transData)
+        ax2.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=15)
+        ax2.set_title("Average Precision (AP)", fontsize=20)
+        ax2.margins(x=0.2)
+        
+        ax3.axvline(x=0.5, color='goldenrod', linestyle='--')
+        ax3.set_yticks(positions, labels=labels, fontsize=15, weight='bold')
+        transformation = transforms.blended_transform_factory(ax3.get_yticklabels()[0].get_transform(), ax3.transData)
+        ax3.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=15)
+        ax3.set_title("PPV modified", fontsize=20)
+        ax3.margins(x=0.2)
+
+
         plt.subplots_adjust(left=0.15, wspace=0.4,right=0.85)
         legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in colors_dict.items()]
         fig.legend(handles=legends, prop={'size': 20}, loc='center right', bbox_to_anchor=(1.0, 0.5))
-        fig.suptitle("Benchmarking", fontsize=20)
+        fig.suptitle("Benchmark metrics", fontsize=20)
 
 
     else:
-
+        suffix = "auc_ap_pval_ppv"
         fig,[ax1,ax2,ax3,ax4] = plt.subplots(nrows=1,ncols=4,figsize=(28,16))
         i= 0
         positions = []
@@ -4405,9 +4511,9 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="raw-oneh
 
         legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in colors_dict.items()]
         fig.legend(handles=legends, prop={'size': 20}, loc='center right', bbox_to_anchor=(0.98, 0.5))
-        fig.suptitle("Benchmarking",fontsize=20)
+        fig.suptitle("Benchmark metrics",fontsize=20)
 
-    plt.savefig("{}/{}/Benchmarking_{}".format(script_dir,folder,title),dpi=800)
+    plt.savefig("{}/{}/Benchmarking_{}_{}".format(script_dir,folder,title,suffix),dpi=600)
 
 def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Benchmark/Plots",title="",encoding="blosum"):
 

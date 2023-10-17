@@ -593,6 +593,9 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
             generated_sequences_int = torch.mode(generated_sequences_int,dim=1).values.numpy()
         else:
             generated_sequences_int = sampling_output["sequences"].detach().cpu().permute(1, 0, 2)
+            print(generated_sequences_int.shape)
+            print(torch.mode(generated_sequences_int,dim=1).values.numpy().shape)
+            exit()
             generated_sequences_int = torch.mode(generated_sequences_int,dim=1).values.numpy()
 
 
