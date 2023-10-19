@@ -27,28 +27,25 @@ def best_params():
 
     hpo_results = pd.read_csv(folder_predefined_partitions,sep="\t")
 
-    print(hpo_results.columns)
 
     #hpo_results_sorted_valid_loss =  hpo_results.sort_values(by=['valid_loss'], ascending=True)
     # print(hpo_results_sorted_valid_loss["valid_loss"])
     # print(hpo_results_sorted_valid_loss["ROC_AUC_valid"])
-    hpo_results_sorted_valid_auc =  hpo_results.sort_values(by=['ROC_AUC_valid'], ascending=False)
+    hpo_results_sorted_valid_auc =  hpo_results.sort_values(by=['ROC_AUC_valid'], ascending=False).reset_index()
 
-    print(hpo_results_sorted_valid_auc["valid_loss"])
-    print(hpo_results_sorted_valid_auc["ROC_AUC_valid"])
+    #print(hpo_results_sorted_valid_auc["valid_loss"])
+    #print(hpo_results_sorted_valid_auc["ROC_AUC_valid"])
 
     filter_col = [col for col in hpo_results_sorted_valid_auc if col.startswith('config')]
     config_df = hpo_results_sorted_valid_auc[filter_col]
     config_df.columns = [col.replace("config/","") for col in config_df.columns]
 
-    print(config_df[["lr","beta1","beta2","eps","weight_decay","clip_norm","lrd","z_dim","momentum","batch_size","encoding",
-                                        "likelihood_scale","num_epochs","num_samples","hidden_dim"]].head(20))
+    #print(config_df[["lr","beta1","beta2","eps","weight_decay","clip_norm","lrd","z_dim","momentum","batch_size","encoding","likelihood_scale","num_epochs","num_samples","hidden_dim"]].head(20))
 
 
+    onehot_encoding = config_df[config_df["encoding"] == "onehot"].reset_index()
+    blosum_encoding = config_df[config_df["encoding"] == "blosum"].reset_index()
 
-
-    onehot_encoding = config_df[config_df["encoding"] == "onehot"]
-    blosum_encoding = config_df[config_df["encoding"] == "blosum"]
 
     def save_best(config_df,name=""):
 
@@ -58,7 +55,6 @@ def best_params():
 
         best_hyper_param_dict = {"optimizer_config":best_optimizer_config,
                                  "general_config":best_general_config}
-
         json.dump(best_hyper_param_dict,open("BEST_hyperparameter_dict_{}.p".format(name),"w+"),indent=2)
 
 

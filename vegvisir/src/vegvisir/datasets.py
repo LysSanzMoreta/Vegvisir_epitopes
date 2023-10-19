@@ -45,7 +45,9 @@ DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_arra
                                         "max_len",
                                         "corrected_aa_types","input_dim","positional_weights",
                                         "positional_weights_mask","percent_identity_mean","cosine_similarity_mean",
-                                        "kmers_pid_similarity","kmers_cosine_similarity","features_names","unique_lens"])
+                                        "kmers_pid_similarity","kmers_cosine_similarity","features_names",
+                                        "unique_lens",
+                                        "immunomodulate_dataset"])
 DatasetDivision = namedtuple("DatasetDivision",["all","all_mask","positives","positives_mask","positives_idx","negatives","negatives_mask","negatives_idx","high_confidence_negatives","high_confidence_negatives_mask","high_conf_negatives_idx"])
 SimilarityResults = namedtuple("SimilarityResults",["positional_weights","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity"])
 
@@ -71,7 +73,8 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     :param script_dir: Path from where the scriptis being executed
     :param update: If true it will download and update the most recent version of the dataset
     """
-    func_dict = {"custom_dataset":custom_dataset,
+    func_dict = {"immunomodulate_dataset":immunomodulate_dataset,
+                 "custom_dataset":custom_dataset,
                  "viral_dataset3":viral_dataset3,
                  "viral_dataset4":viral_dataset4,
                  "viral_dataset5":viral_dataset5,
@@ -97,6 +100,10 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     dataset_load_fx = lambda f,current_path,storage_folder,args,results_dir: lambda current_path,storage_folder,args,results_dir: f(current_path,storage_folder,args,results_dir)
     data_load_function = dataset_load_fx(func_dict[dataset_name],script_dir,storage_folder,args,results_dir)
     dataset = data_load_function(script_dir,storage_folder,args,results_dir)
+    if args.immunomodulate:
+        data_immunomodulate_load_function = dataset_load_fx(func_dict["immunomodulate_dataset"],script_dir,storage_folder,args,results_dir)
+        dataset_immunomodulate = data_immunomodulate_load_function(script_dir, storage_folder, args, results_dir)
+        dataset = dataset._replace(immunomodulate_dataset=dataset_immunomodulate)
     print("Data retrieved")
     return dataset
 
@@ -214,7 +221,36 @@ def save_alleles(data,storage_folder,args):
         alleles_file.write("{}\n".format(segment))
     return most_common_allele
 
-def custom_dataset(script_dir,storage_folder,args,results_dir):
+def immunomodulate_dataset(script_dir,storage_folder,args,results_dir):
+    """Builds a Vegvisir dataset that can be integrated with the model's pipeline"""
+
+    if args.immunomodulate_path is not None and os.path.exists(args.immunomodulate_path):
+            immunomodulate_data = pd.read_csv(args.immunomodulate_path,names=["Icore"])
+            immunomodulate_data = immunomodulate_data.drop_duplicates(subset=['Icore'])
+            assert immunomodulate_data.shape[0] <= 200, "It does not make sense to modify so many peptides, please set the number of unique peptides below 200"
+            immunomodulate_data["Icore_non_anchor"] = immunomodulate_data["Icore"]
+            immunomodulate_data["training"] = False
+            immunomodulate_data["target_corrected"] = 3
+            immunomodulate_data["partition"] = 80
+            immunomodulate_data["immunodominance_score"] = 0
+            immunomodulate_data["immunodominance_score_scaled"] = 0
+            immunomodulate_data["confidence_score"] = 0
+            immunomodulate_data["org_name"] = 0
+            immunomodulate_data["allele"] = "HLA-A0101"
+            filters_dict, analysis_mode = select_filters(args)
+            data_info = process_data(immunomodulate_data, args, storage_folder, script_dir, analysis_mode, filters_dict)
+
+            return data_info
+
+
+
+    else:
+        raise ValueError("You have selected args.immunomodulate == True, however args.immunomodulate_path has not recieved any valid path."
+                         "\n Switch off args.immunomodulate or input a valid path")
+
+
+
+def custom_dataset(script_dir,storage_folder,args,results_dir): #TODO: Finish
     """
     ####################
     #HEADER DESCRIPTIONS#
@@ -240,11 +276,10 @@ def custom_dataset(script_dir,storage_folder,args,results_dir):
             """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
 
-
     if args.test_path is not None:
         if os.path.exists(args.test_path):
             test_data = pd.read_csv("{}".format(args.test_path),sep="\t")
-            test_data = test_data[["Icore","Icore_non_anchor"]]
+            test_data = test_data[["Icore","Icore_non_anchor"]] #TODO: If incore non anchor not in columns make it equal to icore
             test_data = test_data.dropna(axis=1)
             test_data = test_data.drop_duplicates(subset=['Icore'])
             test_data["training"] = False
@@ -327,10 +362,11 @@ def custom_dataset(script_dir,storage_folder,args,results_dir):
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
     #data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
+    raise ValueError("Pipeline not finished, missing to regroup train and test datasets & more checks")
 
-    data_info = process_data(train_data,args,storage_folder,script_dir,analysis_mode,filters_dict)
-
-    return data_info
+    if train_data:
+        data_info = process_data(train_data,args,storage_folder,script_dir,analysis_mode,filters_dict)
+        return data_info
 
 def viral_dataset3(script_dir,storage_folder,args,results_dir):
     """
@@ -1074,6 +1110,7 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir):
     VegvisirPlots.plot_data_information_reduced(data, filters_dict, storage_folder, args, name_suffix)
 
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
+
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
     return data_info
 
@@ -2258,7 +2295,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     #                                    analysis_mode, filters_dict)
     # positional_weights = all_sim_results.positional_weights
     # positional_weights_mask = (positional_weights[..., None] > 0.6).any(-1)
-    #
+
 
     if args.dataset_name not in  ["viral_dataset6","viral_dataset8","viral_dataset10","viral_dataset11"]:
         try:
@@ -2390,7 +2427,8 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
                             kmers_pid_similarity=all_sim_results.kmers_pid_similarity,
                             kmers_cosine_similarity=all_sim_results.kmers_cosine_similarity,
                             features_names = features_names,
-                            unique_lens=unique_lens)
+                            unique_lens=unique_lens,
+                            immunomodulate_dataset=None)
 
     if not os.path.exists("{}/{}/umap_data_norm.png".format(storage_folder,args.dataset_name)):
         VegvisirPlots.plot_data_umap(data_array_blosum_norm,data_info.seq_max_len,data_info.max_len,storage_folder,args.dataset_name)

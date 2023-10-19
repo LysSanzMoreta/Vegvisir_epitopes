@@ -161,9 +161,10 @@ if __name__ == '__main__':
     aa_dict = VegvisirUtils.aminoacid_names_dict(aa_types, zero_characters=["#"])
     sequences_int = np.vectorize(aa_dict.get)(sequences_array)
     sequences_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(sequences_int)
-    aa_groups_colors_dict, aa_groups_dict, groups_names_colors_dict = VegvisirUtils.aminoacids_groups(aa_dict) #TODO: Gropus by blosum cosine similarity (group aas with similar blosum vectors)
+    aa_groups_colors_dict,aa_groups_dict,groups_names_colors_dict,aa_by_groups_dict = VegvisirUtils.aminoacids_groups(aa_dict) #TODO: Gropus by blosum cosine similarity (group aas with similar blosum vectors)
     aa_groups = len(groups_names_colors_dict.keys())
     sequences_int_group = np.vectorize(aa_groups_dict.get)(sequences_int)
+
     #sequences_mask = np.ones_like(sequences_blosum).astype(bool)[:,:,0]
     sequences_mask = np.array([[True,True,True,False],[True,True,True,True],[True,False,False,False],[True,True,True,False],[True,True,False,False]])#,[True,True,True,True]])
 
