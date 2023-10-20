@@ -171,7 +171,10 @@ class VEGVISIRModelClass(nn.Module):
         :param """
         print("Sampling .........")
         n_train = guide_estimates["latent_z"].shape[0]
-        idx_train = np.array(np.random.randn(n_train) > 0)
+        if n_train > 8000:
+            idx_train = np.array(np.random.randn(n_train) > 0)
+        else:
+            idx_train = np.ones(n_train).astype(bool)
         n_train = guide_estimates["latent_z"][idx_train].shape[0]
         # Highlight:  See Page 689 at Patter Recongnition and Ml (Bishop)
         # Highlight: Formula is: p(xa|xb) = N (x|µa|b, Λ−1aa ) , a = test/internal; b= train/leaves
@@ -179,9 +182,13 @@ class VEGVISIRModelClass(nn.Module):
         # Highlight: B.49 Λ−1aa
         inverse_generated = torch.eye(n_generated)  # [n_test,n_test]
         inverse_generated = inverse_generated[None,:].expand(self.z_dim,n_generated,n_generated).detach() # [z_dim,n_test,n_test]
+        assert not torch.isnan(torch.from_numpy(guide_estimates["z_scales"])).any(), "z scales contains nan"
+        assert not torch.isnan(torch.from_numpy(guide_estimates["z_scales"][idx_train])).any(), "z scales idx contains nan"
 
 
         z_scales = torch.from_numpy(guide_estimates["z_scales"][idx_train]).mean(0).to(inverse_generated.device).detach() #[z_dim] #fill in the diagonal with an average of the inferred z_scales
+        assert not torch.isnan(z_scales).any(), "z scales contains nan"
+
         inverse_generated = z_scales[:,None,None]*inverse_generated
 
         # Highlight: Conditional mean Mean ---->B-50:  µa|b = µa − Λ−1aa Λab(xb − µb)
@@ -228,9 +235,18 @@ class VEGVISIRModelClass(nn.Module):
 
             latent_space = torch.concatenate(latent_space_list,dim=0)
         else:
+            assert not torch.isnan(inverse_generated).any(), "found nan in covariance cond sampling"
+            assert not torch.isnan(torch.linalg.inv(inverse_generated)).any(), "found nan in inverse cond sampling"
+            assert not torch.isnan(z_mean).any(),"found nan in zmean cod sampling"
+            try:
+                latent_space = dist.MultivariateNormal(z_mean.squeeze(-1),torch.linalg.inv(inverse_generated) + 1e-6).to_event(1).sample().detach()
+            except:
+                print("Could not perform inversion or some other error")
+                inverse_generated = torch.eye(n_generated)
+                latent_space = dist.MultivariateNormal(z_mean.squeeze(-1),torch.linalg.inv(inverse_generated) + 1e-6).to_event(1).sample().detach()
 
-            latent_space = dist.MultivariateNormal(z_mean.squeeze(-1),self.chebyshev_inverse_3d(inverse_generated) + 1e-6).to_event(1).sample().detach()
             latent_space = latent_space.T
+            assert not torch.isnan(latent_space).any(), "found nan in latent space cond sampling"
         torch.cuda.empty_cache()
         return latent_space.detach()
 

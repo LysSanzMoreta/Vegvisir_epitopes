@@ -92,12 +92,16 @@ def main():
                 VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Valid_fold_{}".format(kfold)),script_dir)
         if args.generate:
             VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Generated"), script_dir)
+        if args.immunomodulate:
+            VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Immunomodulated"), script_dir)
     else:
         VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Train"), script_dir)
         VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Valid"), script_dir)
         VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Test"), script_dir)
         if args.generate:
             VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Generated"), script_dir)
+        if args.immunomodulate:
+            VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Immunomodulated"), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Vegvisir_checkpoints"), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Scripts"), script_dir)
 

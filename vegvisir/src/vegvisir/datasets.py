@@ -230,7 +230,7 @@ def immunomodulate_dataset(script_dir,storage_folder,args,results_dir):
             assert immunomodulate_data.shape[0] <= 200, "It does not make sense to modify so many peptides, please set the number of unique peptides below 200"
             immunomodulate_data["Icore_non_anchor"] = immunomodulate_data["Icore"]
             immunomodulate_data["training"] = False
-            immunomodulate_data["target_corrected"] = 3
+            immunomodulate_data["target_corrected"] = 1 #fakely assigning to 1 (otherwise I have to correct more things downstairs)
             immunomodulate_data["partition"] = 80
             immunomodulate_data["immunodominance_score"] = 0
             immunomodulate_data["immunodominance_score_scaled"] = 0
@@ -247,7 +247,6 @@ def immunomodulate_dataset(script_dir,storage_folder,args,results_dir):
     else:
         raise ValueError("You have selected args.immunomodulate == True, however args.immunomodulate_path has not recieved any valid path."
                          "\n Switch off args.immunomodulate or input a valid path")
-
 
 
 def custom_dataset(script_dir,storage_folder,args,results_dir): #TODO: Finish
@@ -2226,6 +2225,8 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     epitopes_list = data[sequence_column].values.tolist()
 
 
+
+
     #epitopes_list = functools.reduce(operator.iconcat, epitopes_list, [])  # flatten list of lists
 
     seq_max_len = len(max(epitopes_list, key=len)) #Highlight: If this gives an error there are some nan values
@@ -2233,12 +2234,13 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     unique_lens = list(set(epitopes_lens))
 
     corrected_aa_types = len(set().union(*epitopes_list))
-    corrected_aa_types = [corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types][0]
+    corrected_aa_types = corrected_aa_types if corrected_aa_types >=20 else 20 # small datasets may not contain all aminoacid types
+    corrected_aa_types = corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types #correct to include the gap symbol
     epitopes_padded, epitopes_padded_mask, aa_dict, blosum_array, blosum_dict, blosum_array_dict = process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,epitopes_list,data,storage_folder)
 
     #VegvisirPlots.plot_logos(list(map(lambda seq: "".join(seq),epitopes_padded)),"{}/{}".format(storage_folder,args.dataset_name),"_{}_filter_kmers_{}".format(sequence_column,args.filter_kmers))
 
-    save_intermediate_dataset = False
+    save_intermediate_dataset = False #TODO: Remove
     if save_intermediate_dataset:
         intermediate_dataset = pd.DataFrame({"{}".format(sequence_column):list(map(lambda seq:"".join(seq).replace("#",""),epitopes_padded)),
                                              "target_corrected": data["target_corrected"],
@@ -2272,7 +2274,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
             epitopes_mask = epitopes_array_int.astype(bool)
         else: #there is no padding, therefore number 0 equals an amino acid
             epitopes_mask = np.ones_like(epitopes_array_int).astype(bool)
-    if args.subset_data != "no":
+    if args.subset_data != "no": #TODO:Remove
         print("WARNING : Using a subset of the data of {}".format(args.subset_data))
         epitopes_array_raw = epitopes_array_raw[:args.subset_data]
         epitopes_mask = epitopes_mask[:args.subset_data]
