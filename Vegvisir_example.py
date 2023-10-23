@@ -331,8 +331,8 @@ if __name__ == "__main__":
     parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
 
     #Highlight: Generating new sequences from pre-trained model
-    parser.add_argument('-generate', type=str2bool, nargs='?', default=False, help='<True> Generate new neo-epitopes labelled and with a confidence score based on the training dataset. Please use args.validate False''<False> Do nothing')
-    parser.add_argument('-num-synthetic-peptides', type=int, nargs='?', default=30, help='<True> Generate new neo-epitopes labelled and with a confidence score. Please use args.validate False''<False> Do nothing')
+    parser.add_argument('-generate', type=str2bool, nargs='?', default=True, help='<True> Generate new neo-epitopes labelled and with a confidence score based on the training dataset. Please use args.validate False''<False> Do nothing')
+    parser.add_argument('-num-synthetic-peptides', type=int, nargs='?', default=1000, help='<True> Generate new neo-epitopes labelled and with a confidence score. Please use args.validate False''<False> Do nothing')
     parser.add_argument('-generate-num-samples', type=int, nargs='?', default=50, help='If args.generate == True, then per generated sequence, produce n samples to calculate a class probability')
     parser.add_argument('-generate-argmax', type=str2bool, nargs='?', default=False, help='If args.generate == True, ... DO NOT USE')
 

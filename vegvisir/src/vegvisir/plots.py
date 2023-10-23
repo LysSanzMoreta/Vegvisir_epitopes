@@ -1429,8 +1429,7 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
         predictions_dict["class_binary_predictions_samples_frequencies"][:, 0])
     frequency_class1_unique = np.unique(predictions_dict["class_binary_predictions_samples_frequencies"][:, 1]).tolist()
     colormap_frequency_class1 = matplotlib.cm.get_cmap('OrRd', len(frequency_class1_unique))
-    colormap_frequency_class1_array = np.array(
-        [colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
+    colormap_frequency_class1_array = np.array([colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
     colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
     colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_binary_predictions_samples_frequencies"][:, 1])
 

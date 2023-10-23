@@ -43,9 +43,16 @@ DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_arra
                                         "data_array_blosum_norm","blosum",
                                         "n_data","seq_max_len",
                                         "max_len",
-                                        "corrected_aa_types","input_dim","positional_weights",
-                                        "positional_weights_mask","percent_identity_mean","cosine_similarity_mean",
-                                        "kmers_pid_similarity","kmers_cosine_similarity","features_names",
+                                        "corrected_aa_types",
+                                        "input_dim",
+                                        "positional_weights",
+                                        "positional_weights_mask",
+                                        "percent_identity_mean",
+                                        "cosine_similarity_mean",
+                                        "kmers_pid_similarity",
+                                        "kmers_cosine_similarity",
+                                        "features_names",
+                                        "blosum_weighted",
                                         "unique_lens",
                                         "immunomodulate_dataset"])
 DatasetDivision = namedtuple("DatasetDivision",["all","all_mask","positives","positives_mask","positives_idx","negatives","negatives_mask","negatives_idx","high_confidence_negatives","high_confidence_negatives_mask","high_conf_negatives_idx"])
@@ -97,12 +104,12 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     if args.dataset_name == "viral_dataset12" and args.test:
         raise ValueError("No testing is available for this dataset, only validation. Please set args.validate == True and args.test == False")
 
-    dataset_load_fx = lambda f,current_path,storage_folder,args,results_dir: lambda current_path,storage_folder,args,results_dir: f(current_path,storage_folder,args,results_dir)
-    data_load_function = dataset_load_fx(func_dict[dataset_name],script_dir,storage_folder,args,results_dir)
-    dataset = data_load_function(script_dir,storage_folder,args,results_dir)
+    dataset_load_fx = lambda f,current_path,storage_folder,args,results_dir,corrected_parameters: lambda current_path,storage_folder,args,results_dir,corrected_parameters: f(current_path,storage_folder,args,results_dir,corrected_parameters)
+    data_load_function = dataset_load_fx(func_dict[dataset_name],script_dir,storage_folder,args,results_dir,None)
+    dataset = data_load_function(script_dir,storage_folder,args,results_dir,None)
     if args.immunomodulate:
-        data_immunomodulate_load_function = dataset_load_fx(func_dict["immunomodulate_dataset"],script_dir,storage_folder,args,results_dir)
-        dataset_immunomodulate = data_immunomodulate_load_function(script_dir, storage_folder, args, results_dir)
+        data_immunomodulate_load_function = dataset_load_fx(func_dict["immunomodulate_dataset"],script_dir,storage_folder,args,results_dir,(dataset.corrected_aa_types,dataset.unique_lens))
+        dataset_immunomodulate = data_immunomodulate_load_function(script_dir, storage_folder, args, results_dir,(dataset.corrected_aa_types,dataset.unique_lens))
         dataset = dataset._replace(immunomodulate_dataset=dataset_immunomodulate)
     print("Data retrieved")
     return dataset
@@ -221,7 +228,7 @@ def save_alleles(data,storage_folder,args):
         alleles_file.write("{}\n".format(segment))
     return most_common_allele
 
-def immunomodulate_dataset(script_dir,storage_folder,args,results_dir):
+def immunomodulate_dataset(script_dir,storage_folder,args,results_dir,corrected_parameters):
     """Builds a Vegvisir dataset that can be integrated with the model's pipeline"""
 
     if args.immunomodulate_path is not None and os.path.exists(args.immunomodulate_path):
@@ -238,7 +245,7 @@ def immunomodulate_dataset(script_dir,storage_folder,args,results_dir):
             immunomodulate_data["org_name"] = 0
             immunomodulate_data["allele"] = "HLA-A0101"
             filters_dict, analysis_mode = select_filters(args)
-            data_info = process_data(immunomodulate_data, args, storage_folder, script_dir, analysis_mode, filters_dict)
+            data_info = process_data(immunomodulate_data, args, storage_folder, script_dir, analysis_mode, filters_dict,corrected_parameters=corrected_parameters)
 
             return data_info
 
@@ -249,7 +256,7 @@ def immunomodulate_dataset(script_dir,storage_folder,args,results_dir):
                          "\n Switch off args.immunomodulate or input a valid path")
 
 
-def custom_dataset(script_dir,storage_folder,args,results_dir): #TODO: Finish
+def custom_dataset(script_dir,storage_folder,args,results_dir,corrected_parameters=None): #TODO: Finish
     """
     ####################
     #HEADER DESCRIPTIONS#
@@ -367,7 +374,7 @@ def custom_dataset(script_dir,storage_folder,args,results_dir): #TODO: Finish
         data_info = process_data(train_data,args,storage_folder,script_dir,analysis_mode,filters_dict)
         return data_info
 
-def viral_dataset3(script_dir,storage_folder,args,results_dir):
+def viral_dataset3(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
     """
     ####################
     #HEADER DESCRIPTIONS#
@@ -447,7 +454,7 @@ def viral_dataset3(script_dir,storage_folder,args,results_dir):
 
     return data_info
 
-def viral_dataset4(script_dir,storage_folder,args,results_dir):
+def viral_dataset4(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
     """
     ####################
     #HEADER DESCRIPTIONS#
@@ -529,7 +536,7 @@ def viral_dataset4(script_dir,storage_folder,args,results_dir):
 
     return data_info
 
-def viral_dataset5(script_dir,storage_folder,args,results_dir):
+def viral_dataset5(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
     """
     Contains "artificial" or fake negative epitopes solely in the test dataset. The artificial negatives can be identified by having a inmmunodominance score of
     HEADER descriptions:
@@ -611,7 +618,7 @@ def viral_dataset5(script_dir,storage_folder,args,results_dir):
 
     return data_info
 
-def viral_dataset6(script_dir,storage_folder,args,results_dir):
+def viral_dataset6(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
     """
     Collects IEDB data and creates artificially generated epitopes. The artificial epitopes are designed by randomly chopping viral proteins onto peptides and then checking binding to MHC with NetMHC-pan
 
@@ -733,7 +740,7 @@ def viral_dataset6(script_dir,storage_folder,args,results_dir):
 
     return data_info
 
-def viral_dataset7(script_dir,storage_folder,args,results_dir):
+def viral_dataset7(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
     """
     ####################
     #HEADER DESCRIPTIONS#
@@ -828,7 +835,7 @@ def viral_dataset7(script_dir,storage_folder,args,results_dir):
 
     return data_info
 
-def viral_dataset8(script_dir,storage_folder,args,results_dir):
+def viral_dataset8(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
     """
     Collects IEDB data and creates artificially generated epitopes. The artificial epitopes are designed by randomly chopping viral proteins onto peptides and then checking binding to MHC with NetMHC-pan
 
@@ -962,7 +969,7 @@ def viral_dataset8(script_dir,storage_folder,args,results_dir):
 
     return data_info
 
-def viral_dataset9(script_dir,storage_folder,args,results_dir):
+def viral_dataset9(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
     """
     ####################
     #HEADER DESCRIPTIONS#
@@ -1113,7 +1120,7 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir):
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
     return data_info
 
-def viral_dataset10(script_dir,storage_folder,args,results_dir):
+def viral_dataset10(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
     """
     Collects IEDB data and creates artificially generated epitopes. The artificial epitopes are designed by randomly chopping viral proteins onto peptides and then checking binding to MHC with NetMHC-pan
 
@@ -1297,7 +1304,7 @@ def viral_dataset10(script_dir,storage_folder,args,results_dir):
 
     return data_info
 
-def viral_dataset11(script_dir,storage_folder,args,results_dir):
+def viral_dataset11(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
     """
     Collects IEDB data and creates artificially generated epitopes. The artificial epitopes are designed by randomly chopping viral proteins onto peptides and then checking binding to MHC with NetMHC-pan
 
@@ -1445,7 +1452,7 @@ def viral_dataset11(script_dir,storage_folder,args,results_dir):
 
     return data_info
 
-def viral_dataset12(script_dir,storage_folder,args,results_dir):
+def viral_dataset12(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
     """
     Collects IEDB data and creates artificially generated epitopes. The artificial epitopes are designed by randomly chopping viral proteins onto peptides and then checking binding to MHC with NetMHC-pan
 
@@ -2211,7 +2218,7 @@ def process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,sequences_
 
     return sequences_padded,sequences_padded_mask,aa_dict,blosum_array,blosum_dict,blosum_array_dict
 
-def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,features_names=None,plot_blosum=False,plot_umap=False):
+def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,features_names=None,plot_blosum=False,plot_umap=False,corrected_parameters=None):
     """
     Notes:
       - Mid-padding : https://www.nature.com/articles/s41598-020-71450-8
@@ -2224,18 +2231,17 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
 
     epitopes_list = data[sequence_column].values.tolist()
 
-
-
-
     #epitopes_list = functools.reduce(operator.iconcat, epitopes_list, [])  # flatten list of lists
 
     seq_max_len = len(max(epitopes_list, key=len)) #Highlight: If this gives an error there are some nan values
     epitopes_lens = np.array(list(map(len, epitopes_list)))
     unique_lens = list(set(epitopes_lens))
+    if corrected_parameters is not None:
+        corrected_aa_types,unique_lens = corrected_parameters
+    else:
+        corrected_aa_types = len(set().union(*epitopes_list))
+        corrected_aa_types = corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types #correct to include the gap symbol
 
-    corrected_aa_types = len(set().union(*epitopes_list))
-    corrected_aa_types = corrected_aa_types if corrected_aa_types >=20 else 20 # small datasets may not contain all aminoacid types
-    corrected_aa_types = corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types #correct to include the gap symbol
     epitopes_padded, epitopes_padded_mask, aa_dict, blosum_array, blosum_dict, blosum_array_dict = process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,epitopes_list,data,storage_folder)
 
     #VegvisirPlots.plot_logos(list(map(lambda seq: "".join(seq),epitopes_padded)),"{}/{}".format(storage_folder,args.dataset_name),"_{}_filter_kmers_{}".format(sequence_column,args.filter_kmers))
@@ -2279,6 +2285,9 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
         epitopes_array_raw = epitopes_array_raw[:args.subset_data]
         epitopes_mask = epitopes_mask[:args.subset_data]
 
+    aa_frequencies = VegvisirUtils.calculate_aa_frequencies(epitopes_array_int,corrected_aa_types)
+    blosum_max, blosum_weighted, variable_score = VegvisirUtils.process_blosum(blosum_array, aa_frequencies, seq_max_len,corrected_aa_types)
+
     n_data = epitopes_array_raw.shape[0]
     blosum_norm = np.linalg.norm(blosum_array[1:, 1:], axis=0)
     aa_list = [val for key, val in aa_dict.items() if val in list(blosum_array[:, 0])]
@@ -2286,7 +2295,6 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     epitopes_array_blosum_norm = np.vectorize(blosum_norm_dict.get)(epitopes_array_int)
     if plot_blosum:
         VegvisirPlots.plot_blosum_cosine(blosum_array, storage_folder, args)
-
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
     #Highlight: Features correlations
@@ -2405,7 +2413,6 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     data_array_blosum_encoding_mask = np.broadcast_to(epitopes_mask[:, None, :, None], (n_data, 2, seq_max_len,corrected_aa_types)).copy()  # I do it like this in case the padding is not represented as 0, otherwise just use bool. Note: The first row of the second dimension is a dummy
     #distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
 
-
     data_info = DatasetInfo(script_dir=script_dir,
                             storage_folder=storage_folder,
                             data_array_raw=data_array_raw,
@@ -2430,6 +2437,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
                             kmers_cosine_similarity=all_sim_results.kmers_cosine_similarity,
                             features_names = features_names,
                             unique_lens=unique_lens,
+                            blosum_weighted=blosum_weighted,
                             immunomodulate_dataset=None)
 
     if not os.path.exists("{}/{}/umap_data_norm.png".format(storage_folder,args.dataset_name)):

@@ -218,11 +218,45 @@ def calculate_aa_frequencies(dataset,freq_bins):
     :param tensor dataset
     :param int freq_bins
     """
+    if isinstance(dataset,np.ndarray):
+        freqs = np.apply_along_axis(lambda x: np.bincount(x, minlength=freq_bins), axis=0, arr=dataset.astype("int64")).T
+        freqs = freqs/dataset.shape[0]
+        return freqs
+    elif isinstance(dataset,torch.Tensor):
+        freqs = torch.stack([torch.bincount(x_i, minlength=freq_bins) for i, x_i in
+                             enumerate(torch.unbind(dataset.type(torch.int64), dim=1), 0)], dim=1)
+        freqs = freqs.T
+        freqs = freqs / dataset.shape[0]
+        return freqs
+    else:
+        print("Data type not supported for bincount")
 
-    freqs = np.apply_along_axis(lambda x: np.bincount(x, minlength=freq_bins), axis=0, arr=dataset.astype("int64")).T
-    freqs = freqs/dataset.shape[0]
-    return freqs
+def process_blosum(blosum,aa_freqs,align_seq_len,aa_probs):
+    """
+    Computes the matrices required to build a blosum embedding
+    :param tensor blosum: BLOSUM likelihood  scores
+    :param tensor aa_freqs : amino acid frequencies per position
+    :param align_seq_len: alignment length
+    :param aa_probs: amino acid probabilities, types of amino acids in the alignment
+    :out tensor blosum_max [align_len,aa_prob]: blosum likelihood scores for the most frequent aa in the alignment position
+    :out tensor blosum_weighted [align_len,aa_prob: weighted average of blosum likelihoods according to the aa frequency
+    :out variable_core: [align_len] : counts the number of different elements (amino acid diversity) per alignment position"""
 
+    if isinstance(aa_freqs,np.ndarray):
+        aa_freqs = torch.from_numpy(aa_freqs)
+    if isinstance(blosum,np.ndarray):
+        blosum = torch.from_numpy(blosum)
+
+    aa_freqs_max = torch.argmax(aa_freqs, dim=1).repeat(aa_probs, 1).permute(1, 0) #[max_len, aa_probs]
+    blosum_expanded = blosum[1:, 1:].repeat(align_seq_len, 1, 1)  # [max_len,aa_probs,aa_probs]
+    blosum_max = blosum_expanded.gather(1, aa_freqs_max.unsqueeze(1)).squeeze(1)  # [align_seq_len,21] Seems correct
+
+    blosum_weighted = aa_freqs[:,:,None]*blosum_expanded #--> replace 0 with nans? otherwise the 0 are in the mean as well....
+    blosum_weighted = blosum_weighted.mean(dim=1)
+
+    variable_score = torch.count_nonzero(aa_freqs, dim=1)/aa_probs #higher score, more variable
+
+    return blosum_max,blosum_weighted, variable_score
 
 class AUK:
     """Slighlty re-adapted implementation from https://towardsdatascience.com/auk-a-simple-alternative-to-auc-800e61945be5
@@ -1422,17 +1456,18 @@ def numpy_to_fasta(aa_sequences,binary_pedictions,probabilities,results_dir,titl
 
     VegvisirPlots.plot_logos(sequences_list,results_dir,"ALL_generated")
 
-    positive_sequences = df[df["Positive_score"] >= df["Negative_score"]]
+    positive_sequences = df[df["Positive_score"] >= 0.6]
+
     positive_sequences_list = positive_sequences["Epitopes"].tolist()
 
-    VegvisirPlots.plot_logos(positive_sequences_list,results_dir,"POSITIVES_generated")
+    if positive_sequences_list:
+        VegvisirPlots.plot_logos(positive_sequences_list,results_dir,"POSITIVES_generated")
 
-    negative_sequences = df[df["Positive_score"] < df["Negative_score"]]
+    negative_sequences = df[df["Negative_score"] < 0.4]
     negative_sequences_list = negative_sequences["Epitopes"].tolist()
 
-    VegvisirPlots.plot_logos(negative_sequences_list,results_dir,"NEGATIVES_generated")
-
-
+    if negative_sequences_list:
+        VegvisirPlots.plot_logos(negative_sequences_list,results_dir,"NEGATIVES_generated")
 
 def squeeze_tensor(required_ndims,tensor):
     """Squeezes a tensor to match ndim"""
@@ -1450,6 +1485,10 @@ def squeeze_tensor(required_ndims,tensor):
         return tensor
     else:
         return tensor
+
+
+
+
 
 #TODO: Put into new plots_utils.py, however right now it is annoying to change the structure because of dill
 import matplotlib.pyplot as plt

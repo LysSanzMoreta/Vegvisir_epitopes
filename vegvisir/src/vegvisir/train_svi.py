@@ -29,7 +29,7 @@ import vegvisir.similarities as VegvisirSimilarities
 import vegvisir.mutual_information as VegvisirMI
 from ray.air import Checkpoint, session
 
-ModelLoad = namedtuple("ModelLoad",["args","max_len","seq_max_len","n_data","input_dim","aa_types","blosum","class_weights"])
+ModelLoad = namedtuple("ModelLoad",["args","max_len","seq_max_len","n_data","input_dim","aa_types","blosum","blosum_weighted","class_weights"])
 minidatasetinfo = namedtuple("minidatasetinfo", ["seq_max_len", "corrected_aa_types","num_classes","num_obs_classes","storage_folder"])
 
 
@@ -536,7 +536,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
     assert num_synthetic_peptides < 10000, "Please generate less than 10000 peptides, otherwise the computations might not be posible"
     argmax = args.generate_argmax
     maxlen_generated = model_load.seq_max_len
-    with torch.no_grad():  # do not update parameters with the evaluation data
+    with torch.no_grad():  # do not update parameters with the generative data
         #Highlight: Initalize fake dummy data (not used)
         batch_data = {"blosum":torch.randint(low=-7,high=7,size=(num_synthetic_peptides,2,maxlen_generated,model_load.aa_types)).double().to(device=args.device).detach(),
                       "onehot":torch.randint(low=0,high=1,size=(num_synthetic_peptides,2,maxlen_generated,model_load.aa_types)).double().to(device=args.device).detach(),
@@ -621,11 +621,12 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
 
         identical_to_train_bool = np.any(np.array(generated_sequences_int[:, None] == train_dataset[None, :]).all((-1)) == True, axis=0)
         identical_to_train_idx, = np.where(identical_to_train_bool == True)
-
-        unique_idx = np.array(np.arange(num_synthetic_peptides)[..., None] == unique_idx).any(-1)
         identical_to_train_idx = np.invert(np.array(np.arange(num_synthetic_peptides)[..., None] == identical_to_train_idx).any(-1))
 
-        # Highlight: Merge the indicators of the NON duplicates (discard the duplicates, keep the unique ones)
+        #Highlight: Remove duplicates
+        unique_idx = np.array(np.arange(num_synthetic_peptides)[..., None] == unique_idx).any(-1)
+
+        # Highlight: Merge the indicators of the NON duplicates (so that we can discard the duplicates, keep the unique ones)
         unique_idx = unique_idx * identical_to_train_idx
 
         #Highlight: Remove the sequences that have a gap in positions < 8
@@ -650,7 +651,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
             #discarded_sequences = None
             keep_idx = np.ones(num_synthetic_peptides).astype(bool)
 
-
+    #Update the indexes of the sequence to keep
     keep_idx = keep_idx * unique_idx
 
     generated_sequences_int = generated_sequences_int[keep_idx]
@@ -661,7 +662,6 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
     generated_sequences_blosum = np.vectorize(blosum_array_dict.get, signature='()->(n)')(generated_sequences_int)
 
     if generated_sequences_blosum.shape[0] < 10000:
-        print(generated_sequences_blosum.shape[0])
         def handle_timeout(signum, frame):
             raise TimeoutError
 
@@ -702,7 +702,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
     VegvisirUtils.numpy_to_fasta(generated_sequences_raw,binary_mode,binary_frequencies,"{}/Generated".format(additional_info.results_dir))
 
     #Highlight: Save sequences
-    #TODO: Finish dict and look into transferrin the h_0_encoder to h_0_decoder somehow
+
     generated_out_dict =  {"data_int":generated_sequences_int,
                         "data_raw": generated_sequences_raw,
                         "data_mask":generated_sequences_mask,
@@ -799,9 +799,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
 
         #sampling_output = Vegvisir.sample(batch_data, batch_mask_blosum, epoch=0, guide_estimates=guide_estimates,sample=True,argmax=argmax)
 
-
         sampling_output = Predictive(Vegvisir.model, guide=None, num_samples=args.generate_num_samples, return_sites=(),parallel=False)(batch_data, batch_mask_blosum, epoch=0, guide_estimates=guide_estimates,sample=True)
-
 
         custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
         aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
@@ -880,7 +878,6 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
     generated_sequences_blosum = np.vectorize(blosum_array_dict.get, signature='()->(n)')(generated_sequences_int)
 
     if generated_sequences_blosum.shape[0] < 10000:
-        print(generated_sequences_blosum.shape[0])
         def handle_timeout(signum, frame):
             raise TimeoutError
 
@@ -973,7 +970,8 @@ def select_model(model_load,results_dir,fold,args):
     print(args.learning_type )
     if model_load.seq_max_len == model_load.max_len:
         if args.learning_type == "supervised":
-            vegvisir_model = VegvisirModels.VegvisirModel5a_supervised(model_load)
+            #vegvisir_model = VegvisirModels.VegvisirModel5a_supervised(model_load)
+            vegvisir_model = VegvisirModels.VegvisirModel5a_supervised_blosum_weighted(model_load)
         elif args.learning_type == "unsupervised":
             vegvisir_model = VegvisirModels.VegvisirModel5a_unsupervised(model_load)
         elif args.learning_type == "semisupervised":
@@ -1181,6 +1179,7 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     assert (valid_data_blosum[:,0,0,1] == data_blosum_norm[valid_idx,0,1]).all(), "The data is shuffled and the data frames are comparing the wrong things"
 
 
+
     n_data = data_blosum.shape[0]
     batch_size = int(args.batch_size)
     results_dir = additional_info.results_dir
@@ -1192,6 +1191,7 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                            input_dim = dataset_info.input_dim,
                            aa_types = dataset_info.corrected_aa_types,
                            blosum = torch.from_numpy(dataset_info.blosum),
+                           blosum_weighted = dataset_info.blosum_weighted.to(args.device),
                            class_weights=VegvisirLoadUtils.calculate_class_weights(train_data_blosum, args)
                            )
     kwargs = {'num_workers': 0, 'pin_memory': args.use_cuda}  # pin-memory has to do with transferring CPU tensors to GPU
