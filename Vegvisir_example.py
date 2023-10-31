@@ -203,7 +203,7 @@ def analysis_models():
     }}
 
     #Highlight: Benchmarking
-    VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-blosum-variable-length",folder="Benchmark/Plots",title="HPO_blosum_NEW")
+    VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-blosum-variable-length",folder="Benchmark/Plots",title="HPO_blosum_TYPEB")
 
 
     #Highlight: Model stress comparison
@@ -332,7 +332,7 @@ if __name__ == "__main__":
 
     #Highlight: Generating new sequences from pre-trained model
     parser.add_argument('-generate', type=str2bool, nargs='?', default=True, help='<True> Generate new neo-epitopes labelled and with a confidence score based on the training dataset. Please use args.validate False''<False> Do nothing')
-    parser.add_argument('-num-synthetic-peptides', type=int, nargs='?', default=1000, help='<True> Generate new neo-epitopes labelled and with a confidence score. Please use args.validate False''<False> Do nothing')
+    parser.add_argument('-num-synthetic-peptides', type=int, nargs='?', default=2000, help='<True> Generate new neo-epitopes labelled and with a confidence score. Please use args.validate False''<False> Do nothing')
     parser.add_argument('-generate-num-samples', type=int, nargs='?', default=50, help='If args.generate == True, then per generated sequence, produce n samples to calculate a class probability')
     parser.add_argument('-generate-argmax', type=str2bool, nargs='?', default=False, help='If args.generate == True, ... DO NOT USE')
 
@@ -340,6 +340,7 @@ if __name__ == "__main__":
     immunomodulate_path = {0:"{}/immunomodulate_sequences.txt".format(script_dir),
                            1:None}
     parser.add_argument('-immunomodulate', type=str2bool, nargs='?', default=True, help='<True> Predict latent representation for the given sequences and generate new neo-epitopes labelled and with a confidence score based only on the input sequences via args.immunomodulate_path. Please use args.validate False''<False> Do nothing')
+    parser.add_argument('-num-immunomodulate-peptides', type=int, nargs='?', default=3000, help='Number of generated peptides generated from the sequence to immunomodulate')
     parser.add_argument('-immunomodulate-path', type=str2None, nargs='?', default= immunomodulate_path[0], help='Path to text file containing sequences to change their immunogenicity')
 
 

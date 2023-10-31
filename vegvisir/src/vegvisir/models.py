@@ -971,12 +971,13 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
             pyro.deterministic("decoder_final_hidden", outputnn.decoder_final_hidden, event_dim=0) #should be event_dim = 2
             sequences_logits = self.logsoftmax(outputnn.output)
             pyro.deterministic("sequences_logits", sequences_logits, event_dim=0) #should be event_dim = 2
-
+            #
             # with pyro.plate("plate_len", dim=-2, device=self.device):
-            #     pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).mask(~batch_positional_mask),obs=None if sample else batch_sequences_int)
+            #      pyro.sample("sequences", dist.Categorical(logits=sequences_logits),obs=None if sample else batch_sequences_int)
             # with pyro.poutine.scale(None, self.likelihood_scale):
             #pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).mask(~batch_positional_mask).to_event(1),obs=None if sample else batch_sequences_int)
-            pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=None if sample else batch_sequences_int)
+            #pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=None if sample else batch_sequences_int)
+            pyro.sample("sequences", dist.Categorical(logits=sequences_logits).to_event(1),obs=None if sample else batch_sequences_int)
 
             # init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             class_logits = self.classifier_model(latent_space, None)
@@ -1081,7 +1082,6 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         """
         """
         return Trace_ELBO(strict_enumeration_warning=False)
-
 
 class VegvisirModel5a_supervised_blosum_weighted(VEGVISIRModelClass,PyroModule):
     """
@@ -1287,8 +1287,6 @@ class VegvisirModel5a_supervised_blosum_weighted(VEGVISIRModelClass,PyroModule):
         """
         """
         return Trace_ELBO(strict_enumeration_warning=False)
-
-
 
 class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
     """

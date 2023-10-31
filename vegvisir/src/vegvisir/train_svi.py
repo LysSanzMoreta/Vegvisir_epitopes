@@ -426,7 +426,7 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
 
             logits_class_prediction = sampling_output["class_logits"].detach().permute(1,0,2)
             probs_class_prediction = torch.nn.Sigmoid()(logits_class_prediction)
-            reconstructed_sequences = sampling_output["sequences"].detach().permute(1,0,2)
+            reconstructed_sequences = VegvisirUtils.squeeze_tensor(3, sampling_output["sequences"]).detach().permute(1,0,2)
             attn_weights = sampling_output["attn_weights"].squeeze(0).detach().cpu().permute(1,0,2,3).numpy()
             attention_weights.append(attn_weights)
             encoder_hidden = sampling_output["encoder_hidden_states"].squeeze(0).detach().cpu().permute(1,0,2,3,4).numpy()
@@ -593,7 +593,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
             generated_sequences_int = torch.argmax(sequences_logits,dim=-1)
             generated_sequences_int = torch.mode(generated_sequences_int,dim=1).values.numpy()
         else:
-            generated_sequences_int = sampling_output["sequences"].detach().cpu().permute(1, 0, 2)
+            generated_sequences_int = VegvisirUtils.squeeze_tensor(3, sampling_output["sequences"]).detach().cpu().permute(1, 0, 2)
             #TODO: Calculate Mutual Information across samples ... Perhaps it does not make sense, still points to the mode
             #generated_sequences_int = list(map(lambda seq: VegvisirUtils.joint_sample_seq(seq,dataset_info.corrected_aa_types),torch.split(generated_sequences_int,1,dim=0)))
             generated_sequences_int = torch.mode(generated_sequences_int,dim=1).values.numpy()
@@ -605,7 +605,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
         if sampling_output["predictions"].shape == (args.num_samples, num_synthetic_peptides):
             binary_predictions = sampling_output["predictions"].detach().cpu().permute(1, 0).numpy()
         else:
-            binary_predictions = sampling_output["predictions"].squeeze(1).detach().cpu().permute(1, 0).numpy()
+            binary_predictions =VegvisirUtils.squeeze_tensor(2, sampling_output["predictions"].squeeze(1)).detach().cpu().permute(1, 0).numpy()
         binary_mode = stats.mode(binary_predictions, axis=1, keepdims=True).mode.squeeze(-1)
         binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1,arr=binary_predictions.astype("int64"))
         binary_frequencies = binary_frequencies / args.generate_num_samples
@@ -631,20 +631,23 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
 
         #Highlight: Remove the sequences that have a gap in positions < 8
         if zero_character is not None:
-            clean_results = list(map(lambda seq_int,seq_mask: VegvisirUtils.clean_generated_sequences(seq_int,seq_mask,zero_character,min_len=8), generated_sequences_int.tolist(),batch_mask.numpy().tolist()))
+            clean_results = list(map(lambda seq_int,seq_mask: VegvisirUtils.clean_generated_sequences(seq_int,seq_mask,zero_character,min_len=8,max_len = maxlen_generated), generated_sequences_int.tolist(),batch_mask.numpy().tolist()))
             discarded_sequences =  list(map(lambda v,i: i if v is None else None, clean_results,list(range(len(clean_results)))))
             discarded_sequences =  np.array(list(filter(lambda i: i is not None, discarded_sequences)))
             clean_results = list(filter(lambda v: v is not None, clean_results))
 
             clean_results = list(zip(*clean_results))
             #clean_generated_sequences = clean_results[0]
-            clean_generated_masks = clean_results[1]
-            #generated_sequences_int = np.concatenate(clean_generated_sequences,axis=0)
-            generated_sequences_mask = np.concatenate(clean_generated_masks,axis=0) #contains the truncated masks
+            if clean_results[1] is not None:
+                clean_generated_masks = clean_results[1]
+                #generated_sequences_int = np.concatenate(clean_generated_sequences,axis=0)
+                generated_sequences_mask = np.concatenate(clean_generated_masks,axis=0) #contains the truncated masks
 
-            keep_idx = np.invert((np.arange(num_synthetic_peptides)[..., None] == discarded_sequences).any(-1))
-            batch_mask = batch_mask.numpy()
-            batch_mask[keep_idx] = generated_sequences_mask
+                keep_idx = np.invert((np.arange(num_synthetic_peptides)[..., None] == discarded_sequences).any(-1))
+                batch_mask = batch_mask.numpy()
+                batch_mask[keep_idx] = generated_sequences_mask
+            else:
+                keep_idx =  np.ones(num_synthetic_peptides).astype(bool)
 
         else:
             generated_sequences_mask = np.ones_like(generated_sequences_int).astype(bool)
@@ -745,7 +748,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
     """
     Vegvisir.train(False)
     Vegvisir.eval()
-    num_synthetic_peptides = args.num_synthetic_peptides
+    num_synthetic_peptides = args.num_immunomodulate_peptides
     assert num_synthetic_peptides < 10000, "Please generate less than 10000 immunomodulated peptides in one go (you can do several runs), otherwise the computations might not be posible"
     argmax = args.generate_argmax
     maxlen_generated = model_load.seq_max_len
@@ -810,7 +813,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
             generated_sequences_int = torch.argmax(sequences_logits,dim=-1)
             generated_sequences_int = torch.mode(generated_sequences_int,dim=1).values.numpy()
         else:
-            generated_sequences_int = sampling_output["sequences"].detach().cpu().permute(1, 0, 2)
+            generated_sequences_int = VegvisirUtils.squeeze_tensor(3, sampling_output["sequences"]).detach().cpu().permute(1, 0, 2)
             #TODO: Calculate Mutual Information across samples ... Perhaps it does not make sense, still points to the mode
             #generated_sequences_int = list(map(lambda seq: VegvisirUtils.joint_sample_seq(seq,dataset_info.corrected_aa_types),torch.split(generated_sequences_int,1,dim=0)))
             generated_sequences_int = torch.mode(generated_sequences_int,dim=1).values.numpy()
@@ -847,7 +850,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
 
         #Highlight: Remove the sequences that have a gap in positions < 8
         if zero_character is not None:
-            clean_results = list(map(lambda seq_int,seq_mask: VegvisirUtils.clean_generated_sequences(seq_int,seq_mask,zero_character,min_len=8), generated_sequences_int.tolist(),batch_mask.numpy().tolist()))
+            clean_results = list(map(lambda seq_int,seq_mask: VegvisirUtils.clean_generated_sequences(seq_int,seq_mask,zero_character,min_len=8,max_len = maxlen_generated), generated_sequences_int.tolist(),batch_mask.numpy().tolist()))
             discarded_sequences =  list(map(lambda v,i: i if v is None else None, clean_results,list(range(len(clean_results)))))
             discarded_sequences =  np.array(list(filter(lambda i: i is not None, discarded_sequences)))
             clean_results = list(filter(lambda v: v is not None, clean_results))
@@ -970,8 +973,8 @@ def select_model(model_load,results_dir,fold,args):
     print(args.learning_type )
     if model_load.seq_max_len == model_load.max_len:
         if args.learning_type == "supervised":
-            #vegvisir_model = VegvisirModels.VegvisirModel5a_supervised(model_load)
-            vegvisir_model = VegvisirModels.VegvisirModel5a_supervised_blosum_weighted(model_load)
+            vegvisir_model = VegvisirModels.VegvisirModel5a_supervised(model_load)
+            #vegvisir_model = VegvisirModels.VegvisirModel5a_supervised_blosum_weighted(model_load)
         elif args.learning_type == "unsupervised":
             vegvisir_model = VegvisirModels.VegvisirModel5a_unsupervised(model_load)
         elif args.learning_type == "semisupervised":

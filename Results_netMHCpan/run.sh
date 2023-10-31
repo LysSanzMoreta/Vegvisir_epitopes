@@ -17,8 +17,8 @@ alleles="/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/viral_dat
 #foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_26_11h46min21s398924ms_100epochs_supervised_Icore_blosum_TESTING"
 #foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_28_08h23min57s932261ms_150epochs_supervised_Icore_blosum_TESTING"
 #foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_30_13h07min33s010881ms_60epochs_supervised_Icore_blosum_TESTING"
-foldername="PLOTS_Vegvisir_viral_dataset9_2023_10_20_19h52min32s086969ms_60epochs_supervised_Icore_blosum_TESTING"
-bash run_netmhcpan.sh -a $alleles -p /home/lys/Dropbox/PostDoc/vegvisir/$foldername/Immunomodulated/generated_epitopes.txt
-#bash run_netmhcpan.sh -a $alleles -p /home/lys/Dropbox/PostDoc/vegvisir/$foldername/Generated/generated_epitopes.txt
-
+#foldername="PLOTS_Vegvisir_viral_dataset9_2023_10_20_19h52min32s086969ms_60epochs_supervised_Icore_blosum_TESTING"
+foldername="PLOTS_Vegvisir_viral_dataset9_2023_10_29_00h12min28s893205ms_60epochs_supervised_Icore_blosum_TESTING"
+#bash run_netmhcpan.sh -a $alleles -p /home/lys/Dropbox/PostDoc/vegvisir/$foldername/Immunomodulated/generated_epitopes.txt
+bash run_netmhcpan.sh -a $alleles -p /home/lys/Dropbox/PostDoc/vegvisir/$foldername/Generated/generated_epitopes.txt
 python process_results.py -folder-path /home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/$foldername

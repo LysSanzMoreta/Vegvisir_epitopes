@@ -1417,19 +1417,36 @@ def generate_mask(max_len, length):
     seq_mask = np.array([True] * (length) + [False] * (max_len - length))
     return seq_mask[None, :]
 
-def clean_generated_sequences(seq_int,seq_mask,zero_character,min_len):
+def clean_generated_sequences(seq_int,seq_mask,zero_character,min_len,max_len):
     """"""
     seq_mask = np.array(seq_mask)
     seq_int = np.array(seq_int)
-    idx = np.where(seq_int == zero_character)[0]
-    if idx.size == 0:
-        seq_mask = np.ones_like(seq_int).astype(bool)
-        return (seq_int[None,:],seq_mask[None,:])
-    else:
-        if idx[0] > min_len -1: #truncate sequences (else completely discard)
-            seq_int[idx[0]:] = zero_character
-            seq_mask[idx[0]:] = False
+    if zero_character is not None:
+        idx = np.where(seq_int == zero_character)[0]
+        if idx.size == 0:
+            seq_mask = np.ones_like(seq_int).astype(bool)
             return (seq_int[None,:],seq_mask[None,:])
+        else:
+            if idx[0] > min_len -1: #truncate sequences
+                seq_int[idx[0]:] = zero_character
+                seq_mask[idx[0]:] = False
+                return (seq_int[None,:],seq_mask[None,:])
+            else: #remove the gaps and join the remainindings to max len keep if it fits the minimu length criteria
+                seq_int_list = seq_int.tolist()
+                idx_list = idx[0].tolist()
+                idx_list = idx_list if isinstance(idx_list,list) else [idx_list]
+                for i in idx_list:
+                    print(idx)
+                    del seq_int_list[i]
+                seq_int_list = seq_int_list + [0]*(max_len-len(seq_int_list))
+                print(seq_int_list)
+                seq_int = np.array(seq_int_list).astype(int)
+                seq_mask = seq_int.astype(bool)
+                if np.sum(seq_mask) >= min_len:
+                    return (seq_int[None,:],seq_mask[None,:])
+
+    else:
+        return (seq_int[None,:],seq_mask[None,:])
 
 def numpy_to_fasta(aa_sequences,binary_pedictions,probabilities,results_dir,title_name=""):
     print("Saving generated sequences to fasta & text files ")
@@ -1473,10 +1490,17 @@ def squeeze_tensor(required_ndims,tensor):
     """Squeezes a tensor to match ndim"""
     size = torch.tensor(tensor.shape)
     ndims = len(size)
+    idx_ones = (size == 1)
+    if True in idx_ones:
+        ones_pos = size.tolist().index(1)
     if ndims > required_ndims:
         while ndims > required_ndims:
             if tensor.shape[0] == 1:
                 tensor = tensor.squeeze(0)
+                size = torch.tensor(tensor.shape)
+                ndims = len(size)
+            elif True in idx_ones:
+                tensor = tensor.squeeze(ones_pos)
                 size = torch.tensor(tensor.shape)
                 ndims = len(size)
             else:

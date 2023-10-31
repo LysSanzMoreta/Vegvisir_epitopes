@@ -39,3 +39,15 @@ Benchmark/*
 *.p
 
 immunomodulate_sequences.txt
+
+Results_netMHCpan/vegvisir/group5_alleles
+
+Results_netMHCpan/vegvisir/group4_alleles
+
+Results_netMHCpan/vegvisir/group3_alleles
+
+Results_netMHCpan/vegvisir/group2_alleles
+
+Results_netMHCpan/vegvisir/group1_alleles
+
+Results_netMHCpan/vegvisir/group0_alleles
