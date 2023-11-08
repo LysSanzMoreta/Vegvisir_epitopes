@@ -63,6 +63,18 @@ colors_list_aa = ["black", "plum", "lime", "navy", "turquoise", "peachpuff", "pa
 
 PlotSettings = namedtuple("PlotSettings",["colormap_unique","colors_feature","unique_values"])
 
+def plot_generated_labels_histogram(dataframe,results_dir):
+    fig, ax = plt.subplots(nrows=1,ncols=1, figsize=(11, 10))
+
+    plt.hist(dataframe["Positive_score"],color=colors_dict[1],bins=10)
+    plt.hist(dataframe["Negative_score"],color=colors_dict[0],bins=10)
+    plt.title("Target distribution score among generated sequences")
+
+    plt.savefig("{}/Histogram_target_probabilities".format(results_dir), dpi=500)
+    plt.clf()
+    plt.close(fig)
+
+
 def plot_data_information(data, filters_dict, storage_folder, args, name_suffix):
     """"""
     ndata = data.shape[0]
@@ -1389,6 +1401,7 @@ def colorbar(mappable):
     cbar = fig.colorbar(mappable, cax=cax)
     plt.sca(last_axes)
     return cbar
+
 def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
     print("Plotting (reduced) scatter UMAP of {}...".format(vector_name))
 
@@ -1525,6 +1538,7 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
 
     #del confidence_scores,immunodominance_scores,gravy_scores,volume_scores,side_chain_pka_scores,frequency_class1_unique,frequency_class0_unique,sequences_lens,radius_scores,molecular_weight_scores,aromaticity_scores,bulkiness_scores
     #gc.collect()
+
 def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
     print("Plotting scatter (quantiles) UMAP of {}...".format(vector_name))
 
@@ -1797,7 +1811,8 @@ def plot_latent_correlations(umap_proj,dataset_info,latent_space,predictions_dic
     plt.savefig("{}/{}/Latent_quantitative_analysis_{}_{}".format(results_dir, method, vector_name, sample_mode),dpi=500)
     plt.clf()
     plt.close(fig)
-def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_space,sample_mode,results_dir,method,vector_name,plot_scatter_correlations=False,calculate_covariance=True,plot_covariance=True,filter_correlations=True):
+
+def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_space,sample_mode,results_dir,method,vector_name,plot_scatter_correlations=False,calculate_covariance=True,plot_covariance=True,filter_correlations=False):
     """
     :param umap_proj:
     :param dataset_info:
@@ -1835,7 +1850,7 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
                 sequences_feats = sequences_feats.to_dict(orient="list")
                 sequences_feats.pop('Icore', None)
                 #Highlight: Merge both features dict if there is useful information
-                if sequences_feats[peptide_feats_cols[1]] and len(sequences_feats[peptide_feats_cols[1]]) == umap_proj_1d.shape:
+                if len(sequences_feats[peptide_feats_cols[1]]) == umap_proj_1d.shape[0]:
                     features_dict = {**features_dict, **sequences_feats}
                 else:
                     print("Could not find information about all the sequences")
@@ -3931,6 +3946,7 @@ def plot_latent_correlations_helper(train_out,valid_out,test_out,reducer,covaria
                                                             plot_covariance=False,
                                                             filter_correlations=False)
 
+
             if mode == "train":
                 covariances_dict_train[learning_type][name]["covariance"].append(np.abs(correlations_dict["features_covariance"])) #make positive because umap vector can be orientated anywhere
                 covariances_dict_train[learning_type][name]["features_names"].append(correlations_dict["features_names"])
@@ -4097,7 +4113,7 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
                  spearman_coefficients_all[learning_type][name]["valid"] = np.mean([coefficients for coefficients in covariances_dict_valid[learning_type][name]["spearman_coefficients"]], axis=0)
              spearman_coefficients_all[learning_type][name]["test"] = np.mean([coefficients for coefficients in covariances_dict_test[learning_type][name]["spearman_coefficients"]],axis=0)
 
-             if covariances_dict_train[learning_type][name]["features_names"]: #UMAP-1D
+             if covariances_dict_train[learning_type][name]["features_names"]: #UMAP-1D exists
                  features_names = covariances_dict_train[learning_type][name]["features_names"][0][1:] # remove UMAP-1D
                  features_names = [new_feature_names[feat] if feat in new_feature_names.keys() else feat for feat in features_names]
 
@@ -4267,7 +4283,6 @@ def calculate_pval(targets,predictions):
         pval = np.nan
     return pval
 
-
 def calculate_precision_recall(targets,predictions,r="precision"):
     """Calculates maximum precision & recall"""
     
@@ -4283,8 +4298,6 @@ def calculate_precision_recall(targets,predictions,r="precision"):
             return max_precision_recall_combo[1]
     except:
         return np.nan
-    
-    
 
 def process_nnalign(results_path, seqs_df,mode="train",save_plot=True):
     nnalign_results_full = pd.read_csv(results_path, sep="\t", header=0)  # ["true_samples"]

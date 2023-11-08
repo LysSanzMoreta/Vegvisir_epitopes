@@ -113,6 +113,7 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
         dataset = dataset._replace(immunomodulate_dataset=dataset_immunomodulate)
     print("Data retrieved")
     return dataset
+
 def select_filters(args):
     if args.filter_kmers:
         if args.sequence_type == "Icore_non_anchor":
@@ -254,7 +255,6 @@ def immunomodulate_dataset(script_dir,storage_folder,args,results_dir,corrected_
         raise ValueError("You have selected args.immunomodulate == True, however args.immunomodulate_path has not recieved any valid path."
                          "\n Switch off args.immunomodulate or input a valid path")
 
-
 def custom_dataset(script_dir,storage_folder,args,results_dir,corrected_parameters=None): #TODO: Finish
     """
     ####################
@@ -314,64 +314,15 @@ def custom_dataset(script_dir,storage_folder,args,results_dir,corrected_paramete
                         assert args.num_unobserved > 0, "No enough data points"
 
             #train_data = train_data.replace(columns={"target":"target_corrected"})
-            train_data["training"] = True
+            train_data["training"] = np.random.choice([True,False],train_data.shape[0],p=[0.8,0.2]) #For random training & testing
+            train_data["target_corrected"] = np.random.choice([0,1],train_data.shape[0])
             train_data["immunodominance_score"] = 0
             train_data["confidence_score"] = 0
             train_data["org_name"] = 0
-
-    # data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
-    # data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
-    # data_species = pd.read_csv("{}/common_files/dataset_species.tsv".format(storage_folder),sep="\t")
-    # data_species = data_species.dropna(axis=1)
-    #
-    # data_species = data_species[["Icore","allele","org_name"]]
-    filters_dict,analysis_mode = select_filters(args)
-    json.dump(filters_dict, dataset_info_file, indent=2)
-
- #    most_common_allele = data.value_counts("allele").index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
- #
- #    if filters_dict["filter_alleles"][0]:
- #        data = data[data["allele"] == most_common_allele]
- #
- #    if filters_dict["group_alleles"][0]:
- #        # Group data by Icore, therefore the alleles are grouped
- #
- #        data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
- #        #data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training"]].agg(lambda x: max(set(list(x)), key=list(x).count)) # messy when same number of counts
- #        #data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].nth(0) #returns first hit
- #        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
- # #selects mode and returns first hit in case of equal counts
- #        # Reattach info on training
- #        data = pd.merge(data_a, data_b, on='Icore', how='outer')
- #        data_species = data_species.groupby('Icore', as_index=False)[["allele", "org_name"]].agg(lambda x: list(x)[0])
- #
- #    else:
- #        allele_counts_dict = data["allele"].value_counts().to_dict()
- #        allele_dict = dict(zip(allele_counts_dict.keys(),list(range(len(allele_counts_dict.keys()))))) #TODO: Replace with allele encoding based on sequential information
- #        data["allele_encoded"] = data["allele"]
- #        data.replace({"allele_encoded": allele_dict},inplace=True)
- #        data_species["allele_encoded"] = data_species["allele"]
- #        data_species.replace({"allele_encoded": allele_dict},inplace=True)
-
-
-    # data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
-    #
-    # data = pd.merge(data,data_species, on=['Icore'], how='left')
-    #
-    # unique_values = pd.unique(data["org_name"])
-    # org_name_dict = dict(zip(list(range(len(unique_values))),unique_values))
-    # org_name_dict_reverse = dict(zip(unique_values,list(range(len(unique_values)))))
-    # pickle.dump(org_name_dict,open('{}/{}/org_name_dict.pkl'.format(storage_folder,args.dataset_name), 'wb'))
-    # data = data.replace({"org_name":org_name_dict_reverse})
-
-    #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
-    name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
-    #data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
-    raise ValueError("Pipeline not finished, missing to regroup train and test datasets & more checks")
-
-    if train_data:
-        data_info = process_data(train_data,args,storage_folder,script_dir,analysis_mode,filters_dict)
-        return data_info
+            name_suffix = "_custom_dataset"
+            filters_dict,analysis_mode = select_filters(args)
+            data_info = process_data(train_data,args,storage_folder,script_dir,analysis_mode,filters_dict)
+            return data_info
 
 def viral_dataset3(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
     """
@@ -668,9 +619,7 @@ def viral_dataset6(script_dir,storage_folder,args,results_dir,corrected_paramete
             data_unobserved_list = []
             for partition in unique_partitions.keys():
                 data_unobserved_i = data_unobserved.loc[(data_unobserved["partition"] == partition)]
-                data_unobserved_list.append(
-                    data_unobserved_i.sample(n=int((args.num_unobserved / len(unique_partitions.keys()))),
-                                             replace=False))
+                data_unobserved_list.append(data_unobserved_i.sample(n=int((args.num_unobserved / len(unique_partitions.keys()))),replace=False))
             data_unobserved = pd.concat(data_unobserved_list, axis=0)
         else:
             print("Not using unobserved data points")
@@ -1045,7 +994,6 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir,corrected_paramete
     if test_mode=="test_virus":
         #new_test_dataset = new_test_dataset[(new_test_dataset['org_name'].str.contains("virus")) | (new_test_dataset['org_name'].str.contains("SARS-CoV2"))]
         new_test_dataset = new_test_dataset[(new_test_dataset['kingdom'].str.contains("Viruses"))]
-
     elif test_mode == "test_bacteria":
         warnings.warn("Using epitopes from bacteria as test")
         new_test_dataset = new_test_dataset[(new_test_dataset['kingdom'].str.contains("Bacteria"))]
@@ -1095,6 +1043,9 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir,corrected_paramete
 
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,no_subjects_test=False,plot_histograms=False)
+
+
+
     if filters_dict["group_alleles"][0]:
         data = pd.merge(data,data_species, on=['Icore'], how='left',suffixes=('_a', '_b'))
     else:
@@ -1119,8 +1070,7 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir,corrected_paramete
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
     return data_info
 
-
-def viral_dataset9b(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset9_peptide(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
     """
     ####################
     #HEADER DESCRIPTIONS#
@@ -1270,7 +1220,6 @@ def viral_dataset9b(script_dir,storage_folder,args,results_dir,corrected_paramet
 
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
     return data_info
-
 
 def viral_dataset10(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
     """
@@ -1969,7 +1918,6 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
         print("Folder structure existing")
 
     plot_mi,plot_frequencies,plot_cosine_similarity = False,False,False
-    #plot_mi,plot_frequencies,plot_cosine_similarity = False,False,True
     #Highlight: Encode amino acid raw
 
     #Highlight: Encode amino acid by chemical group
@@ -2171,25 +2119,32 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
                                                                       ksize=ksize)
         
         #Highlight: Train dataset
+        #
+        # train_idx_select, train_longest_array = sample_datapoints_mi(epitopes_array_int_division_train.positives,
+        #                                                              epitopes_array_int_division_train.negatives)
+
         train_all_sim_results =VegvisirSimilarities.calculate_similarities_parallel(epitopes_array_blosum_division_train.all,
                                                                       seq_max_len,
                                                                       epitopes_array_blosum_division_train.all_mask,
                                                                       storage_folder, args,
                                                                      "{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode),
                                                                      ksize=ksize)
-        train_positives_sim_results =VegvisirSimilarities.calculate_similarities_parallel(epitopes_array_blosum_division_train.positives,
-                                                                      seq_max_len,
-                                                                      epitopes_array_blosum_division_train.positives_mask,
-                                                                      storage_folder, args,
-                                                                     "{}/Train/{}/neighbours1/positives".format(args.sequence_type,analysis_mode),
-                                                                     ksize=ksize)
+        train_positives_sim_results = VegvisirSimilarities.calculate_similarities_parallel(
+            epitopes_array_blosum_division_train.positives,
+            seq_max_len,
+            epitopes_array_blosum_division_train.positives_mask,
+            storage_folder, args,
+            "{}/Train/{}/neighbours1/positives".format(args.sequence_type, analysis_mode),
+            ksize=ksize)
 
+        #if epitopes_array_int_division_train.negatives.shape[0] == train_longest_array:
         train_negatives_sim_results=VegvisirSimilarities.calculate_similarities_parallel(epitopes_array_blosum_division_train.negatives,
-                                                                      seq_max_len,
-                                                                      epitopes_array_blosum_division_train.negatives_mask,
-                                                                      storage_folder, args,
-                                                                     "{}/Train/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode),
-                                                                      ksize=ksize)
+                                                                          seq_max_len,
+                                                                          epitopes_array_blosum_division_train.negatives_mask,
+                                                                          storage_folder, args,
+                                                                         "{}/Train/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode),
+                                                                          ksize=ksize)
+
         train_high_conf_sim_results=VegvisirSimilarities.calculate_similarities_parallel(epitopes_array_blosum_division_train.high_confidence_negatives,
                                                                       seq_max_len,
                                                                       epitopes_array_blosum_division_train.high_confidence_negatives_mask,
@@ -2383,6 +2338,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
 
     epitopes_list = data[sequence_column].values.tolist()
 
+
     #epitopes_list = functools.reduce(operator.iconcat, epitopes_list, [])  # flatten list of lists
 
     seq_max_len = len(max(epitopes_list, key=len)) #Highlight: If this gives an error there are some nan values
@@ -2395,8 +2351,15 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
         corrected_aa_types = corrected_aa_types + 1 if len(unique_lens) > 1 else corrected_aa_types #correct to include the gap symbol
 
     epitopes_padded, epitopes_padded_mask, aa_dict, blosum_array, blosum_dict, blosum_array_dict = process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,epitopes_list,data,storage_folder)
+    #Highlight: Plotting logos plots
+    # labels = data["target_corrected"].values.tolist()
+    # positives = np.array(labels).astype(bool)
+    # epitopes_positives = np.array(epitopes_padded)[positives].tolist()
+    # epitopes_negatives = np.array(epitopes_padded)[~positives].tolist()
+    # VegvisirPlots.plot_logos(list(map(lambda seq: "".join(seq),epitopes_padded)),"{}/{}".format(storage_folder,args.dataset_name),"_{}_filter_kmers_{}".format(sequence_column,args.filter_kmers))
+    # VegvisirPlots.plot_logos(list(map(lambda seq: "".join(seq),epitopes_positives)),"{}/{}".format(storage_folder,args.dataset_name),"_{}_filter_kmers_{}_positives".format(sequence_column,args.filter_kmers))
+    # VegvisirPlots.plot_logos(list(map(lambda seq: "".join(seq),epitopes_negatives)),"{}/{}".format(storage_folder,args.dataset_name),"_{}_filter_kmers_{}_negatives".format(sequence_column,args.filter_kmers))
 
-    #VegvisirPlots.plot_logos(list(map(lambda seq: "".join(seq),epitopes_padded)),"{}/{}".format(storage_folder,args.dataset_name),"_{}_filter_kmers_{}".format(sequence_column,args.filter_kmers))
 
     save_intermediate_dataset = False #TODO: Remove
     if save_intermediate_dataset:
@@ -2457,6 +2420,7 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     #                                    analysis_mode, filters_dict)
     # positional_weights = all_sim_results.positional_weights
     # positional_weights_mask = (positional_weights[..., None] > 0.6).any(-1)
+
 
 
     if args.dataset_name not in  ["viral_dataset6","viral_dataset8","viral_dataset10","viral_dataset11"]:

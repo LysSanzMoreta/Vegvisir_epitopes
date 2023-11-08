@@ -1,11 +1,23 @@
-import os
+import os,sys
 import io
 import argparse
 from argparse import RawTextHelpFormatter
+from collections import Counter
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import mmap
 import seaborn as sns
+local_repository=True
+script_dir = os.path.dirname(os.path.abspath(__file__)).replace("Results_netMHCpan","")
+
+if local_repository: #TODO: The local imports are extremely slow
+     sys.path.insert(1, "{}/vegvisir/src".format(script_dir))
+     import vegvisir
+else:#pip installed module
+     import vegvisir
+
+import vegvisir.plots as VegvisirPlots
 
 def split_string(string,maxlen):
     string = string.split()
@@ -19,7 +31,7 @@ def split_string(string,maxlen):
         return string
     else:
         return string
-def read_dataframe(folder_path):
+def read_dataframe(folder_path,folder_name):
     headers =  ["Pos","MHC", "Peptide", "Core", "Of", "Gp", "Gl", "Ip", "Il", "Icore","Identity", "Score_EL", "%Rank_EL" "BindLevel"]
     files = os.listdir(folder_path)
     #ignore_str = "-"*123 + "\n"
@@ -70,19 +82,45 @@ def read_dataframe(folder_path):
     alleles_dataframes[["%Rank_EL","Score_EL"]] = alleles_dataframes[["%Rank_EL","Score_EL"]].astype(float)
     n_unique = len(alleles_dataframes["Epitopes"].unique())
     weak_binders = alleles_dataframes[(alleles_dataframes["%Rank_EL"] <= 2.0) & (alleles_dataframes["%Rank_EL"] > 0.5) ]
-    #weak_binders.to_csv("{}/weak_binders.tsv".format(folder_path),sep="\t") #find alternative
     strong_binders = alleles_dataframes[alleles_dataframes["%Rank_EL"] <= 0.5 ]
-    #strong_binders.to_csv("{}/strong_binders.tsv".format(folder_path),sep="\t")
+
+    epitopes_folder_path = "{}/{}/epitopes.tsv".format(folder_path.replace("Results_netMHCpan/","").replace("_immunomodulate","").replace("_generated",""),folder_name)
+    epitopes_df = pd.read_csv(epitopes_folder_path, sep="\t")
+    epitopes_df.rename(columns={"Epitopes":"Icore"},inplace=True)
 
     weak_binders_count = weak_binders.groupby('MHC', as_index=False)[["Icore"]].size()
     weak_binders_count["Binder_type"] = "Weak"
+    weak_binders_epitopes = weak_binders.groupby('MHC', as_index=False)[["Icore"]].agg(lambda srs: Counter(list(srs)).most_common(1)[0][0])
+    weak_binders_df = pd.concat([weak_binders_epitopes,weak_binders_count.drop("MHC",axis=1)],axis=1)
+    weak_binders_df["Icore"] = weak_binders_df["Icore"].str.replace("X","")
+    weak_binders_df.drop_duplicates(["Icore"],inplace=True)
+
+    weak_binders_df=weak_binders_df.merge(epitopes_df,on="Icore",how="left")
 
     strong_binders_count = strong_binders.groupby('MHC', as_index=False)[["Icore"]].size()
     strong_binders_count["Binder_type"] = "Strong"
+    strong_binders_epitopes = strong_binders.groupby('MHC', as_index=False)[["Icore"]].agg(lambda srs: Counter(list(srs)).most_common(1)[0][0])
+    strong_binders_df = pd.concat([strong_binders_epitopes,strong_binders_count.drop("MHC",axis=1)],axis=1)
+    strong_binders_df["Icore"] = strong_binders_df["Icore"].str.replace("X","")
+    strong_binders_df.drop_duplicates(["Icore"],inplace=True)
+
+    strong_binders_df=strong_binders_df.merge(epitopes_df,on="Icore",how="left")
+
     binders_df = pd.concat([weak_binders_count,strong_binders_count],axis=0)
     binders_df["size"] = ((binders_df["size"]/n_unique)*100).round(2)
+
+    epitopes_binders = pd.concat([weak_binders_df,strong_binders_df],axis=0)
+    epitopes_binders["Icore"] = epitopes_binders["Icore"].str.ljust(11, fillchar='#')
+
+    epitopes_binders = epitopes_binders.dropna(subset=["Negative_score","Positive_score"],axis=0)
+    epitopes_padded = epitopes_binders["Icore"].tolist()
+
+    positive_sequences = epitopes_binders[epitopes_binders["Positive_score"] >= 0.6]
+    positive_sequences_list = positive_sequences["Icore"].tolist()
+
+    negative_sequences = epitopes_binders[epitopes_binders["Negative_score"] >= 0.6]
+    negative_sequences_list = negative_sequences["Icore"].tolist()
     #binders_df = binders_df.sort_values(by=['size'],ascending=False) #Highlight: Activate if want to order by counts
-    print(binders_df)
     # nrows_empty = len(binders_df["size"])
     # size_with_empty_rows = [0]*nrows_empty*2
     # size_with_empty_rows[::2] = binders_df["size"].values.tolist()
@@ -125,7 +163,11 @@ def read_dataframe(folder_path):
     plt.xticks(fontsize=20)
     plt.title("MHC-binding count from generated epitopes",fontsize=20)
     plt.legend(bbox_to_anchor=(1.05, 0.5), loc='upper right',fontsize=20)
-    plt.savefig("{}/barplot.png".format(folder_path),dpi=600)
+    plt.savefig("{}/barplot_{}.png".format(folder_path,folder_name),dpi=600)
+
+    VegvisirPlots.plot_logos(epitopes_padded,"{}".format(folder_path),"_binders_MHC_all")
+    VegvisirPlots.plot_logos(positive_sequences_list,"{}".format(folder_path),"_binders_MHC_positives")
+    VegvisirPlots.plot_logos(negative_sequences_list,"{}".format(folder_path),"_binders_MHC_negatives")
 
 
 
@@ -134,8 +176,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="NetMHCpan process results args",formatter_class=RawTextHelpFormatter)
 
-    #folder_path = "/home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/PLOTS_Vegvisir_viral_dataset9_2023_09_12_15h33min42s969996ms_60epochs_supervised_Icore_onehot_TESTING"
-    folder_path = "/home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/PLOTS_Vegvisir_viral_dataset9_2023_09_19_11h40min14s189602ms_80epochs_supervised_Icore_blosum_TESTING"
+    #folder_path = "/home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/PLOTS_Vegvisir_viral_dataset9_2023_11_03_22h28min14s922997ms_60epochs_supervised_Icore_blosum_TESTING_immunomodulate"
+    folder_path = "/home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/PLOTS_Vegvisir_viral_dataset9_2023_11_03_22h28min14s922997ms_60epochs_supervised_Icore_blosum_TESTING_generated"
+    #folder_name = "Immunomodulated"
+    folder_name = "Generated"
     parser.add_argument('-folder-path',"--folder-path", type=str, nargs='?', default="", help='path to results')
+    parser.add_argument('-folder-name',"--folder-name", type=str, nargs='?', default="Generated", help='path to results')
     args = parser.parse_args()
-    read_dataframe(args.folder_path)
+    #read_dataframe(args.folder_path)    #TODO: CAHNGE
+    read_dataframe(folder_path,folder_name)

@@ -148,6 +148,7 @@ def run(dataset_info,results_dir,args):
         #VegvisirTrain.train_model(dataset_info,additional_info,args) #ordinary train,val,test split without k-fold cross validation.The validation set changes every time
         #VegvisirTrainSVI.kfold_crossvalidation(dataset_info,additional_info,args)
 
+        assert args.num_synthetic_peptides < 10000, "Please generate less than 10000 peptides, otherwise the computations might not be posible or they might take too long"
 
         if args.k_folds <= 1:
             VegvisirTrainSVI.train_model(config=None,dataset_info=dataset_info,additional_info=additional_info,args=args)

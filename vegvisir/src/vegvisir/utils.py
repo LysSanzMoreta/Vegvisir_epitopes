@@ -1417,7 +1417,7 @@ def generate_mask(max_len, length):
     seq_mask = np.array([True] * (length) + [False] * (max_len - length))
     return seq_mask[None, :]
 
-def clean_generated_sequences(seq_int,seq_mask,zero_character,min_len,max_len):
+def clean_generated_sequences(seq_int,seq_mask,zero_character,min_len,max_len,keep_truncated=False):
     """"""
     seq_mask = np.array(seq_mask)
     seq_int = np.array(seq_int)
@@ -1431,27 +1431,24 @@ def clean_generated_sequences(seq_int,seq_mask,zero_character,min_len,max_len):
                 seq_int[idx[0]:] = zero_character
                 seq_mask[idx[0]:] = False
                 return (seq_int[None,:],seq_mask[None,:])
-            else: #remove the gaps and join the remainindings to max len keep if it fits the minimu length criteria
-                seq_int_list = seq_int.tolist()
-                idx_list = idx[0].tolist()
-                idx_list = idx_list if isinstance(idx_list,list) else [idx_list]
-                for i in idx_list:
-                    print(idx)
-                    del seq_int_list[i]
-                seq_int_list = seq_int_list + [0]*(max_len-len(seq_int_list))
-                print(seq_int_list)
-                seq_int = np.array(seq_int_list).astype(int)
-                seq_mask = seq_int.astype(bool)
-                if np.sum(seq_mask) >= min_len:
-                    return (seq_int[None,:],seq_mask[None,:])
+            else: #remove the intermediate gaps and join the remainindings to max len keep if it fits the minimum length criteria
+                if keep_truncated:
+                    idx_mask = np.ones_like(seq_int).astype(bool)
+                    idx_mask[idx] = False
+                    seq_int_masked = seq_int[idx_mask] #select only no gaps
+                    seq_int_list = seq_int_masked.tolist() + [0]*(max_len-len(seq_int_masked))
+                    seq_int = np.array(seq_int_list).astype(int)
+                    seq_mask = seq_int.astype(bool)
+                    if np.sum(seq_mask) >= min_len:
+                        return (seq_int[None,:],seq_mask[None,:])
 
     else:
         return (seq_int[None,:],seq_mask[None,:])
 
-def numpy_to_fasta(aa_sequences,binary_pedictions,probabilities,results_dir,title_name=""):
+def numpy_to_fasta(aa_sequences,binary_pedictions,probabilities,results_dir,folder_name="",title_name=""):
     print("Saving generated sequences to fasta & text files ")
-    f1 = open("{}/generated_epitopes{}.fasta".format(results_dir,title_name), "a+")
-    f2 = open("{}/generated_epitopes{}.txt".format(results_dir,title_name), "a+")
+    f1 = open("{}/epitopes{}.fasta".format(results_dir,title_name), "a+")
+    f2 = open("{}/epitopes{}.txt".format(results_dir,title_name), "a+")
 
     headers_list  = list(map(lambda idx,label,prob: ">Epitope_{}_class_{}_probability_{}\n".format(idx,label,prob), list(range(aa_sequences.shape[0])),binary_pedictions.tolist(),probabilities.tolist()))
 
@@ -1467,14 +1464,12 @@ def numpy_to_fasta(aa_sequences,binary_pedictions,probabilities,results_dir,titl
 
     df = pd.DataFrame({"Epitopes":sequences_list,"Negative_score":probabilities[:,0].tolist(),"Positive_score":probabilities[:,1].tolist()})
     df["Epitopes"] = df["Epitopes"].str.replace("\n","")
-    df.to_csv("{}/generated_epitopes{}.tsv".format(results_dir,title_name),sep="\t",index=False)
+    df.to_csv("{}/epitopes.tsv".format(results_dir),sep="\t",index=False)
 
-
-
+    VegvisirPlots.plot_generated_labels_histogram(df,results_dir)
     VegvisirPlots.plot_logos(sequences_list,results_dir,"ALL_generated")
 
     positive_sequences = df[df["Positive_score"] >= 0.6]
-
     positive_sequences_list = positive_sequences["Epitopes"].tolist()
 
     if positive_sequences_list:

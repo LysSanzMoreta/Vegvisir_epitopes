@@ -179,6 +179,9 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
         observed_labels[~confidence_mask] = 0 #fake class 0 for unobserved data,will be ignored
         target_accuracy = 100 * ((true_labels_arr[confidence_mask] == binary_predictions_arr[confidence_mask]).sum() / true_labels_arr[confidence_mask].shape[0])
 
+
+
+
     true_onehot = np.zeros((true_labels_arr.shape[0],args.num_obs_classes))
     true_onehot[np.arange(0,true_labels_arr.shape[0]),observed_labels.astype(int)] = 1
     predictions_dict = {"data_int":data_int_arr,
@@ -198,7 +201,7 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
                         "decoder_final_hidden_state": decoder_final_hidden_arr,
                         "z_locs": z_locs_arr,
                         "z_scales":z_scales_arr,
-                        "latent_z": latent_arr
+                        "latent_z": latent_arr,
                         }
     return train_loss,target_accuracy,predictions_dict,latent_arr, reconstruction_accuracies_dict
 def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
@@ -377,7 +380,8 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
     probs_predictions = []
     z_locs = []
     z_scales = []
-    latent_spaces = []
+    latent_space_samples = []
+    latent_space_observation = []
     reconstruction_accuracies = []
     attention_weights = []
     encoder_hidden_states = []
@@ -407,6 +411,7 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             batch_data = {"blosum": batch_data_blosum, "int": batch_data_int, "onehot": batch_data_onehot,
                           "norm": batch_data_blosum_norm,
                           "positional_mask":batch_positional_mask}
+            batch_size = batch_data_int.shape[0]
             data_int.append(batch_data_int.detach().cpu().numpy())
             data_masks.append(batch_mask.detach().cpu().numpy())
 
@@ -441,9 +446,13 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             decoder_final_hidden = decoder_final_hidden.mean(dim=1)
 
             if sampling_output["latent_z"].ndim == 4:
-                latent_space = sampling_output["latent_z"].squeeze(1).detach().permute(1,0,2)[:,0,:].detach().cpu()
+                latent_spaces = sampling_output["latent_z"].squeeze(1).permute(1,0,2).detach().cpu()
+                latent_space_obs = latent_spaces[:,0,:] #retrieve a single z observation
             else:
-                latent_space = sampling_output["latent_z"].detach().permute(1,0,2)[:,0,:].detach().cpu()
+                latent_spaces = sampling_output["latent_z"].permute(1,0,2).detach().cpu()
+                latent_space_obs = latent_spaces[:,0,:] #retrieve a single z observation
+
+
             true_labels_batch = batch_data["blosum"][:, 0, 0, 0].detach().cpu()
             identifiers = batch_data["blosum"][:, 0, 0, 1].detach().cpu()
             partitions = batch_data["blosum"][:, 0, 0, 2].detach().cpu()
@@ -451,9 +460,18 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             immunodominace_score = batch_data["blosum"][:, 0, 0, 4].detach().cpu()
             confidence_score = batch_data["blosum"][:, 0, 0, 5].detach().cpu()
 
+            #Highlight: Attach the extra information to all the samples from Z
 
-            latent_space = torch.column_stack(
-                [true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score, latent_space])
+            true_labels_batch_expanded = true_labels_batch[:,None].expand(batch_size,args.num_samples)
+            identifiers_expanded = identifiers[:,None].expand(batch_size,args.num_samples)
+            partitions_expanded = partitions[:,None].expand(batch_size,args.num_samples)
+            immunodominace_score_expanded =  immunodominace_score[:,None].expand(batch_size,args.num_samples)
+            confidence_score_expanded =  confidence_score[:,None].expand(batch_size,args.num_samples)
+            latent_spaces = torch.concatenate([true_labels_batch_expanded[:,:,None],identifiers_expanded[:,:,None],partitions_expanded[:,:,None], immunodominace_score_expanded[:,:,None], confidence_score_expanded[:,:,None],latent_spaces],axis=2)
+            latent_space_samples.append(latent_spaces)
+            #Highlight: Single latent space observation
+            latent_space_obs = torch.column_stack([true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score, latent_space_obs])
+
             encoder_final_hidden = torch.column_stack(
                 [true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score,
                  encoder_final_hidden])
@@ -468,7 +486,7 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             equal_aa = torch.Tensor((true_seqs[:,None] == reconstructed_sequences) * mask_seq[:,None])
             reconstruction_accuracy = (equal_aa.sum(dim=2)) / mask_seq.sum(dim=1)[:,None] #Reconstruction accuracy of each sample against the true sequence
             reconstruction_accuracies.append(reconstruction_accuracy.detach().cpu().numpy())
-            latent_spaces.append(latent_space.detach().cpu().numpy())
+            latent_space_observation.append(latent_space_obs.detach().cpu().numpy())
             true_labels.append(true_labels_batch.detach().cpu().numpy())
             confidence_scores.append(confidence_score.detach().cpu().numpy())
             training_asignation.append(training.detach().cpu().numpy())
@@ -476,6 +494,7 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             logits_predictions.append(logits_class_prediction.detach().cpu().numpy())
             probs_predictions.append(probs_class_prediction.detach().cpu().numpy())
             #sample_loss += loss
+
     sample_loss /= len(data_loader)
     data_int_arr = np.concatenate(data_int,axis=0)
     data_mask_arr = np.concatenate(data_masks,axis=0)
@@ -493,7 +512,10 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
     encoder_final_hidden_arr = np.concatenate(encoder_final_hidden_states,axis=0)
     decoder_final_hidden_arr = np.concatenate(decoder_final_hidden_states,axis=0)
 
-    latent_arr = np.concatenate(latent_spaces, axis=0)
+    latent_observation_arr = np.concatenate(latent_space_observation, axis=0)
+    latent_spaces_samples_arr = np.concatenate(latent_space_samples, axis=0)
+
+
     z_locs_arr = np.concatenate(z_locs, axis=0)
     z_scales_arr = np.concatenate(z_scales, axis=0)
 
@@ -526,143 +548,231 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
                         "decoder_final_hidden_state": decoder_final_hidden_arr,
                         "z_locs":z_locs_arr,
                         "z_scales":z_scales_arr,
-                        "latent_z":latent_arr
+                        "latent_z":latent_observation_arr, #single instance
+                        "latent_samples":latent_spaces_samples_arr #all samples from Z
                         }
-    return sample_loss, target_accuracy, predictions_dict, latent_arr, reconstruction_accuracies_dict
-def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_info,additional_info,train_predictive_samples_dict):
+    return sample_loss, target_accuracy, predictions_dict, latent_observation_arr, reconstruction_accuracies_dict
+def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_info, additional_info,
+                  train_predictive_samples_dict):
     Vegvisir.train(False)
     Vegvisir.eval()
+    #Highlight: Determine how to split the calculation
     num_synthetic_peptides = args.num_synthetic_peptides
-    assert num_synthetic_peptides < 10000, "Please generate less than 10000 peptides, otherwise the computations might not be posible"
+    batch_size = num_synthetic_peptides if num_synthetic_peptides < 100 else 100
+    split_size = int(num_synthetic_peptides / batch_size) if not batch_size > num_synthetic_peptides else 1
+    batch_indexes = [0,num_synthetic_peptides] if split_size == 1 else list(range(0, num_synthetic_peptides, split_size))
+
     argmax = args.generate_argmax
     maxlen_generated = model_load.seq_max_len
+    #Highlight: Initialize parameters
+    if len(dataset_info.unique_lens) > 1:
+        blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(dataset_info.corrected_aa_types,
+                                                                                   args.subs_matrix,
+                                                                                   zero_characters=["#"],
+                                                                                   include_zero_characters=True)
+        zero_character = 0
+    else:
+        blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(dataset_info.corrected_aa_types,
+                                                                                   args.subs_matrix,
+                                                                                   zero_characters=[],
+                                                                                   include_zero_characters=False)
+        zero_character = None
+    custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
+    aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
+    train_dataset = torch.concatenate([batch_data["batch_data_int"][:, 1].squeeze(1) for batch_data in data_loader],dim=0).detach().cpu().numpy()
+    # train_raw = np.vectorize(aminoacids_dict_reversed.get)(train_dataset)
+    # VegvisirPlots.plot_logos(list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), train_raw.tolist())), additional_info.results_dir, "_TRAIN_raw")
+
+    generated_out_dict= defaultdict(lambda: list())
     with torch.no_grad():  # do not update parameters with the generative data
-        #Highlight: Initalize fake dummy data (not used)
-        batch_data = {"blosum":torch.randint(low=-7,high=7,size=(num_synthetic_peptides,2,maxlen_generated,model_load.aa_types)).double().to(device=args.device).detach(),
-                      "onehot":torch.randint(low=0,high=1,size=(num_synthetic_peptides,2,maxlen_generated,model_load.aa_types)).double().to(device=args.device).detach(),
-                      "norm": torch.randn(size=(num_synthetic_peptides,2,maxlen_generated,model_load.aa_types)).double().to(device=args.device).detach(),
-                      "int": torch.randint(low=0,high=21,size=(num_synthetic_peptides,2,maxlen_generated,model_load.aa_types)).double().to(device=args.device).detach(),
-                      "positional_mask": torch.ones((num_synthetic_peptides,maxlen_generated)).bool().to(device=args.device).detach(),
-                      }
-        if len(dataset_info.unique_lens) > 1:
-            lenghts_sample = np.random.choice([8,9,10,11],(num_synthetic_peptides,),replace=True,p=[0.1,0.7,0.1,0.1]).tolist()
-            blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(dataset_info.corrected_aa_types,
-                                                                                       args.subs_matrix,
-                                                                                       zero_characters=["#"],
-                                                                                       include_zero_characters=True)
-            zero_character = 0
-        else: #TODO:
-            lenghts_sample = np.ones((num_synthetic_peptides,))*maxlen_generated
-            lenghts_sample = lenghts_sample.astype(int)
-            blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(dataset_info.corrected_aa_types,
-                                                                                       args.subs_matrix,
-                                                                                       zero_characters=[],
-                                                                                       include_zero_characters=False)
-            zero_character = None
-        batch_mask = list(map(lambda length: VegvisirUtils.generate_mask(maxlen_generated,length),lenghts_sample))
-        batch_mask = torch.from_numpy(np.concatenate(batch_mask,axis=0))
-
-        batch_mask_blosum = np.broadcast_to(batch_mask[:, None, :, None], (num_synthetic_peptides, 2, maxlen_generated,model_load.aa_types)).copy()
-        batch_mask_blosum = torch.from_numpy(batch_mask_blosum).to(args.device)
-
-        h_0_GUIDE = [param for key,param in guide.named_parameters() if key == "h_0_GUIDE"][0]
-
-
-        guide_estimates = {
-                           "rnn_hidden":h_0_GUIDE.expand(1 * 2, num_synthetic_peptides,args.hidden_dim*2).contiguous(),
-                           #"rnn_hidden":None,
-                           "rnn_final_hidden":torch.ones((num_synthetic_peptides, args.hidden_dim*2)).to(device=args.device),
-                           "rnn_final_hidden_bidirectional": h_0_GUIDE.expand(1 * 2, num_synthetic_peptides,args.hidden_dim*2).contiguous(),#Highlight: Not used
-                           "rnn_hidden_states_bidirectional" : torch.ones((num_synthetic_peptides, 2, dataset_info.seq_max_len, args.hidden_dim*2)).to(device=args.device),
-                           "rnn_hidden_states" : torch.ones((num_synthetic_peptides, maxlen_generated, args.hidden_dim*2)).to(device=args.device),
-                           "latent_z": train_predictive_samples_dict["latent_z"],
-                           "z_scales": train_predictive_samples_dict["z_scales"],
-                           "generate":True
-                           }
-        #guide_estimates = None
-
-        #sampling_output = Vegvisir.sample(batch_data, batch_mask_blosum, epoch=0, guide_estimates=guide_estimates,sample=True,argmax=argmax)
-        sampling_output = Predictive(Vegvisir.model, guide=None, num_samples=args.generate_num_samples, return_sites=(),parallel=False)(batch_data, batch_mask_blosum, epoch=0, guide_estimates=guide_estimates,sample=True)
-
-        custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
-        aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
-
-        #Highlight: majority vote? most likely?
-        if argmax:
-            sequences_logits = sampling_output["sequences_logits"].detach().cpu().permute(1,0,2,3)
-            generated_sequences_int = torch.argmax(sequences_logits,dim=-1)
-            generated_sequences_int = torch.mode(generated_sequences_int,dim=1).values.numpy()
-        else:
-            generated_sequences_int = VegvisirUtils.squeeze_tensor(3, sampling_output["sequences"]).detach().cpu().permute(1, 0, 2)
-            #TODO: Calculate Mutual Information across samples ... Perhaps it does not make sense, still points to the mode
-            #generated_sequences_int = list(map(lambda seq: VegvisirUtils.joint_sample_seq(seq,dataset_info.corrected_aa_types),torch.split(generated_sequences_int,1,dim=0)))
-            generated_sequences_int = torch.mode(generated_sequences_int,dim=1).values.numpy()
-
-
-        #Highlight: Plot before removing duplicates
-        generated_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(generated_sequences_int)
-
-        if sampling_output["predictions"].shape == (args.num_samples, num_synthetic_peptides):
-            binary_predictions = sampling_output["predictions"].detach().cpu().permute(1, 0).numpy()
-        else:
-            binary_predictions =VegvisirUtils.squeeze_tensor(2, sampling_output["predictions"].squeeze(1)).detach().cpu().permute(1, 0).numpy()
-        binary_mode = stats.mode(binary_predictions, axis=1, keepdims=True).mode.squeeze(-1)
-        binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1,arr=binary_predictions.astype("int64"))
-        binary_frequencies = binary_frequencies / args.generate_num_samples
-
-        VegvisirUtils.numpy_to_fasta(generated_sequences_raw, binary_mode, binary_frequencies,"{}/Generated".format(additional_info.results_dir),"_NOT_FILTERED")
-
-        # Highlight: Remove inner duplicates (before discarding the ones that have # in strange places)
-        unique_sequences, unique_idx = np.unique(generated_sequences_int, axis=0, return_index=True)
-        # Highlight: Remove identical sequences to the training dataset
-        train_dataset = torch.concatenate([batch_data["batch_data_int"][:, 1].squeeze(1) for batch_data in data_loader],dim=0).detach().cpu().numpy()
-        # train_raw = np.vectorize(aminoacids_dict_reversed.get)(train_dataset)
-        # VegvisirPlots.plot_logos(list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), train_raw.tolist())), additional_info.results_dir, "_TRAIN_raw")
-
-        identical_to_train_bool = np.any(np.array(generated_sequences_int[:, None] == train_dataset[None, :]).all((-1)) == True, axis=0)
-        identical_to_train_idx, = np.where(identical_to_train_bool == True)
-        identical_to_train_idx = np.invert(np.array(np.arange(num_synthetic_peptides)[..., None] == identical_to_train_idx).any(-1))
-
-        #Highlight: Remove duplicates
-        unique_idx = np.array(np.arange(num_synthetic_peptides)[..., None] == unique_idx).any(-1)
-
-        # Highlight: Merge the indicators of the NON duplicates (so that we can discard the duplicates, keep the unique ones)
-        unique_idx = unique_idx * identical_to_train_idx
-
-        #Highlight: Remove the sequences that have a gap in positions < 8
-        if zero_character is not None:
-            clean_results = list(map(lambda seq_int,seq_mask: VegvisirUtils.clean_generated_sequences(seq_int,seq_mask,zero_character,min_len=8,max_len = maxlen_generated), generated_sequences_int.tolist(),batch_mask.numpy().tolist()))
-            discarded_sequences =  list(map(lambda v,i: i if v is None else None, clean_results,list(range(len(clean_results)))))
-            discarded_sequences =  np.array(list(filter(lambda i: i is not None, discarded_sequences)))
-            clean_results = list(filter(lambda v: v is not None, clean_results))
-
-            clean_results = list(zip(*clean_results))
-            #clean_generated_sequences = clean_results[0]
-            if clean_results[1] is not None:
-                clean_generated_masks = clean_results[1]
-                #generated_sequences_int = np.concatenate(clean_generated_sequences,axis=0)
-                generated_sequences_mask = np.concatenate(clean_generated_masks,axis=0) #contains the truncated masks
-
-                keep_idx = np.invert((np.arange(num_synthetic_peptides)[..., None] == discarded_sequences).any(-1))
-                batch_mask = batch_mask.numpy()
-                batch_mask[keep_idx] = generated_sequences_mask
+        for i,bi in enumerate(batch_indexes):
+            print("Batch {} ---------------------------".format(i))
+            start = bi
+            if i+1 >= len(batch_indexes):
+                pass
             else:
-                keep_idx =  np.ones(num_synthetic_peptides).astype(bool)
-
-        else:
-            generated_sequences_mask = np.ones_like(generated_sequences_int).astype(bool)
-            #discarded_sequences = None
-            keep_idx = np.ones(num_synthetic_peptides).astype(bool)
-
-    #Update the indexes of the sequence to keep
-    keep_idx = keep_idx * unique_idx
-
-    generated_sequences_int = generated_sequences_int[keep_idx]
-    batch_mask = generated_sequences_mask = batch_mask[keep_idx]
+                end = batch_indexes[i+1]
+                num_synthetic_peptides_batch = end - start
+                # #Highlight: Initalize fake dummy data (not atually used)
+                batch_data = {"blosum": torch.randint(low=-7, high=7, size=(num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).double().to(device=args.device).detach(),
+                              "onehot": torch.randint(low=0, high=1, size=(num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).double().to(device=args.device).detach(),
+                              "norm": torch.randn(size=(num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).double().to(device=args.device).detach(),
+                              "int": torch.randint(low=0, high=21, size=(num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).double().to(device=args.device).detach(),
+                              "positional_mask": torch.ones((num_synthetic_peptides_batch, maxlen_generated)).bool().to(device=args.device).detach(),
+                              }
 
 
-    generated_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(generated_sequences_int)
-    generated_sequences_blosum = np.vectorize(blosum_array_dict.get, signature='()->(n)')(generated_sequences_int)
+                h_0_GUIDE = [param for key, param in guide.named_parameters() if key == "h_0_GUIDE"][0]
+                for idx_z in range(args.num_samples):
+                    if len(dataset_info.unique_lens) > 1:
+                        lenghts_sample = np.random.choice([8, 9, 10, 11], (num_synthetic_peptides_batch,), replace=True,p=[0.1, 0.7, 0.1, 0.1]).tolist()
+                    else:  # TODO:
+                        lenghts_sample = np.ones((num_synthetic_peptides_batch,)) * maxlen_generated
+                        lenghts_sample = lenghts_sample.astype(int)
+
+                    batch_mask = list(
+                        map(lambda length: VegvisirUtils.generate_mask(maxlen_generated, length), lenghts_sample))
+                    batch_mask = torch.from_numpy(np.concatenate(batch_mask, axis=0))
+
+                    batch_mask_blosum = np.broadcast_to(batch_mask[:, None, :, None], (
+                    num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).copy()
+                    batch_mask_blosum = torch.from_numpy(batch_mask_blosum).to(args.device)
+                    guide_estimates = {
+                        "rnn_hidden": h_0_GUIDE.expand(1 * 2, num_synthetic_peptides_batch, args.hidden_dim * 2).contiguous(),
+                        # "rnn_hidden":None,
+                        "rnn_final_hidden": torch.ones((num_synthetic_peptides_batch, args.hidden_dim * 2)).to(device=args.device),
+                        "rnn_final_hidden_bidirectional": h_0_GUIDE.expand(1 * 2, num_synthetic_peptides_batch,args.hidden_dim * 2).contiguous(),  # Highlight: Not used
+                        "rnn_hidden_states_bidirectional": torch.ones((num_synthetic_peptides_batch, 2, dataset_info.seq_max_len, args.hidden_dim * 2)).to(device=args.device),
+                        "rnn_hidden_states": torch.ones((num_synthetic_peptides_batch, maxlen_generated, args.hidden_dim * 2)).to(device=args.device),
+                        "latent_z": train_predictive_samples_dict["latent_samples"][:,idx_z],
+                        "z_scales": train_predictive_samples_dict["z_scales"],
+                        "generate": True
+                    }
+                    # guide_estimates = None
+
+                    # sampling_output = Vegvisir.sample(batch_data, batch_mask_blosum, epoch=0, guide_estimates=guide_estimates,sample=True,argmax=argmax)
+                    sampling_output = Predictive(Vegvisir.model, guide=None, num_samples=args.generate_num_samples, return_sites=(),parallel=False)(batch_data, batch_mask_blosum, epoch=0,guide_estimates=guide_estimates, sample=True)
+                    # Highlight: majority vote? most likely?
+                    if argmax:
+                        sequences_logits = sampling_output["sequences_logits"].detach().cpu().permute(1, 0, 2, 3)
+                        generated_sequences_int = torch.argmax(sequences_logits, dim=-1)
+                        generated_sequences_int = torch.mode(generated_sequences_int, dim=1).values.numpy()
+                    else:
+                        generated_sequences_int = VegvisirUtils.squeeze_tensor(3,sampling_output["sequences"]).detach().cpu().permute(1, 0, 2)
+                        # Tried to: Calculate Mutual Information across samples ... Perhaps it does not make sense, still points to the mode
+                        # generated_sequences_int = list(map(lambda seq: VegvisirUtils.joint_sample_seq(seq,dataset_info.corrected_aa_types),torch.split(generated_sequences_int,1,dim=0)))
+                        generated_sequences_int = torch.mode(generated_sequences_int, dim=1).values.numpy()
+
+                    # Highlight: Plot before removing duplicates
+                    generated_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(generated_sequences_int)
+
+                    if sampling_output["predictions"].shape == (args.num_samples, num_synthetic_peptides_batch):
+                        binary_predictions = sampling_output["predictions"].detach().cpu().permute(1, 0).numpy()
+                    else:
+                        binary_predictions = VegvisirUtils.squeeze_tensor(2, sampling_output["predictions"].squeeze(1)).detach().cpu().permute(1, 0).numpy()
+                    binary_mode = stats.mode(binary_predictions, axis=1, keepdims=True).mode.squeeze(-1)
+                    binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1,arr=binary_predictions.astype("int64"))
+                    binary_frequencies = binary_frequencies / args.generate_num_samples
+
+                    #VegvisirUtils.numpy_to_fasta(generated_sequences_raw, binary_mode, binary_frequencies,"{}/Generated".format(additional_info.results_dir), "_NOT_FILTERED")
+
+                    # Highlight: Remove inner duplicates (before discarding the ones that have # in strange places)
+                    unique_sequences, unique_idx = np.unique(generated_sequences_int, axis=0, return_index=True)
+                    # Highlight: Remove identical sequences to the training dataset
+                    identical_to_train_bool = np.any(np.array(generated_sequences_int[:, None] == train_dataset[None, :]).all((-1)) == True, axis=0)
+                    identical_to_train_idx, = np.where(identical_to_train_bool == True)
+                    identical_to_train_idx = np.invert(np.array(np.arange(num_synthetic_peptides_batch)[..., None] == identical_to_train_idx).any(-1))
+                    # Highlight: Remove duplicates
+                    unique_idx = np.array(np.arange(num_synthetic_peptides_batch)[..., None] == unique_idx).any(-1)
+                    # Highlight: Merge the indicators of the NON duplicates (so that we can discard the duplicates, keep the unique ones)
+                    unique_idx = unique_idx * identical_to_train_idx
+                    # Highlight: Deal with gaps i.e Remove the sequences that have a gap in positions < 8
+                    if zero_character is not None:
+                        clean_results = list(map(lambda seq_int, seq_mask: VegvisirUtils.clean_generated_sequences(seq_int,
+                                                                                                                   seq_mask,
+                                                                                                                   zero_character,
+                                                                                                                  min_len=8,
+                                                                                                                  max_len=maxlen_generated),generated_sequences_int.tolist(), batch_mask.numpy().tolist()))
+                        discarded_sequences = list(map(lambda v, i: i if v is None else None, clean_results, list(range(len(clean_results)))))
+                        discarded_sequences = np.array(list(filter(lambda i: i is not None, discarded_sequences)))
+                        clean_results = list(filter(lambda v: v is not None, clean_results))
+
+                        clean_results = list(zip(*clean_results))
+                        # clean_generated_sequences = clean_results[0]
+                        if len(clean_results) > 1:
+                            clean_generated_masks = clean_results[1]
+                            # generated_sequences_int = np.concatenate(clean_generated_sequences,axis=0)
+                            generated_sequences_mask = np.concatenate(clean_generated_masks, axis=0)  # contains the truncated masks
+
+                            keep_idx = np.invert((np.arange(num_synthetic_peptides_batch)[..., None] == discarded_sequences).any(-1))
+                            batch_mask = batch_mask.numpy()
+                            batch_mask[keep_idx] = generated_sequences_mask
+                        else:
+                            keep_idx = np.zeros(num_synthetic_peptides_batch).astype(bool)
+                            keep_idx[0] = True
+
+                    else:
+                        generated_sequences_mask = np.ones_like(generated_sequences_int).astype(bool)
+                        # discarded_sequences = None
+                        keep_idx = np.ones(num_synthetic_peptides_batch).astype(bool)
+
+                    # Update the indexes of the sequence to keep
+                    keep_idx = keep_idx * unique_idx
+                    if np.sum(keep_idx) != 0:
+                        generated_sequences_int = generated_sequences_int[keep_idx]
+                        batch_mask = generated_sequences_mask = batch_mask[keep_idx]
+
+                        generated_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(generated_sequences_int)
+                        generated_sequences_blosum = np.vectorize(blosum_array_dict.get, signature='()->(n)')(generated_sequences_int)
+
+
+                        n_seqs_clean = generated_sequences_int.shape[0]
+                        class_logits = sampling_output["class_logits"].detach().cpu().permute(1, 0, 2)
+                        class_probabilities = torch.nn.Sigmoid()(class_logits)
+
+                        if sampling_output["predictions"].shape == (args.num_samples, num_synthetic_peptides_batch):
+                            binary_predictions = sampling_output["predictions"].detach().cpu().permute(1, 0).numpy()[keep_idx]
+                        else:
+                            binary_predictions = sampling_output["predictions"].squeeze(1).detach().cpu().permute(1, 0).numpy()[keep_idx]
+
+                        confidence_score = torch.zeros(n_seqs_clean).detach().cpu()
+                        # Highlight: Label the generated sequences as unobserved
+                        true_labels = np.ones(n_seqs_clean) * 2
+                        true_onehot = np.zeros((n_seqs_clean, 3))
+                        true_onehot[np.arange(0, n_seqs_clean), true_labels.astype(int)] = 1
+
+                        # Highlight: Save sequences
+                        generated_out_dict["data_int"].append(generated_sequences_int)
+                        generated_out_dict["data_blosum"].append(generated_sequences_blosum)
+                        generated_out_dict["data_raw"].append(generated_sequences_raw)
+                        generated_out_dict["data_mask"].append(generated_sequences_mask)
+                        generated_out_dict["binary"].append(binary_predictions)
+                        generated_out_dict["logits"].append(class_logits.numpy()[keep_idx])
+                        generated_out_dict["probs"].append(class_probabilities[keep_idx])
+                        generated_out_dict["true"].append(true_labels)
+                        generated_out_dict["true_onehot"].append(true_onehot)
+                        generated_out_dict["confidence_scores"].append(confidence_score.detach().cpu().numpy())
+                        generated_out_dict["attention_weights"].append(sampling_output["attn_weights"].permute(1, 0, 2, 3).detach().cpu().numpy()[keep_idx])
+                        generated_out_dict["encoder_hidden_states"].append(sampling_output["encoder_hidden_states"].permute(1, 0, 2, 3, 4).detach().cpu().numpy()[keep_idx])
+                        generated_out_dict["decoder_hidden_states"].append(sampling_output["decoder_hidden_states"].permute(1, 0, 2, 3, 4).detach().cpu().numpy()[keep_idx])
+                        generated_out_dict["encoder_final_hidden_state"].append(sampling_output["encoder_final_hidden"].permute(1, 0, 2).detach().cpu().numpy()[keep_idx])
+                        generated_out_dict["decoder_final_hidden_state"].append(sampling_output["decoder_final_hidden"].permute(1, 0, 2).detach().cpu().numpy()[keep_idx])
+
+
+                        latent_space = sampling_output["latent_z"].permute(1, 0, 2).detach().cpu()[keep_idx, 0]
+                        # Highlight: fake infomation to maintain same functions
+                        identifiers = torch.ones(n_seqs_clean).detach().cpu()
+                        partitions = torch.ones(n_seqs_clean).detach().cpu()
+                        immunodominace_score = torch.zeros(n_seqs_clean).detach().cpu()
+                        latent_space = torch.column_stack([torch.from_numpy(true_labels).detach().cpu(), identifiers, partitions, immunodominace_score, confidence_score,latent_space])
+                        generated_out_dict["latent_space"].append(latent_space.numpy())
+
+
+
+    generated_out_dict = {key:np.concatenate(val,axis=0) for key,val in generated_out_dict.items()}
+
+    #Highlight: Once again, remove duplicates among all batches
+    generated_sequences_int = generated_out_dict["data_int"]
+
+    unique_sequences, unique_idx = np.unique(generated_sequences_int, axis=0, return_index=True)
+
+
+
+    generated_out_dict = {key:val[unique_idx] for key,val in generated_out_dict.items()}
+
+    generated_sequences_blosum = generated_out_dict["data_blosum"]
+    generated_sequences_mask = generated_out_dict["data_mask"]
+
+    #Highlight: Visualize Logos and save to file
+    generated_sequences_raw = generated_out_dict["data_raw"]
+    binary_predictions = generated_out_dict["binary"]
+    binary_mode = stats.mode(binary_predictions, axis=1, keepdims=True).mode.squeeze(-1)
+    binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1,
+                                             arr=binary_predictions.astype("int64"))
+    binary_frequencies = binary_frequencies / args.generate_num_samples
+
+    VegvisirUtils.numpy_to_fasta(generated_sequences_raw, binary_mode, binary_frequencies,
+                                 "{}/Generated".format(additional_info.results_dir))
 
     if generated_sequences_blosum.shape[0] < 10000:
         def handle_timeout(signum, frame):
@@ -676,209 +786,237 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_in
                                                                                            correlation_matrix=False,
                                                                                            parallel=False)
             batch_size = 100 if generated_sequences_blosum.shape[0] > 100 else generated_sequences_blosum.shape[0]
-            positional_weights = VegvisirSimilarities.importance_weight(generated_sequences_cosine_similarity, maxlen_generated, generated_sequences_mask,batch_size=batch_size, neighbours=1)
-            VegvisirPlots.plot_heatmap(positional_weights, "Cosine similarity \n positional weights","{}/Generated/Generated_epitopes_positional_weights.png".format(additional_info.results_dir))
+            positional_weights = VegvisirSimilarities.importance_weight(generated_sequences_cosine_similarity,
+                                                                        maxlen_generated, generated_sequences_mask,
+                                                                        batch_size=batch_size, neighbours=1)
+            VegvisirPlots.plot_heatmap(positional_weights, "Cosine similarity \n positional weights",
+                                       "{}/Generated/Generated_epitopes_positional_weights.png".format(
+                                           additional_info.results_dir))
         except:
             print("Could not calculate conservational positional weights. Time exceeded or some other error")
         finally:
             signal.alarm(0)
 
-    n_seqs_clean = generated_sequences_int.shape[0]
-    class_logits = sampling_output["class_logits"].detach().cpu().permute(1,0,2)
-    class_probabilities = torch.nn.Sigmoid()(class_logits)
-
-    if sampling_output["predictions"].shape == (args.num_samples,num_synthetic_peptides):
-        binary_predictions = sampling_output["predictions"].detach().cpu().permute(1,0).numpy()[keep_idx]
-    else:
-        binary_predictions = sampling_output["predictions"].squeeze(1).detach().cpu().permute(1,0).numpy()[keep_idx]
-
-    confidence_score = torch.zeros(n_seqs_clean).detach().cpu()
-    #Highlight: Label the generated sequences as unobserved
-    true_labels = np.ones(n_seqs_clean)*2
-    true_onehot = np.zeros((n_seqs_clean, 3))
-    true_onehot[np.arange(0, n_seqs_clean), true_labels.astype(int)] = 1
-
-    binary_mode = stats.mode(binary_predictions, axis=1,keepdims=True).mode.squeeze(-1)
-    binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=binary_predictions.astype("int64"))
-    binary_frequencies = binary_frequencies / args.generate_num_samples
-
-    VegvisirUtils.numpy_to_fasta(generated_sequences_raw,binary_mode,binary_frequencies,"{}/Generated".format(additional_info.results_dir))
-
-    #Highlight: Save sequences
-
-    generated_out_dict =  {"data_int":generated_sequences_int,
-                        "data_raw": generated_sequences_raw,
-                        "data_mask":generated_sequences_mask,
-                        "binary": binary_predictions,
-                        "logits": class_logits.numpy()[keep_idx],
-                        "probs": class_probabilities[keep_idx],
-                        "true":true_labels,
-                        "true_onehot": true_onehot,
-                        "confidence_scores":confidence_score.detach().cpu().numpy(),
-                        "attention_weights":sampling_output["attn_weights"].permute(1,0,2,3).detach().cpu().numpy()[keep_idx],
-                        "encoder_hidden_states": sampling_output["encoder_hidden_states"].permute(1,0,2,3,4).detach().cpu().numpy()[keep_idx],
-                        "decoder_hidden_states": sampling_output["decoder_hidden_states"].permute(1,0,2,3,4).detach().cpu().numpy()[keep_idx],
-                        "encoder_final_hidden_state":sampling_output["encoder_final_hidden"].permute(1,0,2).detach().cpu().numpy()[keep_idx],
-                        "decoder_final_hidden_state": sampling_output["decoder_final_hidden"].permute(1,0,2).detach().cpu().numpy()[keep_idx]
-                        }
+    latent_space = generated_out_dict["latent_space"]
 
 
-    latent_space = sampling_output["latent_z"].permute(1,0,2).detach().cpu()[keep_idx,0]
-    #Highlight: fake infomation to maintain same functions
-    identifiers = torch.ones(n_seqs_clean).detach().cpu()
-    partitions = torch.ones(n_seqs_clean).detach().cpu()
-    immunodominace_score = torch.zeros(n_seqs_clean).detach().cpu()
-    latent_space = torch.column_stack([torch.from_numpy(true_labels).detach().cpu(), identifiers, partitions, immunodominace_score, confidence_score, latent_space])
-
-    return generated_out_dict,latent_space.numpy()
+    return generated_out_dict, latent_space
 def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_info,additional_info,train_predictive_samples_dict):
-    """
-    1) Predicts a set of sequence's latent representations
-    2) Generates new artificial sequences based on the latent representations
-    :param svi:
-    :param Vegvisir:
-    :param guide:
-    :param data_loader: Contains the data to be immunomodulated in Pytorch's data loader
-    :param args:
-    :param model_load:
-    :param dataset_info:
-    :param additional_info:
-    :param train_predictive_samples_dict:
-    :return:
-    """
     Vegvisir.train(False)
     Vegvisir.eval()
-    num_synthetic_peptides = args.num_immunomodulate_peptides
-    assert num_synthetic_peptides < 10000, "Please generate less than 10000 immunomodulated peptides in one go (you can do several runs), otherwise the computations might not be posible"
+    #Highlight: Determine how to split the calculation
+    num_synthetic_peptides = args.num_synthetic_peptides
+    batch_size = num_synthetic_peptides if num_synthetic_peptides < 100 else 100
+    split_size = int(num_synthetic_peptides / batch_size) if not batch_size > num_synthetic_peptides else 1
+    batch_indexes = [0,num_synthetic_peptides] if split_size == 1 else list(range(0, num_synthetic_peptides, split_size))
+
+    assert num_synthetic_peptides < 10000, "Please generate less than 10000 peptides, otherwise the computations might not be posible or they might take too long"
     argmax = args.generate_argmax
     maxlen_generated = model_load.seq_max_len
-    with (torch.no_grad()):  # do not update parameters
-        #Highlight: Predict the latent representations of the sequences to immunomodulate
-        _,_, train_predictive_samples_dict,_,_ = sample_loop(svi, Vegvisir, guide, data_loader, args, model_load)
+    #Highlight: Initialize parameters
+    if len(dataset_info.unique_lens) > 1:
+        blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(dataset_info.corrected_aa_types,
+                                                                                   args.subs_matrix,
+                                                                                   zero_characters=["#"],
+                                                                                   include_zero_characters=True)
+        zero_character = 0
+    else:  # TODO:
+        blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(dataset_info.corrected_aa_types,
+                                                                                   args.subs_matrix,
+                                                                                   zero_characters=[],
+                                                                                   include_zero_characters=False)
+        zero_character = None
+    custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
+    aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
+    train_dataset = torch.concatenate([batch_data["batch_data_int"][:, 1].squeeze(1) for batch_data in data_loader],dim=0).detach().cpu().numpy()
+    # train_raw = np.vectorize(aminoacids_dict_reversed.get)(train_dataset)
+    # VegvisirPlots.plot_logos(list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), train_raw.tolist())), additional_info.results_dir, "_TRAIN_raw")
+
+    generated_out_dict= defaultdict(lambda: list())
+    with torch.no_grad():  # do not update parameters with the generative data
+        for i,bi in enumerate(batch_indexes):
+            print("Batch {} ---------------------------".format(i))
+            start = bi
+            if i+1 >= len(batch_indexes):
+                pass
+            else:
+                end = batch_indexes[i+1]
+                num_synthetic_peptides_batch = end - start
+                # Highlight: Predict the latent representations of the sequences to immunomodulate
+                _, _, train_predictive_samples_dict, _, _ = sample_loop(svi, Vegvisir, guide, data_loader, args,model_load)
+                # #Highlight: Initalize fake dummy data (not used)
+                batch_data = {"blosum": torch.randint(low=-7, high=7, size=(num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).double().to(device=args.device).detach(),
+                              "onehot": torch.randint(low=0, high=1, size=(num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).double().to(device=args.device).detach(),
+                              "norm": torch.randn(size=(num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).double().to(device=args.device).detach(),
+                              "int": torch.randint(low=0, high=21, size=(num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).double().to(device=args.device).detach(),
+                              "positional_mask": torch.ones((num_synthetic_peptides_batch, maxlen_generated)).bool().to(device=args.device).detach(),
+                              }
+                for idx_z in range(args.num_samples):
+                    if len(dataset_info.unique_lens) > 1:
+                        lenghts_sample = np.random.choice([8, 9, 10, 11], (num_synthetic_peptides_batch,), replace=True,
+                                                          p=[0.1, 0.7, 0.1, 0.1]).tolist()
+                    else:  # TODO:
+                        lenghts_sample = np.ones((num_synthetic_peptides_batch,)) * maxlen_generated
+                        lenghts_sample = lenghts_sample.astype(int)
+
+                    batch_mask = list(map(lambda length: VegvisirUtils.generate_mask(maxlen_generated, length), lenghts_sample))
+                    batch_mask = torch.from_numpy(np.concatenate(batch_mask, axis=0))
+
+                    batch_mask_blosum = np.broadcast_to(batch_mask[:, None, :, None],(num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).copy()
+                    batch_mask_blosum = torch.from_numpy(batch_mask_blosum).to(args.device)
+
+                    h_0_GUIDE = [param for key, param in guide.named_parameters() if key == "h_0_GUIDE"][0]
+
+                    guide_estimates = {
+                        "rnn_hidden": h_0_GUIDE.expand(1 * 2, num_synthetic_peptides_batch, args.hidden_dim * 2).contiguous(),
+                        # "rnn_hidden":None,
+                        "rnn_final_hidden": torch.ones((num_synthetic_peptides_batch, args.hidden_dim * 2)).to(device=args.device),
+                        "rnn_final_hidden_bidirectional": h_0_GUIDE.expand(1 * 2, num_synthetic_peptides_batch,args.hidden_dim * 2).contiguous(),  # Highlight: Not used
+                        "rnn_hidden_states_bidirectional": torch.ones((num_synthetic_peptides_batch, 2, dataset_info.seq_max_len, args.hidden_dim * 2)).to(device=args.device),
+                        "rnn_hidden_states": torch.ones((num_synthetic_peptides_batch, maxlen_generated, args.hidden_dim * 2)).to(device=args.device),
+                        "latent_z": train_predictive_samples_dict["latent_samples"][:,idx_z],
+                        "z_scales": train_predictive_samples_dict["z_scales"],
+                        "generate": True
+                    }
+                    # guide_estimates = None
+
+                    # sampling_output = Vegvisir.sample(batch_data, batch_mask_blosum, epoch=0, guide_estimates=guide_estimates,sample=True,argmax=argmax)
+                    sampling_output = Predictive(Vegvisir.model, guide=None, num_samples=args.generate_num_samples, return_sites=(),parallel=False)(batch_data, batch_mask_blosum, epoch=0,guide_estimates=guide_estimates, sample=True)
+                    # Highlight: majority vote? most likely?
+                    if argmax:
+                        sequences_logits = sampling_output["sequences_logits"].detach().cpu().permute(1, 0, 2, 3)
+                        generated_sequences_int = torch.argmax(sequences_logits, dim=-1)
+                        generated_sequences_int = torch.mode(generated_sequences_int, dim=1).values.numpy()
+                    else:
+                        generated_sequences_int = VegvisirUtils.squeeze_tensor(3,sampling_output["sequences"]).detach().cpu().permute(1, 0, 2)
+                        # Tried to: Calculate Mutual Information across samples ... Perhaps it does not make sense, still points to the mode
+                        # generated_sequences_int = list(map(lambda seq: VegvisirUtils.joint_sample_seq(seq,dataset_info.corrected_aa_types),torch.split(generated_sequences_int,1,dim=0)))
+                        generated_sequences_int = torch.mode(generated_sequences_int, dim=1).values.numpy()
+
+                    # Highlight: Plot before removing duplicates
+                    #generated_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(generated_sequences_int)
+
+                    if sampling_output["predictions"].shape == (args.num_samples, num_synthetic_peptides_batch):
+                        binary_predictions = sampling_output["predictions"].detach().cpu().permute(1, 0).numpy()
+                    else:
+                        binary_predictions = VegvisirUtils.squeeze_tensor(2, sampling_output["predictions"].squeeze(1)).detach().cpu().permute(1, 0).numpy()
+                    binary_mode = stats.mode(binary_predictions, axis=1, keepdims=True).mode.squeeze(-1)
+                    binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1,arr=binary_predictions.astype("int64"))
+                    binary_frequencies = binary_frequencies / args.generate_num_samples
+
+                    #VegvisirUtils.numpy_to_fasta(generated_sequences_raw, binary_mode, binary_frequencies,"{}/Generated".format(additional_info.results_dir), "_NOT_FILTERED")
+
+                    # Highlight: Remove inner duplicates (before discarding the ones that have # in strange places)
+                    unique_sequences, unique_idx = np.unique(generated_sequences_int, axis=0, return_index=True)
+                    # Highlight: Remove identical sequences to the training dataset
+                    identical_to_train_bool = np.any(np.array(generated_sequences_int[:, None] == train_dataset[None, :]).all((-1)) == True, axis=0)
+                    identical_to_train_idx, = np.where(identical_to_train_bool == True)
+                    identical_to_train_idx = np.invert(np.array(np.arange(num_synthetic_peptides_batch)[..., None] == identical_to_train_idx).any(-1))
+                    # Highlight: Remove duplicates
+                    unique_idx = np.array(np.arange(num_synthetic_peptides_batch)[..., None] == unique_idx).any(-1)
+                    # Highlight: Merge the indicators of the NON duplicates (so that we can discard the duplicates, keep the unique ones)
+                    unique_idx = unique_idx * identical_to_train_idx
+                    # Highlight: Deal with gaps i.e Remove the sequences that have a gap in positions < 8
+                    if zero_character is not None:
+                        clean_results = list(map(lambda seq_int, seq_mask: VegvisirUtils.clean_generated_sequences(seq_int, seq_mask, zero_character,
+                                                                                                  min_len=8,
+                                                                                                  max_len=maxlen_generated),generated_sequences_int.tolist(), batch_mask.numpy().tolist()))
+                        discarded_sequences = list(map(lambda v, i: i if v is None else None, clean_results, list(range(len(clean_results)))))
+                        discarded_sequences = np.array(list(filter(lambda i: i is not None, discarded_sequences)))
+                        clean_results = list(filter(lambda v: v is not None, clean_results))
+
+                        clean_results = list(zip(*clean_results))
+                        # clean_generated_sequences = clean_results[0]
+                        if clean_results[1] is not None:
+                            clean_generated_masks = clean_results[1]
+                            # generated_sequences_int = np.concatenate(clean_generated_sequences,axis=0)
+                            generated_sequences_mask = np.concatenate(clean_generated_masks, axis=0)  # contains the truncated masks
+
+                            keep_idx = np.invert((np.arange(num_synthetic_peptides_batch)[..., None] == discarded_sequences).any(-1))
+                            batch_mask = batch_mask.numpy()
+                            batch_mask[keep_idx] = generated_sequences_mask
+                        else:
+                            keep_idx = np.ones(num_synthetic_peptides_batch).astype(bool)
+
+                    else:
+                        generated_sequences_mask = np.ones_like(generated_sequences_int).astype(bool)
+                        # discarded_sequences = None
+                        keep_idx = np.ones(num_synthetic_peptides_batch).astype(bool)
+
+                    # Update the indexes of the sequence to keep
+                    keep_idx = keep_idx * unique_idx
+
+                    generated_sequences_int = generated_sequences_int[keep_idx]
+                    batch_mask = generated_sequences_mask = batch_mask[keep_idx]
+
+                    generated_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(generated_sequences_int)
+                    generated_sequences_blosum = np.vectorize(blosum_array_dict.get, signature='()->(n)')(generated_sequences_int)
 
 
-        #Highlight: Initalize fake dummy data (not used)
-        batch_data = {"blosum":torch.randint(low=-7,high=7,size=(num_synthetic_peptides,2,maxlen_generated,model_load.aa_types)).double().to(device=args.device).detach(),
-                      "onehot":torch.randint(low=0,high=1,size=(num_synthetic_peptides,2,maxlen_generated,model_load.aa_types)).double().to(device=args.device).detach(),
-                      "norm": torch.randn(size=(num_synthetic_peptides,2,maxlen_generated,model_load.aa_types)).double().to(device=args.device).detach(),
-                      "int": torch.randint(low=0,high=21,size=(num_synthetic_peptides,2,maxlen_generated,model_load.aa_types)).double().to(device=args.device).detach(),
-                      "positional_mask": torch.ones((num_synthetic_peptides,maxlen_generated)).bool().to(device=args.device).detach(),
-                      }
-        if len(dataset_info.unique_lens) > 1:
-            lenghts_sample = np.random.choice([8,9,10,11],(num_synthetic_peptides,),replace=True,p=[0.1,0.7,0.1,0.1]).tolist()
-            blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(dataset_info.corrected_aa_types,
-                                                                                       args.subs_matrix,
-                                                                                       zero_characters=["#"],
-                                                                                       include_zero_characters=True)
-            zero_character = 0
-        else: #TODO:
-            lenghts_sample = np.ones((num_synthetic_peptides,))*maxlen_generated
-            lenghts_sample = lenghts_sample.astype(int)
-            blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(dataset_info.corrected_aa_types,
-                                                                                       args.subs_matrix,
-                                                                                       zero_characters=[],
-                                                                                       include_zero_characters=False)
-            zero_character = None
-        batch_mask = list(map(lambda length: VegvisirUtils.generate_mask(maxlen_generated,length),lenghts_sample))
-        batch_mask = torch.from_numpy(np.concatenate(batch_mask,axis=0))
-        batch_mask_blosum = np.broadcast_to(batch_mask[:, None, :, None], (num_synthetic_peptides, 2, maxlen_generated,model_load.aa_types)).copy()
-        batch_mask_blosum = torch.from_numpy(batch_mask_blosum).to(args.device)
+                    n_seqs_clean = generated_sequences_int.shape[0]
+                    class_logits = sampling_output["class_logits"].detach().cpu().permute(1, 0, 2)
+                    class_probabilities = torch.nn.Sigmoid()(class_logits)
 
-        h_0_GUIDE = [param for key,param in guide.named_parameters() if key == "h_0_GUIDE"][0]
+                    if sampling_output["predictions"].shape == (args.num_samples, num_synthetic_peptides_batch):
+                        binary_predictions = sampling_output["predictions"].detach().cpu().permute(1, 0).numpy()[keep_idx]
+                    else:
+                        binary_predictions = sampling_output["predictions"].squeeze(1).detach().cpu().permute(1, 0).numpy()[keep_idx]
 
+                    confidence_score = torch.zeros(n_seqs_clean).detach().cpu()
+                    # Highlight: Label the generated sequences as unobserved
+                    true_labels = np.ones(n_seqs_clean) * 2
+                    true_onehot = np.zeros((n_seqs_clean, 3))
+                    true_onehot[np.arange(0, n_seqs_clean), true_labels.astype(int)] = 1
 
-        guide_estimates = {
-                           #"rnn_hidden":h_0_GUIDE.expand(1 * 2, num_synthetic_peptides,args.hidden_dim*2).contiguous(),
-                           "rnn_hidden":None, #leave it free
-                           "rnn_final_hidden":torch.ones((num_synthetic_peptides, args.hidden_dim*2)).to(device=args.device),
-                           "rnn_final_hidden_bidirectional": h_0_GUIDE.expand(1 * 2, num_synthetic_peptides,args.hidden_dim*2).contiguous(),#Highlight: Not used
-                           "rnn_hidden_states_bidirectional" : torch.ones((num_synthetic_peptides, 2, dataset_info.seq_max_len, args.hidden_dim*2)).to(device=args.device),
-                           "rnn_hidden_states" : torch.ones((num_synthetic_peptides, maxlen_generated, args.hidden_dim*2)).to(device=args.device),
-                           "latent_z": train_predictive_samples_dict["latent_z"],
-                           "z_scales": train_predictive_samples_dict["z_scales"],
-                           "generate":True
-                           }
-        #guide_estimates = None
-
-        #sampling_output = Vegvisir.sample(batch_data, batch_mask_blosum, epoch=0, guide_estimates=guide_estimates,sample=True,argmax=argmax)
-
-        sampling_output = Predictive(Vegvisir.model, guide=None, num_samples=args.generate_num_samples, return_sites=(),parallel=False)(batch_data, batch_mask_blosum, epoch=0, guide_estimates=guide_estimates,sample=True)
-
-        custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
-        aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
-
-        #Highlight: majority vote? most likely?
-        if argmax:
-            sequences_logits = sampling_output["sequences_logits"].detach().cpu().permute(1,0,2,3)
-            generated_sequences_int = torch.argmax(sequences_logits,dim=-1)
-            generated_sequences_int = torch.mode(generated_sequences_int,dim=1).values.numpy()
-        else:
-            generated_sequences_int = VegvisirUtils.squeeze_tensor(3, sampling_output["sequences"]).detach().cpu().permute(1, 0, 2)
-            #TODO: Calculate Mutual Information across samples ... Perhaps it does not make sense, still points to the mode
-            #generated_sequences_int = list(map(lambda seq: VegvisirUtils.joint_sample_seq(seq,dataset_info.corrected_aa_types),torch.split(generated_sequences_int,1,dim=0)))
-            generated_sequences_int = torch.mode(generated_sequences_int,dim=1).values.numpy()
+                    # Highlight: Save sequences
+                    generated_out_dict["data_int"].append(generated_sequences_int)
+                    generated_out_dict["data_blosum"].append(generated_sequences_blosum)
+                    generated_out_dict["data_raw"].append(generated_sequences_raw)
+                    generated_out_dict["data_mask"].append(generated_sequences_mask)
+                    generated_out_dict["binary"].append(binary_predictions)
+                    generated_out_dict["logits"].append(class_logits.numpy()[keep_idx])
+                    generated_out_dict["probs"].append(class_probabilities[keep_idx])
+                    generated_out_dict["true"].append(true_labels)
+                    generated_out_dict["true_onehot"].append(true_onehot)
+                    generated_out_dict["confidence_scores"].append(confidence_score.detach().cpu().numpy())
+                    generated_out_dict["attention_weights"].append(sampling_output["attn_weights"].permute(1, 0, 2, 3).detach().cpu().numpy()[keep_idx])
+                    generated_out_dict["encoder_hidden_states"].append(sampling_output["encoder_hidden_states"].permute(1, 0, 2, 3, 4).detach().cpu().numpy()[keep_idx])
+                    generated_out_dict["decoder_hidden_states"].append(sampling_output["decoder_hidden_states"].permute(1, 0, 2, 3, 4).detach().cpu().numpy()[keep_idx])
+                    generated_out_dict["encoder_final_hidden_state"].append(sampling_output["encoder_final_hidden"].permute(1, 0, 2).detach().cpu().numpy()[keep_idx])
+                    generated_out_dict["decoder_final_hidden_state"].append(sampling_output["decoder_final_hidden"].permute(1, 0, 2).detach().cpu().numpy()[keep_idx])
 
 
-        #Highlight: Plot before removing duplicates
-        generated_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(generated_sequences_int)
-
-        if sampling_output["predictions"].shape == (args.num_samples, num_synthetic_peptides):
-            binary_predictions = sampling_output["predictions"].detach().cpu().permute(1, 0).numpy()
-        else:
-            binary_predictions = sampling_output["predictions"].squeeze(1).detach().cpu().permute(1, 0).numpy()
-        binary_mode = stats.mode(binary_predictions, axis=1, keepdims=True).mode.squeeze(-1)
-        binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1,arr=binary_predictions.astype("int64"))
-        binary_frequencies = binary_frequencies / args.generate_num_samples
-
-        VegvisirUtils.numpy_to_fasta(generated_sequences_raw, binary_mode, binary_frequencies,"{}/Immunomodulated".format(additional_info.results_dir),"_NOT_FILTERED")
-
-        # Highlight: Remove inner duplicates (before discarding the ones that have # in strange places)
-        unique_sequences, unique_idx = np.unique(generated_sequences_int, axis=0, return_index=True)
-        # Highlight: Remove identical sequences to the training dataset
-        train_dataset = torch.concatenate([batch_data["batch_data_int"][:, 1].squeeze(1) for batch_data in data_loader],dim=0).detach().cpu().numpy()
-        # train_raw = np.vectorize(aminoacids_dict_reversed.get)(train_dataset)
-        # VegvisirPlots.plot_logos(list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), train_raw.tolist())), additional_info.results_dir, "_TRAIN_raw")
-
-        identical_to_train_bool = np.any(np.array(generated_sequences_int[:, None] == train_dataset[None, :]).all((-1)) == True, axis=0)
-        identical_to_train_idx, = np.where(identical_to_train_bool == True)
-
-        unique_idx = np.array(np.arange(num_synthetic_peptides)[..., None] == unique_idx).any(-1)
-        identical_to_train_idx = np.invert(np.array(np.arange(num_synthetic_peptides)[..., None] == identical_to_train_idx).any(-1))
-
-        # Highlight: Merge the indicators of the NON duplicates (discard the duplicates, keep the unique ones)
-        unique_idx = unique_idx * identical_to_train_idx
-
-        #Highlight: Remove the sequences that have a gap in positions < 8
-        if zero_character is not None:
-            clean_results = list(map(lambda seq_int,seq_mask: VegvisirUtils.clean_generated_sequences(seq_int,seq_mask,zero_character,min_len=8,max_len = maxlen_generated), generated_sequences_int.tolist(),batch_mask.numpy().tolist()))
-            discarded_sequences =  list(map(lambda v,i: i if v is None else None, clean_results,list(range(len(clean_results)))))
-            discarded_sequences =  np.array(list(filter(lambda i: i is not None, discarded_sequences)))
-            clean_results = list(filter(lambda v: v is not None, clean_results))
-
-            clean_results = list(zip(*clean_results))
-            #clean_generated_sequences = clean_results[0]
-            clean_generated_masks = clean_results[1]
-            #generated_sequences_int = np.concatenate(clean_generated_sequences,axis=0)
-            generated_sequences_mask = np.concatenate(clean_generated_masks,axis=0) #contains the truncated masks
-
-            keep_idx = np.invert((np.arange(num_synthetic_peptides)[..., None] == discarded_sequences).any(-1))
-            batch_mask = batch_mask.numpy()
-            batch_mask[keep_idx] = generated_sequences_mask
-
-        else:
-            generated_sequences_mask = np.ones_like(generated_sequences_int).astype(bool)
-            #discarded_sequences = None
-            keep_idx = np.ones(num_synthetic_peptides).astype(bool)
+                    latent_space = sampling_output["latent_z"].permute(1, 0, 2).detach().cpu()[keep_idx, 0]
+                    # Highlight: fake infomation to maintain same functions
+                    identifiers = torch.ones(n_seqs_clean).detach().cpu()
+                    partitions = torch.ones(n_seqs_clean).detach().cpu()
+                    immunodominace_score = torch.zeros(n_seqs_clean).detach().cpu()
+                    latent_space = torch.column_stack([torch.from_numpy(true_labels).detach().cpu(), identifiers, partitions, immunodominace_score, confidence_score,latent_space])
+                    generated_out_dict["latent_space"].append(latent_space.numpy())
 
 
-    keep_idx = keep_idx * unique_idx
 
-    generated_sequences_int = generated_sequences_int[keep_idx]
-    batch_mask = generated_sequences_mask = batch_mask[keep_idx]
+    generated_out_dict = {key:np.concatenate(val,axis=0) for key,val in generated_out_dict.items()}
 
+    #Highlight: Once again, remove duplicates among all batches
+    generated_sequences_int = generated_out_dict["data_int"]
+    unique_sequences, unique_idx = np.unique(generated_sequences_int, axis=0, return_index=True)
 
-    generated_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(generated_sequences_int)
-    generated_sequences_blosum = np.vectorize(blosum_array_dict.get, signature='()->(n)')(generated_sequences_int)
+    generated_out_dict = {key:val[unique_idx] for key,val in generated_out_dict.items()}
+
+    generated_sequences_blosum = generated_out_dict["data_blosum"]
+    generated_sequences_mask = generated_out_dict["data_mask"]
+
+    #Highlight: Visualize Logos and save to file
+    generated_sequences_raw = generated_out_dict["data_raw"]
+    binary_predictions = generated_out_dict["binary"]
+    binary_mode = stats.mode(binary_predictions, axis=1, keepdims=True).mode.squeeze(-1)
+    binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1,
+                                             arr=binary_predictions.astype("int64"))
+    binary_frequencies = binary_frequencies / args.generate_num_samples
+
+    VegvisirUtils.numpy_to_fasta(generated_sequences_raw, binary_mode, binary_frequencies,
+                                 "{}/Immunomodulated".format(additional_info.results_dir))
 
     if generated_sequences_blosum.shape[0] < 10000:
         def handle_timeout(signum, frame):
@@ -892,62 +1030,19 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
                                                                                            correlation_matrix=False,
                                                                                            parallel=False)
             batch_size = 100 if generated_sequences_blosum.shape[0] > 100 else generated_sequences_blosum.shape[0]
-            positional_weights = VegvisirSimilarities.importance_weight(generated_sequences_cosine_similarity, maxlen_generated, generated_sequences_mask,batch_size=batch_size, neighbours=1)
-            VegvisirPlots.plot_heatmap(positional_weights, "Cosine similarity \n positional weights","{}/Immunomodulated/Immunomodulated_epitopes_positional_weights.png".format(additional_info.results_dir))
+            positional_weights = VegvisirSimilarities.importance_weight(generated_sequences_cosine_similarity,
+                                                                        maxlen_generated, generated_sequences_mask,
+                                                                        batch_size=batch_size, neighbours=1)
+            VegvisirPlots.plot_heatmap(positional_weights, "Cosine similarity \n positional weights",
+                                       "{}/Generated/Generated_epitopes_positional_weights.png".format(
+                                           additional_info.results_dir))
         except:
             print("Could not calculate conservational positional weights. Time exceeded or some other error")
         finally:
             signal.alarm(0)
 
-    n_seqs_clean = generated_sequences_int.shape[0]
-    class_logits = sampling_output["class_logits"].detach().cpu().permute(1,0,2)
-    class_probabilities = torch.nn.Sigmoid()(class_logits)
-
-    if sampling_output["predictions"].shape == (args.num_samples,num_synthetic_peptides):
-        binary_predictions = sampling_output["predictions"].detach().cpu().permute(1,0).numpy()[keep_idx]
-    else:
-        binary_predictions = sampling_output["predictions"].squeeze(1).detach().cpu().permute(1,0).numpy()[keep_idx]
-
-    confidence_score = torch.zeros(n_seqs_clean).detach().cpu()
-    #Highlight: Label the generated sequences as unobserved
-    true_labels = np.ones(n_seqs_clean)*2
-    true_onehot = np.zeros((n_seqs_clean, 3))
-    true_onehot[np.arange(0, n_seqs_clean), true_labels.astype(int)] = 1
-
-    binary_mode = stats.mode(binary_predictions, axis=1,keepdims=True).mode.squeeze(-1)
-    binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=binary_predictions.astype("int64"))
-    binary_frequencies = binary_frequencies / args.generate_num_samples
-
-    VegvisirUtils.numpy_to_fasta(generated_sequences_raw,binary_mode,binary_frequencies,"{}/Immunomodulated".format(additional_info.results_dir))
-
-    #Highlight: Save sequences
-    #TODO: Finish dict and look into transferrin the h_0_encoder to h_0_decoder somehow
-    generated_out_dict =  {"data_int":generated_sequences_int,
-                        "data_raw": generated_sequences_raw,
-                        "data_mask":generated_sequences_mask,
-                        "binary": binary_predictions,
-                        "logits": class_logits.numpy()[keep_idx],
-                        "probs": class_probabilities[keep_idx],
-                        "true":true_labels,
-                        "true_onehot": true_onehot,
-                        "confidence_scores":confidence_score.detach().cpu().numpy(),
-                        "attention_weights":sampling_output["attn_weights"].permute(1,0,2,3).detach().cpu().numpy()[keep_idx],
-                        "encoder_hidden_states": sampling_output["encoder_hidden_states"].permute(1,0,2,3,4).detach().cpu().numpy()[keep_idx],
-                        "decoder_hidden_states": sampling_output["decoder_hidden_states"].permute(1,0,2,3,4).detach().cpu().numpy()[keep_idx],
-                        "encoder_final_hidden_state":sampling_output["encoder_final_hidden"].permute(1,0,2).detach().cpu().numpy()[keep_idx],
-                        "decoder_final_hidden_state": sampling_output["decoder_final_hidden"].permute(1,0,2).detach().cpu().numpy()[keep_idx]
-                        }
-
-
-    latent_space = sampling_output["latent_z"].permute(1,0,2).detach().cpu()[keep_idx,0]
-    #Highlight: fake infomation to maintain same functions
-    identifiers = torch.ones(n_seqs_clean).detach().cpu()
-    partitions = torch.ones(n_seqs_clean).detach().cpu()
-    immunodominace_score = torch.zeros(n_seqs_clean).detach().cpu()
-    latent_space = torch.column_stack([torch.from_numpy(true_labels).detach().cpu(), identifiers, partitions, immunodominace_score, confidence_score, latent_space])
-
-    return generated_out_dict,latent_space.numpy()
-
+    latent_space = generated_out_dict["latent_space"]
+    return generated_out_dict, latent_space
 def save_script(results_dir,output_name,script_name):
     """Saves the python script and its contents"""
     out_file = open("{}/{}.py".format(results_dir,output_name), "a+")
@@ -1366,7 +1461,7 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                     torch.cuda.empty_cache()
                     generated_summary_dict = VegvisirUtils.manage_predictions_generative(args,generated_dict)
                 else:
-                    generatied_summary_dict = None
+                    generated_summary_dict = None
                 if args.immunomodulate:
                     immunomodulate_dataset = dataset_info.immunomodulate_dataset
                     nseqs = len(immunomodulate_dataset.data_array_blosum_encoding)

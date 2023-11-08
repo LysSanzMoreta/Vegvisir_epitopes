@@ -171,7 +171,7 @@ class VEGVISIRModelClass(nn.Module):
         """Conditional sampling the synthetic epitopes given the learnt representations from the training dataset from a Multivariate Normal according to page 698 at Pattern Recognition and ML (Bishop)
         :param guide_estimates: dictionary conatining the MAP estimates for the OU process parameters
         :param """
-        print("Sampling .........")
+        #print("Sampling .........")
         n_train = guide_estimates["latent_z"].shape[0]
         if n_train > 8000:
             idx_train = np.array(np.random.randn(n_train) > 0)
@@ -976,8 +976,8 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
             #      pyro.sample("sequences", dist.Categorical(logits=sequences_logits),obs=None if sample else batch_sequences_int)
             # with pyro.poutine.scale(None, self.likelihood_scale):
             #pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).mask(~batch_positional_mask).to_event(1),obs=None if sample else batch_sequences_int)
-            #pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=None if sample else batch_sequences_int)
-            pyro.sample("sequences", dist.Categorical(logits=sequences_logits).to_event(1),obs=None if sample else batch_sequences_int)
+            pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=None if sample else batch_sequences_int)
+            #pyro.sample("sequences", dist.Categorical(logits=sequences_logits).to_event(1),obs=None if sample else batch_sequences_int)
 
             # init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             class_logits = self.classifier_model(latent_space, None)
