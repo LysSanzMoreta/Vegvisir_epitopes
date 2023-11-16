@@ -173,7 +173,7 @@ class VEGVISIRModelClass(nn.Module):
         :param """
         #print("Sampling .........")
         n_train = guide_estimates["latent_z"].shape[0]
-        if n_train > 8000:
+        if n_train > 10000:#select only a few data points
             idx_train = np.array(np.random.randn(n_train) > 0)
         else:
             idx_train = np.ones(n_train).astype(bool)
@@ -239,16 +239,16 @@ class VEGVISIRModelClass(nn.Module):
         else:
             assert not torch.isnan(inverse_generated).any(), "found nan in covariance cond sampling"
             assert not torch.isnan(torch.linalg.inv(inverse_generated)).any(), "found nan in inverse cond sampling"
-            assert not torch.isnan(z_mean).any(),"found nan in zmean cod sampling"
+            assert not torch.isnan(z_mean).any(),"found nan in zmean conditional sampling"
             try:
                 latent_space = dist.MultivariateNormal(z_mean.squeeze(-1),torch.linalg.inv(inverse_generated) + 1e-6).to_event(1).sample().detach()
             except:
-                print("Could not perform inversion or some other error")
+                print("Could not perform inversion or some other error. Falling back to simple Identity matrix for the covariance")
                 inverse_generated = torch.eye(n_generated)
                 latent_space = dist.MultivariateNormal(z_mean.squeeze(-1),torch.linalg.inv(inverse_generated) + 1e-6).to_event(1).sample().detach()
 
             latent_space = latent_space.T
-            assert not torch.isnan(latent_space).any(), "found nan in latent space cond sampling"
+            assert not torch.isnan(latent_space).any(), "found nan in latent space conditional sampling"
         torch.cuda.empty_cache()
         return latent_space.detach()
 
@@ -946,9 +946,15 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         with pyro.plate("plate_batch", dim=-1, device=self.device):
 
             if guide_estimates is not None and "generate" in guide_estimates.keys():
+                print("batch size")
+                print(batch_size)
+                print("Latent Z shape")
+                print(guide_estimates["latent_z"].shape)
                 latent_space = self.conditional_sampling(batch_size,guide_estimates)
-                pyro.deterministic("latent_z", latent_space,event_dim=0)  # should be event_dim = 2, but for sampling convenience we leave it as it is
-
+                print("---------------------------------")
+                print(latent_space.shape)
+                print("---------------------------------")
+                pyro.deterministic("latent_z", latent_space,event_dim=2)  # should be event_dim = 2, but for sampling convenience we leave it as it is
             else:
                 if self.num_iafs > 0:
                     latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale)) # [n,z_dim]
@@ -964,13 +970,13 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
             outputnn = self.decoder(batch_sequences_blosum, batch_sequences_lens, init_h_0_decoder, z=latent_z_seq,
                                     mask=batch_mask_len, guide_estimates=guide_estimates)
 
-            pyro.deterministic("attn_weights", outputnn.attn_weights, event_dim=0) #should be event_dim = 2, but for sampling convenience we leave it as it is
-            pyro.deterministic("encoder_hidden_states", outputnn.encoder_hidden_states, event_dim=0) #should be event_dim = 3
-            pyro.deterministic("decoder_hidden_states", outputnn.decoder_hidden_states, event_dim=0) #should be event_dim = 3
-            pyro.deterministic("encoder_final_hidden", outputnn.encoder_final_hidden, event_dim=0) #should be event_dim = 2
-            pyro.deterministic("decoder_final_hidden", outputnn.decoder_final_hidden, event_dim=0) #should be event_dim = 2
+            pyro.deterministic("attn_weights", outputnn.attn_weights, event_dim=2) #should be event_dim = 2, but for sampling convenience we leave it as it is
+            pyro.deterministic("encoder_hidden_states", outputnn.encoder_hidden_states, event_dim=3) #should be event_dim = 3
+            pyro.deterministic("decoder_hidden_states", outputnn.decoder_hidden_states, event_dim=3) #should be event_dim = 3
+            pyro.deterministic("encoder_final_hidden", outputnn.encoder_final_hidden, event_dim=2) #should be event_dim = 2
+            pyro.deterministic("decoder_final_hidden", outputnn.decoder_final_hidden, event_dim=2) #should be event_dim = 2
             sequences_logits = self.logsoftmax(outputnn.output)
-            pyro.deterministic("sequences_logits", sequences_logits, event_dim=0) #should be event_dim = 2
+            pyro.deterministic("sequences_logits", sequences_logits, event_dim=2) #should be event_dim = 2
             #
             # with pyro.plate("plate_len", dim=-2, device=self.device):
             #      pyro.sample("sequences", dist.Categorical(logits=sequences_logits),obs=None if sample else batch_sequences_int)
@@ -982,7 +988,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
             # init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             class_logits = self.classifier_model(latent_space, None)
             class_logits = self.logsoftmax(class_logits)  # [N,num_classes]
-            pyro.deterministic("class_logits", class_logits, event_dim=0) #should be event_dim = 1
+            pyro.deterministic("class_logits", class_logits, event_dim=1) #should be event_dim = 1
             #with pyro.poutine.mask(mask=confidence_mask_true):
                 #pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=None if sample else true_labels)  # [N,]
             with pyro.poutine.scale(None,self.likelihood_scale):
@@ -1076,7 +1082,6 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
                 "generated_sequences":generated_sequences,
                 "sequences":generated_sequences,
                 "latent_z":latent_space}
-
 
     def loss(self):
         """

@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=1 python Vegvisir_example.py -train True -generate True -immunomodulate True -generate-argmax True -num-synthetic-peptides 5000 -num-immunomodulate-peptides 5000

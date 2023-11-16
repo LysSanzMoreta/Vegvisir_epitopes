@@ -53,6 +53,17 @@ def str2None(v):
             v = str(v)
         return v
 
+def print_divisors(n) :
+    """Calculates the number of divisors of a number
+    :param int n: number"""
+    i = 1
+    divisors = []
+    while i <= n :
+        if (n % i==0) :
+            divisors.append(i)
+        i = i + 1
+    return divisors
+
 def folders(folder_name,basepath,overwrite=True):
     """ Creates a folder at the indicated location. It rewrites folders with the same name
     :param str folder_name: name of the folder
@@ -857,6 +868,20 @@ def manage_predictions_generative(args,generative_dict):
 
     data_int = np.concatenate([generative_dict["data_int"][:,None],generative_dict["data_int"][:,None]],axis=1)
 
+    # Highlight: Calculate the 90% confidence interval
+    num_samples_generated = probs_predictions_generative.shape[1]
+    lower_bound = 1 if int(num_samples_generated * 0.05) == 0 else int(num_samples_generated * 0.05)
+    upper_bound = num_samples_generated - 1 if int(num_samples_generated * 0.95) >= num_samples_generated else int(num_samples_generated * 0.95)
+    # probs_5_class_0 = probs_predictions_generative[:, :, 0].kthvalue(lower_bound, dim=1)[0]
+    # probs_95_class_0 = probs_predictions_generative[:, :, 0].kthvalue(upper_bound, dim=1)[0]
+    # probs_5_class_1 = probs_predictions_generative[:, :, 1].kthvalue(lower_bound, dim=1)[0]
+    # probs_95_class_1 = probs_predictions_generative[:, :, 1].kthvalue(upper_bound, dim=1)[0]
+
+    probs_5_class_0 = np.partition(probs_predictions_generative[:,:,0],lower_bound, axis=1)[:,lower_bound]
+    probs_95_class_0 = np.partition(probs_predictions_generative[:,:,0],upper_bound, axis=1)[:, upper_bound]
+    probs_5_class_1 = np.partition(probs_predictions_generative[:,:,1],lower_bound, axis=1)[:,lower_bound]
+    probs_95_class_1 = np.partition(probs_predictions_generative[:,:,1],upper_bound, axis=1)[:,upper_bound]
+
     generative_dict = {
                         "data_int_single_sample": data_int,
                         "data_int_samples": data_int,
@@ -875,6 +900,10 @@ def manage_predictions_generative(args,generative_dict):
                         "class_logits_predictions_samples_argmax_frequencies".format(mode): None,
                         "class_logits_predictions_single_sample_argmax_mode": class_logits_predictions_generative_argmax_mode,
                         "class_logits_predictions_samples_argmax_mode": class_logits_predictions_generative_argmax_mode,
+                        "class_probs_predictions_samples_5%CI_class_0": probs_5_class_0,
+                        "class_probs_predictions_samples_95%CI_class_0": probs_95_class_0,
+                        "class_probs_predictions_samples_5%CI_class_1": probs_5_class_1,
+                        "class_probs_predictions_samples_95%CI_class_1": probs_95_class_1,
                         "class_probs_predictions_single_sample": probs_predictions_generative,
                         "class_probs_predictions_samples": probs_predictions_generative,
                         #"class_probs_predictions_{}_average".format(mode): np.mean(probs_predictions_generative, axis=1) if args.generate_num_samples > 1 else probs_predictions_generative,
@@ -923,6 +952,22 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
     #                                             0)], dim=0)
     argmax_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=class_logits_predictions_samples_argmax.astype("int64")).T
     argmax_frequencies = argmax_frequencies / args.num_samples
+    
+    #Highlight: Calculate the 90% confidence interval
+
+    lower_bound = 1 if int(args.num_samples * 0.05) == 0 else int(args.num_samples * 0.05)
+    upper_bound = args.num_samples - 1 if int(args.num_samples* 0.95) >= args.num_samples else int(args.num_samples * 0.95)
+    
+    # probs_5_class_0 = probs_predictions_samples[:,:,0].kthvalue(lower_bound, dim=1)[0]
+    # probs_95_class_0 = probs_predictions_samples[:,:,0].kthvalue(upper_bound, dim=1)[0]
+    # probs_5_class_1 = probs_predictions_samples[:,:,1].kthvalue(lower_bound, dim=1)[0]
+    # probs_95_class_1 = probs_predictions_samples[:,:,1].kthvalue(upper_bound, dim=1)[0]
+
+    probs_5_class_0 = np.partition(probs_predictions_samples[:,:,0],lower_bound, axis=1)[:,lower_bound]
+    probs_95_class_0 = np.partition(probs_predictions_samples[:,:,0],upper_bound, axis=1)[:,upper_bound]
+    probs_5_class_1 = np.partition(probs_predictions_samples[:,:,1],lower_bound, axis=1)[:,lower_bound]
+    probs_95_class_1 = np.partition(probs_predictions_samples[:,:,1],upper_bound, axis=1)[:,upper_bound]
+    
 
     if predictions_dict is not None:
         summary_dict = {"data_int_single_sample":predictions_dict["data_int"],
@@ -938,6 +983,10 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
                         "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
                         "class_probs_predictions_samples": probs_predictions_samples,
                         "class_probs_predictions_samples_average": np.mean(probs_predictions_samples,axis=1),
+                        "class_probs_predictions_samples_5%CI_class_0": probs_5_class_0,
+                        "class_probs_predictions_samples_95%CI_class_0": probs_95_class_0,
+                        "class_probs_predictions_samples_5%CI_class_1": probs_5_class_1,
+                        "class_probs_predictions_samples_95%CI_class_1": probs_95_class_1,
                         "class_binary_predictions_samples_logits_average_argmax": np.argmax(np.mean(probs_predictions_samples,axis=1),axis=1),
                         "class_binary_predictions_single_sample": predictions_dict["binary"],
                         "class_logits_predictions_single_sample": predictions_dict["logits"],
@@ -979,6 +1028,10 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
                         "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
                         "class_probs_predictionss_samples": probs_predictions_samples,
                         "class_probs_predictions_samples_average": np.mean(probs_predictions_samples, axis=1),
+                        "class_probs_predictions_samples_5%CI_class_0": probs_5_class_0,
+                        "class_probs_predictions_samples_95%CI_class_0": probs_95_class_0,
+                        "class_probs_predictions_samples_5%CI_class_1": probs_5_class_1,
+                        "class_probs_predictions_samples_95%CI_class_1": probs_95_class_1,
                         "class_binary_predictions_samples_logits_average_argmax": np.argmax(np.mean(probs_predictions_samples, axis=1),axis=1),
                         "class_binary_predictions_single_sample": None,
                         "class_logits_predictions_single_sample": None,
@@ -1007,6 +1060,42 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
                         }
 
     return summary_dict
+
+def save_predictions_confidence_intervals(predictions_dict, dataset_info,results_dir,method="Train"):
+
+    class_probabilities = predictions_dict["class_probs_predictions_samples_average"]
+
+    probs_5_class_0 = predictions_dict["class_probs_predictions_samples_5%CI_class_0"]
+    probs_95_class_0 = predictions_dict["class_probs_predictions_samples_95%CI_class_0"]
+
+    probs_5_class_1 = predictions_dict["class_probs_predictions_samples_5%CI_class_1"]
+    probs_95_class_1 = predictions_dict["class_probs_predictions_samples_95%CI_class_1"]
+
+    data_int = predictions_dict["data_int_samples"]
+    sequences = data_int[:, 1:].squeeze(1)
+    # if dataset_info.corrected_aa_types == 20:
+    #     sequences_mask = np.zeros_like(sequences).astype(bool)
+    # else:
+    #     sequences_mask = np.array((sequences == 0))
+
+    #sequences_lens = np.sum(~sequences_mask, axis=1)
+
+    custom_features_dicts = build_features_dicts(dataset_info)
+    aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
+    sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(sequences)
+
+    sequences_list = list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), sequences_raw.tolist()))
+
+
+    df = pd.DataFrame({"Epitopes":sequences_list,
+                       "Negative_score":class_probabilities[:,0].tolist(),
+                       "Positive_score":class_probabilities[:,1].tolist(),
+                       "Negative_5CI":probs_5_class_0.tolist(),
+                       "Negative_95CI":probs_95_class_0.tolist(),
+                       "Positive_5CI": probs_5_class_1.tolist(),
+                       "Positive_95CI": probs_95_class_1.tolist(),
+                       })
+    df.to_csv("{}/{}/Epitopes_predictions.tsv".format(results_dir,method),sep="\t",index=False)
 
 def extract_group_old_test(train_summary_dict,valid_summary_dict,args):
     """"""

@@ -189,11 +189,10 @@ def analysis_models():
 
     #Highlight: K-fold comparisons
 
-    #VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_HPO_blosum",overwrite=True)
+    VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_HPO_blosum",overwrite=True)
     #VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_random_stratified_partitions_blosum,kfolds=5,results_folder = "Benchmark/Plots",title="random_stratified_partitions_HPO_blosum",overwrite=False)
-
-    VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_HPO_blosum_NEW",overwrite_correlations=False,overwrite_all=False)
     exit()
+    #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_HPO_blosum_NEW",overwrite_correlations=False,overwrite_all=False)
     #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_random_stratified_partitions_blosum,kfolds=5,results_folder="Benchmark/Plots",subtitle="random_stratified_partitions_HPO_blosum",overwrite_correlations=False,overwrite_all=False)
 
 
@@ -326,21 +325,21 @@ if __name__ == "__main__":
     parser.add_argument('-config-dict', nargs='?', default=best_config[1], type=str2None,help='Path to optimized hyperparameter dict')
 
     #Highlight: Evaluation modes
-    parser.add_argument('-train', type=str2bool, nargs='?', default=False,help='<True> Run the model \n <False> Make models comparison or load previous model if pargs.pretrained_model is not None ')
+    parser.add_argument('-train', type=str2bool, nargs='?', default=True,help='<True> Run the model \n <False> Make models comparison or load previous model if pargs.pretrained_model is not None ')
     parser.add_argument('-validate', type=str2bool, nargs='?', default=False, help='Evaluate the model on the validation dataset. Only needed for model design')
     parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
 
     #Highlight: Generating new sequences from pre-trained model
-    parser.add_argument('-generate', type=str2bool, nargs='?', default=False, help='<True> Generate new neo-epitopes labelled and with a confidence score based on the training dataset. Please use args.validate False''<False> Do nothing')
-    parser.add_argument('-num-synthetic-peptides', type=int, nargs='?', default=1000, help='<True> Generate new neo-epitopes labelled and with a confidence score. The number of generated peptides will be equal to args.num_synthetic_peptides*args.num_samples')
-    parser.add_argument('-generate-num-samples', type=int, nargs='?', default=50, help='If args.generate == True, then per generated sequence, produce n samples to calculate a class probability')
-    parser.add_argument('-generate-argmax', type=str2bool, nargs='?', default=False, help='If args.generate == True, ... DO NOT USE')
+    parser.add_argument('-generate', type=str2bool, nargs='?', default=True, help='<True> Generate new neo-epitopes labelled and with a confidence score based on the training dataset. Please use args.validate False''<False> Do nothing')
+    parser.add_argument('-num-synthetic-peptides', type=int, nargs='?', default=50, help='<True> Generate new neo-epitopes labelled and with a confidence score. The number of generated peptides will be equal to args.num_synthetic_peptides*args.num_samples')
+    parser.add_argument('-generate-num-samples', type=int, nargs='?', default=6, help='If args.generate == True, then per generated sequence, produce n samples to calculate a class probability')
+    parser.add_argument('-generate-argmax', type=str2bool, nargs='?', default=False, help='If args.generate == True, generate_argmax = True ')
 
     #Highlight: immunomodulating a sequence
     immunomodulate_path = {0:"{}/immunomodulate_sequences.txt".format(script_dir),
                            1:None}
-    parser.add_argument('-immunomodulate', type=str2bool, nargs='?', default=False, help='<True> Predict latent representation for the given sequences and generate new neo-epitopes labelled and with a confidence score based only on the input sequences via args.immunomodulate_path. Please use args.validate False''<False> Do nothing')
-    parser.add_argument('-num-immunomodulate-peptides', type=int, nargs='?', default=1000, help='Number of generated peptides generated from the sequence to immunomodulate')
+    parser.add_argument('-immunomodulate', type=str2bool, nargs='?', default=True, help='<True> Predict latent representation for the given sequences and generate new neo-epitopes labelled and with a confidence score based only on the input sequences via args.immunomodulate_path. Please use args.validate False''<False> Do nothing')
+    parser.add_argument('-num-immunomodulate-peptides', type=int, nargs='?', default=50, help='Number of generated peptides generated from the sequence to immunomodulate')
     parser.add_argument('-immunomodulate-path', type=str2None, nargs='?', default= immunomodulate_path[0], help='Path to text file containing sequences to change their immunogenicity')
 
 
@@ -355,7 +354,7 @@ if __name__ == "__main__":
     #Highlight: Output saving settings
     parser.add_argument('-save-all', type=str2bool, nargs='?', default=False, help='<True> Saves every matrix output from the model'
                                                                                    '<False> Only saves a selection of model outputs necessary for benchmarking')
-    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=True, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1,\n'
+    parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=False, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1,\n'
                                                                                                ' it saturates the CPU & GPU memory'
                                                                                                 'False: Only plots the computationally inexpensive ROC curves')
 

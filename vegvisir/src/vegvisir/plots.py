@@ -2110,6 +2110,7 @@ def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold,
     plt.clf()
     plt.close(fig)
 
+
 def micro_auc(args,onehot_labels,y_prob,idx):
     """Calculates the AUC for a multi-class problem"""
 
@@ -2169,6 +2170,22 @@ def plot_precision_recall_curve(labels,onehot_labels,predictions_dict,args,resul
     return {"precision":precision,"recall":recall,"average_precision":average_precision}
 
 def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,fold,key_name,stats_name,idx,idx_name,save=True):
+    """
+
+    :param labels:
+    :param onehot_labels:
+    :param predictions_dict:
+    :param args:
+    :param results_dir:
+    :param mode:
+    :param fold:
+    :param key_name:
+    :param str stats_name: also known as prob_mode
+    :param idx:
+    :param idx_name:
+    :param save:
+    :return:
+    """
     # Compute ROC curve and ROC area for each class
     fpr = dict()
     tpr = dict()
@@ -2236,7 +2253,6 @@ def plot_ROC_curves(labels,onehot_labels,predictions_dict,args,results_dir,mode,
     for i in range(args.num_obs_classes):
         ppv_mod[i] = calculate_ppv_modified(onehot_targets[:, i], target_scores[:, i])
 
-
     return fpr,tpr,roc_auc,pvals,ppv_mod
 
 def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Train",per_sample=False):
@@ -2263,7 +2279,6 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
 
     metrics_summary_dict = defaultdict(lambda:defaultdict(lambda : defaultdict()))
     for sample_mode,prob_mode,binary_mode in zip(evaluation_modes,probability_modes,binary_modes):
-    #for sample_mode,prob_mode,binary_mode in zip(["samples","single_sample"],["class_probs_predictions_samples_average","class_probs_prediction_single_sample"],["class_binary_predictions_samples_mode","class_binary_predictions_single_sample"]):
         labels = predictions_dict["true_{}".format(sample_mode)]
         onehot_labels = predictions_dict["true_onehot_{}".format(sample_mode)]
         confidence_scores = predictions_dict["confidence_scores_{}".format(sample_mode)]

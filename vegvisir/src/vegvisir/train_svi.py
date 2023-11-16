@@ -440,17 +440,16 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             decoder_hidden = sampling_output["decoder_hidden_states"].squeeze(0).detach().cpu().permute(1,0,2,3,4).numpy()
             #decoder_hidden = decoder_hidden.mean(axis=1)
             decoder_hidden_states.append(decoder_hidden)
-            encoder_final_hidden = sampling_output["encoder_final_hidden"].squeeze(0).detach().cpu().permute(1,0,2)
+            #encoder_final_hidden = sampling_output["encoder_final_hidden"].squeeze(0).detach().cpu().permute(1,0,2)
+            encoder_final_hidden = VegvisirUtils.squeeze_tensor(3,sampling_output["encoder_final_hidden"]).detach().cpu().permute(1,0,2)
             encoder_final_hidden = encoder_final_hidden.mean(dim=1) #TODO: this might not be correct, think about it
-            decoder_final_hidden = sampling_output["decoder_final_hidden"].squeeze(0).detach().cpu().permute(1,0,2)
+            #decoder_final_hidden = sampling_output["decoder_final_hidden"].squeeze(0).detach().cpu().permute(1,0,2)
+            decoder_final_hidden = VegvisirUtils.squeeze_tensor(3,sampling_output["decoder_final_hidden"]).detach().cpu().permute(1,0,2)
             decoder_final_hidden = decoder_final_hidden.mean(dim=1)
 
-            if sampling_output["latent_z"].ndim == 4:
-                latent_spaces = sampling_output["latent_z"].squeeze(1).permute(1,0,2).detach().cpu()
-                latent_space_obs = latent_spaces[:,0,:] #retrieve a single z observation
-            else:
-                latent_spaces = sampling_output["latent_z"].permute(1,0,2).detach().cpu()
-                latent_space_obs = latent_spaces[:,0,:] #retrieve a single z observation
+
+            latent_spaces = VegvisirUtils.squeeze_tensor(3,sampling_output["latent_z"]).permute(1,0,2).detach().cpu()
+            latent_space_obs = latent_spaces[:,0,:] #retrieve a single z observation
 
 
             true_labels_batch = batch_data["blosum"][:, 0, 0, 0].detach().cpu()
@@ -558,9 +557,16 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
     Vegvisir.eval()
     #Highlight: Determine how to split the calculation
     num_synthetic_peptides = args.num_synthetic_peptides
-    batch_size = num_synthetic_peptides if num_synthetic_peptides < 100 else 100
-    split_size = int(num_synthetic_peptides / batch_size) if not batch_size > num_synthetic_peptides else 1
-    batch_indexes = [0,num_synthetic_peptides] if split_size == 1 else list(range(0, num_synthetic_peptides, split_size))
+    divisors = VegvisirUtils.print_divisors(num_synthetic_peptides)
+    n_divisors = len(divisors)
+    if n_divisors == 1:
+        split_size = num_synthetic_peptides
+    elif n_divisors == 2:
+        split_size = int(num_synthetic_peptides/divisors[1])
+    else:
+        split_size = int(num_synthetic_peptides/divisors[2])
+    batch_indexes = [0,num_synthetic_peptides] if split_size == 1 else list(range(0, num_synthetic_peptides, split_size)) + [num_synthetic_peptides]
+    print(batch_indexes)
 
     argmax = args.generate_argmax
     maxlen_generated = model_load.seq_max_len
@@ -584,7 +590,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
     # VegvisirPlots.plot_logos(list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), train_raw.tolist())), additional_info.results_dir, "_TRAIN_raw")
 
     generated_out_dict= defaultdict(lambda: list())
-    with torch.no_grad():  # do not update parameters with the generative data
+    with (torch.no_grad()):  # do not update parameters with the generative data
         for i,bi in enumerate(batch_indexes):
             print("Batch {} ---------------------------".format(i))
             start = bi
@@ -593,6 +599,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
             else:
                 end = batch_indexes[i+1]
                 num_synthetic_peptides_batch = end - start
+                print("Number of synthetic peptides batch: {}".format(num_synthetic_peptides_batch))
                 # #Highlight: Initalize fake dummy data (not atually used)
                 batch_data = {"blosum": torch.randint(low=-7, high=7, size=(num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).double().to(device=args.device).detach(),
                               "onehot": torch.randint(low=0, high=1, size=(num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).double().to(device=args.device).detach(),
@@ -601,17 +608,16 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
                               "positional_mask": torch.ones((num_synthetic_peptides_batch, maxlen_generated)).bool().to(device=args.device).detach(),
                               }
 
-
                 h_0_GUIDE = [param for key, param in guide.named_parameters() if key == "h_0_GUIDE"][0]
                 for idx_z in range(args.num_samples):
+                    print("Using z sample {}".format(idx_z))
                     if len(dataset_info.unique_lens) > 1:
                         lenghts_sample = np.random.choice([8, 9, 10, 11], (num_synthetic_peptides_batch,), replace=True,p=[0.1, 0.7, 0.1, 0.1]).tolist()
                     else:  # TODO:
                         lenghts_sample = np.ones((num_synthetic_peptides_batch,)) * maxlen_generated
                         lenghts_sample = lenghts_sample.astype(int)
 
-                    batch_mask = list(
-                        map(lambda length: VegvisirUtils.generate_mask(maxlen_generated, length), lenghts_sample))
+                    batch_mask = list(map(lambda length: VegvisirUtils.generate_mask(maxlen_generated, length), lenghts_sample))
                     batch_mask = torch.from_numpy(np.concatenate(batch_mask, axis=0))
 
                     batch_mask_blosum = np.broadcast_to(batch_mask[:, None, :, None], (
@@ -629,9 +635,16 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
                         "generate": True
                     }
                     # guide_estimates = None
+                    print("Train predictive samples-------------------")
+                    print(train_predictive_samples_dict["latent_samples"].shape)
+                    print("Blosum ------------------")
+                    print(batch_data["blosum"].shape)
 
                     # sampling_output = Vegvisir.sample(batch_data, batch_mask_blosum, epoch=0, guide_estimates=guide_estimates,sample=True,argmax=argmax)
-                    sampling_output = Predictive(Vegvisir.model, guide=None, num_samples=args.generate_num_samples, return_sites=(),parallel=False)(batch_data, batch_mask_blosum, epoch=0,guide_estimates=guide_estimates, sample=True)
+                    sampling_output = Predictive(Vegvisir.model, guide=None, num_samples=args.generate_num_samples, return_sites=(),parallel=True)(batch_data, batch_mask_blosum, epoch=0,guide_estimates=guide_estimates, sample=True)
+                    print("Done sampling------------------------------------------------------")
+
+
                     # Highlight: majority vote? most likely?
                     if argmax:
                         sequences_logits = sampling_output["sequences_logits"].detach().cpu().permute(1, 0, 2, 3)
@@ -735,11 +748,13 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
                         generated_out_dict["attention_weights"].append(sampling_output["attn_weights"].permute(1, 0, 2, 3).detach().cpu().numpy()[keep_idx])
                         generated_out_dict["encoder_hidden_states"].append(sampling_output["encoder_hidden_states"].permute(1, 0, 2, 3, 4).detach().cpu().numpy()[keep_idx])
                         generated_out_dict["decoder_hidden_states"].append(sampling_output["decoder_hidden_states"].permute(1, 0, 2, 3, 4).detach().cpu().numpy()[keep_idx])
-                        generated_out_dict["encoder_final_hidden_state"].append(sampling_output["encoder_final_hidden"].permute(1, 0, 2).detach().cpu().numpy()[keep_idx])
-                        generated_out_dict["decoder_final_hidden_state"].append(sampling_output["decoder_final_hidden"].permute(1, 0, 2).detach().cpu().numpy()[keep_idx])
+                        encoder_final_hidden_state = VegvisirUtils.squeeze_tensor(3,sampling_output["encoder_final_hidden"]).permute(1, 0, 2).detach().cpu().numpy()[keep_idx]
+                        generated_out_dict["encoder_final_hidden_state"].append(encoder_final_hidden_state)
+                        decoder_final_hidden_state = VegvisirUtils.squeeze_tensor(3,sampling_output["decoder_final_hidden"]).permute(1, 0, 2).detach().cpu().numpy()[keep_idx]
+                        generated_out_dict["decoder_final_hidden_state"].append(decoder_final_hidden_state)
 
 
-                        latent_space = sampling_output["latent_z"].permute(1, 0, 2).detach().cpu()[keep_idx, 0]
+                        latent_space = VegvisirUtils.squeeze_tensor(3,sampling_output["latent_z"]).permute(1, 0, 2).detach().cpu()[keep_idx, 0]
                         # Highlight: fake infomation to maintain same functions
                         identifiers = torch.ones(n_seqs_clean).detach().cpu()
                         partitions = torch.ones(n_seqs_clean).detach().cpu()
@@ -747,7 +762,21 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
                         latent_space = torch.column_stack([torch.from_numpy(true_labels).detach().cpu(), identifiers, partitions, immunodominace_score, confidence_score,latent_space])
                         generated_out_dict["latent_space"].append(latent_space.numpy())
 
+                    #print("Objects BEFORE clearing: {}".format(len(gc.get_objects())))
+                    del batch_mask,identical_to_train_bool,unique_idx,keep_idx, batch_mask_blosum, guide_estimates, lenghts_sample
+                    del binary_mode,binary_frequencies,unique_sequences, generated_sequences_int,class_logits,class_probabilities
+                    del generated_sequences_blosum,generated_sequences_raw,binary_predictions,true_labels,true_onehot
+                    del confidence_score
+                    del sampling_output, identical_to_train_idx
+                    if argmax:
+                        del sequences_logits
+                    del latent_space,identifiers,partitions,immunodominace_score
+                    del discarded_sequences,clean_results,clean_generated_masks, n_seqs_clean
+                    gc.collect()
+                    #print("Remaining objects AFTER clearing: {}".format(len(gc.get_objects())))
 
+                del batch_data, h_0_GUIDE,num_synthetic_peptides_batch
+            gc.collect()
 
     generated_out_dict = {key:np.concatenate(val,axis=0) for key,val in generated_out_dict.items()}
 
@@ -755,8 +784,6 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
     generated_sequences_int = generated_out_dict["data_int"]
 
     unique_sequences, unique_idx = np.unique(generated_sequences_int, axis=0, return_index=True)
-
-
 
     generated_out_dict = {key:val[unique_idx] for key,val in generated_out_dict.items()}
 
@@ -799,6 +826,8 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
 
     latent_space = generated_out_dict["latent_space"]
 
+    del custom_features_dicts, aminoacids_dict_reversed, train_dataset
+    gc.collect()
 
     return generated_out_dict, latent_space
 def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_info,additional_info,train_predictive_samples_dict):
@@ -806,9 +835,16 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
     Vegvisir.eval()
     #Highlight: Determine how to split the calculation
     num_synthetic_peptides = args.num_synthetic_peptides
-    batch_size = num_synthetic_peptides if num_synthetic_peptides < 100 else 100
-    split_size = int(num_synthetic_peptides / batch_size) if not batch_size > num_synthetic_peptides else 1
-    batch_indexes = [0,num_synthetic_peptides] if split_size == 1 else list(range(0, num_synthetic_peptides, split_size))
+    divisors = VegvisirUtils.print_divisors(num_synthetic_peptides)
+    n_divisors = len(divisors)
+    if n_divisors == 1:
+        split_size = num_synthetic_peptides
+    elif n_divisors == 2:
+        split_size = int(num_synthetic_peptides/divisors[1])
+    else:
+        split_size = int(num_synthetic_peptides/divisors[2])
+    batch_indexes = [0,num_synthetic_peptides] if split_size == 1 else list(range(0, num_synthetic_peptides, split_size)) + [num_synthetic_peptides]
+
 
     assert num_synthetic_peptides < 10000, "Please generate less than 10000 peptides, otherwise the computations might not be posible or they might take too long"
     argmax = args.generate_argmax
@@ -843,7 +879,8 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
                 end = batch_indexes[i+1]
                 num_synthetic_peptides_batch = end - start
                 # Highlight: Predict the latent representations of the sequences to immunomodulate
-                _, _, train_predictive_samples_dict, _, _ = sample_loop(svi, Vegvisir, guide, data_loader, args,model_load)
+                a_, b_, train_predictive_samples_dict, c_, d_ = sample_loop(svi, Vegvisir, guide, data_loader, args,model_load)
+                h_0_GUIDE = [param for key, param in guide.named_parameters() if key == "h_0_GUIDE"][0]
                 # #Highlight: Initalize fake dummy data (not used)
                 batch_data = {"blosum": torch.randint(low=-7, high=7, size=(num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).double().to(device=args.device).detach(),
                               "onehot": torch.randint(low=0, high=1, size=(num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).double().to(device=args.device).detach(),
@@ -852,6 +889,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
                               "positional_mask": torch.ones((num_synthetic_peptides_batch, maxlen_generated)).bool().to(device=args.device).detach(),
                               }
                 for idx_z in range(args.num_samples):
+                    print("Using z sample {}".format(idx_z))
                     if len(dataset_info.unique_lens) > 1:
                         lenghts_sample = np.random.choice([8, 9, 10, 11], (num_synthetic_peptides_batch,), replace=True,
                                                           p=[0.1, 0.7, 0.1, 0.1]).tolist()
@@ -865,7 +903,6 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
                     batch_mask_blosum = np.broadcast_to(batch_mask[:, None, :, None],(num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).copy()
                     batch_mask_blosum = torch.from_numpy(batch_mask_blosum).to(args.device)
 
-                    h_0_GUIDE = [param for key, param in guide.named_parameters() if key == "h_0_GUIDE"][0]
 
                     guide_estimates = {
                         "rnn_hidden": h_0_GUIDE.expand(1 * 2, num_synthetic_peptides_batch, args.hidden_dim * 2).contiguous(),
@@ -982,11 +1019,12 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
                     generated_out_dict["attention_weights"].append(sampling_output["attn_weights"].permute(1, 0, 2, 3).detach().cpu().numpy()[keep_idx])
                     generated_out_dict["encoder_hidden_states"].append(sampling_output["encoder_hidden_states"].permute(1, 0, 2, 3, 4).detach().cpu().numpy()[keep_idx])
                     generated_out_dict["decoder_hidden_states"].append(sampling_output["decoder_hidden_states"].permute(1, 0, 2, 3, 4).detach().cpu().numpy()[keep_idx])
-                    generated_out_dict["encoder_final_hidden_state"].append(sampling_output["encoder_final_hidden"].permute(1, 0, 2).detach().cpu().numpy()[keep_idx])
-                    generated_out_dict["decoder_final_hidden_state"].append(sampling_output["decoder_final_hidden"].permute(1, 0, 2).detach().cpu().numpy()[keep_idx])
+                    encoder_final_hidden_state = VegvisirUtils.squeeze_tensor(3, sampling_output["encoder_final_hidden"]).permute(1, 0,2).detach().cpu().numpy()[keep_idx]
+                    generated_out_dict["encoder_final_hidden_state"].append(encoder_final_hidden_state)
+                    decoder_final_hidden_state = VegvisirUtils.squeeze_tensor(3, sampling_output["decoder_final_hidden"]).permute(1, 0,2).detach().cpu().numpy()[keep_idx]
+                    generated_out_dict["decoder_final_hidden_state"].append(decoder_final_hidden_state)
 
-
-                    latent_space = sampling_output["latent_z"].permute(1, 0, 2).detach().cpu()[keep_idx, 0]
+                    latent_space = VegvisirUtils.squeeze_tensor(3,sampling_output["latent_z"]).permute(1, 0, 2).detach().cpu()[keep_idx, 0]
                     # Highlight: fake infomation to maintain same functions
                     identifiers = torch.ones(n_seqs_clean).detach().cpu()
                     partitions = torch.ones(n_seqs_clean).detach().cpu()
@@ -994,6 +1032,18 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
                     latent_space = torch.column_stack([torch.from_numpy(true_labels).detach().cpu(), identifiers, partitions, immunodominace_score, confidence_score,latent_space])
                     generated_out_dict["latent_space"].append(latent_space.numpy())
 
+                    del lenghts_sample,batch_mask_blosum, guide_estimates
+                    del sampling_output, binary_frequencies, binary_mode,binary_predictions
+                    if argmax:
+                        del sequences_logits
+                    del unique_sequences,unique_idx,identical_to_train_idx,identical_to_train_bool,clean_results,discarded_sequences, clean_generated_masks,generated_sequences_mask
+                    del keep_idx, generated_sequences_int, generated_sequences_blosum,generated_sequences_raw, class_logits,class_probabilities
+                    del confidence_score,true_labels,true_onehot, n_seqs_clean
+                    del latent_space,identifiers,partitions,immunodominace_score
+                    gc.collect()
+
+                del a_,b_,c_,d_, batch_data,h_0_GUIDE,train_predictive_samples_dict
+                gc.collect()
 
 
     generated_out_dict = {key:np.concatenate(val,axis=0) for key,val in generated_out_dict.items()}
@@ -1042,6 +1092,8 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
             signal.alarm(0)
 
     latent_space = generated_out_dict["latent_space"]
+    del custom_features_dicts, aminoacids_dict_reversed, train_dataset
+    gc.collect()
     return generated_out_dict, latent_space
 def save_script(results_dir,output_name,script_name):
     """Saves the python script and its contents"""
@@ -1460,6 +1512,8 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                     generated_dict,generated_latent_space = generate_loop(svi, Vegvisir, guide, train_loader, args, model_load,dataset_info,additional_info,train_predictive_samples_dict)
                     torch.cuda.empty_cache()
                     generated_summary_dict = VegvisirUtils.manage_predictions_generative(args,generated_dict)
+                    VegvisirUtils.save_predictions_confidence_intervals(generated_summary_dict, dataset_info,results_dir,method="Generated")
+
                 else:
                     generated_summary_dict = None
                 if args.immunomodulate:
@@ -1473,15 +1527,20 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                                                                            immunomodulate_dataset.positional_weights_mask[:nseqs],
                                                                            )
 
-                    train_loader = DataLoader(custom_dataset_immunomodulate, batch_size=nseqs, shuffle=False,
+                    immuno_loader = DataLoader(custom_dataset_immunomodulate, batch_size=nseqs, shuffle=False,
                                               generator=torch.Generator(device=args.device), **kwargs)
-                    immunomodulate_dict,immunomodulate_latent_space = immunomodulation_loop(svi, Vegvisir, guide, train_loader, args, model_load,dataset_info,additional_info,train_predictive_samples_dict)
+                    immunomodulate_dict,immunomodulate_latent_space = immunomodulation_loop(svi, Vegvisir, guide, immuno_loader, args, model_load,dataset_info,additional_info,train_predictive_samples_dict)
                     immunomodulate_summary_dict = VegvisirUtils.manage_predictions_generative(args,immunomodulate_dict)
+                    VegvisirUtils.save_predictions_confidence_intervals(immunomodulate_summary_dict, dataset_info,results_dir,method="Immunomodulated")
+
 
 
 
                 train_summary_dict = VegvisirUtils.manage_predictions(train_predictive_samples_dict,args,train_predictions_dict)
                 valid_summary_dict = VegvisirUtils.manage_predictions(valid_predictive_samples_dict,args,valid_predictions_dict)
+
+                VegvisirUtils.save_predictions_confidence_intervals(train_summary_dict, dataset_info,results_dir,method="Train{}".format(fold))
+                VegvisirUtils.save_predictions_confidence_intervals(valid_summary_dict, dataset_info,results_dir,method=mode)
 
                 if args.plot_all:
                     #VegvisirPlots.plot_gradients(gradient_norms, results_dir, "Train_{}".format(mode))
@@ -1592,6 +1651,10 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     del data_args_0,data_args_1,train_data_blosum,valid_data_blosum
     del train_loader,valid_loader,custom_dataset_train,custom_dataset_valid
     del data_blosum,data_int,data_onehot,data_blosum_norm,data_array_blosum_encoding_mask,data_positional_weights_mask
+    if args.generate:
+        del generated_summary_dict,generated_dict,generated_latent_space
+    if args.immunomodulate:
+        del immuno_loader,immunomodulate_dataset,immunomodulate_summary_dict,immunomodulate_dict,immunomodulate_latent_space, custom_dataset_immunomodulate
     torch.cuda.empty_cache()
     print(torch.cuda.memory_summary(device=None, abbreviated=False))
     gc.collect()
@@ -1672,7 +1735,7 @@ def train_model(config=None,dataset_info=None,additional_info=None,args=None):
             train_idx = (train_idx.int() + valid_idx.int()).bool()
             epoch_loop(train_idx, test_idx, dataset_info, args, additional_info,mode="Test",config=config)
 def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid",fold=""):
-    """Set up k-fold cross validation and the training loop"""
+    """Load pre-trained parameters"""
     print("Loading dataset into pre-trained model...")
     data_blosum = dataset_info.data_array_blosum_encoding
     data_int = dataset_info.data_array_int
@@ -1704,6 +1767,7 @@ def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                            input_dim=dataset_info.input_dim,
                            aa_types=dataset_info.corrected_aa_types,
                            blosum=torch.from_numpy(dataset_info.blosum),
+                           blosum_weighted=dataset_info.blosum_weighted.to(args.device),
                            class_weights=VegvisirLoadUtils.calculate_class_weights(train_data_blosum, args)
                            )
     pretrained_model_path = args.pretrained_model
@@ -1804,8 +1868,26 @@ def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     else:
         generative_summary_dict = None
     if args.immunomodulate:
-        immunomodulated_sequences = immunomodulation_loop(svi, Vegvisir, guide, train_loader, args, model_load,
-                                                          dataset_info, additional_info, train_predictive_samples_dict)
+        immunomodulate_dataset = dataset_info.immunomodulate_dataset
+        nseqs = len(immunomodulate_dataset.data_array_blosum_encoding)
+        custom_dataset_immunomodulate = VegvisirLoadUtils.CustomDataset(
+            immunomodulate_dataset.data_array_blosum_encoding,
+            immunomodulate_dataset.data_array_int,
+            immunomodulate_dataset.data_array_onehot_encoding,
+            immunomodulate_dataset.data_array_blosum_norm,
+            immunomodulate_dataset.data_array_blosum_encoding_mask,
+            immunomodulate_dataset.positional_weights_mask[:nseqs],
+            )
+
+        immuno_loader = DataLoader(custom_dataset_immunomodulate, batch_size=nseqs, shuffle=False,
+                                   generator=torch.Generator(device=args.device), **kwargs)
+        immunomodulate_dict, immunomodulate_latent_space = immunomodulation_loop(svi, Vegvisir, guide, immuno_loader,
+                                                                                 args, model_load, dataset_info,
+                                                                                 additional_info,
+                                                                                 train_predictive_samples_dict)
+        immunomodulate_summary_dict = VegvisirUtils.manage_predictions_generative(args, immunomodulate_dict)
+        VegvisirUtils.save_predictions_confidence_intervals(immunomodulate_summary_dict, dataset_info, results_dir,
+                                                            method="Immunomodulated")
 
     if args.plot_all:
         VegvisirPlots.plot_latent_space(args, dataset_info, train_predictive_samples_latent_space, train_summary_dict,"samples", results_dir, method="Train{}".format(fold))
@@ -1815,6 +1897,12 @@ def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
             VegvisirPlots.plot_latent_space(args, dataset_info, generated_latent_space, generative_summary_dict,
                                             "samples" if args.generate_num_samples > 1 else "single_sample",
                                             results_dir, method="Generated")
+        if args.immunomodulate:
+            VegvisirPlots.plot_latent_space(args, dataset_info, immunomodulate_latent_space,
+                                            immunomodulate_summary_dict,
+                                            "samples" if args.generate_num_samples > 1 else "single_sample",
+                                            results_dir, method="Immunomodulated")
+
         VegvisirPlots.plot_attention_weights(train_summary_dict, dataset_info, results_dir, method="Train{}".format(fold))
         VegvisirPlots.plot_attention_weights(valid_summary_dict, dataset_info, results_dir, method=mode)
 
