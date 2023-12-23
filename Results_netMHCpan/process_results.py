@@ -109,6 +109,8 @@ def read_dataframe(folder_path,folder_name):
     binders_df = pd.concat([weak_binders_count,strong_binders_count],axis=0)
     binders_df["size"] = ((binders_df["size"]/n_unique)*100).round(2)
 
+    binders_df.to_csv("{}/Binders_df_{}".format(folder_path,folder_name))
+
     epitopes_binders = pd.concat([weak_binders_df,strong_binders_df],axis=0)
     epitopes_binders["Icore"] = epitopes_binders["Icore"].str.ljust(11, fillchar='#')
 
@@ -183,5 +185,4 @@ if __name__ == "__main__":
     parser.add_argument('-folder-path',"--folder-path", type=str, nargs='?', default="", help='path to results')
     parser.add_argument('-folder-name',"--folder-name", type=str, nargs='?', default="Generated", help='path to results')
     args = parser.parse_args()
-    #read_dataframe(args.folder_path)    #TODO: CAHNGE
-    read_dataframe(folder_path,folder_name)
+    read_dataframe(args.folder_path,args.folder_name)

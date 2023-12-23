@@ -854,14 +854,14 @@ def euclidean_2d_norm(A,B,squared=True):
 
 def manage_predictions_generative(args,generative_dict):
 
-    mode = "samples" if args.generate_num_samples > 1 else "single_sample"
+    mode = "samples" if args.num_samples > 1 else "single_sample"
     class_logits_predictions_generative_argmax = np.argmax(generative_dict["logits"], axis=-1)
     #class_logits_predictions_generative_argmax_mode = stats.mode(class_logits_predictions_generative_argmax, axis=1,keepdims=True).mode.squeeze(-1)
     class_logits_predictions_generative_argmax_mode = class_logits_predictions_generative_argmax
     probs_predictions_generative = generative_dict["probs"]
 
     binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=generative_dict["binary"].astype("int64"))
-    binary_frequencies = binary_frequencies / args.generate_num_samples
+    binary_frequencies = binary_frequencies / args.num_samples
 
 
     #Highlight: Stack 2 data_int to maintain the latter format
@@ -887,7 +887,7 @@ def manage_predictions_generative(args,generative_dict):
                         "data_int_samples": data_int,
                         "data_mask_single_sample": generative_dict["data_mask"],
                         "data_mask_samples": generative_dict["data_mask"],
-                        "class_binary_predictions_{}".format(mode): generative_dict["binary"] if args.generate_num_samples > 1 else generative_dict["binary"].squeeze(1) ,
+                        "class_binary_predictions_{}".format(mode): generative_dict["binary"] if args.num_samples > 1 else generative_dict["binary"].squeeze(1) ,
                         "true_single_sample": generative_dict["true"],
                         "true_samples": generative_dict["true"],
                         "class_binary_predictions_{}_mode".format(mode): stats.mode(generative_dict["binary"], axis=1,keepdims=True).mode.squeeze(-1),
@@ -906,9 +906,9 @@ def manage_predictions_generative(args,generative_dict):
                         "class_probs_predictions_samples_95%CI_class_1": probs_95_class_1,
                         "class_probs_predictions_single_sample": probs_predictions_generative,
                         "class_probs_predictions_samples": probs_predictions_generative,
-                        #"class_probs_predictions_{}_average".format(mode): np.mean(probs_predictions_generative, axis=1) if args.generate_num_samples > 1 else probs_predictions_generative,
+                        #"class_probs_predictions_{}_average".format(mode): np.mean(probs_predictions_generative, axis=1) if args.num_samples > 1 else probs_predictions_generative,
                         "class_probs_predictions_{}_average".format(mode): probs_predictions_generative,
-                        #"class_binary_predictions_{}_logits_average_argmax".format(mode): np.argmax(np.mean(probs_predictions_generative, axis=1), axis=1) if args.generate_num_samples > 1 else np.argmax(probs_predictions_generative, axis=1)
+                        #"class_binary_predictions_{}_logits_average_argmax".format(mode): np.argmax(np.mean(probs_predictions_generative, axis=1), axis=1) if args.num_samples > 1 else np.argmax(probs_predictions_generative, axis=1)
                         "class_binary_predictions_{}_logits_average_argmax".format(mode): np.argmax(probs_predictions_generative, axis=1)
                        }
 

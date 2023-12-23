@@ -416,12 +416,14 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             data_masks.append(batch_mask.detach().cpu().numpy())
 
             guide_estimates = guide(batch_data, batch_mask, epoch=0,guide_estimates=None,sample=False)
+            #TODO: Make parallel version work , but might require a full new network structure
             sampling_output = Predictive(Vegvisir.model, guide=guide, num_samples=args.num_samples, return_sites=(), parallel=False)(batch_data, batch_mask,epoch=0,guide_estimates=guide_estimates, sample=True)
 
             z_loc = VegvisirUtils.squeeze_tensor(2, guide_estimates["z_loc"]).detach().cpu().numpy()
             z_locs.append(z_loc)
             z_scale = VegvisirUtils.squeeze_tensor(2, guide_estimates["z_scale"]).detach().cpu().numpy()
             z_scales.append(z_scale)
+
 
             if sampling_output["predictions"].shape == (args.num_samples,batch_data["blosum"].shape[0]):
                 binary_class_prediction = sampling_output["predictions"].detach().T
@@ -635,16 +637,10 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
                         "generate": True
                     }
                     # guide_estimates = None
-                    print("Train predictive samples-------------------")
-                    print(train_predictive_samples_dict["latent_samples"].shape)
-                    print("Blosum ------------------")
-                    print(batch_data["blosum"].shape)
 
                     # sampling_output = Vegvisir.sample(batch_data, batch_mask_blosum, epoch=0, guide_estimates=guide_estimates,sample=True,argmax=argmax)
-                    sampling_output = Predictive(Vegvisir.model, guide=None, num_samples=args.generate_num_samples, return_sites=(),parallel=True)(batch_data, batch_mask_blosum, epoch=0,guide_estimates=guide_estimates, sample=True)
+                    sampling_output = Predictive(Vegvisir.model, guide=None, num_samples=args.num_samples, return_sites=(),parallel=True)(batch_data, batch_mask_blosum, epoch=0,guide_estimates=guide_estimates, sample=True)
                     print("Done sampling------------------------------------------------------")
-
-
                     # Highlight: majority vote? most likely?
                     if argmax:
                         sequences_logits = sampling_output["sequences_logits"].detach().cpu().permute(1, 0, 2, 3)
@@ -665,7 +661,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
                         binary_predictions = VegvisirUtils.squeeze_tensor(2, sampling_output["predictions"].squeeze(1)).detach().cpu().permute(1, 0).numpy()
                     binary_mode = stats.mode(binary_predictions, axis=1, keepdims=True).mode.squeeze(-1)
                     binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1,arr=binary_predictions.astype("int64"))
-                    binary_frequencies = binary_frequencies / args.generate_num_samples
+                    binary_frequencies = binary_frequencies / args.num_samples
 
                     #VegvisirUtils.numpy_to_fasta(generated_sequences_raw, binary_mode, binary_frequencies,"{}/Generated".format(additional_info.results_dir), "_NOT_FILTERED")
 
@@ -796,7 +792,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
     binary_mode = stats.mode(binary_predictions, axis=1, keepdims=True).mode.squeeze(-1)
     binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1,
                                              arr=binary_predictions.astype("int64"))
-    binary_frequencies = binary_frequencies / args.generate_num_samples
+    binary_frequencies = binary_frequencies / args.num_samples
 
     VegvisirUtils.numpy_to_fasta(generated_sequences_raw, binary_mode, binary_frequencies,
                                  "{}/Generated".format(additional_info.results_dir))
@@ -918,7 +914,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
                     # guide_estimates = None
 
                     # sampling_output = Vegvisir.sample(batch_data, batch_mask_blosum, epoch=0, guide_estimates=guide_estimates,sample=True,argmax=argmax)
-                    sampling_output = Predictive(Vegvisir.model, guide=None, num_samples=args.generate_num_samples, return_sites=(),parallel=False)(batch_data, batch_mask_blosum, epoch=0,guide_estimates=guide_estimates, sample=True)
+                    sampling_output = Predictive(Vegvisir.model, guide=None, num_samples=args.num_samples, return_sites=(),parallel=False)(batch_data, batch_mask_blosum, epoch=0,guide_estimates=guide_estimates, sample=True)
                     # Highlight: majority vote? most likely?
                     if argmax:
                         sequences_logits = sampling_output["sequences_logits"].detach().cpu().permute(1, 0, 2, 3)
@@ -939,7 +935,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
                         binary_predictions = VegvisirUtils.squeeze_tensor(2, sampling_output["predictions"].squeeze(1)).detach().cpu().permute(1, 0).numpy()
                     binary_mode = stats.mode(binary_predictions, axis=1, keepdims=True).mode.squeeze(-1)
                     binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1,arr=binary_predictions.astype("int64"))
-                    binary_frequencies = binary_frequencies / args.generate_num_samples
+                    binary_frequencies = binary_frequencies / args.num_samples
 
                     #VegvisirUtils.numpy_to_fasta(generated_sequences_raw, binary_mode, binary_frequencies,"{}/Generated".format(additional_info.results_dir), "_NOT_FILTERED")
 
@@ -964,7 +960,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
 
                         clean_results = list(zip(*clean_results))
                         # clean_generated_sequences = clean_results[0]
-                        if clean_results[1] is not None:
+                        if len(clean_results) > 1:
                             clean_generated_masks = clean_results[1]
                             # generated_sequences_int = np.concatenate(clean_generated_sequences,axis=0)
                             generated_sequences_mask = np.concatenate(clean_generated_masks, axis=0)  # contains the truncated masks
@@ -1063,7 +1059,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
     binary_mode = stats.mode(binary_predictions, axis=1, keepdims=True).mode.squeeze(-1)
     binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1,
                                              arr=binary_predictions.astype("int64"))
-    binary_frequencies = binary_frequencies / args.generate_num_samples
+    binary_frequencies = binary_frequencies / args.num_samples
 
     VegvisirUtils.numpy_to_fasta(generated_sequences_raw, binary_mode, binary_frequencies,
                                  "{}/Immunomodulated".format(additional_info.results_dir))
@@ -1549,9 +1545,9 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                     VegvisirPlots.plot_latent_space(args,dataset_info,train_predictive_samples_latent_space, train_summary_dict, "samples",results_dir, method="Train{}".format(fold))
                     VegvisirPlots.plot_latent_space(args,dataset_info,valid_predictive_samples_latent_space,valid_summary_dict, "samples",results_dir, method=mode)
                     if args.generate:
-                        VegvisirPlots.plot_latent_space(args,dataset_info,generated_latent_space,generated_summary_dict, "samples" if args.generate_num_samples > 1 else "single_sample",results_dir, method="Generated")
+                        VegvisirPlots.plot_latent_space(args,dataset_info,generated_latent_space,generated_summary_dict, "samples" if args.num_samples > 1 else "single_sample",results_dir, method="Generated")
                     if args.immunomodulate:
-                        VegvisirPlots.plot_latent_space(args,dataset_info,immunomodulate_latent_space,immunomodulate_summary_dict, "samples" if args.generate_num_samples > 1 else "single_sample",results_dir, method="Immunomodulated")
+                        VegvisirPlots.plot_latent_space(args,dataset_info,immunomodulate_latent_space,immunomodulate_summary_dict, "samples" if args.num_samples > 1 else "single_sample",results_dir, method="Immunomodulated")
 
                     #VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
                     #VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
@@ -1895,12 +1891,12 @@ def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
 
         if args.generate:
             VegvisirPlots.plot_latent_space(args, dataset_info, generated_latent_space, generative_summary_dict,
-                                            "samples" if args.generate_num_samples > 1 else "single_sample",
+                                            "samples" if args.num_samples > 1 else "single_sample",
                                             results_dir, method="Generated")
         if args.immunomodulate:
             VegvisirPlots.plot_latent_space(args, dataset_info, immunomodulate_latent_space,
                                             immunomodulate_summary_dict,
-                                            "samples" if args.generate_num_samples > 1 else "single_sample",
+                                            "samples" if args.num_samples > 1 else "single_sample",
                                             results_dir, method="Immunomodulated")
 
         VegvisirPlots.plot_attention_weights(train_summary_dict, dataset_info, results_dir, method="Train{}".format(fold))

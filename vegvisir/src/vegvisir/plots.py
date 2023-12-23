@@ -49,6 +49,12 @@ import logomaker
 
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
+# plt.rcParams.update({
+#     "text.usetex": True,
+#     "font.family": "sans-serif",
+#     "font.sans-serif": "Helvetica",
+# })
+
 colors_dict = {0: "green", 1: "red",2:"navajowhite"}
 colors_cluster_dict = {0: "seagreen", 1: "crimson",2:"gold",3:"mediumslateblue"}
 colors_dict_labels = {0: "mediumaquamarine", 1: "orangered",2:"navajowhite"}
@@ -292,6 +298,7 @@ def plot_data_information_reduced(data, filters_dict, storage_folder, args, name
     """"""
     ndata = data.shape[0]
     fig, ax = plt.subplots(nrows=2,ncols=4, figsize=(15, 10))
+    fontsize = 20
     num_bins = 50
 
     ############LABELS #############
@@ -307,7 +314,7 @@ def plot_data_information_reduced(data, filters_dict, storage_folder, args, name
         position += 0.5 if args.num_classes == 3 else 0.25
     ax[0][0].margins(y=0.1)
     ax[0][0].set_xlabel('Binary target class')
-    ax[0][0].set_title('Binary targets counts',fontsize=12)
+    ax[0][0].set_title('Binary targets \n counts',fontsize=fontsize)
     ax[0][0].xaxis.set_ticks(position_labels)
     ax[0][0].set_xticklabels(range(args.num_classes))
     # Annotate the bars.
@@ -335,7 +342,7 @@ def plot_data_information_reduced(data, filters_dict, storage_folder, args, name
 
     ax[0][1].margins(y=0.1)
     ax[0][1].set_xlabel('Binary target class')
-    ax[0][1].set_title('Corrected binary targets counts',fontsize=12)
+    ax[0][1].set_title('Corrected binary \n targets counts',fontsize=fontsize)
     ax[0][1].xaxis.set_ticks(position_labels)
     ax[0][1].set_xticklabels(range(args.num_classes))
     # Annotate the bars.
@@ -346,12 +353,12 @@ def plot_data_information_reduced(data, filters_dict, storage_folder, args, name
             "{}\n({}%)".format(bar.get_height(), np.round((bar.get_height() * 100) / n_data), 2),
             (bar.get_x() + bar.get_width() / 2,
              bar.get_height()), ha='center', va='center',
-            size=10, xytext=(0, 8),
+            size=int(fontsize/2) + 1, xytext=(0, 8),
             textcoords='offset points',weight='bold')
     ####### Immunodominance scores ###################
     ax[0][3].hist(data["immunodominance_score_scaled"].to_numpy(), num_bins, density=True)
-    ax[0][3].set_xlabel('Minmax scaled \n immunodominance score \n (N + / Total)',fontsize=12)
-    ax[0][3].set_title('Histogram of \n immunodominance scores',fontsize=12)
+    ax[0][3].set_xlabel('Minmax scaled \n immunoprevalence score \n (N + / Total)',fontsize=fontsize)
+    ax[0][3].set_title('Histogram of \n immunoprevalence \n scores',fontsize=fontsize)
     ############TEST PROPORTIONS #############
     data_partitions = data[["partition", "training", "target_corrected"]]
     test_counts = data_partitions[data_partitions["training"] == False].value_counts("target_corrected")  # returns a dict
@@ -367,12 +374,12 @@ def plot_data_information_reduced(data, filters_dict, storage_folder, args, name
             ax[1][0].annotate("{}({}%)".format(bar.get_height(), np.round((bar.get_height() * 100) / n_data_test), 2),
                               (bar.get_x() + bar.get_width() / 2,
                                bar.get_height()), ha='center', va='center',
-                              size=12, xytext=(0, 8),
+                              size=int(fontsize/2) + 1, xytext=(0, 8),
                               textcoords='offset points',weight='bold')
         ax[1][0].margins(y=0.1)
         ax[1][0].xaxis.set_ticks([0])
-        ax[1][0].set_xticklabels(["Test proportions"], fontsize=12)
-        ax[1][0].set_title('Test dataset. \n Class proportions', fontsize=12)
+        ax[1][0].set_xticklabels(["Test proportions"], fontsize=fontsize)
+        ax[1][0].set_title('Test dataset. \n Class proportions', fontsize=fontsize)
     ################ TRAIN PARTITION PROPORTIONS###################################
 
     train_set = data_partitions[data_partitions["training"] == True]
@@ -398,14 +405,14 @@ def plot_data_information_reduced(data, filters_dict, storage_folder, args, name
                     "{}\n({}%)".format(bar.get_height(), np.round((bar.get_height() * 100) / n_data_partition), 2),
                     (bar.get_x() + bar.get_width() / 2,
                      bar.get_height()), ha='center', va='center',
-                    size=8, xytext=(0, 8),
+                    size=int(fontsize/2) + 1, xytext=(0, 8),
                     textcoords='offset points',weight='bold')
 
         partitions_names.append(name)
     ax[0][2].margins(y=0.1)
     ax[0][2].xaxis.set_ticks([0, 0.4, 0.8, 1.2, 1.6])
     ax[0][2].set_xticklabels(["Part. {}".format(int(i)) for i in partitions_names])
-    ax[0][2].set_title('Train-validation dataset. \n Class proportions per partition',fontsize=12)
+    ax[0][2].set_title('Train-validation dataset. \n Class proportions \n per partition',fontsize=fontsize)
     ######## Sequence length distributions ####################
     ######Train#############################3
     data_lens_train_negative = data.loc[(data["training"] == True) & (data["target_corrected"] == 0.), filters_dict["filter_kmers"][2]].str.len()
@@ -428,7 +435,7 @@ def plot_data_information_reduced(data, filters_dict, storage_folder, args, name
 
     ax[1][1].xaxis.set_ticks(positions)
     ax[1][1].set_xticklabels(unique_sorted)
-    ax[1][1].set_title("Sequence length distribution of \n  the Train-validation dataset",fontsize=12)
+    ax[1][1].set_title("Sequence length \n distribution \n of the Train-validation dataset",fontsize=fontsize)
 
     ###### Test #####################
     data_lens_test_negative = data.loc[(data["training"] == False) & (data["target_corrected"] == 0.), filters_dict["filter_kmers"][2]].str.len()
@@ -450,7 +457,7 @@ def plot_data_information_reduced(data, filters_dict, storage_folder, args, name
                 position += 0.2
     ax[1][2].xaxis.set_ticks(positions)
     ax[1][2].set_xticklabels(unique_sorted)
-    ax[1][2].set_title("Sequence length distribution of \n  the test dataset",fontsize=12)
+    ax[1][2].set_title("Sequence length \n distribution \n of the Test dataset",fontsize=fontsize)
 
     #################################################################
 
@@ -501,11 +508,11 @@ def plot_data_information_reduced(data, filters_dict, storage_folder, args, name
 
 
     legends = [mpatches.Patch(color=color, label='Class {}'.format(label))  for label, color in colors_dict.items() if label < args.num_classes]
-    fig.legend(handles=legends, prop={'size': 12}, loc='center right', bbox_to_anchor=(0.85, 0.2))
+    fig.legend(handles=legends, prop={'size': fontsize}, loc='center right', bbox_to_anchor=(0.85, 0.2))
     fig.tight_layout(pad=0.1)
-    fig.suptitle("Dataset distributions")
-    plt.subplots_adjust(right=0.9,top=0.9,hspace=0.35,wspace=0.3)
-    plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder, args.dataset_name, name_suffix), dpi=500)
+    fig.suptitle("Dataset distributions",fontsize=fontsize)
+    plt.subplots_adjust(right=0.9,top=0.85,hspace=0.4,wspace=0.4)
+    plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder, args.dataset_name, name_suffix), dpi=700)
     plt.clf()
     plt.close(fig)
 
@@ -1404,7 +1411,7 @@ def colorbar(mappable):
 
 def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
     print("Plotting (reduced) scatter UMAP of {}...".format(vector_name))
-
+    fontsize= 18
     title_dict = {"latent_space_z": "Latent representation (z)",
                   "encoder_final_hidden_state":"Encoder Hf",
                   "decoder_final_hidden_state": "Decoder Hf"}
@@ -1421,7 +1428,7 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
                               "UMAP_y": umap_proj[:, 1],
                               "Binary targets":latent_space[:, 0],
                               "predictions_binary":predictions_binary,
-                              "Immunodominance":latent_space[:, 3],
+                              "Immunoprevalence":latent_space[:, 3],
                               "frequency_0":predictions_dict["class_binary_predictions_samples_frequencies"][:, 0],
                               "frequency_1":predictions_dict["class_binary_predictions_samples_frequencies"][:, 1]
                              })
@@ -1468,19 +1475,19 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
     g1.set(yticks=[])
     g1.set(xticks=[])
     g1_axes = g1.axes.flatten()
-    g1_axes[0].set_title("Predicted targets")
+    g1_axes[0].set_title("Predicted targets",fontsize=fontsize)
     g1.map(plt.scatter, "UMAP_x", "UMAP_y", alpha=alpha, s=size)
     g1_axes[0].set_xlabel("")
     g1_axes[0].set_ylabel("")
 
     #Highlight: Immunodominace scatter plot
-    g2 = sns.FacetGrid(dataframe, hue="Immunodominance", subplot_kws={"fc": "white"},
+    g2 = sns.FacetGrid(dataframe, hue="Immunoprevalence", subplot_kws={"fc": "white"},
                        palette=colormap_immunodominance.colors,
                        hue_order=immunodominance_scores_unique)
     g2.set(yticks=[])
     g2.set(xticks=[])
     g2_axes = g2.axes.flatten()
-    g2_axes[0].set_title("Immunodominance")
+    g2_axes[0].set_title("Immunoprevalence",fontsize=fontsize)
     g2.map(plt.scatter, "UMAP_x", "UMAP_y", alpha=alpha, s=size)
     g2_axes[0].set_xlabel("")
     g2_axes[0].set_ylabel("")
@@ -1492,7 +1499,7 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
     g3.set(yticks=[])
     g3.set(xticks=[])
     g3_axes = g3.axes.flatten()
-    g3_axes[0].set_title("Posterior predictive (class 0)")
+    g3_axes[0].set_title("Posterior predictive (class 0)",fontsize=fontsize)
     g3.map(plt.scatter, "UMAP_x", "UMAP_y", alpha=alpha, s=size)
     g3_axes[0].set_xlabel("")
     g3_axes[0].set_ylabel("")
@@ -1504,7 +1511,7 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
     g4.set(yticks=[])
     g4.set(xticks=[])
     g4_axes = g4.axes.flatten()
-    g4_axes[0].set_title("Posterior predictive (class 1)")
+    g4_axes[0].set_title("Posterior predictive (class 1)",fontsize=fontsize)
     g4.map(plt.scatter, "UMAP_x", "UMAP_y", alpha=alpha, s=size)
     g4_axes[0].set_xlabel("")
     g4_axes[0].set_ylabel("")
@@ -1530,7 +1537,7 @@ def plot_scatter_reduced(umap_proj,dataset_info,latent_space,predictions_dict,sa
     cb3 = Colorbar(ax=cbax3, mappable=plt.cm.ScalarMappable(norm=Normalize(0, 1), cmap=colormap_frequency_class0))
     cb4 = Colorbar(ax=cbax4, mappable=plt.cm.ScalarMappable(norm=Normalize(0, 1), cmap=colormap_frequency_class1))
 
-    fig.suptitle("UMAP latent space (z) projections")
+    fig.suptitle("UMAP latent space (z) projections",fontsize=fontsize)
 
     plt.savefig("{}/{}/umap_SCATTER_reduced_{}_{}".format(results_dir, method, vector_name, sample_mode))
     plt.clf()
@@ -2817,14 +2824,14 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
                             ax2.set_xticks(np.arange(weights.shape[1]) + 0.5,labels=["{}".format(i) for i in range(weights.shape[1])])
                             ax2.spines['left'].set_visible(False)
                             ax2.yaxis.set_ticklabels([])
-                            ax2.set_title("Information shift by amino acid type")
+                            ax2.set_title("Information shift by \n amino acid type")
                             # Highlight: Aminoacids coloured by functional group (i.e positive, negative ...)
                             sns.heatmap(aminoacids_masked, ax=ax4, cbar=False, cmap=aa_groups_colormap)
                             ax4.set_xticks(np.arange(max_len) + 0.5,
                                            labels=["{}".format(i) for i in range(max_len)])
                             ax4.spines['left'].set_visible(False)
                             ax4.yaxis.set_ticklabels([])
-                            ax4.set_title("Information shift by amino acid group")
+                            ax4.set_title("Information shift by \n amino acid group")
 
                             ax3.axis("off")
                             ax5.axis("off")
@@ -2961,7 +2968,7 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
     :param labels: immunodominance scores or  binary targets
     """
 
-
+    fontsize=25
     label_names = {"_immunodominance_scores":"Immunodominance",
                    "_binary_labels":"Binary targets"}
 
@@ -3015,14 +3022,14 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
             cbar = True
 
             sns.heatmap(features_covariance, ax=ax1, cbar=cbar, cmap=cmap,norm=norm,annot=True,annot_kws={"fontsize":14},fmt=".2f")
-            ax1.set_xticks(np.arange(len(features_names)) ,labels=features_names,rotation=45,fontsize=18)
+            ax1.set_xticks(np.arange(len(features_names)) ,labels=features_names,rotation=45,fontsize=fontsize,weight='bold')
             ax1.spines['left'].set_visible(False)
             #ax1.yaxis.set_ticklabels([])
-            ax1.set_yticks(np.arange(len(features_names)) + 0.5,labels=features_names,rotation=360,fontsize=18)
+            ax1.set_yticks(np.arange(len(features_names)) + 0.5,labels=features_names,rotation=360,fontsize=fontsize,weight='bold')
             ymax=len(features_names)-1
             xpos=0
             ax1.add_patch(matplotlib.patches.Rectangle((ymax, xpos), 1, len(features_names), fill=False, edgecolor='green', lw=3))
-            ax1.set_title("Covariance matrix features ({})".format(subfolders.replace("/",",")),fontsize=20)
+            ax1.set_title("Covariance matrix features ({})".format(subfolders.replace("/",",")),fontsize=fontsize,weight='bold')
 
             ax2.axis("off")
             fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.2)
@@ -3059,8 +3066,9 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
                 return label
             labels_names = list(map(lambda label: clean_labels(label), list(features_dict.keys())))
             ax1.yaxis.set_ticks(position_labels)
-            ax1.set_yticklabels(labels_names,fontsize=25,rotation=0)
-            ax1.tick_params(axis="x",labelsize=30)
+            ax1.set_yticklabels(labels_names,fontsize=fontsize,rotation=0,weight='bold')
+            ax1.tick_params(axis="x",labelsize=fontsize)
+            #ax1.set_xticklabels(ax1.get_xticks(), weight='bold')
             ax1.tick_params(
                 axis='y',  # changes apply to the y-axis
                 which='both',  # both major and minor ticks are affected
@@ -3073,9 +3081,8 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
             #ax1.margins(y=0.15)
             ax1.spines[['right', 'top','left']].set_visible(False)
 
-            fig.suptitle("Correlation coefficients: Features vs {}".format(label_names[tag]),fontsize=30)
-
-            plt.savefig("{}/{}/similarities/{}/HISTOGRAM_features_correlations{}.png".format(storage_folder,args.dataset_name,subfolders,tag),dpi=600)
+            fig.suptitle("Correlation coefficients: Features vs {}".format(label_names[tag]),fontsize=fontsize + 8,weight='bold')
+            plt.savefig("{}/{}/similarities/{}/HISTOGRAM_features_correlations{}.png".format(storage_folder,args.dataset_name,subfolders,tag),dpi=700)
 
 def calculate_species_roc_auc_helper(summary_dict,args,script_dir,idx_all,fold,prob_mode,sample_mode,mode="train_species"):
     
@@ -4411,19 +4418,6 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     #metrics_results_valid = metrics_results_dict["valid"]
     metrics_results_test = metrics_results_dict["test"]
 
-    # print(metrics_results_train["precision_class_0"])
-    # print(metrics_results_train["precision_class_1"])
-    # print(metrics_results_train["recall_class_0"])
-    # print(metrics_results_train["recall_class_1"])
-    # 
-    # print("--------------------------")
-    # print(metrics_results_test["precision_class_0"])
-    # print(metrics_results_test["precision_class_1"])
-    # print(metrics_results_test["recall_class_0"])
-    # print(metrics_results_test["recall_class_1"])
-    # 
-    # exit()
-
     vegvisir_results_roc_auc_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train["roc_auc_class_1"])))/2, 2)}
     vegvisir_results_auc01_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["auc01_class_0"])) + np.mean(np.array(metrics_results_train["auc01_class_1"])))/2, 2)}
     vegvisir_results_ap_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["ap_class_0"])) + np.mean(np.array(metrics_results_train["ap_class_1"])))/2, 2)}
@@ -4619,7 +4613,8 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     colors_dict = {"Train":"skyblue","Test":"tomato"}
 
 
-    plot_only_auc_ap = False
+    plot_only_auc_ap = True
+    fontsize= 20
 
     if plot_only_auc_ap:
         suffix = "auc_ap_ppv_mod"
@@ -4654,62 +4649,61 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
                     rect = bar[0]  # single rectangle
                     ax1.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=12,weight='bold')
+                             ha='center', va='center', fontsize=int(fontsize - 3),weight='bold')
                 for bar in [bar_train_auc01.patches, bar_test_auc01.patches]:
                     rect = bar[0]  # single rectangle
                     ax2.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=12, weight='bold')
+                             ha='center', va='center', fontsize=int(fontsize - 3), weight='bold')
                 for bar in [bar_train_ap.patches,bar_test_ap.patches]:
                     rect = bar[0] #single rectangle
                     ax3.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(),2)),
-                             ha='center', va='center',fontsize=12,weight='bold')
+                             ha='center', va='center',fontsize=int(fontsize - 3),weight='bold')
                 for bar in [bar_train_ppv.patches,bar_test_ppv.patches]:
                     rect = bar[0] #single rectangle
                     ax4.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(),2)),
-                             ha='center', va='center',fontsize=12,weight='bold')
+                             ha='center', va='center',fontsize=int(fontsize - 3),weight='bold')
 
 
-
-        ax1.set_yticks(positions, labels=labels, fontsize=15,weight='bold')
-        ax1.tick_params(axis='x', labelsize=15)
-        ax1.axvline(x=0.5, color='goldenrod', linestyle='--')
+        ax1.axvline(x=0.5, color='goldenrod', linestyle='--',linewidth=4)
+        ax1.set_yticks(positions, labels=labels, fontsize=fontsize,weight='bold')
+        ax1.tick_params(axis='x', labelsize=fontsize)
         transformation = transforms.blended_transform_factory(ax1.get_yticklabels()[0].get_transform(), ax1.transData)
-        ax1.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=15)
-        ax1.set_title("ROC-AUC", fontsize=20)
+        ax1.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
+        ax1.set_title("ROC-AUC", fontsize=int(fontsize + 5))
         ax1.margins(x=0.15)
 
-        ax2.set_yticks(positions, labels=labels, fontsize=15,weight='bold')
-        ax2.tick_params(axis='x', labelsize=15)
-        ax2.axvline(x=0.5, color='goldenrod', linestyle='--')
+        ax2.set_yticks(positions, labels=labels, fontsize=fontsize,weight='bold')
+        ax2.tick_params(axis='x', labelsize=fontsize)
+        ax2.axvline(x=0.5, color='goldenrod', linestyle='--',linewidth=4)
         transformation = transforms.blended_transform_factory(ax2.get_yticklabels()[0].get_transform(), ax2.transData)
-        ax2.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=15)
-        ax2.set_title("AUC-10%", fontsize=20)
+        ax2.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
+        ax2.set_title("AUC-10%", fontsize=int(fontsize + 5))
         ax2.margins(x=0.15)
 
-        ax3.axvline(x=0.5, color='goldenrod', linestyle='--')
-        ax3.tick_params(axis='x', labelsize=15)
-        ax3.set_yticks(positions, labels=labels, fontsize=15, weight='bold')
+        ax3.axvline(x=0.5, color='goldenrod', linestyle='--',linewidth=4)
+        ax3.tick_params(axis='x', labelsize=fontsize)
+        ax3.set_yticks(positions, labels=labels, fontsize=fontsize, weight='bold')
         transformation = transforms.blended_transform_factory(ax3.get_yticklabels()[0].get_transform(), ax3.transData)
-        ax3.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=15)
-        ax3.set_title("Average Precision (AP)", fontsize=20)
+        ax3.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
+        ax3.set_title("Average Precision (AP)", fontsize=int(fontsize + 5))
         ax3.margins(x=0.2)
         
-        ax4.axvline(x=0.5, color='goldenrod', linestyle='--')
-        ax4.tick_params(axis='x', labelsize=15)
-        ax4.set_yticks(positions, labels=labels, fontsize=15, weight='bold')
+        ax4.axvline(x=0.5, color='goldenrod', linestyle='--',linewidth=4)
+        ax4.tick_params(axis='x', labelsize=fontsize)
+        ax4.set_yticks(positions, labels=labels, fontsize=fontsize, weight='bold')
         transformation = transforms.blended_transform_factory(ax4.get_yticklabels()[0].get_transform(), ax4.transData)
-        ax4.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=15)
-        ax4.set_title("PPV* (modified)", fontsize=20)
+        ax4.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
+        ax4.set_title("PPV* (modified)", fontsize=int(fontsize + 5))
         ax4.margins(x=0.2)
 
 
-        plt.subplots_adjust(left=0.1, wspace=0.5,right=0.9)
+        plt.subplots_adjust(left=0.1, wspace=0.55,right=0.9)
         legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in colors_dict.items()]
-        fig.legend(handles=legends, prop={'size': 20}, loc='center right', bbox_to_anchor=(1.0, 0.5))
-        fig.suptitle("Benchmark metrics", fontsize=20)
+        fig.legend(handles=legends, prop={'size': int(fontsize + 5)}, loc='center right', bbox_to_anchor=(1.0, 0.5))
+        fig.suptitle("Benchmark metrics", fontsize=int(fontsize + 12))
 
 
     else:
@@ -4745,58 +4739,57 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
                     rect = bar[0] #single rectangle
                     ax1.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(),2)),
-                             ha='center', va='center',fontsize=12,weight='bold')
+                             ha='center', va='center',fontsize=int(fontsize - 3),weight='bold')
                 for bar in [bar_train_pval.patches,bar_test_pval.patches]:
                     rect = bar[0] #single rectangle
                     ax2.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(),2)),
-                             ha='center', va='center',fontsize=12,weight='bold')
+                             ha='center', va='center',fontsize=int(fontsize - 3),weight='bold')
                 for bar in [bar_train_precision.patches,bar_test_precision.patches]:
                     rect = bar[0] #single rectangle
                     ax3.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(),2)),
-                             ha='center', va='center',fontsize=12,weight='bold')
+                             ha='center', va='center',fontsize=int(fontsize - 3),weight='bold')
                 for bar in [bar_train_recall.patches,bar_test_recall.patches]:
                     rect = bar[0] #single rectangle
                     ax4.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(),2)),
-                             ha='center', va='center',fontsize=12,weight='bold')
+                             ha='center', va='center',fontsize=int(fontsize - 3),weight='bold')
 
-        ax1.set_yticks(positions,labels=labels,fontsize=15,weight='bold')
-        ax1.tick_params(axis='x', labelsize=15)
+        ax1.set_yticks(positions,labels=labels,fontsize=fontsize,weight='bold')
+        ax1.tick_params(axis='x', labelsize=fontsize)
 
         ax1.axvline(x=0.5, color='goldenrod', linestyle='--')
         transformation = transforms.blended_transform_factory(ax1.get_yticklabels()[0].get_transform(), ax1.transData)
-        ax1.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center",transform=transformation,fontsize=15)
-        ax1.set_title("ROC-AUC",fontsize=20)
+        ax1.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center",transform=transformation,fontsize=fontsize)
+        ax1.set_title("ROC-AUC",fontsize=int(fontsize + 5))
         ax1.margins(x=0.2)
         
         ax2.axvline(x=0.05, color='goldenrod', linestyle='--')
         ax2.set_yticks(positions,labels=labels,fontsize=15,weight='bold')
         transformation = transforms.blended_transform_factory(ax2.get_yticklabels()[0].get_transform(), ax2.transData)
-        ax2.text(0.05, -0.30, "0.5", color="dimgrey", ha="right", va="center",transform=transformation,fontsize=15)
-        ax2.set_title("P-value",fontsize=20)
+        ax2.text(0.05, -0.30, "0.5", color="dimgrey", ha="right", va="center",transform=transformation,fontsize=fontsize)
+        ax2.set_title("P-value",fontsize=int(fontsize + 5))
         ax2.set_xlim(0,0.4)
         ax2.margins(x=0.2)
 
         ax3.axvline(x=0.5, color='goldenrod', linestyle='--')
-        ax3.set_yticks(positions,labels=labels,fontsize=15,weight='bold')
-        ax3.set_title("Precision (max)",fontsize=20)
+        ax3.set_yticks(positions,labels=labels,fontsize=fontsize,weight='bold')
+        ax3.set_title("Precision (max)",fontsize=int(fontsize + 5))
         ax3.margins(x=0.2)
 
         ax4.axvline(x=0.5, color='goldenrod', linestyle='--')
-        ax4.set_yticks(positions,labels=labels,fontsize=15,weight='bold')
+        ax4.set_yticks(positions,labels=labels,fontsize=fontsize,weight='bold')
         transformation = transforms.blended_transform_factory(ax4.get_yticklabels()[0].get_transform(), ax4.transData)
-        ax4.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center",transform=transformation,fontsize=15)
-        ax4.set_title("Recall (max)",fontsize=20)
+        ax4.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center",transform=transformation,fontsize=fontsize)
+        ax4.set_title("Recall (max)",fontsize=fontsize)
         ax4.margins(x=0.2)
 
-     
-        plt.subplots_adjust(wspace=0.5 )
+        plt.subplots_adjust(wspace=0.5)
 
         legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in colors_dict.items()]
-        fig.legend(handles=legends, prop={'size': 20}, loc='center right', bbox_to_anchor=(0.98, 0.5))
-        fig.suptitle("Benchmark metrics",fontsize=20)
+        fig.legend(handles=legends, prop={'size': int(fontsize + 5)}, loc='center right', bbox_to_anchor=(0.98, 0.5))
+        fig.suptitle("Benchmark metrics",fontsize=int(fontsize + 5))
 
     plt.savefig("{}/{}/Benchmarking_{}_{}".format(script_dir,folder,title,suffix),dpi=600)
 
@@ -4820,6 +4813,7 @@ def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Ben
     stress_testing_ppv = defaultdict(lambda :defaultdict(lambda : defaultdict(lambda: defaultdict())))
     stress_testing_ap = defaultdict(lambda :defaultdict(lambda : defaultdict(lambda: defaultdict())))
 
+    fontsize = 20
     metrics_keys = ["ppv", "fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1", "pval_class_0", "pval_class_1"]
     fig, [ax1,ax2] = plt.subplots(nrows=1, ncols=2, figsize=(18, 15))
     i = 0
@@ -4884,21 +4878,22 @@ def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Ben
                 nnalign_results_path_train_full = "{}{}.lg8.sorted.pred".format(folders_list[0],folder_name)
                 nnalign_results_path_test_full = "{}{}.evalset.txt".format(folders_list[0],folder_name)
 
-                nnalign_results_train_auc_dict, nnalign_results_train_ppv_dict, nnalign_results_train_ap_dict, nnalign_results_train_pval_dict = process_nnalign(nnalign_results_path_train_full, train_df,mode="train")
+
+                nnalign_results_train_auc_dict, nnalign_results_train_auc01_dict, nnalign_results_train_ppv_dict, nnalign_results_train_ap_dict, nnalign_results_train_pval_dict, nnalign_results_train_max_precision_dict,nnalign_results_train_max_recall_dict = process_nnalign(nnalign_results_path_train_full, train_df,mode="train")
                 stress_testing_auc["nnalign"][sequence_type][stress_mode]["train"] = nnalign_results_train_auc_dict
                 stress_testing_ppv["nnalign"][sequence_type][stress_mode]["train"] = nnalign_results_train_ppv_dict
                 stress_testing_ap["nnalign"][sequence_type][stress_mode]["train"] = nnalign_results_train_ap_dict
-                nnalign_results_test_auc_dict, nnalign_results_test_ppv_dict, nnalign_results_test_ap_dict, nnalign_results_test_pval_dict = process_nnalign(nnalign_results_path_test_full, test_df,mode="test")
+                nnalign_results_test_auc_dict, nnalign_results_test_auc01_dict, nnalign_results_test_ppv_dict, nnalign_results_test_ap_dict, nnalign_results_test_pval_dict, nnalign_results_test_max_precision_dict,nnalign_results_test_max_recall_dict  = process_nnalign(nnalign_results_path_test_full, test_df,mode="test")
                 stress_testing_auc["nnalign"][sequence_type][stress_mode]["test"] = nnalign_results_test_auc_dict
                 stress_testing_ppv["nnalign"][sequence_type][stress_mode]["test"] = nnalign_results_test_ppv_dict
                 stress_testing_ap["nnalign"][sequence_type][stress_mode]["test"] = nnalign_results_test_ap_dict
 
 
                 bar_train_auc1 = ax1.barh(i, width=nnalign_results_train_auc_dict["NNAlign2.1"], color="plum", height=0.2)
-                bar_train_auc2 = ax1.barh(i + 0.2, width=vegvisir_results_auc_train["Vegvisir"], color="darkturquoise", height=0.2)
+                bar_train_auc2 = ax1.barh(i + 0.4, width=vegvisir_results_auc_train["Vegvisir"], color="darkturquoise", height=0.2)
 
                 bar_test_auc1 = ax2.barh(i, width=nnalign_results_test_auc_dict["NNAlign2.1"], height=0.2, color="plum")
-                bar_test_auc2 = ax2.barh(i + 0.2, width=vegvisir_results_auc_test["Vegvisir"], height=0.2, color="darkturquoise")
+                bar_test_auc2 = ax2.barh(i + 0.4, width=vegvisir_results_auc_test["Vegvisir"], height=0.2, color="darkturquoise")
 
                 positions.append(i)
                 labels.append("{}\n{}".format(sequence_type.replace("_","-"),stress_mode.replace("{}-".format(encoding),"")))
@@ -4907,31 +4902,35 @@ def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Ben
                     rect = bar[0]  # single rectangle
                     ax1.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=12, weight='bold')
+                             ha='center', va='center', fontsize=fontsize, weight='bold')
                 for bar in [bar_test_auc1.patches,bar_test_auc2.patches]:
                     rect = bar[0]  # single rectangle
                     ax2.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=12, weight='bold')
+                             ha='center', va='center', fontsize=fontsize, weight='bold')
 
-    ax1.set_yticks(positions, labels=labels, fontsize=15, weight='bold')
-    ax1.tick_params(axis='x', labelsize=15)
+    ax1.set_yticks(positions, labels=labels, fontsize=fontsize, weight='bold')
+    ax1.tick_params(axis='x', labelsize=fontsize)
 
-    ax1.axvline(x=0.5, color='goldenrod', linestyle='--')
+    ax1.axvline(x=0.5, color='goldenrod', linestyle='--',linewidth=4)
     transformation = transforms.blended_transform_factory(ax1.get_yticklabels()[0].get_transform(), ax1.transData)
-    ax1.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=15)
-    ax1.set_title("Train", fontsize=20)
+    ax1.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
+    ax1.set_title("Train", fontsize=fontsize)
     ax1.margins(x=0.15)
 
-    ax2.axvline(x=0.5, color='goldenrod', linestyle='--')
-    ax2.set_title("Test",fontsize=20)
+    ax2.axvline(x=0.5, color='goldenrod', linestyle='--',linewidth=4)
+    transformation = transforms.blended_transform_factory(ax2.get_yticklabels()[0].get_transform(), ax2.transData)
+    ax2.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
+    ax2.tick_params(axis='x', labelsize=fontsize)
+    ax2.set_yticks([])
+    ax2.set_title("Test",fontsize=fontsize)
     ax2.margins(x=0.15)
 
 
     plt.subplots_adjust(left=0.25, wspace=0.2, right=0.84)
     legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in {"Vegvisir":"darkturquoise","NNAlign2.1":"plum"}.items()]
     fig.legend(handles=legends, prop={'size': 20}, loc='center right', bbox_to_anchor=(1.0, 0.5))
-    fig.suptitle("Stress testing", fontsize=25)
+    fig.suptitle("Stress testing", fontsize=int(fontsize + 5))
 
 
     plt.savefig("{}/{}/Benchmarking_stress_testing_{}.png".format(script_dir,folder,title),dpi=600)
@@ -4968,16 +4967,14 @@ def plot_hierarchical_clustering(vegvisir_folder,embedded_epitopes,folder,title=
     embedding = np.array(embedding)
     colors_labels = np.vectorize(colors_dict_labels.get)(labels)
 
-    fig = plt.figure(figsize=(15, 8))
-
 
     # First create the clustermap figure
     g1 = sns.clustermap(latent,metric="cosine",row_colors=colors_labels,cmap="crest")
     g1.ax_heatmap.tick_params(tick2On=False, labelsize=False,labelbottom=False,labelright=False)
-    g1.ax_col_dendrogram.set_title("Cluster heatmap of latent representations")
+    g1.ax_col_dendrogram.set_title("Latent representations",fontsize=20,weight="bold")
     g2 = sns.clustermap(embedding,metric="cosine",row_colors=colors_labels,cmap="crest")
     g2.ax_heatmap.tick_params(tick2On=False, labelsize=False,labelbottom=False,labelright=False)
-    g2.ax_col_dendrogram.set_title("Cluster heatmap of feature embeddings")
+    g2.ax_col_dendrogram.set_title("Feature embeddings",fontsize=20,weight="bold")
 
     fig = plt.figure(figsize=(15, 8))
     gs = gridspec.GridSpec(1, 2, width_ratios=[3,3])
@@ -4985,7 +4982,7 @@ def plot_hierarchical_clustering(vegvisir_folder,embedded_epitopes,folder,title=
     mg0 = VegvisirUtils.SeabornFig2Grid(g1, fig, gs[0, 0])
     mg1 = VegvisirUtils.SeabornFig2Grid(g2, fig, gs[0, 1])
 
-    fig.suptitle("Cosine similarity cluster heatmaps")
+    fig.suptitle("Cluster heatmaps (cosine similarity)",fontsize=20,weight="bold")
 
     plt.savefig("{}/Clustermaps_{}.png".format(folder,title))
 

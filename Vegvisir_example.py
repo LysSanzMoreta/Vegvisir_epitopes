@@ -185,13 +185,43 @@ def analysis_models():
             "raw-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Random_stratified/PLOTS_Vegvisir_viral_dataset9_2023_10_02_19h31min38s918485ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING_8mers"
         }}
 
-
+    dict_results_predefined_partitions_blosum_z34 = {"Icore": {
+        "random-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_22_23h42min15s610281ms_60epochs_supervised_Icore_blosum_random_TESTING",
+        "random-blosum-9mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_01h42min29s997868ms_60epochs_supervised_Icore_blosum_random_TESTING_9mers",
+        "shuffled-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_03h26min23s413570ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
+        "shuffled-blosum-9mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_05h29min53s176890ms_60epochs_supervised_Icore_blosum_shuffled_TESTING_9mers",
+        "raw-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_07h10min19s903074ms_60epochs_supervised_Icore_blosum_TESTING",
+        "raw-blosum-9mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_09h11min13s416159ms_60epochs_supervised_Icore_blosum_TESTING_9mers",
+    },
+        "Icore_non_anchor": {
+            "random-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_10h52min39s254090ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING",
+            "random-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_12h54min32s277094ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING_8mers",
+            "shuffled-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_13h45min14s949918ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING",
+            "shuffled-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_15h46min12s980962ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING_8mers",
+            "raw-blosum-variable-length": "",
+            "raw-blosum-8mers": ""
+        }}
+    dict_results_random_stratified_partitions_blosum_z34 = {"Icore": {
+        "random-blosum-variable-length": "",
+        "random-blosum-9mers": "",
+        "shuffled-blosum-variable-length": "",
+        "shuffled-blosum-9mers": "",
+        "raw-blosum-variable-length": "",
+        "raw-blosum-9mers": "",
+    },
+        "Icore_non_anchor": {
+            "random-blosum-variable-length": "",
+            "random-blosum-8mers": "",
+            "shuffled-blosum-variable-length": "",
+            "shuffled-blosum-8mers": "",
+            "raw-blosum-variable-length": "",
+            "raw-blosum-8mers": ""
+        }}
 
     #Highlight: K-fold comparisons
 
-    VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_HPO_blosum",overwrite=True)
+    #VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_HPO_blosum",overwrite=True)
     #VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_random_stratified_partitions_blosum,kfolds=5,results_folder = "Benchmark/Plots",title="random_stratified_partitions_HPO_blosum",overwrite=False)
-    exit()
     #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_HPO_blosum_NEW",overwrite_correlations=False,overwrite_all=False)
     #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_random_stratified_partitions_blosum,kfolds=5,results_folder="Benchmark/Plots",subtitle="random_stratified_partitions_HPO_blosum",overwrite_correlations=False,overwrite_all=False)
 
@@ -202,11 +232,10 @@ def analysis_models():
     }}
 
     #Highlight: Benchmarking
-    VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-blosum-variable-length",folder="Benchmark/Plots",title="HPO_blosum_TYPEB")
-
+    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-blosum-variable-length",folder="Benchmark/Plots",title="HPO_blosum")
 
     #Highlight: Model stress comparison
-    #VegvisirPlots.plot_model_stressing_comparison(dict_results_predefined_partitions_blosum,script_dir,folder="Benchmark/Plots",encoding="blosum",title="HPO_blosum")
+    VegvisirPlots.plot_model_stressing_comparison(dict_results_predefined_partitions_blosum,script_dir,folder="Benchmark/Plots",encoding="blosum",title="HPO_blosum")
     #VegvisirPlots.plot_model_stressing_comparison(dict_results_predefined_partitions_onehot,script_dir,folder="Benchmark/Plots",encoding="onehot",title="HPO_onehot")
 
     exit()
@@ -214,13 +243,11 @@ def analysis_models():
 
 def hierarchical_clustering():
 
-    vegvisir_folder_original = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_21h41min01s940264ms_60epochs_supervised_Icore_blosum_TESTING"
-    vegvisir_folder_HPO_onehot = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_onehot/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_03h07min36s214823ms_60epochs_supervised_Icore_blosum_TESTING"
+    vegvisir_folder_original = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_21h41min01s940264ms_60epochs_supervised_Icore_blosum_TESTING" #paper plot
     vegvisir_folder_HPO_blosum = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_09_30_23h31min43s312787ms_60epochs_supervised_Icore_blosum_TESTING"
-    vegvisir_folder_HPO_blosum_z8 = "/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_10_18_11h02min32s539316ms_60epochs_supervised_Icore_blosum_TESTING"
+    vegvisir_folder_z34 = ""
     embedded_epitopes = "{}/vegvisir/src/vegvisir/data/viral_dataset9/similarities/Icore/All/diff_allele/diff_len/neighbours1/all/EMBEDDED_epitopes.tsv".format(script_dir)
-    vegvisir_folder_HPO_blosum_z34 = "/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_10_18_15h30min25s524718ms_60epochs_supervised_Icore_blosum_TESTING"
-    VegvisirPlots.plot_hierarchical_clustering(vegvisir_folder_HPO_blosum, embedded_epitopes,folder="/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots",title="HPO_blosum_z8")
+    VegvisirPlots.plot_hierarchical_clustering(vegvisir_folder_original, embedded_epitopes,folder="/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots",title="blosum")
     #VegvisirPlots.plot_hierarchical_clustering(vegvisir_folder, embedded_epitopes,folder="/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots",title="blosum")
 
 if __name__ == "__main__":
@@ -230,9 +257,9 @@ if __name__ == "__main__":
                         help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data \n'
                              'custom_dataset: Perform training or prediction (by setting the args.pretrained_model to the folder path with the model checkpoints). Remember to define also train_path, test_path'
                              'viral_dataset3 : Supervised learning. Only sequences, partitioned into train,validation and (old) test.If args.test = True, then the (old) assigned test is used \n'
-                             'viral_dataset4 : viral_dataset3 sequences + Features \n '
-                             'viral_dataset5: Contains additional artificially generated negative data points in the (old) test dataset \n'
-                             'viral_dataset6: Contains additional unobserved data points for semi supervised learning. Train, validation and (old) test are mixed. If args.test = True, then 1 partition is selected as test \n'
+                             'viral_dataset4 : Supervised learning. viral_dataset3 sequences + Features \n '
+                             'viral_dataset5: Supervised learning. Contains additional artificially generated negative data points in the (old) test dataset \n'
+                             'viral_dataset6: Semisupervised learning. Contains additional unobserved data points for semi supervised learning. Train, validation and (old) test are mixed. If args.test = True, then 1 partition is selected as test \n'
                              'viral_dataset7: Supervised learning. Same dataset as viral_dataset3, but the test dataset is mixed with the train and validation datasets \n'
                              'viral_dataset8: Semisupervised learning. Same dataset as viral_dataset6 (containing unobserved datapoints), where the original test dataset is left out from the training (not mixed in).If args.test = True, then the (old) assigned test is used \n'
                              'viral_dataset9: Supervised learning. Same as viral_dataset7 with a new test dataset (OLD test,train and validation are mixed). New test dataset available when using args.test=True \n'
@@ -302,8 +329,8 @@ if __name__ == "__main__":
                                                                               'in Pyro see pyro.autoguides. Does not work with mini-batching,'
                                                                               ' (perhaps subsampling in the plate)') #TODO: Remove
 
-    parser.add_argument('-z-dim','--z-dim', type=int, nargs='?', default=15, help='Latent space dimension')
-    parser.add_argument('-likelihood-scale', type=int, nargs='?', default=60, help='Scaling the log p( class | Z) of the variational autoencoder (cold posterior)')
+    parser.add_argument('-z-dim','--z-dim', type=int, nargs='?', default=30, help='Latent space dimension')
+    parser.add_argument('-likelihood-scale', type=int, nargs='?', default=80, help='Scaling the log p( class | Z) of the variational autoencoder (cold posterior)')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=40, help='Embedding dimensions, use with self-attention. NOT USED---> DELETE SOOn')
     parser.add_argument('-lt','--learning-type', type=str, nargs='?', default="supervised", help='<supervised_no_decoder> simpler model architecture with an encoder and a classifier'
@@ -325,21 +352,23 @@ if __name__ == "__main__":
     parser.add_argument('-config-dict', nargs='?', default=best_config[1], type=str2None,help='Path to optimized hyperparameter dict')
 
     #Highlight: Evaluation modes
-    parser.add_argument('-train', type=str2bool, nargs='?', default=True,help='<True> Run the model \n <False> Make models comparison or load previous model if pargs.pretrained_model is not None ')
+    parser.add_argument('-train', type=str2bool, nargs='?', default=False,help='<True> Run the model \n <False> Make models comparison or load previous model if pargs.pretrained_model is not None ')
     parser.add_argument('-validate', type=str2bool, nargs='?', default=False, help='Evaluate the model on the validation dataset. Only needed for model design')
     parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
 
     #Highlight: Generating new sequences from pre-trained model
     parser.add_argument('-generate', type=str2bool, nargs='?', default=True, help='<True> Generate new neo-epitopes labelled and with a confidence score based on the training dataset. Please use args.validate False''<False> Do nothing')
-    parser.add_argument('-num-synthetic-peptides', type=int, nargs='?', default=50, help='<True> Generate new neo-epitopes labelled and with a confidence score. The number of generated peptides will be equal to args.num_synthetic_peptides*args.num_samples')
-    parser.add_argument('-generate-num-samples', type=int, nargs='?', default=6, help='If args.generate == True, then per generated sequence, produce n samples to calculate a class probability')
+    parser.add_argument('-num-synthetic-peptides', type=int, nargs='?', default=100, help='<True> Generate new neo-epitopes labelled and with a confidence score. IMPORTANT: The total number of generated peptides is'
+                                                                                          'equal to args.num_synthetic_peptides*args.num_samples')
+    #parser.add_argument('-generate-num-samples', type=int, nargs='?', default=60, help='If args.generate == True, then per generated sequence, produce n samples to calculate a class probability')
     parser.add_argument('-generate-argmax', type=str2bool, nargs='?', default=False, help='If args.generate == True, generate_argmax = True ')
 
     #Highlight: immunomodulating a sequence
     immunomodulate_path = {0:"{}/immunomodulate_sequences.txt".format(script_dir),
                            1:None}
     parser.add_argument('-immunomodulate', type=str2bool, nargs='?', default=True, help='<True> Predict latent representation for the given sequences and generate new neo-epitopes labelled and with a confidence score based only on the input sequences via args.immunomodulate_path. Please use args.validate False''<False> Do nothing')
-    parser.add_argument('-num-immunomodulate-peptides', type=int, nargs='?', default=50, help='Number of generated peptides generated from the sequence to immunomodulate')
+    parser.add_argument('-num-immunomodulate-peptides', type=int, nargs='?', default=100, help='Number of generated peptides generated from the sequence to immunomodulate. The total number of generated peptides'
+                                                                                                'is equal to args.num_immunomodulates_peptides*args.num_samples')
     parser.add_argument('-immunomodulate-path', type=str2None, nargs='?', default= immunomodulate_path[0], help='Path to text file containing sequences to change their immunogenicity')
 
 
@@ -417,7 +446,7 @@ if __name__ == "__main__":
     if args.train:
         main()
     else:
-        analysis_models()
-        #hierarchical_clustering()
+        #analysis_models()
+        hierarchical_clustering()
 
 

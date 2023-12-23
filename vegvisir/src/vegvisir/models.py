@@ -36,7 +36,6 @@ class VEGVISIRModelClass(nn.Module):
         self.use_cuda = model_load.args.use_cuda
         self.tensor_type = torch.cuda.DoubleTensor if self.use_cuda else torch.DoubleTensor
         #self.dropout = model_load.args.dropout
-        self.generate_num_samples = model_load.args.generate_num_samples
         self.num_classes = model_load.args.num_obs_classes
         self.embedding_dim = model_load.args.embedding_dim
         self.blosum = model_load.blosum
@@ -847,14 +846,15 @@ class VegvisirModel5a_supervised_no_decoder(VEGVISIRModelClass,PyroModule):
             decoder_hidden_states = torch.rand(batch_size,2,self.seq_max_len,self.gru_hidden_dim)
             encoder_final_hidden = torch.rand(batch_size,self.gru_hidden_dim)
             decoder_final_hidden = torch.rand(batch_size,self.gru_hidden_dim)
-            pyro.deterministic("attn_weights", attn_weights, event_dim=0)
-            pyro.deterministic("encoder_hidden_states", encoder_hidden_states, event_dim=0)
-            pyro.deterministic("decoder_hidden_states", decoder_hidden_states, event_dim=0)
-            pyro.deterministic("encoder_final_hidden", encoder_final_hidden, event_dim=0)
-            pyro.deterministic("decoder_final_hidden", decoder_final_hidden, event_dim=0)
+            pyro.deterministic("attn_weights", attn_weights, event_dim=2)
+            pyro.deterministic("encoder_hidden_states", encoder_hidden_states, event_dim=3)
+            pyro.deterministic("decoder_hidden_states", decoder_hidden_states, event_dim=3)
+            pyro.deterministic("encoder_final_hidden", encoder_final_hidden, event_dim=2)
+            pyro.deterministic("decoder_final_hidden", decoder_final_hidden, event_dim=2)
             sequences_logits = self.logsoftmax(torch.rand(batch_size,self.seq_max_len,self.aa_types))
-            pyro.deterministic("sequences_logits", sequences_logits, event_dim=0)
-            pyro.deterministic("sequences", batch_sequences_int, event_dim=0)
+            pyro.deterministic("sequences_logits", sequences_logits, event_dim=2)
+            pyro.deterministic("sequences", batch_sequences_int, event_dim=2) #not guaranteed
+
 
             class_logits = self.classifier_model(latent_space, None)
             class_logits = self.logsoftmax(class_logits)  # [N,num_classes]
@@ -946,21 +946,13 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         with pyro.plate("plate_batch", dim=-1, device=self.device):
 
             if guide_estimates is not None and "generate" in guide_estimates.keys():
-                print("batch size")
-                print(batch_size)
-                print("Latent Z shape")
-                print(guide_estimates["latent_z"].shape)
                 latent_space = self.conditional_sampling(batch_size,guide_estimates)
-                print("---------------------------------")
-                print(latent_space.shape)
-                print("---------------------------------")
                 pyro.deterministic("latent_z", latent_space,event_dim=2)  # should be event_dim = 2, but for sampling convenience we leave it as it is
             else:
                 if self.num_iafs > 0:
                     latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale)) # [n,z_dim]
                 else:
-                    latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale).to_event(1)) # [n,z_dim]
-
+                    latent_space = pyro.sample("latent_z", dist.Normal(z_mean, z_scale).to_event(1)) # [n,z_dim] #before
 
             latent_z_seq = latent_space.repeat(1, self.seq_max_len).reshape(batch_size, self.seq_max_len,self.z_dim)  # [N,L,z_dim]
             init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * self.bidirectional, batch_size,self.gru_hidden_dim).contiguous() #[2,batch_size,gru_dim]
@@ -982,8 +974,8 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
             #      pyro.sample("sequences", dist.Categorical(logits=sequences_logits),obs=None if sample else batch_sequences_int)
             # with pyro.poutine.scale(None, self.likelihood_scale):
             #pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).mask(~batch_positional_mask).to_event(1),obs=None if sample else batch_sequences_int)
-            pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=None if sample else batch_sequences_int)
-            #pyro.sample("sequences", dist.Categorical(logits=sequences_logits).to_event(1),obs=None if sample else batch_sequences_int)
+            #pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=None if sample else batch_sequences_int)
+            pyro.sample("sequences", dist.Categorical(logits=sequences_logits).to_event(1),obs=None if sample else batch_sequences_int)
 
             # init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             class_logits = self.classifier_model(latent_space, None)
@@ -1023,8 +1015,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         true_labels = batch_data["blosum"][:, 0, 0, 0]
         # immunodominance_scores = batch_data["blosum"][:,0,0,4]
         confidence_scores = batch_data["blosum"][:, 0, 0, 5]
-        confidence_mask = (confidence_scores[..., None] > 0.7).any(
-            -1)  # now we try to predict those with a low confidence score
+        confidence_mask = (confidence_scores[..., None] > 0.7).any(-1)  # now we try to predict those with a low confidence score
         confidence_mask_true = torch.ones_like(confidence_mask).bool()
         # init_h_0_encoder = self.h_0_MODEL_encoder.expand(self.encoder.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
         # z_mean,z_scale = self.encoder(batch_sequences_blosum,init_h_0_encoder)
@@ -1045,13 +1036,15 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
             outputnn = self.decoder(batch_sequences_blosum, batch_sequences_lens, init_h_0_decoder, z=latent_z_seq,
                                     mask=batch_mask_len, guide_estimates=guide_estimates)
 
-            pyro.deterministic("attn_weights", outputnn.attn_weights,event_dim=0)  # should be event_dim = 2, but for sampling convenience we leave it here
-            pyro.deterministic("encoder_hidden_states", outputnn.encoder_hidden_states,event_dim=0)  # should be event_dim = 3
-            pyro.deterministic("decoder_hidden_states", outputnn.decoder_hidden_states,event_dim=0)  # should be event_dim = 3
-            pyro.deterministic("encoder_final_hidden", outputnn.encoder_final_hidden,event_dim=0)  # should be event_dim = 2
-            pyro.deterministic("decoder_final_hidden", outputnn.decoder_final_hidden,event_dim=0)  # should be event_dim = 2
+
+
+            pyro.deterministic("attn_weights", outputnn.attn_weights, event_dim=2) #should be event_dim = 2, but for sampling convenience we leave it as it is
+            pyro.deterministic("encoder_hidden_states", outputnn.encoder_hidden_states, event_dim=3) #should be event_dim = 3
+            pyro.deterministic("decoder_hidden_states", outputnn.decoder_hidden_states, event_dim=3) #should be event_dim = 3
+            pyro.deterministic("encoder_final_hidden", outputnn.encoder_final_hidden, event_dim=2) #should be event_dim = 2
+            pyro.deterministic("decoder_final_hidden", outputnn.decoder_final_hidden, event_dim=2) #should be event_dim = 2
             sequences_logits = self.logsoftmax(outputnn.output)
-            pyro.deterministic("sequences_logits", sequences_logits, event_dim=0)  # should be event_dim = 2
+            pyro.deterministic("sequences_logits", sequences_logits, event_dim=2) #should be event_dim = 2
 
             #generated_sequences = pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=None if sample else batch_sequences_int)
             with pyro.poutine.scale(None,int(self.likelihood_scale)):
@@ -1065,10 +1058,10 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
             # init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             class_logits = self.classifier_model(latent_space, None)
             class_logits = self.logsoftmax(class_logits)  # [N,num_classes]
-            pyro.deterministic("class_logits", class_logits, event_dim=0)  # should be event_dim = 1
+            pyro.deterministic("class_logits", class_logits, event_dim=1)  # should be event_dim = 1
             with pyro.poutine.scale(None, self.likelihood_scale): #with pyro.poutine.mask(mask=confidence_mask_true):
                 #binary_predictions = pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=None if sample else true_labels)
-                binary_predictions = dist.Categorical(logits=class_logits).to_event(1).sample([self.generate_num_samples])
+                binary_predictions = dist.Categorical(logits=class_logits).to_event(1).sample([self.num_samples])
 
         return {"attn_weights": outputnn.attn_weights,
                 "encoder_hidden_states": outputnn.encoder_hidden_states,
@@ -1173,15 +1166,15 @@ class VegvisirModel5a_supervised_blosum_weighted(VEGVISIRModelClass,PyroModule):
             outputnn = self.decoder(batch_sequences_blosum, batch_sequences_lens, init_h_0_decoder, z=latent_z_seq,
                                     mask=batch_mask_len, guide_estimates=guide_estimates)
 
-            pyro.deterministic("attn_weights", outputnn.attn_weights, event_dim=0) #should be event_dim = 2, but for sampling convenience we leave it as it is
-            pyro.deterministic("encoder_hidden_states", outputnn.encoder_hidden_states, event_dim=0) #should be event_dim = 3
-            pyro.deterministic("decoder_hidden_states", outputnn.decoder_hidden_states, event_dim=0) #should be event_dim = 3
-            pyro.deterministic("encoder_final_hidden", outputnn.encoder_final_hidden, event_dim=0) #should be event_dim = 2
-            pyro.deterministic("decoder_final_hidden", outputnn.decoder_final_hidden, event_dim=0) #should be event_dim = 2
+            pyro.deterministic("attn_weights", outputnn.attn_weights, event_dim=2) #should be event_dim = 2, but for sampling convenience we leave it as it is
+            pyro.deterministic("encoder_hidden_states", outputnn.encoder_hidden_states, event_dim=3) #should be event_dim = 3
+            pyro.deterministic("decoder_hidden_states", outputnn.decoder_hidden_states, event_dim=3) #should be event_dim = 3
+            pyro.deterministic("encoder_final_hidden", outputnn.encoder_final_hidden, event_dim=2) #should be event_dim = 2
+            pyro.deterministic("decoder_final_hidden", outputnn.decoder_final_hidden, event_dim=2) #should be event_dim = 2
             sequences_logits = self.logsoftmax(outputnn.output)
 
 
-            pyro.deterministic("sequences_logits", sequences_logits, event_dim=0) #should be event_dim = 2
+            pyro.deterministic("sequences_logits", sequences_logits, event_dim=2) #should be event_dim = 2
 
             # with pyro.plate("plate_len", dim=-2, device=self.device):
             #     pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).mask(~batch_positional_mask),obs=None if sample else batch_sequences_int)
@@ -1192,7 +1185,7 @@ class VegvisirModel5a_supervised_blosum_weighted(VEGVISIRModelClass,PyroModule):
             # init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.classifier_model.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             class_logits = self.classifier_model(latent_space, None)
             class_logits = self.logsoftmax(class_logits)  # [N,num_classes]
-            pyro.deterministic("class_logits", class_logits, event_dim=0) #should be event_dim = 1
+            pyro.deterministic("class_logits", class_logits, event_dim=1) #should be event_dim = 1
             #with pyro.poutine.mask(mask=confidence_mask_true):
                 #pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=None if sample else true_labels)  # [N,]
             with pyro.poutine.scale(None,self.likelihood_scale):
@@ -1272,7 +1265,7 @@ class VegvisirModel5a_supervised_blosum_weighted(VEGVISIRModelClass,PyroModule):
             pyro.deterministic("class_logits", class_logits, event_dim=0)  # should be event_dim = 1
             with pyro.poutine.scale(None, self.likelihood_scale): #with pyro.poutine.mask(mask=confidence_mask_true):
                 #binary_predictions = pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=None if sample else true_labels)
-                binary_predictions = dist.Categorical(logits=class_logits).to_event(1).sample([self.generate_num_samples])
+                binary_predictions = dist.Categorical(logits=class_logits).to_event(1).sample([self.num_samples])
 
         return {"attn_weights": outputnn.attn_weights,
                 "encoder_hidden_states": outputnn.encoder_hidden_states,
@@ -1414,27 +1407,22 @@ class VegvisirModel5a_unsupervised(VEGVISIRModelClass,PyroModule):
             # init_h_0_classifier = self.h_0_MODEL_classifier.expand(self.encoder.num_layers * 2, batch_sequences_blosum.shape[0],self.gru_hidden_dim).contiguous()  # bidirectional
             class_logits = torch.rand((batch_size, self.num_classes))
             class_logits = self.logsoftmax(class_logits)
-            pyro.deterministic("class_logits", class_logits, event_dim=0)
-            pyro.deterministic("predictions", true_labels, event_dim=0)
+            pyro.deterministic("class_logits", class_logits, event_dim=1)
+            pyro.deterministic("predictions", true_labels, event_dim=1)
             init_h_0_decoder = self.h_0_MODEL_decoder.expand(self.decoder.num_layers * self.bidirectional, batch_size,self.gru_hidden_dim).contiguous()
             #init_h_0_decoder = self.init_hidden(latent_space).expand(self.decoder.num_layers * 2, batch_size,self.gru_hidden_dim).contiguous()  # bidirectional
             assert torch.isnan(init_h_0_decoder).int().sum().item() == 0, "found nan in init_h_0_decoder"
             outputnn = self.decoder(batch_sequences_blosum, batch_sequences_lens, init_h_0_decoder, z=latent_z_seq,
                                     mask=batch_mask_len, guide_estimates=guide_estimates)
 
-            pyro.deterministic("attn_weights", outputnn.attn_weights, event_dim=0)
-            pyro.deterministic("encoder_hidden_states", outputnn.encoder_hidden_states, event_dim=0)
-            pyro.deterministic("decoder_hidden_states", outputnn.decoder_hidden_states, event_dim=0)
-            pyro.deterministic("encoder_final_hidden", outputnn.encoder_final_hidden, event_dim=0)
-            pyro.deterministic("decoder_final_hidden", outputnn.decoder_final_hidden, event_dim=0)
-
-            # sequences_logits = self.logsoftmax(sequences_logits)
-            # #with pyro.plate("plate_len", dim=-2, device=self.device):
-            # #with pyro.poutine.mask(mask=batch_mask_len):
+            pyro.deterministic("attn_weights", outputnn.attn_weights, event_dim=2)
+            pyro.deterministic("encoder_hidden_states", outputnn.encoder_hidden_states, event_dim=3)
+            pyro.deterministic("decoder_hidden_states", outputnn.decoder_hidden_states, event_dim=3)
+            pyro.deterministic("encoder_final_hidden", outputnn.encoder_final_hidden, event_dim=2)
+            pyro.deterministic("decoder_final_hidden", outputnn.decoder_final_hidden, event_dim=2)
             # #Highlight: Scaling up the log likelihood of the reconstruction loss of the non padded positions
             sequences_logits = self.logsoftmax(outputnn.output)
-
-            pyro.deterministic("sequences_logits", sequences_logits, event_dim=0)
+            pyro.deterministic("sequences_logits", sequences_logits, event_dim=2)
             assert not torch.isnan(sequences_logits).any(), "found nan in sequences_logits"
             #with pyro.poutine.mask(mask=batch_mask_len):
             pyro.sample("sequences", dist.Categorical(logits=sequences_logits).mask(batch_mask_len).to_event(1),obs=[None if sample else batch_sequences_int][0])
@@ -1540,13 +1528,14 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
 
             outputnn = self.decoder(batch_sequences_blosum, batch_sequences_lens, init_h_0_decoder, z=latent_z_seq,
                                     mask=batch_mask_len, guide_estimates=guide_estimates)
-            pyro.deterministic("attn_weights", outputnn.attn_weights, event_dim=0)
-            pyro.deterministic("encoder_hidden_states", outputnn.encoder_hidden_states, event_dim=0)
-            pyro.deterministic("decoder_hidden_states", outputnn.decoder_hidden_states, event_dim=0)
-            pyro.deterministic("encoder_final_hidden", outputnn.encoder_final_hidden, event_dim=0)
-            pyro.deterministic("decoder_final_hidden", outputnn.decoder_final_hidden, event_dim=0)
+            pyro.deterministic("attn_weights", outputnn.attn_weights, event_dim=2)
+            pyro.deterministic("encoder_hidden_states", outputnn.encoder_hidden_states, event_dim=3)
+            pyro.deterministic("decoder_hidden_states", outputnn.decoder_hidden_states, event_dim=3)
+            pyro.deterministic("encoder_final_hidden", outputnn.encoder_final_hidden, event_dim=2)
+            pyro.deterministic("decoder_final_hidden", outputnn.decoder_final_hidden, event_dim=2)
             sequences_logits = self.logsoftmax(outputnn.output)
-            pyro.deterministic("sequences_logits", sequences_logits, event_dim=0)
+            pyro.deterministic("sequences_logits", sequences_logits, event_dim=2)
+
             # with pyro.plate("plate_len", dim=-2, device=self.device):
             #with pyro.poutine.mask(mask=batch_mask_len_true):#highlight: removed .to_event(1)
             #with pyro.poutine.mask(mask=batch_mask_len):
