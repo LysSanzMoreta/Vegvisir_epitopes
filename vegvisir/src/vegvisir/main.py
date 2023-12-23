@@ -5,11 +5,9 @@ Vegvisir :
 =======================
 """
 import json
-import math
 from argparse import Namespace
 
 import numpy as np
-import pandas as pd
 
 import vegvisir
 import vegvisir.train as VegvisirTrain

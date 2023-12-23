@@ -7,11 +7,8 @@ Vegvisir :
 import json
 import os,random
 import pickle
-import time,datetime
 import warnings
-import dill
 import pandas as pd
-import operator,functools
 import matplotlib.pyplot as plt
 import numpy as np
 from collections import defaultdict,namedtuple
@@ -20,13 +17,9 @@ try:
 except:
     print("Could not import UMAP because of numpy incompatibility")
     pass
-import hdbscan
 import scipy
-import seaborn as sns
-import dataframe_image as dfi
 import torch
 from sklearn.cluster import DBSCAN
-import matplotlib.patches as mpatches
 import vegvisir.nnalign as VegvisirNNalign
 import vegvisir.utils as VegvisirUtils
 import vegvisir.similarities as VegvisirSimilarities
@@ -349,13 +342,12 @@ def viral_dataset3(script_dir,storage_folder,args,results_dir,corrected_paramete
                   target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
             """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
-    data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    data = pd.read_csv("{}/common_files/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
 
     data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
     data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
     data_species = pd.read_csv("{}/common_files/dataset_species.tsv".format(storage_folder),sep="\t")
     data_species = data_species.dropna(axis=1)
-
     data_species = data_species[["Icore","allele","org_name"]]
     filters_dict,analysis_mode = select_filters(args)
     json.dump(filters_dict, dataset_info_file, indent=2)
@@ -430,7 +422,7 @@ def viral_dataset4(script_dir,storage_folder,args,results_dir,corrected_paramete
             """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
     data_features = pd.read_csv("{}/common_files/dataset_all_features.tsv".format(storage_folder),sep="\s+",index_col=0)
-    data_partitions = pd.read_csv("{}/viral_dataset3/dataset_target.tsv".format(storage_folder),sep = "\t",index_col=0)
+    data_partitions = pd.read_csv("{}/common_files/dataset_target.tsv".format(storage_folder),sep = "\t",index_col=0)
     data_partitions.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
     data_partitions = data_partitions[["Icore","Icore_non_anchor","allele","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","partition","target","training"]]
     data_features = data_features[["Icore","allele","Pred_netstab","prot_inst_index","prot_median_iupred_score_long","prot_molar_excoef_cys_cys_bond","prot_p[q3_E]_netsurfp","prot_p[q3_C]_netsurfp","prot_rsa_netsurfp"]]
@@ -504,7 +496,7 @@ def viral_dataset5(script_dir,storage_folder,args,results_dir,corrected_paramete
     Rnk_EL
     """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
-    data_partitions = pd.read_csv("{}/{}/dataset_target_correction_artificial_negatives.tsv".format(storage_folder,args.dataset_name),sep = "\t")
+    data_partitions = pd.read_csv("{}/common_files/dataset_target_correction_artificial_negatives.tsv".format(storage_folder,args.dataset_name),sep = "\t")
 
     data_partitions.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition","confidence_score","immunodominance","Length","Rnk_EL"]
     data = data_partitions[["Icore","Icore_non_anchor","allele","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","partition","target","training"]]
@@ -597,7 +589,7 @@ def viral_dataset6(script_dir,storage_folder,args,results_dir,corrected_paramete
     """
 
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
-    data_observed = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    data_observed = pd.read_csv("{}/common_files/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
     data_observed.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
     data_observed = data_observed.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
     filters_dict,analysis_mode = select_filters(args)
@@ -606,9 +598,9 @@ def viral_dataset6(script_dir,storage_folder,args,results_dir,corrected_paramete
     data_species = data_species.dropna(axis=1)
     data_species = data_species[["Icore","allele","org_name"]]
 
-    data_unobserved_anchors = pd.read_csv("{}/{}/dataset_artificial_peptides_from_proteins_partitioned_hla_anchors.tsv".format(storage_folder,args.dataset_name),sep = "\t") #Highlight: The sequences from the labelled dataset have been filtered for some reason
+    data_unobserved_anchors = pd.read_csv("{}/common_files/dataset_artificial_peptides_from_proteins_partitioned_hla_anchors.tsv".format(storage_folder,args.dataset_name),sep = "\t") #Highlight: The sequences from the labelled dataset have been filtered for some reason
     data_unobserved_anchors = data_unobserved_anchors[["Icore","allele","Icore_non_anchor"]]
-    data_unobserved = pd.read_csv("{}/{}/dataset_artificial_peptides_from_proteins_partitioned_hla.tsv".format(storage_folder,args.dataset_name),sep = "\s+") #Highlight: The sequences from the labelled dataset have been filtered for some reason
+    data_unobserved = pd.read_csv("{}/common_files/dataset_artificial_peptides_from_proteins_partitioned_hla.tsv".format(storage_folder,args.dataset_name),sep = "\s+") #Highlight: The sequences from the labelled dataset have been filtered for some reason
     data_unobserved.columns = ["Icore", "target", "partition", "source","allele"]
     data_unobserved_partition = data_unobserved[["Icore","partition","source"]]
     data_unobserved = data_unobserved[(data_unobserved["source"] == "artificial")]
@@ -718,12 +710,12 @@ def viral_dataset7(script_dir,storage_folder,args,results_dir,corrected_paramete
                   target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
             """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
-    new_partitions = pd.read_csv("{}/{}/Viruses_db_partitions_notest.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    new_partitions = pd.read_csv("{}/common_files/Viruses_db_partitions_notest.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
 
     #new_partitions.columns = ["Icore","allele","Core","Of","Gp","Gl","Ip","Il","Rnk_EL","org_id","uniprot_id","target","start_prot","Icore_non_anchor","partition"]
 
 
-    data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    data = pd.read_csv("{}/common_files/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
     data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
 
     data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
@@ -812,7 +804,7 @@ def viral_dataset8(script_dir,storage_folder,args,results_dir,corrected_paramete
     """
 
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
-    data_observed = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    data_observed = pd.read_csv("{}/common_files/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
     data_observed.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
     data_observed = data_observed.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
     filters_dict,analysis_mode = select_filters(args)
@@ -821,9 +813,9 @@ def viral_dataset8(script_dir,storage_folder,args,results_dir,corrected_paramete
     data_species = data_species.dropna(axis=1)
     data_species = data_species[["Icore","allele","org_name"]]
 
-    data_unobserved_anchors = pd.read_csv("{}/{}/dataset_artificial_peptides_from_proteins_partitioned_hla_anchors.tsv".format(storage_folder,args.dataset_name),sep = "\t") #Highlight: The sequences from the labelled dataset have been filtered for some reason
+    data_unobserved_anchors = pd.read_csv("{}/common_files/dataset_artificial_peptides_from_proteins_partitioned_hla_anchors.tsv".format(storage_folder,args.dataset_name),sep = "\t") #Highlight: The sequences from the labelled dataset have been filtered for some reason
     data_unobserved_anchors = data_unobserved_anchors[["Icore","allele","Icore_non_anchor"]]
-    data_unobserved = pd.read_csv("{}/{}/dataset_artificial_peptides_from_proteins_partitioned_hla.tsv".format(storage_folder,args.dataset_name),sep = "\s+") #Highlight: The sequences from the labelled dataset have been filtered for some reason
+    data_unobserved = pd.read_csv("{}/common_files/dataset_artificial_peptides_from_proteins_partitioned_hla.tsv".format(storage_folder,args.dataset_name),sep = "\s+") #Highlight: The sequences from the labelled dataset have been filtered for some reason
     data_unobserved.columns = ["Icore", "target", "partition", "source","allele"]
     data_unobserved_partition = data_unobserved[["Icore","partition","source"]]
     data_unobserved = data_unobserved[(data_unobserved["source"] == "artificial")]
@@ -950,12 +942,12 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir,corrected_paramete
                   target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
             """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
-    new_partitions = pd.read_csv("{}/{}/Viruses_db_partitions_notest.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    new_partitions = pd.read_csv("{}/common_files/Viruses_db_partitions_notest.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
 
     #new_partitions.columns = ["Icore","allele","Core","Of","Gp","Gl","Ip","Il","Rnk_EL","org_id","uniprot_id","target","start_prot","Icore_non_anchor","partition"]
 
 
-    data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    data = pd.read_csv("{}/common_files/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
     data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
 
     data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
@@ -974,10 +966,10 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir,corrected_paramete
     #Highlight: Add new test dataset
 
     #/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/viral_dataset9/NEW_pMHC_test.csv
-    new_test_dataset = pd.read_csv("{}/{}/NEW_pMHC_test.csv".format(storage_folder,args.dataset_name),sep = ",")
-    new_test_dataset_anchors = pd.read_csv("{}/{}/new_test_nonanchor.csv".format(storage_folder,args.dataset_name),sep = ",")
+    new_test_dataset = pd.read_csv("{}/common_files/NEW_pMHC_test.csv".format(storage_folder,args.dataset_name),sep = ",")
+    new_test_dataset_anchors = pd.read_csv("{}/common_files/new_test_nonanchor.csv".format(storage_folder,args.dataset_name),sep = ",")
     new_test_dataset_anchors = new_test_dataset_anchors[["Icore","Icore_non_anchor"]]
-    new_test_dataset_immunogenicity = pd.read_csv("{}/{}/new_test_nonanchor_immunodominance.csv".format(storage_folder,args.dataset_name),sep=",")
+    new_test_dataset_immunogenicity = pd.read_csv("{}/common_files/new_test_nonanchor_immunodominance.csv".format(storage_folder,args.dataset_name),sep=",")
     new_test_dataset_immunogenicity = new_test_dataset_immunogenicity[["Icore","allele","subjects_tested","subjects_responded"]] #"Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"
     new_test_dataset_immunogenicity.columns = ["Icore","alelle","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"]
     new_test_dataset = pd.merge(new_test_dataset,new_test_dataset_anchors,on=["Icore"],how="left")
@@ -1104,12 +1096,12 @@ def viral_dataset9_peptide(script_dir,storage_folder,args,results_dir,corrected_
                   target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
             """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
-    new_partitions = pd.read_csv("{}/{}/Viruses_db_partitions_notest.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    new_partitions = pd.read_csv("{}/common_files/Viruses_db_partitions_notest.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
 
     #new_partitions.columns = ["Icore","allele","Core","Of","Gp","Gl","Ip","Il","Rnk_EL","org_id","uniprot_id","target","start_prot","Icore_non_anchor","partition"]
 
 
-    data = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    data = pd.read_csv("{}/common_files/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
     data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
 
     data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
@@ -1128,10 +1120,10 @@ def viral_dataset9_peptide(script_dir,storage_folder,args,results_dir,corrected_
     #Highlight: Add new test dataset
 
     #/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/viral_dataset9/NEW_pMHC_test.csv
-    new_test_dataset = pd.read_csv("{}/{}/NEW_pMHC_test.csv".format(storage_folder,args.dataset_name),sep = ",")
-    new_test_dataset_anchors = pd.read_csv("{}/{}/new_test_nonanchor.csv".format(storage_folder,args.dataset_name),sep = ",")
+    new_test_dataset = pd.read_csv("{}/common_files/NEW_pMHC_test.csv".format(storage_folder,args.dataset_name),sep = ",")
+    new_test_dataset_anchors = pd.read_csv("{}/common_files/new_test_nonanchor.csv".format(storage_folder,args.dataset_name),sep = ",")
     new_test_dataset_anchors = new_test_dataset_anchors[["Icore","Icore_non_anchor"]]
-    new_test_dataset_immunogenicity = pd.read_csv("{}/{}/new_test_nonanchor_immunodominance.csv".format(storage_folder,args.dataset_name),sep=",")
+    new_test_dataset_immunogenicity = pd.read_csv("{}/common_files/new_test_nonanchor_immunodominance.csv".format(storage_folder,args.dataset_name),sep=",")
     new_test_dataset_immunogenicity = new_test_dataset_immunogenicity[["Icore","allele","subjects_tested","subjects_responded"]] #"Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"
     new_test_dataset_immunogenicity.columns = ["Icore","alelle","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"]
     new_test_dataset = pd.merge(new_test_dataset,new_test_dataset_anchors,on=["Icore"],how="left")
@@ -1251,7 +1243,7 @@ def viral_dataset10(script_dir,storage_folder,args,results_dir,corrected_paramet
     """
 
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
-    data_observed = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    data_observed = pd.read_csv("{}/common_files/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
     data_observed.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
     data_observed = data_observed.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
     filters_dict,analysis_mode = select_filters(args)
@@ -1260,9 +1252,9 @@ def viral_dataset10(script_dir,storage_folder,args,results_dir,corrected_paramet
     data_species = data_species.dropna(axis=1)
     data_species = data_species[["Icore","allele","org_name"]]
 
-    data_unobserved_anchors = pd.read_csv("{}/{}/dataset_artificial_peptides_from_proteins_partitioned_hla_anchors.tsv".format(storage_folder,args.dataset_name),sep = "\t") #Highlight: The sequences from the labelled dataset have been filtered for some reason
+    data_unobserved_anchors = pd.read_csv("{}/common_files/dataset_artificial_peptides_from_proteins_partitioned_hla_anchors.tsv".format(storage_folder,args.dataset_name),sep = "\t") #Highlight: The sequences from the labelled dataset have been filtered for some reason
     data_unobserved_anchors = data_unobserved_anchors[["Icore","allele","Icore_non_anchor"]]
-    data_unobserved = pd.read_csv("{}/{}/dataset_artificial_peptides_from_proteins_partitioned_hla.tsv".format(storage_folder,args.dataset_name),sep = "\s+") #Highlight: The sequences from the labelled dataset have been filtered for some reason
+    data_unobserved = pd.read_csv("{}/common_files/dataset_artificial_peptides_from_proteins_partitioned_hla.tsv".format(storage_folder,args.dataset_name),sep = "\s+") #Highlight: The sequences from the labelled dataset have been filtered for some reason
     data_unobserved.columns = ["Icore", "target", "partition", "source","allele"]
     data_unobserved_partition = data_unobserved[["Icore", "partition", "source"]] #this is in the right order, do not change
     data_unobserved = data_unobserved[(data_unobserved["source"] == "artificial")]
@@ -1305,10 +1297,10 @@ def viral_dataset10(script_dir,storage_folder,args,results_dir,corrected_paramet
     #Highlight: Add new test dataset
 
     #/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/viral_dataset9/NEW_pMHC_test.csv
-    new_test_dataset = pd.read_csv("{}/{}/NEW_pMHC_test.csv".format(storage_folder,args.dataset_name),sep = ",")
-    new_test_dataset_anchors = pd.read_csv("{}/{}/new_test_nonanchor.csv".format(storage_folder,args.dataset_name),sep = ",")
+    new_test_dataset = pd.read_csv("{}/common_files/NEW_pMHC_test.csv".format(storage_folder,args.dataset_name),sep = ",")
+    new_test_dataset_anchors = pd.read_csv("{}/common_files/new_test_nonanchor.csv".format(storage_folder,args.dataset_name),sep = ",")
     new_test_dataset_anchors = new_test_dataset_anchors[["Icore","Icore_non_anchor"]]
-    new_test_dataset_immunogenicity = pd.read_csv("{}/{}/new_test_nonanchor_immunodominance.csv".format(storage_folder,args.dataset_name),sep=",")
+    new_test_dataset_immunogenicity = pd.read_csv("{}/common_files/new_test_nonanchor_immunodominance.csv".format(storage_folder,args.dataset_name),sep=",")
     new_test_dataset_immunogenicity = new_test_dataset_immunogenicity[["Icore","allele","subjects_tested","subjects_responded"]] #"Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"
     new_test_dataset_immunogenicity.columns = ["Icore","alelle","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"]
     new_test_dataset = pd.merge(new_test_dataset,new_test_dataset_anchors,on=["Icore"],how="left")
@@ -1452,10 +1444,10 @@ def viral_dataset11(script_dir,storage_folder,args,results_dir,corrected_paramet
     data_species = data_species.dropna(axis=1)
     data_species = data_species[["Icore","allele","org_name"]]
 
-    data_unobserved_anchors = pd.read_csv("{}/{}/dataset_artificial_peptides_from_proteins_partitioned_hla_anchors.tsv".format(storage_folder,args.dataset_name),sep = "\t")
+    data_unobserved_anchors = pd.read_csv("{}/common_files/dataset_artificial_peptides_from_proteins_partitioned_hla_anchors.tsv".format(storage_folder,args.dataset_name),sep = "\t")
     data_unobserved_anchors = data_unobserved_anchors[["Icore","allele","Icore_non_anchor"]]
 
-    data_unobserved = pd.read_csv("{}/{}/dataset_artificial_peptides_from_proteins_partitioned_hla.tsv".format(storage_folder,args.dataset_name),sep = "\s+") #Highlight: The sequences from the labelled dataset have been filtered for some reason
+    data_unobserved = pd.read_csv("{}/common_files/dataset_artificial_peptides_from_proteins_partitioned_hla.tsv".format(storage_folder,args.dataset_name),sep = "\s+") #Highlight: The sequences from the labelled dataset have been filtered for some reason
     data_unobserved.columns = ["Icore", "target", "partition", "source","allele"]
     data_unobserved_partition = data_unobserved[["Icore","partition","source"]]
     data_unobserved = data_unobserved[(data_unobserved["source"] == "artificial")]
@@ -1583,7 +1575,7 @@ def viral_dataset12(script_dir,storage_folder,args,results_dir,corrected_paramet
     """
 
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
-    # data_observed = pd.read_csv("{}/{}/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+    # data_observed = pd.read_csv("{}/common_files/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
     # data_observed.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
     # data_observed = data_observed.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
     filters_dict,analysis_mode = select_filters(args)
@@ -1592,7 +1584,7 @@ def viral_dataset12(script_dir,storage_folder,args,results_dir,corrected_paramet
     data_species = data_species.dropna(axis=1)
     data_species = data_species[["Icore","allele","org_name"]]
 
-    data_unobserved = pd.read_csv("{}/{}/dataset_artificial_peptides_from_proteins_partitioned_hla_anchors.tsv".format(storage_folder,args.dataset_name),sep = "\t") #Highlight: The sequences from the labelled dataset have been filtered for some reason
+    data_unobserved = pd.read_csv("{}/common_files/dataset_artificial_peptides_from_proteins_partitioned_hla_anchors.tsv".format(storage_folder,args.dataset_name),sep = "\t") #Highlight: The sequences from the labelled dataset have been filtered for some reason
     data_unobserved = data_unobserved[(data_unobserved["source"] == "artificial")]
     data_unobserved = data_unobserved[["Icore","target","partition","allele","Icore_non_anchor"]]
     #data_unobserved = data_unobserved.sample(n=args.num_unobserved,replace=False)

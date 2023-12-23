@@ -14,7 +14,6 @@ import os,shutil
 from collections import defaultdict
 import time,datetime
 from sklearn import preprocessing
-import random
 import pandas as pd
 import torch
 import scipy

@@ -4,13 +4,10 @@
 Vegvisir :
 =======================
 """
-import functools
 import gc
 import json
-import math
 import operator
 import pickle
-import warnings
 from collections import defaultdict
 from glob import glob
 from pathlib import Path
@@ -39,7 +36,6 @@ from sklearn.cluster import MiniBatchKMeans
 from joblib import Parallel, delayed
 import multiprocessing
 import os
-from functools import partial
 from scipy import stats
 import vegvisir.similarities as VegvisirSimilarities
 from collections import namedtuple

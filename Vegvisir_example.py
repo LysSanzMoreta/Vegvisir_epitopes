@@ -198,8 +198,8 @@ def analysis_models():
             "random-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_12h54min32s277094ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING_8mers",
             "shuffled-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_13h45min14s949918ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING",
             "shuffled-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_15h46min12s980962ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING_8mers",
-            "raw-blosum-variable-length": "",
-            "raw-blosum-8mers": ""
+            "raw-blosum-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_16h37min32s305922ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING",
+            "raw-blosum-8mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_18h43min23s597579ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING_8mers"
         }}
     dict_results_random_stratified_partitions_blosum_z34 = {"Icore": {
         "random-blosum-variable-length": "",
@@ -221,8 +221,13 @@ def analysis_models():
     #Highlight: K-fold comparisons
 
     #VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_HPO_blosum",overwrite=True)
+    #VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_HPO_blosum",overwrite=True)
+    VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_blosum_z34,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_HPO_blosum_z34",overwrite=False)
+
     #VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_random_stratified_partitions_blosum,kfolds=5,results_folder = "Benchmark/Plots",title="random_stratified_partitions_HPO_blosum",overwrite=False)
-    #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_HPO_blosum_NEW",overwrite_correlations=False,overwrite_all=False)
+    #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_HPO_blosum",overwrite_correlations=False,overwrite_all=False)
+    VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_blosum_z34,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_HPO_blosum_z34",overwrite_correlations=False,overwrite_all=False)
+    exit()
     #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_random_stratified_partitions_blosum,kfolds=5,results_folder="Benchmark/Plots",subtitle="random_stratified_partitions_HPO_blosum",overwrite_correlations=False,overwrite_all=False)
 
 
@@ -245,9 +250,9 @@ def hierarchical_clustering():
 
     vegvisir_folder_original = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/Likelihood_80/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_14_21h41min01s940264ms_60epochs_supervised_Icore_blosum_TESTING" #paper plot
     vegvisir_folder_HPO_blosum = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_09_30_23h31min43s312787ms_60epochs_supervised_Icore_blosum_TESTING"
-    vegvisir_folder_z34 = ""
+    vegvisir_folder_z34 = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HP0_blosum_z34/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_12_23_07h10min19s903074ms_60epochs_supervised_Icore_blosum_TESTING"
     embedded_epitopes = "{}/vegvisir/src/vegvisir/data/viral_dataset9/similarities/Icore/All/diff_allele/diff_len/neighbours1/all/EMBEDDED_epitopes.tsv".format(script_dir)
-    VegvisirPlots.plot_hierarchical_clustering(vegvisir_folder_original, embedded_epitopes,folder="/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots",title="blosum")
+    VegvisirPlots.plot_hierarchical_clustering(vegvisir_folder_z34, embedded_epitopes,folder="/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots",title="blosum_z34")
     #VegvisirPlots.plot_hierarchical_clustering(vegvisir_folder, embedded_epitopes,folder="/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots",title="blosum")
 
 if __name__ == "__main__":
@@ -257,12 +262,12 @@ if __name__ == "__main__":
                         help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data \n'
                              'custom_dataset: Perform training or prediction (by setting the args.pretrained_model to the folder path with the model checkpoints). Remember to define also train_path, test_path'
                              'viral_dataset3 : Supervised learning. Only sequences, partitioned into train,validation and (old) test.If args.test = True, then the (old) assigned test is used \n'
-                             'viral_dataset4 : Supervised learning. viral_dataset3 sequences + Features \n '
+                             'viral_dataset4 : Supervised learning. viral_dataset3 sequences + Peptide Features \n '
                              'viral_dataset5: Supervised learning. Contains additional artificially generated negative data points in the (old) test dataset \n'
                              'viral_dataset6: Semisupervised learning. Contains additional unobserved data points for semi supervised learning. Train, validation and (old) test are mixed. If args.test = True, then 1 partition is selected as test \n'
-                             'viral_dataset7: Supervised learning. Same dataset as viral_dataset3, but the test dataset is mixed with the train and validation datasets \n'
+                             'viral_dataset7: Supervised learning. Same dataset as viral_dataset3, but the (old) test dataset is mixed with the train and validation datasets \n'
                              'viral_dataset8: Semisupervised learning. Same dataset as viral_dataset6 (containing unobserved datapoints), where the original test dataset is left out from the training (not mixed in).If args.test = True, then the (old) assigned test is used \n'
-                             'viral_dataset9: Supervised learning. Same as viral_dataset7 with a new test dataset (OLD test,train and validation are mixed). New test dataset available when using args.test=True \n'
+                             'viral_dataset9: Supervised learning. Uses the OLD test,train and validation are mixed into the train. Same as viral_dataset7 with a new test dataset. New test dataset available when using args.test=True \n'
                              'viral_dataset10: Semisupervised learning. Same as viral_dataset6 (containing unobserved datapoints) with a new test dataset (OLD test,train and validation are mixed). New test available when using args.test=True \n'
                              'viral_dataset11: Semisupervised learning.Similar to viral_dataset6 (containing unobserved datapoints), but the (old) test is incorporated as an unobserved sequence as well. (old) test available when using args.test=True \n'
                              'viral_dataset12: Prediction.Training only on the unobserved data points with randomly assigned labels. MHC binders without binary targets'
@@ -283,11 +288,13 @@ if __name__ == "__main__":
                                                                                     '<borders>: The sequences are padded at the beginning and the end. Random choice when the pad is an even number \n'
                                                                                     '<replicated_borders>: Padds by replicating the borders of the sequence \n'
                                                                                     '<random>: random insertion of 0 along the sequence \n')
+    #Highlight: Model stress testing
 
-    parser.add_argument('-shuffle','--shuffle_sequence', type=str2bool, nargs='?', default=False, help='Shuffling the sequence prior to padding for model stress-testing')
-    parser.add_argument('-random','--random_sequences', type=str2bool, nargs='?', default=False, help='Create completely random peptide sequences for model stress-testing')
-    parser.add_argument('-mutations','--num_mutations', type=int, nargs='?', default=0, help='Mutate the original sequences n times for model stress-testing')
-    parser.add_argument('-idx-mutations','--idx_mutations', type=str, nargs='?', default=None, help='Positions where to perform the mutations for model stress-testing. Indicated as string of format [2,5,3], Set to None otherwise')
+    parser.add_argument('-shuffle','--shuffle_sequence', type=str2bool, nargs='?', default=False, help='Stress-testing. Shuffling the original sequence aminoacid order')
+    parser.add_argument('-random','--random_sequences', type=str2bool, nargs='?', default=False, help='Stress-testing. Create completely random peptide sequences \n. '
+                                                                                                      'Transforms the original sequence into a random collection of amino acid characters maintaining the same length and class assignment ')
+    parser.add_argument('-mutations','--num_mutations', type=int, nargs='?', default=0, help='Stress-testing. Mutate the original sequences n times for model stress-testing')
+    parser.add_argument('-idx-mutations','--idx_mutations', type=str, nargs='?', default=None, help='Stress-testing. Positions where to perform the mutations for model stress-testing. Indicated as string of format [2,5,3], Set to None otherwise')
 
 
 
@@ -298,7 +305,7 @@ if __name__ == "__main__":
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1') #TODO: Remove
 
     #Highlight: Model hyperparameters, do not change unless you re-train the model
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=2, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=60, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-encoding', type=str, nargs='?', default="blosum", help='<blosum> Use the matrix selected in args.subs_matrix to encode the sequences as blosum vectors'
                                                                                  '<onehot> One hot encoding of the sequences  ')
@@ -330,10 +337,10 @@ if __name__ == "__main__":
                                                                               ' (perhaps subsampling in the plate)') #TODO: Remove
 
     parser.add_argument('-z-dim','--z-dim', type=int, nargs='?', default=30, help='Latent space dimension')
-    parser.add_argument('-likelihood-scale', type=int, nargs='?', default=80, help='Scaling the log p( class | Z) of the variational autoencoder (cold posterior)')
+    parser.add_argument('-likelihood-scale', type=int, nargs='?', default=100, help='Scaling the log p( class | Z) of the variational autoencoder (cold posterior)')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=40, help='Embedding dimensions, use with self-attention. NOT USED---> DELETE SOOn')
-    parser.add_argument('-lt','--learning-type', type=str, nargs='?', default="supervised", help='<supervised_no_decoder> simpler model architecture with an encoder and a classifier'
+    parser.add_argument('-lt','--learning-type', type=str, nargs='?', default="supervised", help='<supervised_no_decoder> simpler model architecture with only an encoder and a classifier'
                                                                                                  '<unsupervised> Unsupervised learning. No classification is performed \n'
                                                                                                  '<semisupervised> Semi-supervised model/learning. The likelihood of the class (p(c | z)) is only computed and maximized using the most confident scores. \n '
                                                                                                             'The non confident data points are inferred by the guide \n'
@@ -341,22 +348,22 @@ if __name__ == "__main__":
 
     parser.add_argument('-glitch','--glitch', type=str2bool, nargs='?', default=False, help='NOT USED at the moment, does not seem necessary. Only works with blosum encodings'
                                                                                            '<True>: Applies a random noise distortion (via rotations) to the encoded vector within the conserved positions of the sequences (mainly anchor points)  \n'
-                                                                                           '<False>: The blosum encodings are left untouched')
-    parser.add_argument('-num-samples','-num_samples', type=int, nargs='?', default=3, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
+                                                                                           '<False>: The blosum encodings are left untouched') #TODO: Remove
+    parser.add_argument('-num-samples','-num_samples', type=int, nargs='?', default=60, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
 
 
-    parser.add_argument('-hpo', type=str2bool, nargs='?', default=False,help='Hyperparameter optimization with Ray Tune')
+    parser.add_argument('-hpo', type=str2bool, nargs='?', default=False,help='<True> Performs Hyperparameter optimization with Ray Tune')
     best_config = {0: "{}/BEST_hyperparameter_dict_onehot.p".format(script_dir),
                    1: "{}/BEST_hyperparameter_dict_blosum.p".format(script_dir),
                    2: None}
-    parser.add_argument('-config-dict', nargs='?', default=best_config[1], type=str2None,help='Path to optimized hyperparameter dict')
+    parser.add_argument('-config-dict', nargs='?', default=best_config[1], type=str2None,help='Path to the HPO optimized hyperparameter dict. Overrules the previous hyperparameters')
 
     #Highlight: Evaluation modes
-    parser.add_argument('-train', type=str2bool, nargs='?', default=False,help='<True> Run the model \n <False> Make models comparison or load previous model if pargs.pretrained_model is not None ')
+    parser.add_argument('-train', type=str2bool, nargs='?', default=False,help='<True> Run the model \n <False> Make benchmarking plots or load previously trained model, if pargs.pretrained_model is not None ')
     parser.add_argument('-validate', type=str2bool, nargs='?', default=False, help='Evaluate the model on the validation dataset. Only needed for model design')
     parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
 
-    #Highlight: Generating new sequences from pre-trained model
+    #Highlight: Generating new sequences from a trained model
     parser.add_argument('-generate', type=str2bool, nargs='?', default=True, help='<True> Generate new neo-epitopes labelled and with a confidence score based on the training dataset. Please use args.validate False''<False> Do nothing')
     parser.add_argument('-num-synthetic-peptides', type=int, nargs='?', default=100, help='<True> Generate new neo-epitopes labelled and with a confidence score. IMPORTANT: The total number of generated peptides is'
                                                                                           'equal to args.num_synthetic_peptides*args.num_samples')
@@ -366,7 +373,7 @@ if __name__ == "__main__":
     #Highlight: immunomodulating a sequence
     immunomodulate_path = {0:"{}/immunomodulate_sequences.txt".format(script_dir),
                            1:None}
-    parser.add_argument('-immunomodulate', type=str2bool, nargs='?', default=True, help='<True> Predict latent representation for the given sequences and generate new neo-epitopes labelled and with a confidence score based only on the input sequences via args.immunomodulate_path. Please use args.validate False''<False> Do nothing')
+    parser.add_argument('-immunomodulate', type=str2bool, nargs='?', default=False, help='<True> Predict latent representation for the given sequences and generate new neo-epitopes labelled and with a confidence score based only on the input sequences via args.immunomodulate_path. Please use args.validate False''<False> Do nothing')
     parser.add_argument('-num-immunomodulate-peptides', type=int, nargs='?', default=100, help='Number of generated peptides generated from the sequence to immunomodulate. The total number of generated peptides'
                                                                                                 'is equal to args.num_immunomodulates_peptides*args.num_samples')
     parser.add_argument('-immunomodulate-path', type=str2None, nargs='?', default= immunomodulate_path[0], help='Path to text file containing sequences to change their immunogenicity')
@@ -375,13 +382,13 @@ if __name__ == "__main__":
 
     #Highlight: Re-training the model
     unobserved_sequences = {0:"/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/custom_dataset/unobserved_grouped_alleles_train.tsv",1:None}
-    parser.add_argument('-train-path', type=str2None, nargs='?', default=unobserved_sequences[0],help="Path to training dataset. Use only for training. ")
-    parser.add_argument('-test-path', type=str2None, nargs='?', default= "", help='Path to sequences to predict')
+    parser.add_argument('-train-path', type=str2None, nargs='?', default=unobserved_sequences[0],help="Path to an external training dataset. ")
+    parser.add_argument('-test-path', type=str2None, nargs='?', default= "", help='Path to (test) sequences to predict/classify')
 
 
 
     #Highlight: Output saving settings
-    parser.add_argument('-save-all', type=str2bool, nargs='?', default=False, help='<True> Saves every matrix output from the model'
+    parser.add_argument('-save-all', type=str2bool, nargs='?', default=False, help='<True> Saves every matrix output from the model. Not recommended'
                                                                                    '<False> Only saves a selection of model outputs necessary for benchmarking')
     parser.add_argument('-plot-all','--plot-all', type=str2bool, nargs='?', default=False, help='True: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1,\n'
                                                                                                ' it saturates the CPU & GPU memory'
@@ -446,7 +453,7 @@ if __name__ == "__main__":
     if args.train:
         main()
     else:
-        #analysis_models()
-        hierarchical_clustering()
+        analysis_models()
+        #hierarchical_clustering()
 
 

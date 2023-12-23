@@ -1,6 +1,5 @@
 import json
-import time,os,math
-import pandas as pd
+import time,os
 from collections import defaultdict
 import numpy as np
 from sklearn.metrics import auc,roc_auc_score,cohen_kappa_score,roc_curve,confusion_matrix
