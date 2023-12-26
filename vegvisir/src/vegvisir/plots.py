@@ -30,8 +30,7 @@ import torch
 import umap # numpy < 1.23
 import vegvisir.utils as VegvisirUtils
 from sklearn.feature_selection import mutual_info_classif,mutual_info_regression
-from sklearn.metrics import auc, roc_auc_score, roc_curve, confusion_matrix, matthews_corrcoef, precision_recall_curve, \
-    average_precision_score, recall_score
+from sklearn.metrics import auc, roc_auc_score, roc_curve, confusion_matrix, matthews_corrcoef, precision_recall_curve, average_precision_score, recall_score
 from sklearn.cluster import MiniBatchKMeans
 from joblib import Parallel, delayed
 import multiprocessing
@@ -75,7 +74,6 @@ def plot_generated_labels_histogram(dataframe,results_dir):
     plt.savefig("{}/Histogram_target_probabilities".format(results_dir), dpi=500)
     plt.clf()
     plt.close(fig)
-
 
 def plot_data_information(data, filters_dict, storage_folder, args, name_suffix):
     """"""
@@ -2111,7 +2109,6 @@ def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold,
     plt.savefig("{}/confusion_matrix_fold{}_{}.png".format(results_dir,fold,method),dpi=100)
     plt.clf()
     plt.close(fig)
-
 
 def micro_auc(args,onehot_labels,y_prob,idx):
     """Calculates the AUC for a multi-class problem"""

@@ -945,8 +945,8 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir,corrected_paramete
     new_partitions = pd.read_csv("{}/common_files/Viruses_db_partitions_notest.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
 
     #new_partitions.columns = ["Icore","allele","Core","Of","Gp","Gl","Ip","Il","Rnk_EL","org_id","uniprot_id","target","start_prot","Icore_non_anchor","partition"]
-
     data = pd.read_csv("{}/common_files/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
+
     data.columns = ["allele","Icore","Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","target","training","Icore_non_anchor","partition"]
 
     data = data.dropna(subset=["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded","training"]).reset_index(drop=True)
@@ -991,8 +991,8 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir,corrected_paramete
     elif test_mode == "test_cancer":
         new_test_dataset = new_test_dataset[(new_test_dataset['kingdom'].str.contains("Eukaryota"))]
 
-    data["training"] = True #Highlight: Everything is training (also the old test)
-    data = pd.merge(data,new_test_dataset, on=['Icore',"allele","training","target"], how='outer',suffixes=('_a', '_b'))
+    data["training"] = True #Highlight: At this point, everything is training (also the old test)
+    data = pd.merge(data,new_test_dataset, on=['Icore',"allele","training","target"], how='outer',suffixes=('_a', '_b')) #merege the new test dataset
 
     data["Icore_non_anchor"] = data["Icore_non_anchor_a"].fillna(data["Icore_non_anchor_b"])
     data["Assay_number_of_subjects_responded"] = data["Assay_number_of_subjects_responded_a"].fillna(data["Assay_number_of_subjects_responded_b"])
@@ -1014,9 +1014,10 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir,corrected_paramete
     if filters_dict["group_alleles"][0]:
         # Group data by Icore, therefore the alleles are grouped
         data_a = data.groupby('Icore', as_index=False)[["Assay_number_of_subjects_tested", "Assay_number_of_subjects_responded"]].agg(lambda x: sum(list(x)))
+
         #data_b = data.groupby('Icore', as_index=False)[["Icore_non_anchor","partition", "target", "training","org_name"]].agg(lambda x: max(set(list(x)), key=list(x).count))
         #data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor","partition", "target", "training","org_name"]].agg(lambda x: scipy.stats.mode(x,keepdims=True)[0][0])
-        data_b = data.groupby('Icore', as_index=False)[["Icore","Icore_non_anchor"]].agg(lambda srs: Counter(list(srs)).most_common(1)[0][0]) #exclude nans and return most common Icore non anchor
+        data_b = data.groupby('Icore', as_index=False)[['Icore',"Icore_non_anchor"]].agg(lambda srs: Counter(list(srs)).most_common(1)[0][0]) #exclude nans and return most common Icore non anchor
         data_b  = data_b[data_b['Icore_non_anchor'].notna()]
         data_c = data.groupby('Icore', as_index=False)[["Icore","partition", "target", "training","org_name"]].agg(lambda srs: Counter(list(srs)).most_common(1)[0][0]) #return first occurence
         data = pd.merge(data_a, data_b, on='Icore', how='right')

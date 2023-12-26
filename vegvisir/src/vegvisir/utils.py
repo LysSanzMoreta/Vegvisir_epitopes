@@ -1066,6 +1066,7 @@ def save_results_table(predictions_dict,latent_space, args,dataset_info,results_
 
 
     class_probabilities = predictions_dict["class_probs_predictions_samples_average"]
+    onehot_labels = predictions_dict["true_onehot_samples"]
 
     probs_5_class_0 = predictions_dict["class_probs_predictions_samples_5%CI_class_0"]
     probs_95_class_0 = predictions_dict["class_probs_predictions_samples_95%CI_class_0"]
@@ -1114,6 +1115,8 @@ def save_results_table(predictions_dict,latent_space, args,dataset_info,results_
     side_chain_pka_scores = np.ma.masked_array(side_chain_pka_scores, mask=sequences_mask, fill_value=0)
     side_chain_pka_scores = np.ma.mean(side_chain_pka_scores, axis=1)  # Highlight: before I was doing just the sum
 
+    sequences_list = list(map(lambda seq:seq.replace("-",""),sequences_list))
+
     isoelectric_scores = np.array(list(map(lambda seq: calculate_isoelectric(seq), sequences_list)))
     aromaticity_scores = np.array(list(map(lambda seq: calculate_aromaticity(seq), sequences_list)))
     gravy_scores = np.array(list(map(lambda seq: calculate_gravy(seq), sequences_list)))
@@ -1121,7 +1124,7 @@ def save_results_table(predictions_dict,latent_space, args,dataset_info,results_
     extintion_coefficient_scores_cysteines = np.array(list(map(lambda seq: calculate_extintioncoefficient(seq)[0], sequences_list)))
     extintion_coefficient_scores_cystines = np.array(list(map(lambda seq: calculate_extintioncoefficient(seq)[1], sequences_list)))
 
-    df = pd.DataFrame({"Epitopes":sequences_list,
+    results_df = pd.DataFrame({"Icore":sequences_list,
                        "Latent_vector":latent_space[:,5:].tolist(),
                        "Target_corrected":latent_space[:,0].tolist(),
                        "Immunoprevalence":latent_space[:,3].tolist(),
@@ -1143,23 +1146,48 @@ def save_results_table(predictions_dict,latent_space, args,dataset_info,results_
                        "Vegvisir_positive_95CI": probs_95_class_1.tolist(),
                        })
 
-    print(df.head(5))
 
-
-    merge_netmhc=True
     if merge_netmhc and args.dataset_name in ["viral_dataset9"]:
         storage_folder = custom_features_dicts["storage_folder"]
         train_data_info = pd.read_csv("{}/common_files/Viruses_db_partitions_notest.tsv".format(storage_folder), sep="\t")
-        print(train_data_info.columns)
+        train_data_info = train_data_info[["Icore","allele","Rnk_EL"]]
         test_data_info = pd.read_csv("{}/common_files/new_test_nonanchor_immunodominance.csv".format(storage_folder),sep=",")
-        print(test_data_info.columns)
-        exit()
-        data_info = pd.concat([train_data_info,test_data_info],axis=0)
+        test_data_info = test_data_info[["Icore","allele","Rnk_EL"]]
+        #data_info = pd.concat([train_data_info,test_data_info],axis=0)
+        data_info = pd.merge(train_data_info, test_data_info, on=['Icore'], how='outer',suffixes=('_a', '_b'))
+        data_info["allele"] = data_info["allele_a"].fillna(data_info["allele_b"])
+        data_info["Rnk_EL"] = data_info["Rnk_EL_a"].fillna(data_info["Rnk_EL_b"])
+        data_info.drop(["allele_a","allele_b","Rnk_EL_a","Rnk_EL_b"],axis=1,inplace=True)
 
-        data_info = data_info.groupby('Icore', as_index=False)[["Icore","partition", "target", "training","org_name"]].agg(lambda srs: Counter(list(srs)).most_common(1)[0][0]) #return first occurence
+        data_info = data_info.groupby('Icore', as_index=False)[["allele","Rnk_EL"]].agg(list) #aggregate as a list --> contains more Icore sequences than used for training & testing
 
-    exit()
-    df.to_csv("{}/{}/Epitopes_predictions.tsv".format(results_dir,method),sep="\t",index=False)
+        results_df = results_df.merge(data_info,how="left",on="Icore")
+
+    # import matplotlib.pyplot as plt
+    # import umap
+    # reducer = umap.UMAP()
+    # umap_proj = reducer.fit_transform(latent_space[:, 5:])
+    # alpha = 0.7
+    # size = 5
+    # colors_dict_labels = {0: "mediumaquamarine", 1: "orangered", 2: "navajowhite"}
+    # colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:, 0])
+    # plt.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:, 2], alpha=alpha, s=size)
+    # plt.show()
+    # plt.clf()
+    #
+    # from sklearn.metrics import auc, roc_auc_score, roc_curve, confusion_matrix, matthews_corrcoef, precision_recall_curve, average_precision_score, recall_score
+    # tpr=dict()
+    # fpr=dict()
+    # roc_auc=dict()
+    # for i in range(args.num_obs_classes):
+    #     fpr[i], tpr[i], _ = roc_curve(onehot_labels[:, i], class_probabilities[:, i])
+    #     roc_auc[i] = auc(fpr[i], tpr[i])
+    #     roc_auc["auc01_class_{}".format(i)] = roc_auc_score(onehot_labels[:, i], class_probabilities[:, i],average="weighted", max_fpr=0.1)
+    #     plt.plot(fpr[i], tpr[i], label='Class {} AUC : {}'.format(i, round(roc_auc[i], 2)), c=colors_dict_labels[i])
+    #
+    # plt.show()
+
+    results_df.to_csv("{}/{}/Epitopes_predictions.tsv".format(results_dir,method),sep="\t",index=False)
 
 def extract_group_old_test(train_summary_dict,valid_summary_dict,args):
     """"""

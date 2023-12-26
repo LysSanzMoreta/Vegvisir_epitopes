@@ -356,7 +356,7 @@ if __name__ == "__main__":
     best_config = {0: "{}/BEST_hyperparameter_dict_onehot.p".format(script_dir),
                    1: "{}/BEST_hyperparameter_dict_blosum.p".format(script_dir),
                    2: None}
-    parser.add_argument('-config-dict', nargs='?', default=best_config[2], type=str2None,help='Path to the HPO optimized hyperparameter dict. Overrules the previous hyperparameters')
+    parser.add_argument('-config-dict', nargs='?', default=best_config[1], type=str2None,help='Path to the HPO optimized hyperparameter dict. Overrules the previous hyperparameters')
 
     #Highlight: Evaluation modes
     parser.add_argument('-train', type=str2bool, nargs='?', default=True,help='<True> Run the model '
@@ -384,7 +384,7 @@ if __name__ == "__main__":
 
     #Highlight: Re-training the model
     unobserved_sequences = {0:"/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/custom_dataset/unobserved_grouped_alleles_train.tsv",1:None}
-    parser.add_argument('-train-path', type=str2None, nargs='?', default=unobserved_sequences[0],help="Path to an external training dataset. ")
+    parser.add_argument('-train-path', type=str2None, nargs='?', default=unobserved_sequences[0],help="Path to an external training dataset. It only activates if args.dataset_name = custom_dataset. ")
     parser.add_argument('-test-path', type=str2None, nargs='?', default= "", help='Path to (test) sequences to predict/classify')
 
 
@@ -399,7 +399,8 @@ if __name__ == "__main__":
     #Highlight: Use this one if you do not want to train the model, just predict, generate or immunomodulate
     pretrained_model = {0:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_12_23_22h34min52s755194ms_100epochs_supervised_Icore_blosum_TESTING",
                         1:None,
-                        2:""}
+                        2:"",
+                        3:""}
 
     parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="{}".format(pretrained_model[1]),help='Load the checkpoints (state_dict and optimizer) from a previous run \n'
                                                                                                 '<None>: Trains model from scratch \n'
