@@ -914,7 +914,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     """
 
     custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
-
+    #Highlight: Load features dictionaries
     aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
     gravy_dict = custom_features_dicts["gravy_dict"]
     volume_dict = custom_features_dicts["volume_dict"]
@@ -922,6 +922,7 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     side_chain_pka_dict = custom_features_dicts["side_chain_pka_dict"]
     isoelectric_dict = custom_features_dicts["isoelectric_dict"]
     bulkiness_dict = custom_features_dicts["bulkiness_dict"]
+
     data_int = predictions_dict["data_int_{}".format(sample_mode)]
     sequences = data_int[:,1:].squeeze(1)
     if dataset_info.corrected_aa_types == 20:
@@ -1263,16 +1264,14 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
     colors_immunodominance = np.vectorize(colors_dict.get, signature='()->(n)')(immunodominance_scores)
     # Highlight: Frequency scores per class: https://stackoverflow.com/questions/65927253/linearsegmentedcolormap-to-list
     frequency_class0_unique = np.unique(predictions_dict["class_binary_predictions_samples_frequencies"][:, 0]).tolist()
-    colormap_frequency_class0 = matplotlib.cm.get_cmap('BuGn',
-                                                       len(frequency_class0_unique))  # This one is  a LinearSegmentedColor map and works slightly different
+    colormap_frequency_class0 = matplotlib.cm.get_cmap('BuGn',len(frequency_class0_unique))  # This one is  a LinearSegmentedColor map and works slightly different
     colormap_frequency_class0_array = np.array([colormap_frequency_class0(i) for i in range(colormap_frequency_class0.N)])
     colors_dict = dict(zip(frequency_class0_unique, colormap_frequency_class0_array))
     colors_frequency_class0 = np.vectorize(colors_dict.get, signature='()->(n)')(
         predictions_dict["class_binary_predictions_samples_frequencies"][:, 0])
     frequency_class1_unique = np.unique(predictions_dict["class_binary_predictions_samples_frequencies"][:, 1]).tolist()
     colormap_frequency_class1 = matplotlib.cm.get_cmap('OrRd', len(frequency_class1_unique))
-    colormap_frequency_class1_array = np.array(
-        [colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
+    colormap_frequency_class1_array = np.array([colormap_frequency_class1(i) for i in range(colormap_frequency_class1.N)])
     colors_dict = dict(zip(frequency_class1_unique, colormap_frequency_class1_array))
     colors_frequency_class1 = np.vectorize(colors_dict.get, signature='()->(n)')(predictions_dict["class_binary_predictions_samples_frequencies"][:, 1])
     alpha = 0.7

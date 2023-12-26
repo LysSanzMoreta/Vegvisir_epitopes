@@ -305,7 +305,7 @@ if __name__ == "__main__":
     parser.add_argument('--run-nnalign', type=bool, nargs='?', default=False, help='Executes NNAlign 2.1 as in https://services.healthtech.dtu.dk/service.php?NNAlign-2.1') #TODO: Remove
 
     #Highlight: Model hyperparameters, do not change unless you re-train the model
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=60, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=1, help='Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-encoding', type=str, nargs='?', default="blosum", help='<blosum> Use the matrix selected in args.subs_matrix to encode the sequences as blosum vectors'
                                                                                  '<onehot> One hot encoding of the sequences  ')
@@ -336,10 +336,10 @@ if __name__ == "__main__":
                                                                               'in Pyro see pyro.autoguides. Does not work with mini-batching,'
                                                                               ' (perhaps subsampling in the plate)') #TODO: Remove
 
-    parser.add_argument('-z-dim','--z-dim', type=int, nargs='?', default=30, help='Latent space dimension')
+    parser.add_argument('-z-dim','--z-dim', type=int, nargs='?', default=30, help='Latent space dimensionality size')
     parser.add_argument('-likelihood-scale', type=int, nargs='?', default=100, help='Scaling the log p( class | Z) of the variational autoencoder (cold posterior)')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
-    parser.add_argument('-embedding-dim', type=int, nargs='?', default=40, help='Embedding dimensions, use with self-attention. NOT USED---> DELETE SOOn')
+    parser.add_argument('-embedding-dim', type=int, nargs='?', default=40, help='Embedding dimensions, use with self-attention. NOT USED---> DELETE SOOn') #TODO: Remove
     parser.add_argument('-lt','--learning-type', type=str, nargs='?', default="supervised", help='<supervised_no_decoder> simpler model architecture with only an encoder and a classifier'
                                                                                                  '<unsupervised> Unsupervised learning. No classification is performed \n'
                                                                                                  '<semisupervised> Semi-supervised model/learning. The likelihood of the class (p(c | z)) is only computed and maximized using the most confident scores. \n '
@@ -349,23 +349,25 @@ if __name__ == "__main__":
     parser.add_argument('-glitch','--glitch', type=str2bool, nargs='?', default=False, help='NOT USED at the moment, does not seem necessary. Only works with blosum encodings'
                                                                                            '<True>: Applies a random noise distortion (via rotations) to the encoded vector within the conserved positions of the sequences (mainly anchor points)  \n'
                                                                                            '<False>: The blosum encodings are left untouched') #TODO: Remove
-    parser.add_argument('-num-samples','-num_samples', type=int, nargs='?', default=60, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
+    parser.add_argument('-num-samples','-num_samples', type=int, nargs='?', default=2, help='Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
 
 
     parser.add_argument('-hpo', type=str2bool, nargs='?', default=False,help='<True> Performs Hyperparameter optimization with Ray Tune')
     best_config = {0: "{}/BEST_hyperparameter_dict_onehot.p".format(script_dir),
                    1: "{}/BEST_hyperparameter_dict_blosum.p".format(script_dir),
                    2: None}
-    parser.add_argument('-config-dict', nargs='?', default=best_config[1], type=str2None,help='Path to the HPO optimized hyperparameter dict. Overrules the previous hyperparameters')
+    parser.add_argument('-config-dict', nargs='?', default=best_config[2], type=str2None,help='Path to the HPO optimized hyperparameter dict. Overrules the previous hyperparameters')
 
     #Highlight: Evaluation modes
-    parser.add_argument('-train', type=str2bool, nargs='?', default=False,help='<True> Run the model \n <False> Make benchmarking plots or load previously trained model, if pargs.pretrained_model is not None ')
+    parser.add_argument('-train', type=str2bool, nargs='?', default=True,help='<True> Run the model '
+                                                                              '\n <False> Make benchmarking plots or load previously trained model, if pargs.pretrained_model is not None ')
     parser.add_argument('-validate', type=str2bool, nargs='?', default=False, help='Evaluate the model on the validation dataset. Only needed for model design')
     parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
 
     #Highlight: Generating new sequences from a trained model
-    parser.add_argument('-generate', type=str2bool, nargs='?', default=True, help='<True> Generate new neo-epitopes labelled and with a confidence score based on the training dataset. Please use args.validate False''<False> Do nothing')
-    parser.add_argument('-num-synthetic-peptides', type=int, nargs='?', default=100, help='<True> Generate new neo-epitopes labelled and with a confidence score. IMPORTANT: The total number of generated peptides is'
+    parser.add_argument('-generate', type=str2bool, nargs='?', default=False, help='<True> Generate new neo-epitopes labelled and with a confidence score based on the training dataset. Please use args.validate False '
+                                                                                   '\n <False> Do nothing')
+    parser.add_argument('-num-synthetic-peptides', type=int, nargs='?', default=10, help='<True> Generate new neo-epitopes labelled and with a confidence score. IMPORTANT: The total number of generated peptides is'
                                                                                           'equal to args.num_synthetic_peptides*args.num_samples')
     #parser.add_argument('-generate-num-samples', type=int, nargs='?', default=60, help='If args.generate == True, then per generated sequence, produce n samples to calculate a class probability')
     parser.add_argument('-generate-argmax', type=str2bool, nargs='?', default=False, help='If args.generate == True, generate_argmax = True ')
@@ -395,9 +397,9 @@ if __name__ == "__main__":
                                                                                                 'False: Only plots the computationally inexpensive ROC curves')
 
     #Highlight: Use this one if you do not want to train the model, just predict, generate or immunomodulate
-    #pretrained_model = {0:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_08_14_23h17min39s118041ms_60epochs_supervised_Icore_blosum_TESTING_pretty_plots",1:None}
-    pretrained_model = {0:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_09_12_11h07min45s598775ms_60epochs_supervised_Icore_blosum_TESTING",
-                        1:None}
+    pretrained_model = {0:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_12_23_22h34min52s755194ms_100epochs_supervised_Icore_blosum_TESTING",
+                        1:None,
+                        2:""}
 
     parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="{}".format(pretrained_model[1]),help='Load the checkpoints (state_dict and optimizer) from a previous run \n'
                                                                                                 '<None>: Trains model from scratch \n'

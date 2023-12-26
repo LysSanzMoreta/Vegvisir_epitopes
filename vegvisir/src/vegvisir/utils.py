@@ -11,7 +11,7 @@ from Bio.SeqUtils.IsoelectricPoint import IsoelectricPoint as IP
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
 import numpy as np
 import os,shutil
-from collections import defaultdict
+from collections import defaultdict, Counter
 import time,datetime
 from sklearn import preprocessing
 import pandas as pd
@@ -1060,7 +1060,10 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
 
     return summary_dict
 
-def save_predictions_confidence_intervals(predictions_dict, dataset_info,results_dir,method="Train"):
+def save_results_table(predictions_dict,latent_space, args,dataset_info,results_dir,method="Train",merge_netmhc=False):
+    """
+    """
+
 
     class_probabilities = predictions_dict["class_probs_predictions_samples_average"]
 
@@ -1079,21 +1082,83 @@ def save_predictions_confidence_intervals(predictions_dict, dataset_info,results
 
     #sequences_lens = np.sum(~sequences_mask, axis=1)
 
+    #Highlight: Load pre-computed features dictionaries
     custom_features_dicts = build_features_dicts(dataset_info)
     aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
+    volume_dict = custom_features_dicts["volume_dict"]
+    radius_dict = custom_features_dicts["radius_dict"]
+    side_chain_pka_dict = custom_features_dicts["side_chain_pka_dict"]
+    bulkiness_dict = custom_features_dicts["bulkiness_dict"]
+
     sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(sequences)
 
     sequences_list = list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), sequences_raw.tolist()))
+    if dataset_info.corrected_aa_types == 20:
+        sequences_mask=np.zeros_like(sequences).astype(bool)
+    else:
+        sequences_mask = np.array((sequences == 0))
 
+    bulkiness_scores = np.vectorize(bulkiness_dict.get)(sequences)
+    bulkiness_scores = np.ma.masked_array(bulkiness_scores, mask=sequences_mask, fill_value=0)
+    bulkiness_scores = np.ma.sum(bulkiness_scores, axis=1)
+
+    volume_scores = np.vectorize(volume_dict.get)(sequences)
+    volume_scores = np.ma.masked_array(volume_scores, mask=sequences_mask, fill_value=0)
+    volume_scores = np.ma.sum(volume_scores, axis=1)  # TODO: Mean? or sum?
+
+    radius_scores = np.vectorize(radius_dict.get)(sequences)
+    radius_scores = np.ma.masked_array(radius_scores, mask=sequences_mask, fill_value=0)
+    radius_scores = np.ma.sum(radius_scores, axis=1)
+
+    side_chain_pka_scores = np.vectorize(side_chain_pka_dict.get)(sequences)
+    side_chain_pka_scores = np.ma.masked_array(side_chain_pka_scores, mask=sequences_mask, fill_value=0)
+    side_chain_pka_scores = np.ma.mean(side_chain_pka_scores, axis=1)  # Highlight: before I was doing just the sum
+
+    isoelectric_scores = np.array(list(map(lambda seq: calculate_isoelectric(seq), sequences_list)))
+    aromaticity_scores = np.array(list(map(lambda seq: calculate_aromaticity(seq), sequences_list)))
+    gravy_scores = np.array(list(map(lambda seq: calculate_gravy(seq), sequences_list)))
+    molecular_weight_scores = np.array(list(map(lambda seq: calculate_molecular_weight(seq), sequences_list)))
+    extintion_coefficient_scores_cysteines = np.array(list(map(lambda seq: calculate_extintioncoefficient(seq)[0], sequences_list)))
+    extintion_coefficient_scores_cystines = np.array(list(map(lambda seq: calculate_extintioncoefficient(seq)[1], sequences_list)))
 
     df = pd.DataFrame({"Epitopes":sequences_list,
-                       "Negative_score":class_probabilities[:,0].tolist(),
-                       "Positive_score":class_probabilities[:,1].tolist(),
-                       "Negative_5CI":probs_5_class_0.tolist(),
-                       "Negative_95CI":probs_95_class_0.tolist(),
-                       "Positive_5CI": probs_5_class_1.tolist(),
-                       "Positive_95CI": probs_95_class_1.tolist(),
+                       "Latent_vector":latent_space[:,5:].tolist(),
+                       "Target_corrected":latent_space[:,0].tolist(),
+                       "Immunoprevalence":latent_space[:,3].tolist(),
+                       "Bulkiness_score":bulkiness_scores,
+                       "Volume_score":volume_scores,
+                       "Radius_score":radius_scores,
+                       "Side_chain_pka":side_chain_pka_scores,
+                       "Isoelectric_scores":isoelectric_scores,
+                       "Aromaticity_scores":aromaticity_scores,
+                       "Gravy_scores":gravy_scores,
+                       "Molecular_weight_scores":molecular_weight_scores,
+                       "Extintion_coefficient_scores(Cysteines)":extintion_coefficient_scores_cysteines,
+                       "Extintion_coefficient_scores(Cystines)":extintion_coefficient_scores_cystines,
+                       "Vegvisir_negative_prob":class_probabilities[:,0].tolist(),
+                       "Vegvisir_positive_prob":class_probabilities[:,1].tolist(),
+                       "Vegvisir_negative_5CI":probs_5_class_0.tolist(),
+                       "Vegvisir_negative_95CI":probs_95_class_0.tolist(),
+                       "Vegvisir_positive_5CI": probs_5_class_1.tolist(),
+                       "Vegvisir_positive_95CI": probs_95_class_1.tolist(),
                        })
+
+    print(df.head(5))
+
+
+    merge_netmhc=True
+    if merge_netmhc and args.dataset_name in ["viral_dataset9"]:
+        storage_folder = custom_features_dicts["storage_folder"]
+        train_data_info = pd.read_csv("{}/common_files/Viruses_db_partitions_notest.tsv".format(storage_folder), sep="\t")
+        print(train_data_info.columns)
+        test_data_info = pd.read_csv("{}/common_files/new_test_nonanchor_immunodominance.csv".format(storage_folder),sep=",")
+        print(test_data_info.columns)
+        exit()
+        data_info = pd.concat([train_data_info,test_data_info],axis=0)
+
+        data_info = data_info.groupby('Icore', as_index=False)[["Icore","partition", "target", "training","org_name"]].agg(lambda srs: Counter(list(srs)).most_common(1)[0][0]) #return first occurence
+
+    exit()
     df.to_csv("{}/{}/Epitopes_predictions.tsv".format(results_dir,method),sep="\t",index=False)
 
 def extract_group_old_test(train_summary_dict,valid_summary_dict,args):
@@ -1289,34 +1354,35 @@ def convert_to_pandas_dataframe(epitopes_padded,data,storage_folder,args,use_tes
                           index=False, header=None)  # TODO: Header None?
 
 def calculate_isoelectric(seq):
-    seq = "".join(seq).replace("#","")
+    seq = "".join(seq).replace("#","").replace("-","")
     isoelectric = IP(seq).pi()
     return isoelectric
 
 def calculate_molecular_weight(seq):
-    seq = "".join(seq).replace("#","")
+    seq = "".join(seq).replace("#","").replace("-","")
     molecular_weight = ProteinAnalysis(seq).molecular_weight()
     return molecular_weight
 
 def calculate_aromaticity(seq):
-    seq = "".join(seq).replace("#","")
+    seq = "".join(seq).replace("#","").replace("-","")
     aromaticity = ProteinAnalysis(seq).aromaticity()
     return aromaticity
 
 def calculate_gravy(seq):
     "GRAVY (grand average of hydropathy)"
-    seq = "".join(seq).replace("#","")
+    seq = "".join(seq).replace("#","").replace("-","")
     gravy = ProteinAnalysis(seq).gravy()
     return gravy
 
 def calculate_extintioncoefficient(seq):
     """Calculates the molar extinction coefficient assuming cysteines (reduced) and cystines residues (Cys-Cys-bond)
     :param str seq"""
-    seq = "".join(seq).replace("#","")
+    seq = "".join(seq).replace("#","").replace("-","")
     excoef_cysteines, excoef_cystines = ProteinAnalysis(seq).molar_extinction_coefficient()
     return excoef_cysteines,excoef_cystines
 
 class CalculatePeptideFeatures(object):
+    """Properties table (radius etc) from https://www.researchgate.net/publication/15556561_Global_Fold_Determination_from_a_Small_Number_of_Distance_Restraints"""
     def __init__(self,seq_max_len,list_sequences,storage_folder):
         self.storage_folder = storage_folder
         self.seq_max_len = seq_max_len
@@ -1480,7 +1546,8 @@ def build_features_dicts(dataset_info):
             "radius_dict":radius_dict,
             "side_chain_pka_dict":side_chain_pka_dict,
             "isoelectric_dict":isoelectric_dict,
-            "bulkiness_dict":bulkiness_dict}
+            "bulkiness_dict":bulkiness_dict,
+            "storage_folder":storage_folder}
 
 def merge_in_left_order(x, y, on=None):
     x = x.copy()
