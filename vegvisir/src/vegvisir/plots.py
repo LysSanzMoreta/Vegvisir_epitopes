@@ -1284,7 +1284,7 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
                                                                 'height_ratios': [4, 4, 4, 4, 4,4]})
     fig.suptitle('UMAP projections', fontsize=20)
     #sns.kdeplot(x=umap_proj[:, 0], y=umap_proj[:, 1], ax=ax1, cmap="Blues", n_levels=30, fill=True, thresh=0.05,alpha=0.5)  # cmap='Blues'
-    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:, 2], alpha=alpha, s=size)
+    ax1.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:, 0], alpha=alpha, s=size)
 
     ax1.set_title("Binary targets", fontsize=20)
     if sample_mode == "single_sample":
@@ -2836,13 +2836,13 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
                             # plt.gca().add_artist(legend1)
 
                             legend1 = plt.legend(handles=aa_patches, prop={'size': 10}, loc='best',
-                                                 bbox_to_anchor=(24, -0.3), ncol=2)
+                                                 bbox_to_anchor=(29, -0.3), ncol=2)
                             plt.legend(handles=aa_groups_patches, prop={'size': 10}, loc='best',
                                        bbox_to_anchor=(14, -0.4), ncol=1)
                             plt.gca().add_artist(legend1)
 
                             #fig.tight_layout(pad=2.0, w_pad=1.5, h_pad=2.0)
-                            plt.subplots_adjust(left=0.1,hspace=0.3,wspace=0.3)
+                            plt.subplots_adjust(left=0.1,hspace=0.39,wspace=0.3)
                             #fig.suptitle("{}. Information shift weights: {}, {}, {}".format(nn_name,sample_mode, data_points, class_type))
                             fig.suptitle("{}.Information shift weights".format(nn_name))
                             plt.savefig("{}/{}/{}_information_shift_plots_{}_{}_{}.png".format(results_dir, method, nn_name,sample_mode, data_points, class_type))
@@ -2963,7 +2963,7 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
     fontsize=25
     label_names = {"_immunodominance_scores":"Immunodominance",
                    "_binary_labels":"Binary targets"}
-
+    #Highlight: Load the precomputed (with other softwares) sequence features
     if (not args.shuffle_sequence) and (not args.random_sequences) and (not args.num_mutations != 0) and (args.sequence_type == "Icore"):
         if (args.num_classes == args.num_obs_classes) and use_precomputed_features:
             sequences_raw = list(map(lambda seq: "".join(seq).replace("#", ""), sequences_raw))
@@ -3036,7 +3036,7 @@ def plot_features_covariance(sequences_raw,features_dict,seq_max_len,labels,stor
 
             n_feats = len(features_dict.keys())
             index = np.arange(n_feats)
-            positive_idx = np.array(spearman_coefficients >= 0)
+            positive_idx = np.array(spearman_coefficients >= 0) #divide the coefficients in negative and positive to plot them separately
             right_arr = np.zeros(n_feats)
             left_arr = np.zeros(n_feats)
             right_arr[positive_idx] = spearman_coefficients[positive_idx]
@@ -4927,26 +4927,51 @@ def plot_model_stressing_comparison(dict_results_vegvisir,script_dir,folder="Ben
 
     plt.savefig("{}/{}/Benchmarking_stress_testing_{}.png".format(script_dir,folder,title),dpi=600)
 
+
 def plot_hierarchical_clustering(vegvisir_folder,embedded_epitopes,folder,title=""):
 
     fold = 0
-    train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(vegvisir_folder, fold)) #should be the same training dataset all the time
-    test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(vegvisir_folder, fold))
+    if os.path.exists("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(vegvisir_folder, fold)):
+        train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(vegvisir_folder, fold)) #should be the same training dataset all the time
+        test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(vegvisir_folder, fold))
+    else:
+        train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test.p".format(vegvisir_folder)) #should be the same training dataset all the time
+        test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test.p".format(vegvisir_folder))
 
-    train_data = train_out["summary_dict"]["data_int_samples"]
+    train_data_int = train_out["summary_dict"]["data_int_samples"]
     train_latent = train_out["latent_space"]
     corrected_aa_types = train_out["dataset_info"].corrected_aa_types
 
-    test_data = test_out["summary_dict"]["data_int_samples"]
+    test_data_int = test_out["summary_dict"]["data_int_samples"]
     test_latent = test_out["latent_space"]
-    
-    data = np.concatenate([train_data,test_data],axis=0)
-    sequences = data[:,1]
+
+    #Highlight: Slice out the sequences
+    data_int = np.concatenate([train_data_int,test_data_int],axis=0)
+    sequences_int = data_int[:,1]
+    sequences_len = np.sum(sequences_int.astype(bool),axis=-1)
+
+
+    idx_dict = {"9mers":np.array((sequences_len == 9)),"all":np.ones_like(sequences_len).astype(bool)}
+    idx = idx_dict["9mers"]
+    #Highlight: Transform to blosum encoding
+    blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(corrected_aa_types, "BLOSUM62",
+                                                                               zero_characters=["#"],
+                                                                               include_zero_characters=True)
+    sequences_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(sequences_int)
+
+
+
+
     latent = np.concatenate([train_latent,test_latent],axis=0)[:,5:]
+    latent = latent[idx]
+    sequences_blosum = sequences_blosum[idx][:,:9]
+    sequences_int = sequences_int[idx][:,:9]
+    sequences_blosum = sequences_blosum.reshape(sequences_blosum.shape[0],-1)
+
 
     aminoacids_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types,zero_characters = ["#"])
     aminoacids_dict_reversed = {val:key for key,val in aminoacids_dict.items()}
-    sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(sequences)
+    sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(sequences_int)
     sequences_list = sequences_raw.tolist()
 
     sequences_list = list(map(lambda seq: ("".join(seq)).replace("#",""),sequences_list))
@@ -4959,20 +4984,49 @@ def plot_hierarchical_clustering(vegvisir_folder,embedded_epitopes,folder,title=
     embedding = np.array(embedding)
     colors_labels = np.vectorize(colors_dict_labels.get)(labels)
 
-
+    from scipy.cluster.hierarchy import dendrogram, linkage
+    from sklearn.cluster import HDBSCAN, DBSCAN, KMeans
+    from sklearn.metrics import (
+        silhouette_score,
+        calinski_harabasz_score,
+        davies_bouldin_score
+    )
     # First create the clustermap figure
-    g1 = sns.clustermap(latent,metric="cosine",row_colors=colors_labels,cmap="crest")
-    g1.ax_heatmap.tick_params(tick2On=False, labelsize=False,labelbottom=False,labelright=False)
-    g1.ax_col_dendrogram.set_title("Latent representations",fontsize=20,weight="bold")
-    g2 = sns.clustermap(embedding,metric="cosine",row_colors=colors_labels,cmap="crest")
-    g2.ax_heatmap.tick_params(tick2On=False, labelsize=False,labelbottom=False,labelright=False)
-    g2.ax_col_dendrogram.set_title("Feature embeddings",fontsize=20,weight="bold")
+    # Maybe? : https://towardsdatascience.com/on-the-validating-umap-embeddings-2c8907588175
+    # Explanation on hierarchical clustering : https://www.sciencedirect.com/science/article/pii/S2665927123000904
+    # On "clustering accuarcy" : https://stackoverflow.com/questions/37842165/sklearn-calculating-accuracy-score-of-k-means-on-the-test-data-set
+    #cluster_linkage_matrix = linkage(latent,metric="cosine",method="ward")
+    #TODO: https://www.kdnuggets.com/2023/05/clustering-scikitlearn-tutorial-unsupervised-learning.html
 
-    fig = plt.figure(figsize=(15, 8))
-    gs = gridspec.GridSpec(1, 2, width_ratios=[3,3])
+
+    g1 = sns.clustermap(latent,metric="cosine",row_colors=colors_labels,cmap="crest",vmin=0,vmax=10)
+    labels_clustered = labels[g1.dendrogram_row.reordered_ind]
+    clustering_accuracy = VegvisirUtils.clustering_accuracy(labels_clustered)["clustering_score_b"]
+    g1.ax_heatmap.tick_params(tick2On=False, labelsize=False,labelbottom=False,labelright=False)
+    g1.ax_col_dendrogram.set_title("Latent representations: {}".format(np.round(clustering_accuracy,2)),fontsize=20,weight="bold")
+    #Highlight: Feature embeddings
+
+    g2 = sns.clustermap(embedding,metric="cosine",row_colors=colors_labels,cmap="crest",vmin=0,vmax=10)
+    labels_clustered = labels[g2.dendrogram_row.reordered_ind]
+    clustering_accuracy = VegvisirUtils.clustering_accuracy(labels_clustered)["clustering_score_b"]
+    g2.ax_heatmap.tick_params(tick2On=False, labelsize=False,labelbottom=False,labelright=False)
+    g2.ax_col_dendrogram.set_title("Feature embeddings: {}".format(np.round(clustering_accuracy,2)),fontsize=20,weight="bold")
+    #Highlight: Blosum encoding
+
+
+    g3 = sns.clustermap(sequences_blosum,metric="cosine",row_colors=colors_labels,cmap="crest",vmin=0,vmax=10)
+    labels_clustered = labels[g3.dendrogram_row.reordered_ind]
+    clustering_accuracy = VegvisirUtils.clustering_accuracy(labels_clustered)["clustering_score_b"]
+    g3.ax_heatmap.tick_params(tick2On=False, labelsize=False,labelbottom=False,labelright=False)
+    g3.ax_col_dendrogram.set_title("Blosum encoding: {}".format(np.round(clustering_accuracy,2)),fontsize=20,weight="bold")
+
+
+    fig = plt.figure(figsize=(20, 8))
+    gs = gridspec.GridSpec(1, 3, width_ratios=[3,3,3])
 
     mg0 = VegvisirUtils.SeabornFig2Grid(g1, fig, gs[0, 0])
     mg1 = VegvisirUtils.SeabornFig2Grid(g2, fig, gs[0, 1])
+    mg2 = VegvisirUtils.SeabornFig2Grid(g3, fig, gs[0, 2])
 
     fig.suptitle("Cluster heatmaps (cosine similarity)",fontsize=20,weight="bold")
 

@@ -53,3 +53,11 @@ Results_netMHCpan/vegvisir/group1_alleles
 Results_netMHCpan/vegvisir/group0_alleles
 
 vegvisir_requirements.txt
+
+vegvisir/src/vegvisir/tests/Epitopes_info_TEST.tsv
+
+vegvisir/src/vegvisir/tests/Epitopes_info_TRAIN.tsv
+
+vegvisir/src/vegvisir/tests/test_merge_datasets.py
+
+Results_netMHCpan/netMHCpantUbgzR/

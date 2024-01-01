@@ -1160,34 +1160,9 @@ def save_results_table(predictions_dict,latent_space, args,dataset_info,results_
         data_info.drop(["allele_a","allele_b","Rnk_EL_a","Rnk_EL_b"],axis=1,inplace=True)
 
         data_info = data_info.groupby('Icore', as_index=False)[["allele","Rnk_EL"]].agg(list) #aggregate as a list --> contains more Icore sequences than used for training & testing
-
         results_df = results_df.merge(data_info,how="left",on="Icore")
 
-    # import matplotlib.pyplot as plt
-    # import umap
-    # reducer = umap.UMAP()
-    # umap_proj = reducer.fit_transform(latent_space[:, 5:])
-    # alpha = 0.7
-    # size = 5
-    # colors_dict_labels = {0: "mediumaquamarine", 1: "orangered", 2: "navajowhite"}
-    # colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:, 0])
-    # plt.scatter(umap_proj[:, 0], umap_proj[:, 1], color=colors_true, label=latent_space[:, 2], alpha=alpha, s=size)
-    # plt.show()
-    # plt.clf()
-    #
-    # from sklearn.metrics import auc, roc_auc_score, roc_curve, confusion_matrix, matthews_corrcoef, precision_recall_curve, average_precision_score, recall_score
-    # tpr=dict()
-    # fpr=dict()
-    # roc_auc=dict()
-    # for i in range(args.num_obs_classes):
-    #     fpr[i], tpr[i], _ = roc_curve(onehot_labels[:, i], class_probabilities[:, i])
-    #     roc_auc[i] = auc(fpr[i], tpr[i])
-    #     roc_auc["auc01_class_{}".format(i)] = roc_auc_score(onehot_labels[:, i], class_probabilities[:, i],average="weighted", max_fpr=0.1)
-    #     plt.plot(fpr[i], tpr[i], label='Class {} AUC : {}'.format(i, round(roc_auc[i], 2)), c=colors_dict_labels[i])
-    #
-    # plt.show()
-
-    results_df.to_csv("{}/{}/Epitopes_predictions.tsv".format(results_dir,method),sep="\t",index=False)
+    results_df.to_csv("{}/{}/Epitopes_predictions_{}.tsv".format(results_dir,method,method),sep="\t",index=False)
 
 def extract_group_old_test(train_summary_dict,valid_summary_dict,args):
     """"""
@@ -1688,8 +1663,81 @@ def squeeze_tensor(required_ndims,tensor):
     else:
         return tensor
 
+def clustering_accuracy(binary_arr):
+    """Computes a clustering accuracy score"""
+    maxlen = binary_arr.shape[0]
+    count_ones, count_zeros = 0, 0
+    max_count_ones, max_count_zeros = 0, 0
+    previdx_ones, previdx_zeros = 0, 0
+    groups_counts_ones, groups_counts_zeros = defaultdict(), defaultdict() #registers the start index of the 1ś clusters
+    for idx,num in enumerate(binary_arr):
+        if num != 1:
+            max_count_ones = max(max_count_ones, count_ones)
+            if idx == 0:
+                groups_counts_ones[previdx_ones] = count_ones #previous index plus 1
+            else:
+                groups_counts_ones[previdx_ones +1] = count_ones #previous index plus 1
+            previdx_ones=idx
+            count_ones = 0
+            count_zeros += 1
+        else:
+            max_count_zeros = max(max_count_zeros, count_zeros)
+            if idx == 0:
+                groups_counts_zeros[previdx_zeros] = count_zeros #previous index plus 1
+            else:
+                groups_counts_zeros[previdx_zeros + 1] = count_zeros #previous index plus 1
+            count_zeros = 0
+            previdx_zeros=idx
+            count_ones += 1
+
+    if previdx_zeros + 1 < maxlen:
+        groups_counts_zeros[previdx_zeros + 1] = count_zeros #previous index plus 1, have to add this here
+    if previdx_ones + 1 < maxlen:
+        groups_counts_ones[previdx_ones + 1] = count_ones #previous index plus 1, have to add this here
+
+    maxcountones = max(max_count_ones, count_ones)
+    maxcountzeros = max(max_count_zeros, count_zeros)
+    total_std_idx = np.std(np.arange(maxlen))
+    total_ones = np.sum(binary_arr)
+    total_zeros = binary_arr.shape[0] - total_ones
 
 
+    # Highlight: Transform to array keeping only the results for the ones
+    starting_idx_ones = np.array([key for key, val in groups_counts_ones.items() if val != 0])
+    idx_ones = np.array(binary_arr == 1)
+    idx_ones = np.arange(maxlen)[idx_ones]
+    cluster_sizes_ones = np.array([val for key, val in groups_counts_ones.items() if val != 0])
+    #counts_array_ones = np.concatenate([starting_idx[:, None], cluster_size[:, None]], axis=1)
+
+    if cluster_sizes_ones.size != 0:
+        std_idx_ones = np.std(idx_ones)
+        max_size_ones = np.max(cluster_sizes_ones)
+    else:
+        std_idx_ones = total_std_idx
+        max_size_ones = total_ones = 1
+
+    starting_idx_zeros = np.array([key for key, val in groups_counts_zeros.items() if val != 0])
+    idx_zeros = np.array(binary_arr == 0)
+    idx_zeros = np.arange(maxlen)[idx_zeros]
+    cluster_sizes_zeros = np.array([val for key, val in groups_counts_zeros.items() if val != 0])
+
+    if cluster_sizes_zeros.size != 0:
+        std_idx_zeros = np.std(idx_zeros)
+        max_size_zeros = np.max(cluster_sizes_zeros)
+    else:
+        std_idx_zeros = total_std_idx
+        max_size_zeros = total_zeros = 1
+
+    score_a = ((max_size_ones*100/total_ones) + (max_size_zeros*100/total_zeros)) / 2
+    score_b = ((std_idx_ones*100/total_std_idx) + (std_idx_zeros*100/total_std_idx) + 2*(max_size_ones*100/total_ones) + 2*(max_size_zeros*100/total_zeros)) / 6
+
+    return {"maxcountones": maxcountones,
+            "group_counts_ones": groups_counts_ones,
+            "maxcountzeros": maxcountzeros,
+            "group_counts_zeros": groups_counts_zeros,
+            "clustering_score_a" : score_a,
+            "clustering_score_b" : score_b
+            }
 
 
 #TODO: Put into new plots_utils.py, however right now it is annoying to change the structure because of dill

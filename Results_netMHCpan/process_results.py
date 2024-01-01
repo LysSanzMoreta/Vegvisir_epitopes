@@ -5,6 +5,7 @@ from argparse import RawTextHelpFormatter
 from collections import Counter
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import mmap
 import seaborn as sns
@@ -18,6 +19,12 @@ else:#pip installed module
      import vegvisir
 
 import vegvisir.plots as VegvisirPlots
+import vegvisir.similarities as VegvisirSimilarities
+import vegvisir.utils as VegvisirUtils
+
+from collections import namedtuple
+
+DatasetInfo = namedtuple("datasetinfo",["corrected_aa_types","seq_max_len"])
 
 def split_string(string,maxlen):
     string = string.split()
@@ -31,6 +38,7 @@ def split_string(string,maxlen):
         return string
     else:
         return string
+
 def read_dataframe(folder_path,folder_name):
     headers =  ["Pos","MHC", "Peptide", "Core", "Of", "Gp", "Gl", "Ip", "Il", "Icore","Identity", "Score_EL", "%Rank_EL" "BindLevel"]
     files = os.listdir(folder_path)
@@ -38,7 +46,7 @@ def read_dataframe(folder_path,folder_name):
     maxlen = len(headers)
     alleles_dataframes = []
     for filename in files:
-        if ".png" not in filename:
+        if ".png" not in filename and ".tsv" not in filename:
             with open("{}/{}".format(folder_path,filename), 'rb', 0) as file:
                 s = mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ)
                 lines = s.read().decode("utf-8").split("\n")
@@ -109,7 +117,6 @@ def read_dataframe(folder_path,folder_name):
     binders_df = pd.concat([weak_binders_count,strong_binders_count],axis=0)
     binders_df["size"] = ((binders_df["size"]/n_unique)*100).round(2)
 
-    binders_df.to_csv("{}/Binders_df_{}".format(folder_path,folder_name))
 
     epitopes_binders = pd.concat([weak_binders_df,strong_binders_df],axis=0)
     epitopes_binders["Icore"] = epitopes_binders["Icore"].str.ljust(11, fillchar='#')
@@ -167,10 +174,119 @@ def read_dataframe(folder_path,folder_name):
     plt.legend(bbox_to_anchor=(1.05, 0.5), loc='upper right',fontsize=20)
     plt.savefig("{}/barplot_{}.png".format(folder_path,folder_name),dpi=600)
 
+    sequences = positive_sequences_list + negative_sequences_list
+
+    labels = np.array([1]*len(positive_sequences_list) + [0]*len(negative_sequences_list))
+    calculate_peptide_features_correlations(sequences, labels, "{}".format(folder_path))
+
     VegvisirPlots.plot_logos(epitopes_padded,"{}".format(folder_path),"_binders_MHC_all")
     VegvisirPlots.plot_logos(positive_sequences_list,"{}".format(folder_path),"_binders_MHC_positives")
     VegvisirPlots.plot_logos(negative_sequences_list,"{}".format(folder_path),"_binders_MHC_negatives")
 
+    plot_positional_weights(epitopes_padded,11,"ALL","{}".format(folder_path))
+    plot_positional_weights(positive_sequences_list,11,"POSITIVES","{}".format(folder_path))
+    plot_positional_weights(negative_sequences_list,11,"NEGATIVES","{}".format(folder_path))
+
+def build_arrays(sequences):
+    blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(21, "BLOSUM62",
+                                                                               zero_characters=["#"],
+                                                                               include_zero_characters=True)
+    aa_dict = VegvisirUtils.aminoacid_names_dict(21, zero_characters=["#"])
+
+    sequences = list(map(lambda seq:list(seq),sequences))
+    sequences_raw = np.array(sequences)
+
+
+    sequences_int = np.vectorize(aa_dict.get)(sequences_raw)
+    sequences_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(sequences_int)
+
+    sequences_mask = sequences_int.astype(bool)
+
+    return sequences_raw,sequences_int,sequences_blosum,sequences_mask
+
+def plot_positional_weights(sequences,maxlen,subtitle,results_dir):
+
+    sequences_raw, sequences_int, sequences_blosum, sequences_mask = build_arrays(sequences)
+    generated_sequences_cosine_similarity = VegvisirSimilarities.cosine_similarity(sequences_blosum,
+                                                                                   sequences_blosum,
+                                                                                   correlation_matrix=False,
+                                                                                   parallel=False)
+    batch_size = 100 if sequences_blosum.shape[0] > 100 else sequences_blosum.shape[0]
+    positional_weights = VegvisirSimilarities.importance_weight(generated_sequences_cosine_similarity,
+                                                                maxlen, sequences_mask,
+                                                                batch_size=batch_size, neighbours=1)
+    VegvisirPlots.plot_heatmap(positional_weights, "Cosine similarity \n positional weights",
+                               "{}/Generated_MHC_bound_positional_weights_{}.png".format(results_dir,subtitle))
+
+def calculate_peptide_features_correlations(sequences,labels,results_dir):
+    """"""
+    #sequences_raw, sequences_int, sequences_blosum, sequences_mask = build_arrays(sequences)
+    seq_max_len = 11
+
+    storage_folder = "/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data"
+
+    features_dict = VegvisirUtils.CalculatePeptideFeatures(seq_max_len, sequences,storage_folder).features_summary()
+
+    spearman_correlations = list(map(lambda feat1, feat2: VegvisirUtils.calculate_correlations(feat1, feat2, method="spearman"),[labels] * len(features_dict.keys()), list(features_dict.values())))
+    spearman_correlations = list(zip(*spearman_correlations))
+    spearman_coefficients = np.array(spearman_correlations[0])
+    spearman_coefficients = np.round(spearman_coefficients, 2)
+
+    # Highlight: Plot spearman coefficients
+    fontsize = 15
+    with plt.style.context('classic'):
+        fig, ax1 = plt.subplots(nrows=1, ncols=1, figsize=(15, 12),
+                                sharey="all")  # gridspec_kw={'width_ratios': [4.5, 0.5]}
+
+        n_feats = len(features_dict.keys())
+        index = np.arange(n_feats)
+        positive_idx = np.array(
+            spearman_coefficients >= 0)  # divide the coefficients in negative and positive to plot them separately
+        right_arr = np.zeros(n_feats)
+        left_arr = np.zeros(n_feats)
+        right_arr[positive_idx] = spearman_coefficients[positive_idx]
+        left_arr[~positive_idx] = spearman_coefficients[~positive_idx]
+
+        ax1.barh(index, left_arr, align="center", color="mediumorchid",
+                 zorder=1)  # zorder indicates the plotting order, supposedly
+        ax1.barh(index, right_arr, align="center", color="seagreen", zorder=2)
+
+        position_labels = list(range(0, n_feats))
+        ax1.axvline(0)
+
+        def clean_labels(label):
+            if label == "extintion_coefficient_cystines":
+                label = "extintion coefficient \n (cystines)"
+            elif label == "extintion_coefficient_cysteines":
+                label = "extintion coefficient \n (cysteines)"
+            else:
+                label = label.replace("_", " ")
+
+            return label
+
+        labels_names = list(map(lambda label: clean_labels(label), list(features_dict.keys())))
+        ax1.yaxis.set_ticks(position_labels)
+        ax1.set_yticklabels(labels_names, fontsize=fontsize, rotation=0, weight='bold')
+        ax1.tick_params(axis="x", labelsize=fontsize)
+        # ax1.set_xticklabels(ax1.get_xticks(), weight='bold')
+        ax1.tick_params(
+            axis='y',  # changes apply to the y-axis
+            which='both',  # both major and minor ticks are affected
+            bottom=False,  # ticks along the bottom edge are off
+            top=False,  # ticks along the top edge are off
+            labelbottom=False,
+            left=False,
+            right=False)  # labels along the bottom edge are off
+        plt.subplots_adjust(left=0.28)
+        # ax1.margins(y=0.15)
+        ax1.spines[['right', 'top', 'left']].set_visible(False)
+
+        fig.suptitle("Correlation coefficients: Features vs Predicted targets", fontsize=fontsize + 8,
+                     weight='bold')
+        plt.savefig("{}/Generated_target_features_correlations".format(results_dir), dpi=700)
+
+def combine_folder_results(results_dict):
+    """"""
 
 
 
@@ -178,11 +294,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="NetMHCpan process results args",formatter_class=RawTextHelpFormatter)
 
-    #folder_path = "/home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/PLOTS_Vegvisir_viral_dataset9_2023_11_03_22h28min14s922997ms_60epochs_supervised_Icore_blosum_TESTING_immunomodulate"
-    folder_path = "/home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/PLOTS_Vegvisir_viral_dataset9_2023_11_03_22h28min14s922997ms_60epochs_supervised_Icore_blosum_TESTING_generated"
+    folder_path = "/home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/PLOTS_Vegvisir_viral_dataset9_2023_12_26_21h41min44s738321ms_0epochs_supervised_Icore_0_TESTING"
     #folder_name = "Immunomodulated"
     folder_name = "Generated"
     parser.add_argument('-folder-path',"--folder-path", type=str, nargs='?', default="", help='path to results')
     parser.add_argument('-folder-name',"--folder-name", type=str, nargs='?', default="Generated", help='path to results')
     args = parser.parse_args()
-    read_dataframe(args.folder_path,args.folder_name)
+    read_dataframe(folder_path,args.folder_name)
