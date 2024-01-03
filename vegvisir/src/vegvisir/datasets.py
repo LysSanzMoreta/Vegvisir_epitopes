@@ -222,7 +222,10 @@ def save_alleles(data,storage_folder,args):
     return most_common_allele
 
 def immunomodulate_dataset(script_dir,storage_folder,args,results_dir,corrected_parameters):
-    """Builds a Vegvisir dataset that can be integrated with the model's pipeline"""
+    """Builds a Vegvisir dataset that can be integrated with the model's pipeline
+    NOTES:
+        Immunomodulated sequences paper: https://doi.org/10.1074/jbc.M503060200
+    """
 
     if args.immunomodulate_path is not None and os.path.exists(args.immunomodulate_path):
             immunomodulate_data = pd.read_csv(args.immunomodulate_path,names=["Icore"])

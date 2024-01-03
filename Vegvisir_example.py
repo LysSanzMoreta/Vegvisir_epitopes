@@ -372,7 +372,8 @@ if __name__ == "__main__":
     parser.add_argument('-num-synthetic-peptides', type=int, nargs='?', default=100, help='<True> Generate new neo-epitopes labelled and with a confidence score. IMPORTANT: The total number of generated peptides is'
                                                                                           'equal to args.num_synthetic_peptides*args.num_samples*args.num_generate_loops')
     parser.add_argument('-num-generate-loops', type=int, nargs='?', default=5, help='Number of times to repeat the sampling loop')
-    parser.add_argument('-generate-argmax', type=str2bool, nargs='?', default=False, help='If args.generate == True, generate_argmax = True ')
+    parser.add_argument('-generate-sampling-type', type=str, nargs='?', default="independent", help='<conditional> \n')
+    parser.add_argument('-generate-argmax', type=str2bool, nargs='?', default=False, help='True \n False')
 
     #Highlight: immunomodulating a sequence
     immunomodulate_path = {0:"{}/immunomodulate_sequences.txt".format(script_dir),

@@ -578,8 +578,8 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
         split_size = int(num_synthetic_peptides/divisors[2])
     batch_indexes = [0,num_synthetic_peptides] if split_size == 1 else list(range(0, num_synthetic_peptides, split_size)) + [num_synthetic_peptides]
 
-    argmax = args.generate_argmax
     maxlen_generated = model_load.seq_max_len
+    argmax = args.generate_argmax
     #Highlight: Initialize parameters
     if len(dataset_info.unique_lens) > 1:
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(dataset_info.corrected_aa_types,
@@ -644,7 +644,8 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
                             "rnn_hidden_states": torch.ones((num_synthetic_peptides_batch, maxlen_generated, args.hidden_dim * 2)).to(device=args.device),
                             "latent_z": train_predictive_samples_dict["latent_samples"][:,idx_z],
                             "z_scales": train_predictive_samples_dict["z_scales"],
-                            "generate": True
+                            "generate": True,
+                            "sampling_type":args.generate_sampling_type #conditional or independent
                         }
                         # guide_estimates = None
 
@@ -808,7 +809,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
     VegvisirUtils.numpy_to_fasta(generated_sequences_raw, binary_mode, binary_frequencies,
                                  "{}/Generated".format(additional_info.results_dir))
 
-    if generated_sequences_blosum.shape[0] < 10000:
+    if generated_sequences_blosum.shape[0] < 8000:
         def handle_timeout(signum, frame):
             raise TimeoutError
 
@@ -854,8 +855,8 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
 
 
     assert num_synthetic_peptides < 10000, "Please generate less than 10000 peptides, otherwise the computations might not be posible or they might take too long"
-    argmax = args.generate_argmax
     maxlen_generated = model_load.seq_max_len
+    argmax = args.generate_argmax
     #Highlight: Initialize parameters
     if len(dataset_info.unique_lens) > 1:
         blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(dataset_info.corrected_aa_types,
@@ -921,7 +922,8 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
                             "rnn_hidden_states": torch.ones((num_synthetic_peptides_batch, maxlen_generated, args.hidden_dim * 2)).to(device=args.device),
                             "latent_z": train_predictive_samples_dict["latent_samples"][:,idx_z],
                             "z_scales": train_predictive_samples_dict["z_scales"],
-                            "generate": True
+                            "generate": True,
+                            "sampling_type":args.generate_sampling_type #conditional or independent
                         }
                         # guide_estimates = None
 
@@ -1076,7 +1078,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
     VegvisirUtils.numpy_to_fasta(generated_sequences_raw, binary_mode, binary_frequencies,
                                  "{}/Immunomodulated".format(additional_info.results_dir))
 
-    if generated_sequences_blosum.shape[0] < 10000:
+    if generated_sequences_blosum.shape[0] < 8000:
         def handle_timeout(signum, frame):
             raise TimeoutError
 

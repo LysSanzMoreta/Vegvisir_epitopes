@@ -1,6 +1,7 @@
 import numpy as np
 from collections import defaultdict
 
+from scipy.stats import permutation_test,mannwhitneyu,rankdata
 #https://leetcode.com/problems/max-consecutive-ones/solutions/4366559/python-easy-98-beats/
 #find starting index
 def clustering_accuracy(binary_arr):
@@ -80,6 +81,55 @@ def clustering_accuracy(binary_arr):
             }
 
 
+def clustering_significance(labels):
+    """Performs a permutation test on the location of the labels (idx label 0 or idx label 1) to estimate the significance of the clusters, whether they are due to random or not ..."""
+    idx_ones = np.where(labels==1)[0].astype(float)
+
+    """For a given array of clustered labels of size N, calculate the average rank of one of the two labels, say label 1. Call this value <R_1>
+
+    Next repeat 10000 times:
+    permute the order of the array of clustered labels (each time with a new seed)
+    calculate the average rank of the entries with label 1, <R_1_perm>
+    
+    Next,
+    
+     if <R_1>  < N/2:
+    
+    the p-value for the rank of label 1 entries in the original data is random will be equal to the proportion of <R_1_perm> values that are lower than <R_1> 
+    
+    else
+    
+    the p-value for the rank of label 1 entries in the original data is random will be equal to the proportion of <R_1_perm> values that are higher than <R_1> """
+    ndata = labels.shape[0]
+    r1_avg = np.average(rankdata(idx_ones))
+
+    pvals_list = []
+    for i in range(10):
+        np.random.seed(i)
+        shuffled_labels = labels.copy()
+        np.random.shuffle(shuffled_labels)
+        print(shuffled_labels)
+        idx_ones_shuffled = np.where(shuffled_labels==1)[0].astype(float)
+        r1_permuted = rankdata(idx_ones_shuffled)
+        r1_avg = np.mean(r1_permuted)
+        if r1_avg < ndata/2:
+            lower_idx = np.where(r1_permuted < r1_avg)
+            print("Lower idx")
+            print(lower_idx)
+            pval = len(lower_idx)/ndata
+
+        else:
+            higher_idx = np.where(r1_permuted > r1_avg)
+            print("Higher idx")
+
+            print(higher_idx)
+
+            pval = len(higher_idx)/ndata
+        pvals_list.append(pval)
+
+    print(pvals_list)
+
+
 a = np.array([0,1,1,1,0,0,0,1,1,0,0,1,0,1,0,0])
 b = np.array([0,1,1,1,1,0,0,1,1,0,0,0,0,0,1,0])
 c = np.array([1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0])
@@ -88,6 +138,11 @@ e = np.array([0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0])
 f = np.array([1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1])
 
 
+clustering_significance(a)
+
+exit()
+
+
 cluster_analysis_dict = clustering_accuracy(a)
 print(cluster_analysis_dict["clustering_score_a"])
 
@@ -106,23 +161,3 @@ print(cluster_analysis_dict["clustering_score_a"])
 cluster_analysis_dict = clustering_accuracy(f)
 print(cluster_analysis_dict["clustering_score_a"])
 
-
-###################################################
-
-cluster_analysis_dict = clustering_accuracy(a)
-print(cluster_analysis_dict["clustering_score_b"])
-
-cluster_analysis_dict = clustering_accuracy(b)
-print(cluster_analysis_dict["clustering_score_b"])
-
-cluster_analysis_dict = clustering_accuracy(c)
-print(cluster_analysis_dict["clustering_score_b"])
-
-cluster_analysis_dict = clustering_accuracy(d)
-print(cluster_analysis_dict["clustering_score_b"])
-
-cluster_analysis_dict = clustering_accuracy(e)
-print(cluster_analysis_dict["clustering_score_b"])
-
-cluster_analysis_dict = clustering_accuracy(f)
-print(cluster_analysis_dict["clustering_score_b"])

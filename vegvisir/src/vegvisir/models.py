@@ -43,6 +43,7 @@ class VEGVISIRModelClass(nn.Module):
         self.loss_type = model_load.args.loss_func
         self.learning_type = model_load.args.learning_type
         self.class_weights = model_load.class_weights
+        self.generate_sampling_type = model_load.args.generate_sampling_type
         self.num_iafs = 0
         if self.use_cuda:
             # calling cuda() here will put all the parameters of
@@ -185,7 +186,6 @@ class VEGVISIRModelClass(nn.Module):
         inverse_generated = inverse_generated[None,:].expand(self.z_dim,n_generated,n_generated).detach() # [z_dim,n_test,n_test]
         assert not torch.isnan(torch.from_numpy(guide_estimates["z_scales"])).any(), "z scales contains nan"
         assert not torch.isnan(torch.from_numpy(guide_estimates["z_scales"][idx_train])).any(), "z scales idx contains nan"
-
 
         z_scales = torch.from_numpy(guide_estimates["z_scales"][idx_train]).mean(0).to(inverse_generated.device).detach() #[z_dim] #fill in the diagonal with an average of the inferred z_scales
         assert not torch.isnan(z_scales).any(), "z scales contains nan"
@@ -946,7 +946,10 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
         with pyro.plate("plate_batch", dim=-1, device=self.device):
 
             if guide_estimates is not None and "generate" in guide_estimates.keys():
-                latent_space = self.conditional_sampling(batch_size,guide_estimates)
+                if guide_estimates["sampling_type"] == "conditional":
+                    latent_space = self.conditional_sampling(batch_size,guide_estimates)
+                elif guide_estimates["sampling_type"] == "independent":
+                    latent_space = dist.Normal(z_mean,z_scale).sample()
                 pyro.deterministic("latent_z", latent_space,event_dim=2)  # should be event_dim = 2, but for sampling convenience we leave it as it is
             else:
                 if self.num_iafs > 0:
@@ -1142,7 +1145,10 @@ class VegvisirModel5a_supervised_blosum_weighted(VEGVISIRModelClass,PyroModule):
         with pyro.plate("plate_batch", dim=-1, device=self.device):
 
             if guide_estimates is not None and "generate" in guide_estimates.keys():
-                latent_space = self.conditional_sampling(batch_size,guide_estimates)
+                if guide_estimates["sampling_type"] == "conditional":
+                    latent_space = self.conditional_sampling(batch_size, guide_estimates)
+                elif guide_estimates["sampling_type"] == "independent":
+                    latent_space = dist.Normal(z_mean, z_scale).sample()
                 pyro.deterministic("latent_z", latent_space,event_dim=0)  # should be event_dim = 2, but for sampling convenience we leave it as it is
 
             else:
@@ -1511,7 +1517,10 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
         z_mean, z_scale = torch.zeros((batch_size, self.z_dim)).to(device=self.device), torch.ones((batch_size, self.z_dim)).to(device=self.device)
         with pyro.plate("plate_batch", dim=-1, device=self.device):
             if guide_estimates is not None and "generate" in guide_estimates.keys():
-                latent_space = self.conditional_sampling(batch_size,guide_estimates)
+                if guide_estimates["sampling_type"] == "conditional":
+                    latent_space = self.conditional_sampling(batch_size, guide_estimates)
+                elif guide_estimates["sampling_type"] == "independent":
+                    latent_space = dist.Normal(z_mean, z_scale).sample()
                 pyro.deterministic("latent_z", latent_space,event_dim=0)  # should be event_dim = 2, but for sampling convenience we leave it as it is
             else:
                 if self.num_iafs > 0:
