@@ -40,12 +40,14 @@ def split_string(string,maxlen):
     else:
         return string
 
-def read_dataframe(folder_path,folder_name,make_plots=True):
+def read_dataframe(folder_path,folder_type,make_plots=False,subset_sequences=True):
+    """Reads the NetMHCpan folder results across all the tested alleles"""
     headers =  ["Pos","MHC", "Peptide", "Core", "Of", "Gp", "Gl", "Ip", "Il", "Icore","Identity", "Score_EL", "%Rank_EL" "BindLevel"]
+
     files = os.listdir(folder_path)
     #ignore_str = "-"*123 + "\n"
     maxlen = len(headers)
-    alleles_dataframes = []
+    epitopes_all_df_list = []
     for filename in files:
         if ".png" not in filename and ".tsv" not in filename:
             with open("{}/{}".format(folder_path,filename), 'rb', 0) as file:
@@ -84,27 +86,35 @@ def read_dataframe(folder_path,folder_name,make_plots=True):
 
 
 
-                alleles_dataframes.append(df)
+                epitopes_all_df_list.append(df)
 
-    alleles_dataframes = pd.concat(alleles_dataframes,axis=0)
+    epitopes_all_df = pd.concat(epitopes_all_df_list,axis=0)
+    if subset_sequences:
+        epitopes_all_df = epitopes_all_df.sample(10000,replace=False)
 
-    alleles_dataframes[["%Rank_EL","Score_EL"]] = alleles_dataframes[["%Rank_EL","Score_EL"]].astype(float)
-    n_unique = len(alleles_dataframes["Epitopes"].unique())
-    weak_binders = alleles_dataframes[(alleles_dataframes["%Rank_EL"] <= 2.0) & (alleles_dataframes["%Rank_EL"] > 0.5) ]
-    strong_binders = alleles_dataframes[alleles_dataframes["%Rank_EL"] <= 0.5 ]
+    epitopes_all_df[["%Rank_EL","Score_EL"]] = epitopes_all_df[["%Rank_EL","Score_EL"]].astype(float)
+    n_unique = len(epitopes_all_df["Epitopes"].unique())
 
-    epitopes_folder_path = "{}/{}/epitopes.tsv".format(folder_path.replace("Results_netMHCpan/","").replace("_immunomodulate","").replace("_generated",""),folder_name)
-    epitopes_df = pd.read_csv(epitopes_folder_path, sep="\t")
-    epitopes_df.rename(columns={"Epitopes":"Icore"},inplace=True)
+
+    #Highlight: Read the dataframe with the generated sequences with their scores
+    epitopes_folder_path = "{}/{}/epitopes.tsv".format(folder_path.replace("Results_netMHCpan/","").replace("_immunomodulate","").replace("_generated",""),folder_type)
+    epitopes_scores_df = pd.read_csv(epitopes_folder_path, sep="\t")
+    epitopes_scores_df.rename(columns={"Epitopes":"Icore"},inplace=True)
+
+    epitopes_all_df = epitopes_all_df.merge(epitopes_scores_df,on="Icore",how="left")
+
+    weak_binders = epitopes_all_df[(epitopes_all_df["%Rank_EL"] <= 2.0) & (epitopes_all_df["%Rank_EL"] > 0.5) ]
+    strong_binders = epitopes_all_df[epitopes_all_df["%Rank_EL"] <= 0.5 ]
 
     weak_binders_count = weak_binders.groupby('MHC', as_index=False)[["Icore"]].size()
     weak_binders_count["Binder_type"] = "Weak"
     weak_binders_epitopes = weak_binders.groupby('MHC', as_index=False)[["Icore"]].agg(lambda srs: Counter(list(srs)).most_common(1)[0][0])
+
     weak_binders_df = pd.concat([weak_binders_epitopes,weak_binders_count.drop("MHC",axis=1)],axis=1)
     weak_binders_df["Icore"] = weak_binders_df["Icore"].str.replace("X","")
     weak_binders_df.drop_duplicates(["Icore"],inplace=True)
 
-    weak_binders_df=weak_binders_df.merge(epitopes_df,on="Icore",how="left")
+    weak_binders_df=weak_binders_df.merge(epitopes_scores_df,on="Icore",how="left") #it is just "easier" to merge again
 
     strong_binders_count = strong_binders.groupby('MHC', as_index=False)[["Icore"]].size()
     strong_binders_count["Binder_type"] = "Strong"
@@ -113,11 +123,10 @@ def read_dataframe(folder_path,folder_name,make_plots=True):
     strong_binders_df["Icore"] = strong_binders_df["Icore"].str.replace("X","")
     strong_binders_df.drop_duplicates(["Icore"],inplace=True)
 
-    strong_binders_df=strong_binders_df.merge(epitopes_df,on="Icore",how="left")
+    strong_binders_df=strong_binders_df.merge(epitopes_scores_df,on="Icore",how="left")
 
     binders_df = pd.concat([weak_binders_count,strong_binders_count],axis=0)
     binders_df["size"] = ((binders_df["size"]/n_unique)*100).round(2)
-
 
     epitopes_binders = pd.concat([weak_binders_df,strong_binders_df],axis=0)
     epitopes_binders["Icore"] = epitopes_binders["Icore"].str.ljust(11, fillchar='#')
@@ -174,7 +183,7 @@ def read_dataframe(folder_path,folder_name,make_plots=True):
     plt.xticks(fontsize=20)
     plt.title("MHC-binding count from generated epitopes",fontsize=20)
     plt.legend(bbox_to_anchor=(1.05, 0.5), loc='upper right',fontsize=20)
-    plt.savefig("{}/barplot_{}.png".format(folder_path,folder_name),dpi=600)
+    plt.savefig("{}/barplot_{}.png".format(folder_path,folder_type),dpi=600)
 
     sequences = positive_sequences_list + negative_sequences_list
 
@@ -192,7 +201,7 @@ def read_dataframe(folder_path,folder_name,make_plots=True):
         plot_positional_weights(positive_sequences_list,11,"POSITIVES","{}".format(folder_path))
         plot_positional_weights(negative_sequences_list,11,"NEGATIVES","{}".format(folder_path))
 
-    return epitopes_binders
+    return epitopes_binders, epitopes_all_df
 
 def build_arrays(sequences):
     blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(21, "BLOSUM62",
@@ -225,7 +234,7 @@ def plot_positional_weights(sequences,maxlen,subtitle,results_dir):
     VegvisirPlots.plot_heatmap(positional_weights, "Cosine similarity \n positional weights",
                                "{}/Generated_MHC_bound_positional_weights_{}.png".format(results_dir,subtitle))
 
-def calculate_peptide_features_correlations(sequences,labels,results_dir):
+def calculate_peptide_features_correlations(sequences,labels,results_dir,filename=""):
     """"""
     #sequences_raw, sequences_int, sequences_blosum, sequences_mask = build_arrays(sequences)
     seq_max_len = 11
@@ -290,39 +299,47 @@ def calculate_peptide_features_correlations(sequences,labels,results_dir):
 
         fig.suptitle("Correlation coefficients: Features vs Predicted targets", fontsize=fontsize + 8,
                      weight='bold')
-        plt.savefig("{}/Generated_target_features_correlations".format(results_dir), dpi=700)
+        plt.savefig("{}/Generated_target_features_correlations_{}".format(results_dir,filename), dpi=700)
 
-def combine_folder_results(results_dict,folder_name="Generated"):
+def combine_folder_results(results_dict,folder_path,filename, folder_type="Generated"):
     """"""
-    epitopes_df_list = []
-
+    epitopes_binders_df_list = []
+    epitopes_all_df_list = []
     for key,val in results_dict.items():
-        epitopes_df = read_dataframe(folder_path=val, folder_name=folder_name, make_plots=False)
-        epitopes_df_list.append(epitopes_df)
+        epitopes_binders_df, epitopes_all_df = read_dataframe(folder_path=val, folder_type=folder_type, make_plots=False,subset_sequences=False)
+        epitopes_binders_df_list.append(epitopes_binders_df)
+        epitopes_all_df_list.append(epitopes_all_df)
 
-    epitopes_binders = pd.concat(epitopes_df_list)
-    epitopes_binders = epitopes_binders.drop_duplicates(subset="Icore")
-    epitopes_padded = epitopes_binders["Icore"].tolist()
+    #for dataframes_list,dataframes_name in zip([epitopes_all_df_list,epitopes_binders_df_list],["all_{}".format(filename),"binders_MHC_{}".format(filename)]):
+    for dataframes_list,dataframes_name in zip([epitopes_all_df_list],["all_{}".format(filename)]):
+        epitopes = pd.concat(dataframes_list)
+        epitopes = epitopes.drop_duplicates(subset="Icore")
+        print(epitopes.columns)
+        epitopes.to_csv("{}/Generated_{}.tsv".format(folder_path,dataframes_name),sep="\t")
+        epitopes["Icore"] = epitopes["Icore"].str.ljust(11, fillchar='#')
 
-    positive_sequences = epitopes_binders[epitopes_binders["Positive_score"] >= 0.6]
-    positive_sequences_list = positive_sequences["Icore"].tolist()
+        epitopes_padded = epitopes["Icore"].tolist()
 
-    negative_sequences = epitopes_binders[epitopes_binders["Negative_score"] >= 0.6]
-    negative_sequences_list = negative_sequences["Icore"].tolist()
+        positive_sequences = epitopes[epitopes["Positive_score"] >= 0.8]
+        positive_sequences_list = positive_sequences["Icore"].tolist()
 
-    sequences = positive_sequences_list + negative_sequences_list
 
-    labels = np.array([1]*len(positive_sequences_list) + [0]*len(negative_sequences_list))
-    folder_path = "/home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/Conditional_sampling"
-    calculate_peptide_features_correlations(sequences, labels, "{}".format(folder_path))
+        negative_sequences = epitopes[epitopes["Negative_score"] >= 0.8]
+        negative_sequences_list = negative_sequences["Icore"].tolist()
 
-    VegvisirPlots.plot_logos(epitopes_padded, "{}".format(folder_path), "_binders_MHC_all")
-    VegvisirPlots.plot_logos(positive_sequences_list, "{}".format(folder_path), "_binders_MHC_positives")
-    VegvisirPlots.plot_logos(negative_sequences_list, "{}".format(folder_path), "_binders_MHC_negatives")
+        sequences = positive_sequences_list + negative_sequences_list
 
-    plot_positional_weights(epitopes_padded, 11, "ALL", "{}".format(folder_path))
-    plot_positional_weights(positive_sequences_list, 11, "POSITIVES", "{}".format(folder_path))
-    plot_positional_weights(negative_sequences_list, 11, "NEGATIVES", "{}".format(folder_path))
+        labels = np.array([1]*len(positive_sequences_list) + [0]*len(negative_sequences_list))
+        calculate_peptide_features_correlations(sequences, labels, "{}".format(folder_path),dataframes_name)
+
+        VegvisirPlots.plot_logos(epitopes_padded, "{}".format(folder_path), dataframes_name)
+        VegvisirPlots.plot_logos(positive_sequences_list, "{}".format(folder_path), "{}_positives".format(dataframes_name))
+        VegvisirPlots.plot_logos(negative_sequences_list, "{}".format(folder_path), "{}_negatives".format(dataframes_name))
+
+        if len(epitopes_padded) < 10000:
+            plot_positional_weights(epitopes_padded, 11, "_{}_ALL".format(dataframes_name), "{}".format(folder_path))
+            plot_positional_weights(positive_sequences_list, 11, "_{}_POSITIVES".format(dataframes_name), "{}".format(folder_path))
+            plot_positional_weights(negative_sequences_list, 11, "_{}_NEGATIVES".format(dataframes_name), "{}".format(folder_path))
 
 
 
@@ -330,14 +347,14 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="NetMHCpan process results args",formatter_class=RawTextHelpFormatter)
     parser.add_argument('-folder-path',"--folder-path", type=str, nargs='?', default="", help='path to results')
-    parser.add_argument('-folder-name',"--folder-name", type=str, nargs='?', default="Generated", help='path to results')
-    parser.add_argument('-combine-results',"--combine-results", type=str2bool, nargs='?', default=False, help='')
+    parser.add_argument('-folder-type',"--folder-type", type=str, nargs='?', default="Generated", help='path to results')
+    parser.add_argument('-combine-results',"--combine-results", type=str2bool, nargs='?', default=True, help='')
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-    results_dict = {
+    results_dict_generated_conditional_sampling = {
         "folder1":"{}/PLOTS_Vegvisir_viral_dataset9_2023_12_29_15h31min21s577193ms_0epochs_supervised_Icore_0_TESTING".format(script_dir),
         "folder2":"{}/PLOTS_Vegvisir_viral_dataset9_2023_12_29_19h32min20s745052ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
         "folder3":"{}/PLOTS_Vegvisir_viral_dataset9_2023_12_29_21h02min38s346973ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
@@ -345,9 +362,18 @@ if __name__ == "__main__":
         "folder5":"{}/PLOTS_Vegvisir_viral_dataset9_2023_12_30_12h26min26s976339ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
         "folder6":"{}/PLOTS_Vegvisir_viral_dataset9_2023_12_30_13h43min42s487903ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
     }
+
+    results_dict_generated_independent_sampling = {
+        "folder1": "{}/PLOTS_Vegvisir_viral_dataset9_2024_01_03_23h25min49s189481ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+        "folder2": "{}/PLOTS_Vegvisir_viral_dataset9_2024_01_04_00h03min36s184279ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+        "folder3": "{}/PLOTS_Vegvisir_viral_dataset9_2024_01_04_00h23min58s573204ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+        "folder4": "{}/PLOTS_Vegvisir_viral_dataset9_2024_01_04_00h59min34s300268ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+        "folder5": "{}/PLOTS_Vegvisir_viral_dataset9_2024_01_04_01h30min13s606843ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+    }
+
     if args.combine_results:
-        combine_folder_results(results_dict)
+        combine_folder_results(results_dict_generated_conditional_sampling,filename="round1",folder_path="/home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/Conditional_sampling")
 
     else:
-        read_dataframe(args.folder_path,args.folder_name)
+        read_dataframe(args.folder_path,args.folder_type)
 

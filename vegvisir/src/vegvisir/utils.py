@@ -1060,7 +1060,7 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
 
     return summary_dict
 
-def save_results_table(predictions_dict,latent_space, args,dataset_info,results_dir,method="Train",merge_netmhc=False):
+def save_results_table(predictions_dict,latent_space, args,dataset_info,results_dir,method="Train",merge_netmhc=False,save_df=True):
     """
     """
 
@@ -1125,7 +1125,7 @@ def save_results_table(predictions_dict,latent_space, args,dataset_info,results_
     extintion_coefficient_scores_cystines = np.array(list(map(lambda seq: calculate_extintioncoefficient(seq)[1], sequences_list)))
 
     results_df = pd.DataFrame({"Icore":sequences_list,
-                       "Latent_vector":latent_space[:,5:].tolist(),
+                       "Latent_vector":latent_space[:,6:].tolist(),
                        "Target_corrected":latent_space[:,0].tolist(),
                        "Immunoprevalence":latent_space[:,3].tolist(),
                        "Bulkiness_score":bulkiness_scores,
@@ -1147,7 +1147,7 @@ def save_results_table(predictions_dict,latent_space, args,dataset_info,results_
                        })
 
 
-    if merge_netmhc and args.dataset_name in ["viral_dataset9"]:
+    if merge_netmhc and args.dataset_name in ["viral_dataset9","viral_dataset14"]:
         storage_folder = custom_features_dicts["storage_folder"]
         train_data_info = pd.read_csv("{}/common_files/Viruses_db_partitions_notest.tsv".format(storage_folder), sep="\t")
         train_data_info = train_data_info[["Icore","allele","Rnk_EL"]]
@@ -1159,10 +1159,13 @@ def save_results_table(predictions_dict,latent_space, args,dataset_info,results_
         data_info["Rnk_EL"] = data_info["Rnk_EL_a"].fillna(data_info["Rnk_EL_b"])
         data_info.drop(["allele_a","allele_b","Rnk_EL_a","Rnk_EL_b"],axis=1,inplace=True)
 
-        data_info = data_info.groupby('Icore', as_index=False)[["allele","Rnk_EL"]].agg(list) #aggregate as a list --> contains more Icore sequences than used for training & testing
+        data_info = data_info.groupby('Icore', as_index=False)[["allele","Rnk_EL"]].agg(list) #aggregate as a list --> contains more Icore sequences than used for training & testing, because seqs with no patients were discarded
         results_df = results_df.merge(data_info,how="left",on="Icore")
 
-    results_df.to_csv("{}/{}/Epitopes_predictions_{}.tsv".format(results_dir,method,method),sep="\t",index=False)
+    if save_df:
+        results_df.to_csv("{}/{}/Epitopes_predictions_{}.tsv".format(results_dir,method,method),sep="\t",index=False)
+
+    return results_df
 
 def extract_group_old_test(train_summary_dict,valid_summary_dict,args):
     """"""
@@ -1738,6 +1741,43 @@ def clustering_accuracy(binary_arr):
             "clustering_score_a" : score_a,
             "clustering_score_b" : score_b
             }
+
+def clustering_significance(labels):
+    """Performs a permutation test on the location of the labels (idx label 0 or idx label 1) to estimate the significance of the clusters, whether they are due to random or not ...
+    NOTES:
+        For a given array of clustered labels of size N, calculate the average rank of one of the two labels, say label 1. Call this value <R_1>
+
+        Next repeat 10000 times:permute the order of the array of clustered labels (each time with a new seed)
+                calculate the average rank of the entries with label 1, <R_1_perm>
+        Next,
+        if <R_1>  < N/2:
+                the p-value for the rank of label 1 entries in the original data is random will be equal to the proportion of <R_1_perm> values that are lower than <R_1>
+        else
+                the p-value for the rank of label 1 entries in the original data is random will be equal to the proportion of <R_1_perm> values that are higher than <R_1>
+    """
+
+    idx_ones = np.where(labels==1)[0].astype(float)
+    ndata = labels.shape[0]
+    r1_avg = np.average(idx_ones)
+    def calculate_r1(i,labels):
+        np.random.seed(i)
+        shuffled_labels = np.array(labels).copy()
+        np.random.shuffle(shuffled_labels)
+        idx_ones_shuffled = np.where(shuffled_labels==1)[0].astype(float)
+        r1_permuted = np.average(idx_ones_shuffled)
+        return r1_permuted
+
+    r1_permuted_list = list(map(lambda i: calculate_r1(i,labels), list(range(10000))))
+
+    r1_permuted_arr = np.array(r1_permuted_list)
+    if r1_avg < ndata/2:
+        lower_idx = np.where(r1_permuted_arr < r1_avg)[0]
+
+        pval = len(lower_idx)/ndata
+    else:
+        higher_idx = np.where(r1_permuted_arr > r1_avg)[0]
+        pval = len(higher_idx)/ndata
+    return pval
 
 
 #TODO: Put into new plots_utils.py, however right now it is annoying to change the structure because of dill

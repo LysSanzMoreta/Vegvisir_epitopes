@@ -331,7 +331,7 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
         info_file.write("\n Using as valid/test partitions: {} and {}".format(partition_idx_valid,partition_idx_test))
     elif method == "predefined_partitions":
         """Use the test data as intended. The train and validation datasets are split using the pre-given partitions"""
-
+        print("Loading your predefined data partitions. Choosing a random one as the validation")
         #traineval_data = data[data[:, 0, 0, 3] == 1]
         traineval_data = data[idx_select(data,3) == 1]
         #test_data = data[data[:, 0, 0, 3] == 0] #data[data[:, 0, 0, 3] == 1.]
@@ -341,6 +341,7 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
             partition_idx = partition_test
         else:
             partition_idx = np.random.randint(0,5) #random selection of a partition as the validation
+            #partition_idx = 3
 
         if args.dataset_name == "viral_dataset_california":
             #traineval_labels = traineval_data[:,0,0,0]

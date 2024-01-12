@@ -4,6 +4,8 @@ import seaborn as sns;sns.set()
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colorbar import Colorbar
+from matplotlib.colors import Normalize,BoundaryNorm
+import matplotlib
 
 class SeabornFig2Grid():
     """Class from https://stackoverflow.com/questions/47535866/how-to-iteratively-populate-matplotlib-gridspec-with-a-multipart-seaborn-plot/47624348#47624348"""
@@ -34,8 +36,7 @@ class SeabornFig2Grid():
         h= self.sg.ax_joint.get_position().height
         h2= self.sg.ax_marg_x.get_position().height
         r = int(np.round(h/h2))
-        print(r)
-        exit()
+
         self._resize()
         self.subgrid = gridspec.GridSpecFromSubplotSpec(r+1,r+1, subplot_spec=self.subplot)
 
@@ -60,9 +61,6 @@ class SeabornFig2Grid():
 
     def _resize(self, evt=None):
         self.sg.fig.set_size_inches(self.fig.get_size_inches())
-
-
-
 
 
 
@@ -103,7 +101,7 @@ gs = gridspec.GridSpec(2, 6,width_ratios=[2,1,0.1,0.07,1,0.1])
 
 mg0 = SeabornFig2Grid(g0, fig, gs[0:2,0])
 mg1 = SeabornFig2Grid(g1, fig, gs[0,1])
-mg2 = SeabornFig2Grid(g2, fig, gs[0,4])
+#mg2 = SeabornFig2Grid(g2, fig, gs[0,4])
 mg3 = SeabornFig2Grid(g3, fig, gs[1,1])
 mg4 = SeabornFig2Grid(g4, fig, gs[1,4])
 
@@ -115,7 +113,30 @@ cbax2 = plt.subplot(gs[0,5]) # Place it where it should be.
 cbax3 = plt.subplot(gs[1,2]) # Place it where it should be.
 cbax4 = plt.subplot(gs[1,5]) # Place it where it should be.
 
-cb2 = Colorbar(ax = cbax2, mappable = plt.cm.ScalarMappable(cmap="viridis"))
+
+#cb2 = Colorbar(ax = cbax2, mappable = plt.cm.ScalarMappable(cmap="viridis"))
+#cb2.set_ticks([0,1],labels=alleles_ticks)
+
+alleles_ticks = ["One","Two","Three","Four","Five"]
+unique_alleles = [0,1,2,3,4] #this is a list, that is why it works latter
+colormap_unique = matplotlib.cm.get_cmap("viridis", len(unique_alleles))
+cb2 = Colorbar(ax=cbax2,
+               mappable=plt.cm.ScalarMappable(norm=BoundaryNorm(unique_alleles + [max(unique_alleles) +1], len(unique_alleles)),cmap=colormap_unique),
+               boundaries=unique_alleles)
+# cb2.ax.xaxis.set_ticks_position('none')
+#cb2.ax.set_xticks([])
+#cb2.ax.tick_params(size=0) #set size of the ticks to 0
+ticks_locations = np.arange(0.5,len(unique_alleles),1)
+#n_clusters = len(unique_alleles)
+#ticks_locations = (np.arange(n_clusters) + 0.5)*(n_clusters-1)/n_clusters
+cb2.set_ticks(ticks_locations)
+
+
+cb2.set_ticklabels(alleles_ticks)
+cb2.ax.tick_params(size=0) #set size of the ticks to 0
+
+
+
 cb3 = Colorbar(ax = cbax3, mappable = plt.cm.ScalarMappable(cmap="viridis"))
 cb4 = Colorbar(ax = cbax4, mappable = plt.cm.ScalarMappable(cmap="viridis"))
 fig.suptitle("UMAP latent space (z) projections")

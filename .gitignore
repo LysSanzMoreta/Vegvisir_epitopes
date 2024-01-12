@@ -61,3 +61,5 @@ vegvisir/src/vegvisir/tests/Epitopes_info_TRAIN.tsv
 vegvisir/src/vegvisir/tests/test_merge_datasets.py
 
 Results_netMHCpan/netMHCpantUbgzR/
+
+Results_netMHCpan/Conditional_sampling/

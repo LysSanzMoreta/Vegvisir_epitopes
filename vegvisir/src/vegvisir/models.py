@@ -153,7 +153,7 @@ class VEGVISIRModelClass(nn.Module):
         # Highlight: Λab
         inverse_generated_train = torch.eye(n_generated, n_train)  # [z_dim,n_generated,n_train]
         # Highlight: xb
-        xb = torch.from_numpy(guide_estimates["latent_z"][:,5:]).T.to(OU_mean_generated.device)  # [z_dim,n_train]
+        xb = torch.from_numpy(guide_estimates["latent_z"][:,6:]).T.to(OU_mean_generated.device)  # [z_dim,n_train]
 
         assert xb.shape == (self.z_dim,n_train), "Perhaps you forgot that the latent space has some columns stacked"
         # Highlight:µb
@@ -201,7 +201,7 @@ class VEGVISIRModelClass(nn.Module):
         inverse_generated_train = z_scales[:,None,None]*inverse_generated_train
 
         # Highlight: xb
-        xb = torch.from_numpy(guide_estimates["latent_z"][idx_train][:,5:]).T.to(OU_mean_generated.device)  # [z_dim,n_train]
+        xb = torch.from_numpy(guide_estimates["latent_z"][idx_train][:,6:]).T.to(OU_mean_generated.device)  # [z_dim,n_train]
 
         assert xb.shape == (self.z_dim,n_train), "Perhaps you forgot that the latent space has some columns stacked"
         # Highlight:µb
@@ -1775,9 +1775,12 @@ class VegvisirModel5b(VEGVISIRModelClass,PyroModule):
                         reconstructed_sequences = dist.Categorical(logits= sequences_logits).sample()
         identifiers = batch_data["blosum"][:,0,0,1]
         true_labels = batch_data["blosum"][:,0,0,0]
+        partitions = batch_data["blosum"][:,0,0,2]
         confidence_score = batch_data["blosum"][:,0,0,5]
         immunodominace_score = batch_data["blosum"][:, 0, 0, 4]
-        latent_space = torch.column_stack([identifiers, true_labels, confidence_score, immunodominace_score, latent_space])
+        alleles = batch_data["blosum"][:, 0, 0, 6]
+
+        latent_space = torch.column_stack([true_labels, identifiers, partitions, immunodominace_score, confidence_score, alleles,latent_space])
 
         return SamplingOutput(latent_space = latent_space,
                               predicted_labels=predicted_labels,
@@ -1956,9 +1959,12 @@ class VegvisirModel5c(VEGVISIRModelClass,PyroModule):
 
         identifiers = batch_data["blosum"][:,0,0,1]
         true_labels = batch_data["blosum"][:,0,0,0]
+        partitions = batch_data["blosum"][:,0,0,2]
         confidence_score = batch_data["blosum"][:,0,0,5]
         immunodominace_score = batch_data["blosum"][:, 0, 0, 4]
-        latent_space = torch.column_stack([identifiers, true_labels, confidence_score, immunodominace_score, latent_z])
+        alleles = batch_data["blosum"][:, 0, 0, 46]
+        latent_space = torch.column_stack([true_labels, identifiers, partitions, immunodominace_score, confidence_score, alleles,latent_z])
+
 
         return SamplingOutput(latent_space = latent_space,
                               predicted_labels=predicted_labels,

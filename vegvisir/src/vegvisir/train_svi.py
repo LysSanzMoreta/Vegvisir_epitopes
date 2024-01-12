@@ -127,7 +127,8 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
         training = batch_data["blosum"][:, 0, 0, 3].detach().cpu()
         immunodominace_score = batch_data["blosum"][:, 0, 0, 4].detach().cpu()
         confidence_score = batch_data["blosum"][:, 0, 0, 5].detach().cpu()
-        latent_space = torch.column_stack([true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score, latent_space])
+        alleles = batch_data["blosum"][:, 0, 0, 6].detach().cpu()
+        latent_space = torch.column_stack([true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score, alleles,latent_space])
         encoder_final_hidden= torch.column_stack(
             [true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score, encoder_final_hidden])
         decoder_final_hidden= torch.column_stack(
@@ -297,8 +298,8 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
             training = batch_data["blosum"][:,0,0,3].detach().cpu()
             immunodominace_score = batch_data["blosum"][:, 0, 0, 4].detach().cpu()
             confidence_score = batch_data["blosum"][:, 0, 0, 5].detach().cpu()
-
-            latent_space = torch.column_stack([true_labels_batch,identifiers, partitions, immunodominace_score,confidence_score, latent_space])
+            alleles = batch_data["blosum"][:, 0, 0, 6].detach().cpu()
+            latent_space = torch.column_stack([true_labels_batch,identifiers, partitions, immunodominace_score,confidence_score, alleles, latent_space])
             encoder_final_hidden = torch.column_stack([true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score,encoder_final_hidden])
             decoder_final_hidden = torch.column_stack([true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score,decoder_final_hidden])
 
@@ -469,6 +470,7 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             training = batch_data["blosum"][:, 0, 0, 3].detach().cpu()
             immunodominace_score = batch_data["blosum"][:, 0, 0, 4].detach().cpu()
             confidence_score = batch_data["blosum"][:, 0, 0, 5].detach().cpu()
+            alleles = batch_data["blosum"][:, 0, 0, 6].detach().cpu()
 
             #Highlight: Attach the extra information to all the samples from Z
 
@@ -477,10 +479,11 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             partitions_expanded = partitions[:,None].expand(batch_size,args.num_samples)
             immunodominace_score_expanded =  immunodominace_score[:,None].expand(batch_size,args.num_samples)
             confidence_score_expanded =  confidence_score[:,None].expand(batch_size,args.num_samples)
+            alleles_expanded =  alleles[:,None].expand(batch_size,args.num_samples)
             latent_spaces = torch.concatenate([true_labels_batch_expanded[:,:,None],identifiers_expanded[:,:,None],partitions_expanded[:,:,None], immunodominace_score_expanded[:,:,None], confidence_score_expanded[:,:,None],latent_spaces],axis=2)
             latent_space_samples.append(latent_spaces)
             #Highlight: Single latent space observation
-            latent_space_obs = torch.column_stack([true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score, latent_space_obs])
+            latent_space_obs = torch.column_stack([true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score,alleles, latent_space_obs])
 
             encoder_final_hidden = torch.column_stack(
                 [true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score,
@@ -767,7 +770,8 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
                             identifiers = torch.ones(n_seqs_clean).detach().cpu()
                             partitions = torch.ones(n_seqs_clean).detach().cpu()
                             immunodominace_score = torch.zeros(n_seqs_clean).detach().cpu()
-                            latent_space = torch.column_stack([torch.from_numpy(true_labels).detach().cpu(), identifiers, partitions, immunodominace_score, confidence_score,latent_space])
+                            alleles = torch.zeros(n_seqs_clean).detach().cpu() + 3
+                            latent_space = torch.column_stack([torch.from_numpy(true_labels).detach().cpu(), identifiers, partitions, immunodominace_score, confidence_score,alleles,latent_space])
                             generated_out_dict["latent_space"].append(latent_space.numpy())
 
                         #print("Objects BEFORE clearing: {}".format(len(gc.get_objects())))
@@ -923,7 +927,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
                             "latent_z": train_predictive_samples_dict["latent_samples"][:,idx_z],
                             "z_scales": train_predictive_samples_dict["z_scales"],
                             "generate": True,
-                            "sampling_type":args.generate_sampling_type #conditional or independent
+                            "sampling_type":"conditional" #conditional or independent
                         }
                         # guide_estimates = None
 
@@ -1039,7 +1043,8 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
                         identifiers = torch.ones(n_seqs_clean).detach().cpu()
                         partitions = torch.ones(n_seqs_clean).detach().cpu()
                         immunodominace_score = torch.zeros(n_seqs_clean).detach().cpu()
-                        latent_space = torch.column_stack([torch.from_numpy(true_labels).detach().cpu(), identifiers, partitions, immunodominace_score, confidence_score,latent_space])
+                        alleles = torch.zeros(n_seqs_clean).detach().cpu()
+                        latent_space = torch.column_stack([torch.from_numpy(true_labels).detach().cpu(), identifiers, partitions, immunodominace_score, confidence_score,alleles,latent_space])
                         generated_out_dict["latent_space"].append(latent_space.numpy())
 
                         del lenghts_sample,batch_mask_blosum, guide_estimates
@@ -1316,7 +1321,7 @@ def kfold_crossvalidation(config=None,dataset_info=None,additional_info=None,arg
         for fold in range(args.k_folds):
             epoch_loop(traineval_idx, test_idx, dataset_info, args, additional_info,mode="Test_fold_{}".format(fold),fold="_fold_{}".format(fold),config=config)
 def output_processing(mode,fold,args,loader_kwargs, dataset_info, additional_info,results_dir,svi, Vegvisir,optimizer, guide, train_loader, valid_loader, model_load,train_predictions_dict,valid_predictions_dict):
-    print("Calculating Monte Carlo estimate of the posterior predictive")
+
     train_predictive_samples_loss, train_predictive_samples_accuracy, train_predictive_samples_dict, train_predictive_samples_latent_space, train_predictive_samples_reconstruction_accuracy_dict = sample_loop(
         svi, Vegvisir, guide, train_loader, args, model_load)
     torch.cuda.empty_cache()
@@ -1405,10 +1410,9 @@ def output_processing(mode,fold,args,loader_kwargs, dataset_info, additional_inf
         # VegvisirPlots.plot_gradients(gradient_norms, results_dir, "Train_{}".format(mode))
         ##VegvisirPlots.plot_latent_space(args,dataset_info,train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
         ##VegvisirPlots.plot_latent_space(args,dataset_info,valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
-        VegvisirPlots.plot_latent_space(args, dataset_info, train_predictive_samples_latent_space, train_summary_dict,
-                                        "samples", results_dir, method="Train{}".format(fold))
-        VegvisirPlots.plot_latent_space(args, dataset_info, valid_predictive_samples_latent_space, valid_summary_dict,
-                                        "samples", results_dir, method=mode)
+        VegvisirPlots.plot_latent_space(args, dataset_info, train_predictive_samples_latent_space, train_summary_dict,"samples", results_dir, method="Train{}".format(fold))
+        VegvisirPlots.plot_latent_space(args, dataset_info, valid_predictive_samples_latent_space, valid_summary_dict,"samples", results_dir, method=mode)
+
         if args.generate:
             VegvisirPlots.plot_latent_space(args, dataset_info, generated_latent_space, generated_summary_dict,
                                             "samples" if args.num_samples > 1 else "single_sample", results_dir,
@@ -1472,7 +1476,6 @@ def output_processing(mode,fold,args,loader_kwargs, dataset_info, additional_inf
             del immuno_loader, immunomodulate_dataset, immunomodulate_summary_dict, immunomodulate_dict, immunomodulate_latent_space, custom_dataset_immunomodulate
 
     return outputprocessing
-
 def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid",fold="",config=None):
     """
     Training loop
@@ -1862,7 +1865,8 @@ def train_model(config=None,dataset_info=None,additional_info=None,args=None):
                                                                                                  args,results_dir,
                                                                                                  seq_max_len,dataset_info.max_len,
                                                                                                  dataset_info.features_names,
-                                                                                                 None,method=partitioning_method)
+                                                                                                 partition_test=None,
+                                                                                                 method=partitioning_method)
 
     #Highlight:Also split the rest of arrays
     train_idx = (data_blosum[:,0,0,1][..., None] == train_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
@@ -1927,6 +1931,8 @@ def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
 
     train_data_blosum = data_blosum[train_idx]
     valid_data_blosum = data_blosum[valid_idx]
+
+
     assert (train_data_blosum[:, 0, 0, 1] == data_int[train_idx, 0, 1]).all(), "The data is shuffled and the data frames are comparing the wrong things"
     assert (train_data_blosum[:, 0, 0, 1] == data_onehot[train_idx, 0, 0, 1]).all(), "The data is shuffled and the data frames are comparing the wrong things"
     assert (train_data_blosum[:, 0, 0, 1] == data_blosum_norm[train_idx, 0, 1]).all(), "The data is shuffled and the data frames are comparing the wrong things"
@@ -2036,110 +2042,7 @@ def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     del outputprocessing
 
 
-    # print("Calculating Monte Carlo estimate of the posterior predictive")
-    # train_predictive_samples_loss, train_predictive_samples_accuracy, train_predictive_samples_dict, train_predictive_samples_latent_space, \
-    #     train_predictive_samples_reconstruction_accuracy_dict = sample_loop(
-    #     svi, Vegvisir, guide, train_loader, args, model_load)
-    # valid_predictive_samples_loss, valid_predictive_samples_accuracy, valid_predictive_samples_dict, valid_predictive_samples_latent_space, \
-    #     valid_predictive_samples_reconstruction_accuracy_dict = sample_loop(
-    #     svi, Vegvisir, guide, valid_loader, args, model_load)
-    # train_summary_dict = VegvisirUtils.manage_predictions(train_predictive_samples_dict, args, None)
-    # valid_summary_dict = VegvisirUtils.manage_predictions(valid_predictive_samples_dict, args, None)
-    # VegvisirUtils.save_results_table(train_summary_dict, train_predictive_samples_latent_space, dataset_info,
-    #                                      results_dir, method="Train{}".format(fold))
-    # VegvisirUtils.save_results_table(valid_summary_dict, valid_predictive_samples_latent_space, dataset_info,
-    #                                      results_dir, method=mode)
-    # if args.generate:
-    #     print("Generating neo-epitopes ...")
-    #     generated_dict, generated_latent_space = generate_loop(svi, Vegvisir, guide, train_loader, args, model_load,
-    #                                                            dataset_info, additional_info,
-    #                                                            train_predictive_samples_dict)
-    #     generated_summary_dict = VegvisirUtils.manage_predictions_generative(args, generated_dict)
-    #     VegvisirUtils.save_results_table(generated_summary_dict, generated_latent_space, dataset_info, results_dir,
-    #                                          method="Generated")
-    #
-    # else:
-    #     generated_summary_dict = None
-    # if args.immunomodulate:
-    #     immunomodulate_dataset = dataset_info.immunomodulate_dataset
-    #     nseqs = len(immunomodulate_dataset.data_array_blosum_encoding)
-    #     custom_dataset_immunomodulate = VegvisirLoadUtils.CustomDataset(
-    #         immunomodulate_dataset.data_array_blosum_encoding,
-    #         immunomodulate_dataset.data_array_int,
-    #         immunomodulate_dataset.data_array_onehot_encoding,
-    #         immunomodulate_dataset.data_array_blosum_norm,
-    #         immunomodulate_dataset.data_array_blosum_encoding_mask,
-    #         immunomodulate_dataset.positional_weights_mask[:nseqs],
-    #         )
-    #
-    #     immuno_loader = DataLoader(custom_dataset_immunomodulate, batch_size=nseqs, shuffle=False,
-    #                                generator=torch.Generator(device=args.device), **kwargs)
-    #     immunomodulate_dict, immunomodulate_latent_space = immunomodulation_loop(svi, Vegvisir, guide, immuno_loader,
-    #                                                                              args, model_load, dataset_info,
-    #                                                                              additional_info,
-    #                                                                              train_predictive_samples_dict)
-    #     immunomodulate_summary_dict = VegvisirUtils.manage_predictions_generative(args, immunomodulate_dict)
-    #     VegvisirUtils.save_results_table(immunomodulate_summary_dict,immunomodulate_latent_space, dataset_info, results_dir,
-    #                                                         method="Immunomodulated")
-    #
-    # if args.plot_all:
-    #     VegvisirPlots.plot_latent_space(args, dataset_info, train_predictive_samples_latent_space, train_summary_dict,"samples", results_dir, method="Train{}".format(fold))
-    #     VegvisirPlots.plot_latent_space(args, dataset_info, valid_predictive_samples_latent_space, valid_summary_dict,"samples", results_dir, method=mode)
-    #
-    #     if args.generate:
-    #         VegvisirPlots.plot_latent_space(args, dataset_info, generated_latent_space, generative_summary_dict,
-    #                                         "samples" if args.num_samples > 1 else "single_sample",
-    #                                         results_dir, method="Generated")
-    #     if args.immunomodulate:
-    #         VegvisirPlots.plot_latent_space(args, dataset_info, immunomodulate_latent_space,
-    #                                         immunomodulate_summary_dict,
-    #                                         "samples" if args.num_samples > 1 else "single_sample",
-    #                                         results_dir, method="Immunomodulated")
-    #
-    #     VegvisirPlots.plot_attention_weights(train_summary_dict, dataset_info, results_dir, method="Train{}".format(fold))
-    #     VegvisirPlots.plot_attention_weights(valid_summary_dict, dataset_info, results_dir, method=mode)
-    #
-    #     VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir, args,method="Train{}".format(fold))
-    #     VegvisirPlots.plot_hidden_dimensions(valid_summary_dict, dataset_info, results_dir, args, method=mode)
-    #
-    #
 
-    #
-    # Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir), optimizer, guide)
-    #
-    # if args.save_all:
-    #     Vegvisir.save_model_output(
-    #         "{}/Vegvisir_checkpoints/model_outputs_train{}{}.p".format(results_dir, mode.lower().split("_")[0], fold),
-    #         {"latent_space": train_predictive_samples_latent_space,
-    #          "summary_dict": train_summary_dict,
-    #          "dataset_info": dataset_info})
-    #     Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_{}.p".format(results_dir, mode.lower()),
-    #                                {"latent_space": valid_predictive_samples_latent_space,
-    #                                 # "predictions_dict": valid_predictions_dict,
-    #                                 "summary_dict": valid_summary_dict,
-    #                                 "dataset_info": dataset_info})
-    #
-    # else:
-    #     selection_keys = ["true_samples", "true_onehot_samples", "confidence_scores_samples",
-    #                       "class_probs_predictions_samples_average", "data_int_samples"]
-    #     miniinfo = minidatasetinfo(seq_max_len=dataset_info.seq_max_len,
-    #                                corrected_aa_types=dataset_info.corrected_aa_types,
-    #                                storage_folder=dataset_info.storage_folder,
-    #                                num_classes=args.num_classes,
-    #                                num_obs_classes=args.num_obs_classes)
-    #     Vegvisir.save_model_output(
-    #         "{}/Vegvisir_checkpoints/model_outputs_train_{}{}.p".format(results_dir, mode.lower().split("_")[0], fold),
-    #         {"latent_space": train_predictive_samples_latent_space,
-    #          "summary_dict": {key: train_summary_dict[key] for key in selection_keys},
-    #          "dataset_info": miniinfo,
-    #          "args": args})
-    #
-    #     Vegvisir.save_model_output(
-    #         "{}/Vegvisir_checkpoints/model_outputs_{}.p".format(results_dir, mode.lower()),
-    #         {"latent_space": valid_predictive_samples_latent_space,
-    #          "summary_dict": {key: valid_summary_dict[key] for key in selection_keys},
-    #          "dataset_info": miniinfo,
-    #          "args": args})
 
 
 
