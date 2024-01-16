@@ -145,7 +145,6 @@ def trainevaltest_split_kfolds(data,args,results_dir,seq_max_len,max_len,feature
         kfolds = StratifiedGroupKFold(n_splits=args.k_folds).split(traineval_data, idx_select(traineval_data,0), idx_select(traineval_data,2))
         warnings.warn("This code likely contains errors")
         return traineval_data,test_data,kfolds
-
     elif method == "predefined_partitions_discard_test":
         """Discard the test dataset (hard case) and use one of the partitions as the test instead. The rest of the dataset is used for the kfold partitions"""
         warnings.warn("No test selected. If you wish to use a test dataset please select <predefined_partitions>")

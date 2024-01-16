@@ -41,7 +41,8 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
         "momentum":tune.randn(0.9,0.1)
     }
     config2 = {"batch_size":tune.choice(np.arange(50,200,10)),
-        "encoding":tune.choice(["blosum","onehot"]),
+        "encoding":tune.choice(["blosum"]),
+        #"encoding":tune.choice(["blosum","onehot"]),
         "likelihood_scale":tune.choice(np.arange(40,100,10)),
         "num_epochs":tune.choice([60]),
         "num_samples":tune.choice([30,40,50,60]),
@@ -67,7 +68,9 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
     )
 
 
-    ray.init(runtime_env={"working_dir": "{}/vegvisir/src".format(dataset_info.script_dir),'excludes':["/vegvisir/data/"]})
+    ray.init(runtime_env={"working_dir": "{}/vegvisir/src".format(dataset_info.script_dir),
+                          'excludes':["/vegvisir/data/","!/vegvisir/data/aminoacid_properties.txt"],
+                          })
 
     if args.k_folds > 1:
         print("Initializing Hyperparameter Optimization with K-fold cross validation")

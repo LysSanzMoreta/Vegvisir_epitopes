@@ -404,6 +404,7 @@ def plot_data_information_reduced(data, filters_dict, storage_folder, args, name
                     textcoords='offset points',weight='bold')
 
         partitions_names.append(name)
+
     ax[0][2].margins(y=0.1)
     ax[0][2].xaxis.set_ticks([0, 0.4, 0.8, 1.2, 1.6])
     ax[0][2].set_xticklabels(["Part. {}".format(int(i)) for i in partitions_names])
@@ -1473,7 +1474,7 @@ def plot_scatter_reduced(umap_proj,args,dataset_info,latent_space,predictions_di
 
     plot_types = {0:"immunoprevalence",1:"alleles",2:"sequence_lengths",3:""}
     plot_type = plot_types[1]
-    alpha = 0.7
+    alpha = 0.5
     size = 4
     fontsize= 18
 
@@ -4123,12 +4124,13 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
      pearson_coefficients_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
      pearson_pvalues_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
      spearman_coefficients_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
+     spearman_coefficients_all_latex = defaultdict(lambda: defaultdict(lambda: defaultdict()))
      spearman_pvalues_all = defaultdict(lambda: defaultdict(lambda: defaultdict()))
-
 
      covariances_dict_train= defaultdict(lambda :defaultdict(lambda : defaultdict(lambda : [])))
      covariances_dict_valid= defaultdict(lambda :defaultdict(lambda : defaultdict(lambda : [])))
      covariances_dict_test= defaultdict(lambda :defaultdict(lambda : defaultdict(lambda : [])))
+
      reducer = umap.UMAP(n_components=1)
      tuples_idx = []
      plot_all = True
@@ -4226,7 +4228,6 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
              pearson_pvalues_all[learning_type][name]["test"] = np.mean([pvalues for pvalues in covariances_dict_test[learning_type][name]["pearson_pvalues"]],axis=0)
 
 
-             
              pearson_coefficients_all[learning_type][name]["train"] = np.mean([coefficients for coefficients in covariances_dict_train[learning_type][name]["pearson_coefficients"]],axis=0)
              if plot_all:
                 pearson_coefficients_all[learning_type][name]["valid"] = np.mean([coefficients for coefficients in covariances_dict_valid[learning_type][name]["pearson_coefficients"]],axis=0)
@@ -4290,16 +4291,13 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
                  spearman_coefficients_all[learning_type][name]["test"]) != np.float64 else dict(
                  zip(features_names, [np.nan] * n_feats))
 
-             # covariances_all_latex[learning_type][name]["train"] = np.mean(covariances_dict_train[learning_type][name]["covariance"]) +"$\pm$" + np.mean(covariances_dict_train[learning_type][name]["covariance"])
-             # covariances_all_latex[learning_type][name]["valid"] = np.mean(covariances_dict_valid[learning_type][name]["covariance"]) +"$\pm$" + np.mean(covariances_dict_valid[learning_type][name]["covariance"])
-             # covariances_all_latex[learning_type][name]["test"] = np.mean(covariances_dict_test[learning_type][name]["covariance"]) +"$\pm$" + np.mean(covariances_dict_test[learning_type][name]["covariance"])
+             spearman_coefficients_all_latex[learning_type][name]["train"] = spearman_coefficients_all[learning_type][name]["train"]
+             spearman_coefficients_all_latex[learning_type][name]["valid"] = spearman_coefficients_all[learning_type][name]["valid"]
+             spearman_coefficients_all_latex[learning_type][name]["test"] = spearman_coefficients_all[learning_type][name]["test"]
 
 
 
      print("Finished loop, building dataframe")
-
-     # df_latex = convert_dict(covariances_all_latex)
-     # df_latex.style.format(na_rep="-").to_latex('{}/{}/methods_comparison_LATEX.tex'.format(script_dir, results_folder))
 
      def process_dict(metric_dict,title="",subtitle=""):
          metric_dict = {key.replace(r"\textbf{", "").replace("}", ""): val for key, val in metric_dict.items()}
@@ -4318,10 +4316,33 @@ def plot_kfold_latent_correlations(args,script_dir,dict_results,kfolds=5,results
          css = [{'selector': f'.row{i}.level0', 'props': [('background-color', c[v])]} for i, v in enumerate(idx)]
          new_index = pd.MultiIndex.from_tuples(tuples_idx)
          df = df.reindex(index=new_index)  # guarantees the same order as the dictionary
-         df_styled = df.style.format(na_rep="-", escape="latex",precision=3).background_gradient(axis=None,cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" when pandas 2.1 arrives
+         df_styled = df.style.format(na_rep="-", escape="latex",precision=2).background_gradient(axis=None,cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" when pandas 2.1 arrives
 
          dfi.export(df_styled, '{}/{}/{}_DATAFRAME_{}.png'.format(script_dir, results_folder,title,subtitle), max_cols=-1,max_rows=-1)
 
+         return df
+
+     def latex_with_lines(df, *args, **kwargs):
+         kwargs['column_format'] = '|'.join([''] + ['l'] * df.index.nlevels + ['r'] * df.shape[1] + [''])
+         kwargs["na_rep"] = ""
+         kwargs["float_format"] = "%.2f"
+         res = df.to_latex(*args, **kwargs)
+         res = res.replace("\multirow[t]{24}{*}{Icore}","\multirow[t]{24}{*}{\colorbox{blue!20}{\makebox[3cm]{Icore}}}")
+         res = res.replace("\multirow[t]{24}{*}{Icore_non_anchor}","\multirow[t]{24}{*}{\colorbox{magenta!20}{\makebox[3cm]{Icore\_non\_anchor}}}")
+         res = res.replace("\multirow[t]","\multirow")
+         return res #.replace('\\\\\n', '\\\\ \\midrule\n')
+
+     df_latex = process_dict(spearman_coefficients_all_latex)
+
+     #df_latex.style.format(na_rep="0",precision=2).to_latex('{}/{}/Pearson_coefficients_LATEX_{}.tex'.format(script_dir, results_folder,subtitle),hrules=True)
+     df_latex = latex_with_lines(df_latex)
+     print(df_latex)
+     exit()
+     latex_file = open('{}/{}/Pearson_coefficients_LATEX_{}.tex'.format(script_dir, results_folder,subtitle),"w+")
+     latex_file.write(df_latex)
+
+
+     exit()
 
      process_dict(covariances_all,"Latent_covariances",subtitle)
      process_dict(pearson_pvalues_all,"Latent_pearson_pvalues",subtitle)
@@ -4432,9 +4453,9 @@ def process_nnalign(results_path, seqs_df,stress_dataset,mode="train",save_plot=
     nnalign_results_full = pd.read_csv(results_path, sep="\t", header=0)  # ["true_samples"]
     nnalign_results_full = nnalign_results_full[["Peptide", "Prediction","Measure"]]
     nnalign_results_full.columns = ["Icore", "Prediction","targets"]
+
     if any(x in stress_dataset for x in ["random","shuffled_targets","shuffled"]): #use the targets in the model because the random sed was different
         nnalign_results_full["targets"] = nnalign_results_full["targets"].astype(int)
-        pass
     else:
         nnalign_results_full.drop("targets",axis=1,inplace=True)
         nnalign_results_full = nnalign_results_full.merge(seqs_df, on="Icore", how="left")
@@ -4458,6 +4479,7 @@ def process_nnalign(results_path, seqs_df,stress_dataset,mode="train",save_plot=
 
     precision["ordinary"], recall["ordinary"], _ = precision_recall_curve(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
     average_precision["ordinary"] = average_precision_score(nnalign_results_full["targets"], nnalign_results_full["Prediction"],average="macro")
+
 
     #if save_plot:
     # A "micro-average": quantifying score on all classes jointly
@@ -4631,15 +4653,15 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     #nnalign_results_path_train_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_30845/nnalign_peplen_8-11_iter_100_30845.lg8.sorted.pred"
     #nnalign_results_path_test_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_30845/nnalign_peplen_8-11_iter_100_30845.evalset.txt"
 
-    nnalign_results_path_train_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_07_01_2024/NNAlign_results/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_3369/nnalign_peplen_8-11_iter_100_3369.lg9.sorted.pred"
-    nnalign_results_path_test_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_07_01_2024/NNAlign_results/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_3369/test_Icore_variable_length_Icore_sequences_viral_dataset9_lg9_10424.evalset.txt"
+    nnalign_results_path_train_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_07_01_2024/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_3369/nnalign_peplen_8-11_iter_100_3369.lg9.sorted.pred"
+    nnalign_results_path_test_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_07_01_2024/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_3369/test_Icore_variable_length_Icore_sequences_viral_dataset9_lg9_10424.evalset.txt"
+
 
     train_test_df = pd.concat([train_df,test_df],axis=0)
     (nnalign_results_train_roc_auc_dict,nnalign_results_train_auc01_dict, nnalign_results_train_ppv_dict,
      nnalign_results_train_ap_dict,nnalign_results_train_pval_dict,nnalign_results_train_precision_dict,nnalign_results_train_recall_dict) = process_nnalign(nnalign_results_path_train_full,train_test_df,keyname,mode="train")
     (nnalign_results_test_roc_auc_dict,nnalign_results_test_auc01_dict, nnalign_results_test_ppv_dict,
      nnalign_results_test_ap_dict, nnalign_results_test_pval_dict,nnalign_results_test_precision_dict,nnalign_results_test_recall_dict) = process_nnalign(nnalign_results_path_test_full,train_test_df,keyname,mode="test")
-
 
     # nnalign_results_path_train = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign/07_01_2024/report_models_CV"
     # nnalign_results_path_test = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign/07_01_2024/report_models_eval"

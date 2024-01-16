@@ -1510,7 +1510,6 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     assert (valid_data_blosum[:,0,0,1] == data_blosum_norm[valid_idx,0,1]).all(), "The data is shuffled and the data frames are comparing the wrong things"
 
 
-
     n_data = data_blosum.shape[0]
     batch_size = int(args.batch_size)
     results_dir = additional_info.results_dir
