@@ -1314,12 +1314,15 @@ def kfold_crossvalidation(config=None,dataset_info=None,additional_info=None,arg
         for fold in range(args.k_folds):
             epoch_loop(traineval_idx, test_idx, dataset_info, args, additional_info,mode="Test_fold_{}".format(fold),fold="_fold_{}".format(fold),config=config)
     else:
-        if args.dataset_name == "viral_dataset7":
-            warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
+        if args.test:
+            if args.dataset_name == "viral_dataset7":
+                warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
+            else:
+                print("Training & testing  (not validation) ...")
+            for fold in range(args.k_folds):
+                epoch_loop(traineval_idx, test_idx, dataset_info, args, additional_info,mode="Test_fold_{}".format(fold),fold="_fold_{}".format(fold),config=config)
         else:
-            print("Training & testing  (not validation) ...")
-        for fold in range(args.k_folds):
-            epoch_loop(traineval_idx, test_idx, dataset_info, args, additional_info,mode="Test_fold_{}".format(fold),fold="_fold_{}".format(fold),config=config)
+            raise ValueError("Please set args.test to True ")
 def output_processing(mode,fold,args,loader_kwargs, dataset_info, additional_info,results_dir,svi, Vegvisir,optimizer, guide, train_loader, valid_loader, model_load,train_predictions_dict,valid_predictions_dict):
 
     train_predictive_samples_loss, train_predictive_samples_accuracy, train_predictive_samples_dict, train_predictive_samples_latent_space, train_predictive_samples_reconstruction_accuracy_dict = sample_loop(
