@@ -5,17 +5,41 @@
 
 alleles="/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/viral_dataset9/alleles_list.txt"
 
-#foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_12_15h33min42s969996ms_60epochs_supervised_Icore_onehot_TESTING"
-#foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_19_11h40min14s189602ms_80epochs_supervised_Icore_blosum_TESTING"
-#foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_19_21h16min14s042362ms_80epochs_supervised_Icore_blosum_TESTING"
-#foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_20_09h56min51s796429ms_80epochs_supervised_Icore_blosum_TESTING"
-#foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_20_14h33min33s649817ms_80epochs_supervised_Icore_blosum_TESTING"
-#foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_20_20h07min15s003332ms_80epochs_supervised_Icore_onehot_TESTING"
-#foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_24_00h22min14s593974ms_80epochs_supervised_Icore_blosum_TESTING"
-#foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_24_17h00min56s423249ms_80epochs_supervised_Icore_blosum_TESTING"
-#foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_25_19h58min56s398258ms_100epochs_supervised_Icore_blosum_TESTING"
-#foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_26_11h46min21s398924ms_100epochs_supervised_Icore_blosum_TESTING"
-#foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_28_08h23min57s932261ms_150epochs_supervised_Icore_blosum_TESTING"
-foldername="PLOTS_Vegvisir_viral_dataset9_2023_09_30_13h07min33s010881ms_60epochs_supervised_Icore_blosum_TESTING"
-bash run_netmhcpan.sh -a $alleles -p /home/lys/Dropbox/PostDoc/vegvisir/$foldername/Generated/generated_epitopes.txt
-python process_results.py -folder-path /home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/$foldername
+#foldername="PLOTS_Vegvisir_viral_dataset9_2023_11_03_22h28min14s922997ms_60epochs_supervised_Icore_blosum_TESTING"
+#foldername="PLOTS_Vegvisir_viral_dataset9_2023_11_03_22h28min14s922997ms_60epochs_supervised_Icore_blosum_TESTING_generated"
+#foldername="PLOTS_Vegvisir_viral_dataset9_2023_12_21_09h48min25s760830ms_60epochs_supervised_Icore_blosum_TESTING"
+#foldername="PLOTS_Vegvisir_viral_dataset9_2023_12_21_18h17min01s865709ms_60epochs_supervised_Icore_blosum_TESTING"
+#foldername="PLOTS_Vegvisir_viral_dataset9_2023_12_26_21h41min44s738321ms_0epochs_supervised_Icore_0_TESTING" #BEST ONE
+#foldername="PLOTS_Vegvisir_viral_dataset9_2023_12_27_16h18min53s821190ms_0epochs_supervised_Icore_0_TESTING"
+#foldername="PLOTS_Vegvisir_viral_dataset9_2023_12_29_15h31min21s577193ms_0epochs_supervised_Icore_0_TESTING"
+#bash run_netmhcpan.sh -a $alleles -p /home/lys/Dropbox/PostDoc/vegvisir/$foldername/Immunomodulated/generated_epitopes.txt
+#python process_results.py -folder-path /home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/$foldername -folder-name Immunomodulated
+##############################################################################################################
+#bash run_netmhcpan.sh -a $alleles -p /home/lys/Dropbox/PostDoc/vegvisir/$foldername/Generated/generated_epitopes.txt
+#python process_results.py -folder-path /home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/$foldername -folder-name Generated
+#exit 0
+
+foldertype="Immunomodulated"
+foldername="PLOTS_Vegvisir_viral_dataset9_2023_12_29_15h31min21s577193ms_0epochs_supervised_Icore_0_TESTING"
+bash run_netmhcpan.sh -a $alleles -p /home/lys/Dropbox/PostDoc/vegvisir/$foldername/$foldertype/epitopes.txt -ft $foldertype
+python process_results.py -folder-path /home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/${foldername}_${foldertype} -folder-type Immunomodulated
+
+foldername="PLOTS_Vegvisir_viral_dataset9_2023_12_29_19h32min20s745052ms_60epochs_supervised_Icore_blosum_TESTING"
+bash run_netmhcpan.sh -a $alleles -p /home/lys/Dropbox/PostDoc/vegvisir/$foldername/$foldertype/epitopes.txt -ft $foldertype
+python process_results.py -folder-path /home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/${foldername}_${foldertype} -folder-type Immunomodulated
+
+foldername="PLOTS_Vegvisir_viral_dataset9_2023_12_29_21h02min38s346973ms_60epochs_supervised_Icore_blosum_TESTING"
+bash run_netmhcpan.sh -a $alleles -p /home/lys/Dropbox/PostDoc/vegvisir/$foldername/$foldertype/epitopes.txt -f $foldertype
+python process_results.py -folder-path /home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/${foldername}_${foldertype} -folder-type Immunomodulated
+#
+foldername="PLOTS_Vegvisir_viral_dataset9_2023_12_29_22h30min58s427689ms_60epochs_supervised_Icore_blosum_TESTING"
+bash run_netmhcpan.sh -a $alleles -p /home/lys/Dropbox/PostDoc/vegvisir/$foldername/$foldertype/epitopes.txt -f $foldertype
+python process_results.py -folder-path /home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/${foldername}_${foldertype} -folder-type Immunomodulated
+
+foldername="PLOTS_Vegvisir_viral_dataset9_2023_12_30_12h26min26s976339ms_60epochs_supervised_Icore_blosum_TESTING"
+bash run_netmhcpan.sh -a $alleles -p /home/lys/Dropbox/PostDoc/vegvisir/$foldername/$foldertype/epitopes.txt -f $foldertype
+python process_results.py -folder-path /home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/${foldername}_${foldertype} -folder-type Immunomodulated
+
+foldername="PLOTS_Vegvisir_viral_dataset9_2023_12_30_13h43min42s487903ms_60epochs_supervised_Icore_blosum_TESTING"
+bash run_netmhcpan.sh -a $alleles -p /home/lys/Dropbox/PostDoc/vegvisir/$foldername/$foldertype/epitopes.txt -f $foldertype
+python process_results.py -folder-path /home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/${foldername}_${foldertype} -folder-type Immunomodulated

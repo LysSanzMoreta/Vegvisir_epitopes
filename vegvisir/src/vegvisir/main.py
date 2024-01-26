@@ -5,11 +5,9 @@ Vegvisir :
 =======================
 """
 import json
-import math
 from argparse import Namespace
 
 import numpy as np
-import pandas as pd
 
 import vegvisir
 import vegvisir.train as VegvisirTrain
@@ -43,7 +41,8 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
         "momentum":tune.randn(0.9,0.1)
     }
     config2 = {"batch_size":tune.choice(np.arange(50,200,10)),
-        "encoding":tune.choice(["blosum","onehot"]),
+        "encoding":tune.choice(["blosum"]),
+        #"encoding":tune.choice(["blosum","onehot"]),
         "likelihood_scale":tune.choice(np.arange(40,100,10)),
         "num_epochs":tune.choice([60]),
         "num_samples":tune.choice([30,40,50,60]),
@@ -69,7 +68,9 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
     )
 
 
-    ray.init(runtime_env={"working_dir": "{}/vegvisir/src".format(dataset_info.script_dir),'excludes':["/vegvisir/data/"]})
+    ray.init(runtime_env={"working_dir": "{}/vegvisir/src".format(dataset_info.script_dir),
+                          'excludes':["/vegvisir/data/","!/vegvisir/data/aminoacid_properties.txt"],
+                          })
 
     if args.k_folds > 1:
         print("Initializing Hyperparameter Optimization with K-fold cross validation")
@@ -148,6 +149,7 @@ def run(dataset_info,results_dir,args):
         #VegvisirTrain.train_model(dataset_info,additional_info,args) #ordinary train,val,test split without k-fold cross validation.The validation set changes every time
         #VegvisirTrainSVI.kfold_crossvalidation(dataset_info,additional_info,args)
 
+        assert args.num_synthetic_peptides < 10000, "Please generate less than 10000 peptides, otherwise the computations might not be posible or they might take too long"
 
         if args.k_folds <= 1:
             VegvisirTrainSVI.train_model(config=None,dataset_info=dataset_info,additional_info=additional_info,args=args)

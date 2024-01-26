@@ -4,6 +4,8 @@ import seaborn as sns;sns.set()
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colorbar import Colorbar
+from matplotlib.colors import Normalize,BoundaryNorm
+import matplotlib
 
 class SeabornFig2Grid():
     """Class from https://stackoverflow.com/questions/47535866/how-to-iteratively-populate-matplotlib-gridspec-with-a-multipart-seaborn-plot/47624348#47624348"""
@@ -34,8 +36,7 @@ class SeabornFig2Grid():
         h= self.sg.ax_joint.get_position().height
         h2= self.sg.ax_marg_x.get_position().height
         r = int(np.round(h/h2))
-        print(r)
-        exit()
+
         self._resize()
         self.subgrid = gridspec.GridSpecFromSubplotSpec(r+1,r+1, subplot_spec=self.subplot)
 
@@ -63,9 +64,6 @@ class SeabornFig2Grid():
 
 
 
-
-
-
 iris = sns.load_dataset("iris")
 tips = sns.load_dataset("tips")
 
@@ -84,10 +82,17 @@ g1.map(plt.scatter, "total_bill", "tip", edgecolor="w")
 g1_axes[0].set_xlabel("X")
 g1_axes[0].set_ylabel("Y")
 
-g2 = sns.FacetGrid(tips,  hue="smoker")
-g2_axes = g2.axes.flatten()
+#g2 = sns.FacetGrid(tips,  hue="smoker")
+#g2_axes = g2.axes.flatten()
 #divider2 = make_axes_locatable(g2_axes[0])
-g2.map(plt.scatter, "total_bill", "tip", edgecolor="w")
+#g2.map(plt.scatter, "total_bill", "tip", edgecolor="w")
+
+g2 = sns.jointplot(data=tips,
+                   x="total_bill", y="tip",
+                   #hue = "sex",
+                   kind="kde",
+                   #space=0, color="g"
+                   )
 
 g3 = sns.FacetGrid(tips,  hue="smoker")
 g3.map(plt.scatter, "total_bill", "tip", edgecolor="w")
@@ -115,7 +120,25 @@ cbax2 = plt.subplot(gs[0,5]) # Place it where it should be.
 cbax3 = plt.subplot(gs[1,2]) # Place it where it should be.
 cbax4 = plt.subplot(gs[1,5]) # Place it where it should be.
 
-cb2 = Colorbar(ax = cbax2, mappable = plt.cm.ScalarMappable(cmap="viridis"))
+
+#cb2 = Colorbar(ax = cbax2, mappable = plt.cm.ScalarMappable(cmap="viridis"))
+#cb2.set_ticks([0,1],labels=alleles_ticks)
+
+alleles_labels = ["One","Two","Three","Four","Five"]
+unique_alleles = [0,1,2,3,4] #this is a list, that is why it works latter
+colormap_unique = matplotlib.cm.get_cmap("viridis", len(unique_alleles))
+#colormap_unique =  matplotlib.colors.LinearSegmentedColormap.from_list("allcmap",["#fafa6e","#ffd151","#ffbc49","#ffa745","#62006d"])
+
+
+cb2 = Colorbar(ax=cbax2,
+               mappable=plt.cm.ScalarMappable(norm=BoundaryNorm(unique_alleles, len(unique_alleles)),cmap=colormap_unique),
+               boundaries=unique_alleles)
+
+cb2.set_ticklabels(alleles_labels)
+cb2.ax.tick_params(size=0) #set size of the ticks to 0
+
+
+
 cb3 = Colorbar(ax = cbax3, mappable = plt.cm.ScalarMappable(cmap="viridis"))
 cb4 = Colorbar(ax = cbax4, mappable = plt.cm.ScalarMappable(cmap="viridis"))
 fig.suptitle("UMAP latent space (z) projections")

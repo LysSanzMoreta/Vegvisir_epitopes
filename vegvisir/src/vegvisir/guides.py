@@ -42,6 +42,7 @@ class VEGVISIRGUIDES(EasyGuide):
         self.encoding = model_load.args.encoding
         self.feats_dim = self.max_len - self.seq_max_len
         self.input_dim = model_load.input_dim
+        self.generate_sampling_type = model_load.args.generate_sampling_type
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
         #self.embedding = Embed(self.blosum,self.embedding_dim,self.aa_types,self.device)
@@ -120,7 +121,8 @@ class VEGVISIRGUIDES(EasyGuide):
                 "rnn_final_hidden": rnn_final_hidden_state,
                 "rnn_final_hidden_bidirectional": rnn_final_hidden_state_bidirectional,
                 "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
-                "rnn_hidden_states": rnn_hidden_states}
+                "rnn_hidden_states": rnn_hidden_states,
+                "sampling_type":self.generate_sampling_type}
 
     def guide_supervised(self, batch_data, batch_mask,epoch,guide_estimates,sample=False):
         """
@@ -161,7 +163,8 @@ class VEGVISIRGUIDES(EasyGuide):
                 "rnn_final_hidden":rnn_final_hidden_state,
                 "rnn_final_hidden_bidirectional": rnn_final_hidden_state_bidirectional,
                 "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
-                "rnn_hidden_states":rnn_hidden_states}
+                "rnn_hidden_states":rnn_hidden_states,
+                "sampling_type":self.generate_sampling_type}
 
     def guide_unsupervised(self, batch_data, batch_mask, epoch, guide_estimates, sample=False):
         """
@@ -209,7 +212,8 @@ class VEGVISIRGUIDES(EasyGuide):
                 "rnn_final_hidden": rnn_final_hidden_state,
                 "rnn_final_hidden_bidirectional": rnn_final_hidden_state_bidirectional,
                 "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
-                "rnn_hidden_states": rnn_hidden_states}
+                "rnn_hidden_states": rnn_hidden_states,
+                "sampling_type":self.generate_sampling_type}
 
     def guide_unsupervised_glitched(self, batch_data, batch_mask,epoch,guide_estimates,sample=False):
         """
@@ -272,7 +276,8 @@ class VEGVISIRGUIDES(EasyGuide):
                 "rnn_final_hidden":rnn_final_hidden_state,
                 "rnn_final_hidden_bidirectional":rnn_final_hidden_state_bidirectional,
                 "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
-                "rnn_hidden_states":rnn_hidden_states}
+                "rnn_hidden_states":rnn_hidden_states,
+                "sampling_type":self.generate_sampling_type}
 
     def guide_semisupervised(self, batch_data, batch_mask,epoch,guide_estimates,sample=False):
         """
@@ -311,7 +316,8 @@ class VEGVISIRGUIDES(EasyGuide):
                 "rnn_final_hidden":rnn_final_hidden_state,
                 "rnn_final_hidden_bidirectional": rnn_final_hidden_state_bidirectional,
                 "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
-                "rnn_hidden_states":rnn_hidden_states}
+                "rnn_hidden_states":rnn_hidden_states,
+                "sampling_type":self.generate_sampling_type}
 
     def guide_semisupervised_glitched(self, batch_data, batch_mask, epoch, guide_estimates, sample=False):
         """
@@ -378,7 +384,8 @@ class VEGVISIRGUIDES(EasyGuide):
                 "rnn_final_hidden": rnn_final_hidden_state,
                 "rnn_final_hidden_bidirectional": rnn_final_hidden_state_bidirectional,
                 "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
-                "rnn_hidden_states": rnn_hidden_states}
+                "rnn_hidden_states": rnn_hidden_states,
+                "sampling_type":self.generate_sampling_type}
 
 
     def guide(self,batch_data,batch_mask,epoch,guide_estimates,sample):

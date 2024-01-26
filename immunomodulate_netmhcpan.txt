@@ -1,0 +1,39 @@
+# NetMHCpan version 4.1b
+
+# Tmpdir made /var/www/html/services/NetMHCpan-4.1/tmp/netMHCpan9h2VjS
+# Input is in FSA format
+
+# Peptide length 8,9,10,11
+
+# Make EL predictions
+
+HLA-B35:08 : Distance to training data  0.000 (using nearest neighbor HLA-B35:08)
+
+# Rank Threshold for Strong binding peptides   0.500
+# Rank Threshold for Weak binding peptides   2.000
+---------------------------------------------------------------------------------------------------------------------------
+ Pos         MHC        Peptide      Core Of Gp Gl Ip Il        Icore        Identity  Score_EL %Rank_EL BindLevel
+---------------------------------------------------------------------------------------------------------------------------
+   1 HLA-B*35:08    LPEPLPQGQLT LPEPLGQLT  0  5  2  0  0  LPEPLPQGQLT        Sequence 0.0073380    5.254
+   2 HLA-B*35:08    PEPLPQGQLTA EPLPGQLTA  1  4  1  0  0   EPLPQGQLTA        Sequence 0.0006190   15.663
+   3 HLA-B*35:08    EPLPQGQLTAY EPLPQGTAY  0  6  2  0  0  EPLPQGQLTAY        Sequence 0.6236540    0.114 <= SB
+   1 HLA-B*35:08     LPEPLPQGQL LPEPLPQQL  0  7  1  0  0   LPEPLPQGQL        Sequence 0.2971760    0.410 <= SB
+   2 HLA-B*35:08     PEPLPQGQLT PPLPQGQLT  0  1  1  0  0   PEPLPQGQLT        Sequence 0.0001060   30.400
+   3 HLA-B*35:08     EPLPQGQLTA EPLPGQLTA  0  4  1  0  0   EPLPQGQLTA        Sequence 0.0288240    2.448
+   4 HLA-B*35:08     PLPQGQLTAY LPQGQLTAY  1  0  0  0  0    LPQGQLTAY        Sequence 0.1243930    0.905 <= WB
+   1 HLA-B*35:08      LPEPLPQGQ LPEPLPQGQ  0  0  0  0  0    LPEPLPQGQ        Sequence 0.0626560    1.502 <= WB
+   2 HLA-B*35:08      PEPLPQGQL PEPLPQGQL  0  0  0  0  0    PEPLPQGQL        Sequence 0.0000870   32.500
+   3 HLA-B*35:08      EPLPQGQLT EPLPQGQLT  0  0  0  0  0    EPLPQGQLT        Sequence 0.0189810    3.149
+   4 HLA-B*35:08      PLPQGQLTA PLPQGQLTA  0  0  0  0  0    PLPQGQLTA        Sequence 0.0000520   39.000
+   5 HLA-B*35:08      LPQGQLTAY LPQGQLTAY  0  0  0  0  0    LPQGQLTAY        Sequence 0.9610690    0.007 <= SB
+   1 HLA-B*35:08       LPEPLPQG LPEPLPQG-  0  0  0  8  1     LPEPLPQG        Sequence 0.0064600    5.607
+   2 HLA-B*35:08       PEPLPQGQ -PEPLPQGQ  0  0  0  0  1     PEPLPQGQ        Sequence 0.0001820   25.000
+   3 HLA-B*35:08       EPLPQGQL EPLPQGQ-L  0  0  0  7  1     EPLPQGQL        Sequence 0.0339550    2.248
+   4 HLA-B*35:08       PLPQGQLT -PLPQGQLT  0  0  0  0  1     PLPQGQLT        Sequence 0.0002000   24.143
+   5 HLA-B*35:08       LPQGQLTA LPQ-GQLTA  0  0  0  3  1     LPQGQLTA        Sequence 0.0125100    4.013
+   6 HLA-B*35:08       PQGQLTAY -PQGQLTAY  0  0  0  0  1     PQGQLTAY        Sequence 0.1376350    0.838 <= WB
+---------------------------------------------------------------------------------------------------------------------------
+
+Protein Sequence. Allele HLA-B*35:08. Number of high binders 3. Number of weak binders 3. Number of peptides 18
+
+Link to Allele Frequencies in Worldwide Populations HLA-B35:08

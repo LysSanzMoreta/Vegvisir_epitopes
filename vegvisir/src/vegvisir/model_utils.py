@@ -338,14 +338,14 @@ class FCL2(nn.Module):
 
 class FCL3(nn.Module):
 
-    def __init__(self,feats_dim,hidden_dim,num_classes,device):
+    def __init__(self,feats_dim,hidden_dim,out_dim,device):
         super(FCL3, self).__init__()
         self.feats_dim = feats_dim
-        self.num_classes = num_classes
+        self.out_dim = out_dim
         self.hidden_dim = hidden_dim
         self.device = device
         self.fc1 = nn.Linear(self.feats_dim,self.hidden_dim,bias=True)
-        self.fc2 = nn.Linear(self.hidden_dim,self.num_classes,bias=True)
+        self.fc2 = nn.Linear(self.hidden_dim,self.out_dim,bias=True)
         self.leakyrelu = nn.LeakyReLU()
         self.logsoftmax = nn.LogSoftmax(dim=-1)
     def forward(self,input):

@@ -11,10 +11,9 @@ from Bio.SeqUtils.IsoelectricPoint import IsoelectricPoint as IP
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
 import numpy as np
 import os,shutil
-from collections import defaultdict
+from collections import defaultdict, Counter
 import time,datetime
 from sklearn import preprocessing
-import random
 import pandas as pd
 import torch
 import scipy
@@ -24,6 +23,8 @@ from scipy import stats
 from joblib import Parallel, delayed
 import multiprocessing
 from collections import namedtuple
+from sklearn.metrics import mutual_info_score
+
 PeptideFeatures = namedtuple("PeptideFeatures",["gravy_dict","volume_dict","radius_dict","side_chain_pka_dict","isoelectric_dict","bulkiness_dict"])
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 def str2bool(v):
@@ -50,6 +51,17 @@ def str2None(v):
         except:
             v = str(v)
         return v
+
+def print_divisors(n) :
+    """Calculates the number of divisors of a number
+    :param int n: number"""
+    i = 1
+    divisors = []
+    while i <= n :
+        if (n % i==0) :
+            divisors.append(i)
+        i = i + 1
+    return divisors
 
 def folders(folder_name,basepath,overwrite=True):
     """ Creates a folder at the indicated location. It rewrites folders with the same name
@@ -216,10 +228,45 @@ def calculate_aa_frequencies(dataset,freq_bins):
     :param tensor dataset
     :param int freq_bins
     """
+    if isinstance(dataset,np.ndarray):
+        freqs = np.apply_along_axis(lambda x: np.bincount(x, minlength=freq_bins), axis=0, arr=dataset.astype("int64")).T
+        freqs = freqs/dataset.shape[0]
+        return freqs
+    elif isinstance(dataset,torch.Tensor):
+        freqs = torch.stack([torch.bincount(x_i, minlength=freq_bins) for i, x_i in
+                             enumerate(torch.unbind(dataset.type(torch.int64), dim=1), 0)], dim=1)
+        freqs = freqs.T
+        freqs = freqs / dataset.shape[0]
+        return freqs
+    else:
+        print("Data type not supported for bincount")
 
-    freqs = np.apply_along_axis(lambda x: np.bincount(x, minlength=freq_bins), axis=0, arr=dataset.astype("int64")).T
-    freqs = freqs/dataset.shape[0]
-    return freqs
+def process_blosum(blosum,aa_freqs,align_seq_len,aa_probs):
+    """
+    Computes the matrices required to build a blosum embedding
+    :param tensor blosum: BLOSUM likelihood  scores
+    :param tensor aa_freqs : amino acid frequencies per position
+    :param align_seq_len: alignment length
+    :param aa_probs: amino acid probabilities, types of amino acids in the alignment
+    :out tensor blosum_max [align_len,aa_prob]: blosum likelihood scores for the most frequent aa in the alignment position
+    :out tensor blosum_weighted [align_len,aa_prob: weighted average of blosum likelihoods according to the aa frequency
+    :out variable_core: [align_len] : counts the number of different elements (amino acid diversity) per alignment position"""
+
+    if isinstance(aa_freqs,np.ndarray):
+        aa_freqs = torch.from_numpy(aa_freqs)
+    if isinstance(blosum,np.ndarray):
+        blosum = torch.from_numpy(blosum)
+
+    aa_freqs_max = torch.argmax(aa_freqs, dim=1).repeat(aa_probs, 1).permute(1, 0) #[max_len, aa_probs]
+    blosum_expanded = blosum[1:, 1:].repeat(align_seq_len, 1, 1)  # [max_len,aa_probs,aa_probs]
+    blosum_max = blosum_expanded.gather(1, aa_freqs_max.unsqueeze(1)).squeeze(1)  # [align_seq_len,21] Seems correct
+
+    blosum_weighted = aa_freqs[:,:,None]*blosum_expanded #--> replace 0 with nans? otherwise the 0 are in the mean as well....
+    blosum_weighted = blosum_weighted.mean(dim=1)
+
+    variable_score = torch.count_nonzero(aa_freqs, dim=1)/aa_probs #higher score, more variable
+
+    return blosum_max,blosum_weighted, variable_score
 
 class AUK:
     """Slighlty re-adapted implementation from https://towardsdatascience.com/auk-a-simple-alternative-to-auc-800e61945be5
@@ -806,26 +853,40 @@ def euclidean_2d_norm(A,B,squared=True):
 
 def manage_predictions_generative(args,generative_dict):
 
-    mode = "samples" if args.generate_num_samples > 1 else "single_sample"
+    mode = "samples" if args.num_samples > 1 else "single_sample"
     class_logits_predictions_generative_argmax = np.argmax(generative_dict["logits"], axis=-1)
     #class_logits_predictions_generative_argmax_mode = stats.mode(class_logits_predictions_generative_argmax, axis=1,keepdims=True).mode.squeeze(-1)
     class_logits_predictions_generative_argmax_mode = class_logits_predictions_generative_argmax
     probs_predictions_generative = generative_dict["probs"]
 
     binary_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=generative_dict["binary"].astype("int64"))
-    binary_frequencies = binary_frequencies / args.generate_num_samples
+    binary_frequencies = binary_frequencies / args.num_samples
 
 
     #Highlight: Stack 2 data_int to maintain the latter format
 
     data_int = np.concatenate([generative_dict["data_int"][:,None],generative_dict["data_int"][:,None]],axis=1)
 
+    # Highlight: Calculate the 90% confidence interval
+    num_samples_generated = probs_predictions_generative.shape[1]
+    lower_bound = 1 if int(num_samples_generated * 0.05) == 0 else int(num_samples_generated * 0.05)
+    upper_bound = num_samples_generated - 1 if int(num_samples_generated * 0.95) >= num_samples_generated else int(num_samples_generated * 0.95)
+    # probs_5_class_0 = probs_predictions_generative[:, :, 0].kthvalue(lower_bound, dim=1)[0]
+    # probs_95_class_0 = probs_predictions_generative[:, :, 0].kthvalue(upper_bound, dim=1)[0]
+    # probs_5_class_1 = probs_predictions_generative[:, :, 1].kthvalue(lower_bound, dim=1)[0]
+    # probs_95_class_1 = probs_predictions_generative[:, :, 1].kthvalue(upper_bound, dim=1)[0]
+
+    probs_5_class_0 = np.partition(probs_predictions_generative[:,:,0],lower_bound, axis=1)[:,lower_bound]
+    probs_95_class_0 = np.partition(probs_predictions_generative[:,:,0],upper_bound, axis=1)[:, upper_bound]
+    probs_5_class_1 = np.partition(probs_predictions_generative[:,:,1],lower_bound, axis=1)[:,lower_bound]
+    probs_95_class_1 = np.partition(probs_predictions_generative[:,:,1],upper_bound, axis=1)[:,upper_bound]
+
     generative_dict = {
                         "data_int_single_sample": data_int,
                         "data_int_samples": data_int,
                         "data_mask_single_sample": generative_dict["data_mask"],
                         "data_mask_samples": generative_dict["data_mask"],
-                        "class_binary_predictions_{}".format(mode): generative_dict["binary"] if args.generate_num_samples > 1 else generative_dict["binary"].squeeze(1) ,
+                        "class_binary_predictions_{}".format(mode): generative_dict["binary"] if args.num_samples > 1 else generative_dict["binary"].squeeze(1) ,
                         "true_single_sample": generative_dict["true"],
                         "true_samples": generative_dict["true"],
                         "class_binary_predictions_{}_mode".format(mode): stats.mode(generative_dict["binary"], axis=1,keepdims=True).mode.squeeze(-1),
@@ -838,11 +899,15 @@ def manage_predictions_generative(args,generative_dict):
                         "class_logits_predictions_samples_argmax_frequencies".format(mode): None,
                         "class_logits_predictions_single_sample_argmax_mode": class_logits_predictions_generative_argmax_mode,
                         "class_logits_predictions_samples_argmax_mode": class_logits_predictions_generative_argmax_mode,
+                        "class_probs_predictions_samples_5%CI_class_0": probs_5_class_0,
+                        "class_probs_predictions_samples_95%CI_class_0": probs_95_class_0,
+                        "class_probs_predictions_samples_5%CI_class_1": probs_5_class_1,
+                        "class_probs_predictions_samples_95%CI_class_1": probs_95_class_1,
                         "class_probs_predictions_single_sample": probs_predictions_generative,
                         "class_probs_predictions_samples": probs_predictions_generative,
-                        #"class_probs_predictions_{}_average".format(mode): np.mean(probs_predictions_generative, axis=1) if args.generate_num_samples > 1 else probs_predictions_generative,
+                        #"class_probs_predictions_{}_average".format(mode): np.mean(probs_predictions_generative, axis=1) if args.num_samples > 1 else probs_predictions_generative,
                         "class_probs_predictions_{}_average".format(mode): probs_predictions_generative,
-                        #"class_binary_predictions_{}_logits_average_argmax".format(mode): np.argmax(np.mean(probs_predictions_generative, axis=1), axis=1) if args.generate_num_samples > 1 else np.argmax(probs_predictions_generative, axis=1)
+                        #"class_binary_predictions_{}_logits_average_argmax".format(mode): np.argmax(np.mean(probs_predictions_generative, axis=1), axis=1) if args.num_samples > 1 else np.argmax(probs_predictions_generative, axis=1)
                         "class_binary_predictions_{}_logits_average_argmax".format(mode): np.argmax(probs_predictions_generative, axis=1)
                        }
 
@@ -886,6 +951,22 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
     #                                             0)], dim=0)
     argmax_frequencies = np.apply_along_axis(lambda x: np.bincount(x, minlength=args.num_classes), axis=1, arr=class_logits_predictions_samples_argmax.astype("int64")).T
     argmax_frequencies = argmax_frequencies / args.num_samples
+    
+    #Highlight: Calculate the 90% confidence interval
+
+    lower_bound = 1 if int(args.num_samples * 0.05) == 0 else int(args.num_samples * 0.05)
+    upper_bound = args.num_samples - 1 if int(args.num_samples* 0.95) >= args.num_samples else int(args.num_samples * 0.95)
+    
+    # probs_5_class_0 = probs_predictions_samples[:,:,0].kthvalue(lower_bound, dim=1)[0]
+    # probs_95_class_0 = probs_predictions_samples[:,:,0].kthvalue(upper_bound, dim=1)[0]
+    # probs_5_class_1 = probs_predictions_samples[:,:,1].kthvalue(lower_bound, dim=1)[0]
+    # probs_95_class_1 = probs_predictions_samples[:,:,1].kthvalue(upper_bound, dim=1)[0]
+
+    probs_5_class_0 = np.partition(probs_predictions_samples[:,:,0],lower_bound, axis=1)[:,lower_bound]
+    probs_95_class_0 = np.partition(probs_predictions_samples[:,:,0],upper_bound, axis=1)[:,upper_bound]
+    probs_5_class_1 = np.partition(probs_predictions_samples[:,:,1],lower_bound, axis=1)[:,lower_bound]
+    probs_95_class_1 = np.partition(probs_predictions_samples[:,:,1],upper_bound, axis=1)[:,upper_bound]
+    
 
     if predictions_dict is not None:
         summary_dict = {"data_int_single_sample":predictions_dict["data_int"],
@@ -901,6 +982,10 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
                         "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
                         "class_probs_predictions_samples": probs_predictions_samples,
                         "class_probs_predictions_samples_average": np.mean(probs_predictions_samples,axis=1),
+                        "class_probs_predictions_samples_5%CI_class_0": probs_5_class_0,
+                        "class_probs_predictions_samples_95%CI_class_0": probs_95_class_0,
+                        "class_probs_predictions_samples_5%CI_class_1": probs_5_class_1,
+                        "class_probs_predictions_samples_95%CI_class_1": probs_95_class_1,
                         "class_binary_predictions_samples_logits_average_argmax": np.argmax(np.mean(probs_predictions_samples,axis=1),axis=1),
                         "class_binary_predictions_single_sample": predictions_dict["binary"],
                         "class_logits_predictions_single_sample": predictions_dict["logits"],
@@ -942,6 +1027,10 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
                         "class_logits_predictions_samples_argmax_mode": class_logits_predictions_samples_argmax_mode,
                         "class_probs_predictionss_samples": probs_predictions_samples,
                         "class_probs_predictions_samples_average": np.mean(probs_predictions_samples, axis=1),
+                        "class_probs_predictions_samples_5%CI_class_0": probs_5_class_0,
+                        "class_probs_predictions_samples_95%CI_class_0": probs_95_class_0,
+                        "class_probs_predictions_samples_5%CI_class_1": probs_5_class_1,
+                        "class_probs_predictions_samples_95%CI_class_1": probs_95_class_1,
                         "class_binary_predictions_samples_logits_average_argmax": np.argmax(np.mean(probs_predictions_samples, axis=1),axis=1),
                         "class_binary_predictions_single_sample": None,
                         "class_logits_predictions_single_sample": None,
@@ -970,6 +1059,113 @@ def manage_predictions(samples_dict,args,predictions_dict, generative_dict=None)
                         }
 
     return summary_dict
+
+def save_results_table(predictions_dict,latent_space, args,dataset_info,results_dir,method="Train",merge_netmhc=False,save_df=True):
+    """
+    """
+
+
+    class_probabilities = predictions_dict["class_probs_predictions_samples_average"]
+    onehot_labels = predictions_dict["true_onehot_samples"]
+
+    probs_5_class_0 = predictions_dict["class_probs_predictions_samples_5%CI_class_0"]
+    probs_95_class_0 = predictions_dict["class_probs_predictions_samples_95%CI_class_0"]
+
+    probs_5_class_1 = predictions_dict["class_probs_predictions_samples_5%CI_class_1"]
+    probs_95_class_1 = predictions_dict["class_probs_predictions_samples_95%CI_class_1"]
+
+    data_int = predictions_dict["data_int_samples"]
+    sequences = data_int[:, 1:].squeeze(1)
+    # if dataset_info.corrected_aa_types == 20:
+    #     sequences_mask = np.zeros_like(sequences).astype(bool)
+    # else:
+    #     sequences_mask = np.array((sequences == 0))
+
+    #sequences_lens = np.sum(~sequences_mask, axis=1)
+
+    #Highlight: Load pre-computed features dictionaries
+    custom_features_dicts = build_features_dicts(dataset_info)
+    aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
+    volume_dict = custom_features_dicts["volume_dict"]
+    radius_dict = custom_features_dicts["radius_dict"]
+    side_chain_pka_dict = custom_features_dicts["side_chain_pka_dict"]
+    bulkiness_dict = custom_features_dicts["bulkiness_dict"]
+
+    sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(sequences)
+
+    sequences_list = list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), sequences_raw.tolist()))
+    if dataset_info.corrected_aa_types == 20:
+        sequences_mask=np.zeros_like(sequences).astype(bool)
+    else:
+        sequences_mask = np.array((sequences == 0))
+
+    bulkiness_scores = np.vectorize(bulkiness_dict.get)(sequences)
+    bulkiness_scores = np.ma.masked_array(bulkiness_scores, mask=sequences_mask, fill_value=0)
+    bulkiness_scores = np.ma.sum(bulkiness_scores, axis=1)
+
+    volume_scores = np.vectorize(volume_dict.get)(sequences)
+    volume_scores = np.ma.masked_array(volume_scores, mask=sequences_mask, fill_value=0)
+    volume_scores = np.ma.sum(volume_scores, axis=1)  # TODO: Mean? or sum?
+
+    radius_scores = np.vectorize(radius_dict.get)(sequences)
+    radius_scores = np.ma.masked_array(radius_scores, mask=sequences_mask, fill_value=0)
+    radius_scores = np.ma.sum(radius_scores, axis=1)
+
+    side_chain_pka_scores = np.vectorize(side_chain_pka_dict.get)(sequences)
+    side_chain_pka_scores = np.ma.masked_array(side_chain_pka_scores, mask=sequences_mask, fill_value=0)
+    side_chain_pka_scores = np.ma.mean(side_chain_pka_scores, axis=1)  # Highlight: before I was doing just the sum
+
+    sequences_list = list(map(lambda seq:seq.replace("-",""),sequences_list))
+
+    isoelectric_scores = np.array(list(map(lambda seq: calculate_isoelectric(seq), sequences_list)))
+    aromaticity_scores = np.array(list(map(lambda seq: calculate_aromaticity(seq), sequences_list)))
+    gravy_scores = np.array(list(map(lambda seq: calculate_gravy(seq), sequences_list)))
+    molecular_weight_scores = np.array(list(map(lambda seq: calculate_molecular_weight(seq), sequences_list)))
+    extintion_coefficient_scores_cysteines = np.array(list(map(lambda seq: calculate_extintioncoefficient(seq)[0], sequences_list)))
+    extintion_coefficient_scores_cystines = np.array(list(map(lambda seq: calculate_extintioncoefficient(seq)[1], sequences_list)))
+
+    results_df = pd.DataFrame({"Icore":sequences_list,
+                       "Latent_vector":latent_space[:,6:].tolist(),
+                       "Target_corrected":latent_space[:,0].tolist(),
+                       "Immunoprevalence":latent_space[:,3].tolist(),
+                       "Bulkiness_score":bulkiness_scores,
+                       "Volume_score":volume_scores,
+                       "Radius_score":radius_scores,
+                       "Side_chain_pka":side_chain_pka_scores,
+                       "Isoelectric_scores":isoelectric_scores,
+                       "Aromaticity_scores":aromaticity_scores,
+                       "Gravy_scores":gravy_scores,
+                       "Molecular_weight_scores":molecular_weight_scores,
+                       "Extintion_coefficient_scores(Cysteines)":extintion_coefficient_scores_cysteines,
+                       "Extintion_coefficient_scores(Cystines)":extintion_coefficient_scores_cystines,
+                       "Vegvisir_negative_prob":class_probabilities[:,0].tolist(),
+                       "Vegvisir_positive_prob":class_probabilities[:,1].tolist(),
+                       "Vegvisir_negative_5CI":probs_5_class_0.tolist(),
+                       "Vegvisir_negative_95CI":probs_95_class_0.tolist(),
+                       "Vegvisir_positive_5CI": probs_5_class_1.tolist(),
+                       "Vegvisir_positive_95CI": probs_95_class_1.tolist(),
+                       })
+
+
+    if merge_netmhc and args.dataset_name in ["viral_dataset9","viral_dataset14"]:
+        storage_folder = custom_features_dicts["storage_folder"]
+        train_data_info = pd.read_csv("{}/common_files/Viruses_db_partitions_notest.tsv".format(storage_folder), sep="\t")
+        train_data_info = train_data_info[["Icore","allele","Rnk_EL"]]
+        test_data_info = pd.read_csv("{}/common_files/new_test_nonanchor_immunodominance.csv".format(storage_folder),sep=",")
+        test_data_info = test_data_info[["Icore","allele","Rnk_EL"]]
+        #data_info = pd.concat([train_data_info,test_data_info],axis=0)
+        data_info = pd.merge(train_data_info, test_data_info, on=['Icore'], how='outer',suffixes=('_a', '_b'))
+        data_info["allele"] = data_info["allele_a"].fillna(data_info["allele_b"])
+        data_info["Rnk_EL"] = data_info["Rnk_EL_a"].fillna(data_info["Rnk_EL_b"])
+        data_info.drop(["allele_a","allele_b","Rnk_EL_a","Rnk_EL_b"],axis=1,inplace=True)
+
+        data_info = data_info.groupby('Icore', as_index=False)[["allele","Rnk_EL"]].agg(list) #aggregate as a list --> contains more Icore sequences than used for training & testing, because seqs with no patients were discarded
+        results_df = results_df.merge(data_info,how="left",on="Icore")
+
+    if save_df:
+        results_df.to_csv("{}/{}/Epitopes_predictions_{}.tsv".format(results_dir,method,method),sep="\t",index=False)
+
+    return results_df
 
 def extract_group_old_test(train_summary_dict,valid_summary_dict,args):
     """"""
@@ -1164,41 +1360,72 @@ def convert_to_pandas_dataframe(epitopes_padded,data,storage_folder,args,use_tes
                           index=False, header=None)  # TODO: Header None?
 
 def calculate_isoelectric(seq):
-    seq = "".join(seq).replace("#","")
+    seq = "".join(seq).replace("#","").replace("-","")
     isoelectric = IP(seq).pi()
     return isoelectric
 
 def calculate_molecular_weight(seq):
-    seq = "".join(seq).replace("#","")
+    seq = "".join(seq).replace("#","").replace("-","")
     molecular_weight = ProteinAnalysis(seq).molecular_weight()
     return molecular_weight
 
 def calculate_aromaticity(seq):
-    seq = "".join(seq).replace("#","")
+    seq = "".join(seq).replace("#","").replace("-","")
     aromaticity = ProteinAnalysis(seq).aromaticity()
     return aromaticity
 
 def calculate_gravy(seq):
     "GRAVY (grand average of hydropathy)"
-    seq = "".join(seq).replace("#","")
+    seq = "".join(seq).replace("#","").replace("-","")
     gravy = ProteinAnalysis(seq).gravy()
     return gravy
 
 def calculate_extintioncoefficient(seq):
     """Calculates the molar extinction coefficient assuming cysteines (reduced) and cystines residues (Cys-Cys-bond)
     :param str seq"""
-    seq = "".join(seq).replace("#","")
+    seq = "".join(seq).replace("#","").replace("-","")
     excoef_cysteines, excoef_cystines = ProteinAnalysis(seq).molar_extinction_coefficient()
     return excoef_cysteines,excoef_cystines
 
+
+def aa_dict_1letter_full():
+    amino_acid_dict = {
+        'A': 'Alanine',
+        'C': 'Cysteine',
+        'D': 'Aspartic Acid',
+        'E': 'Glutamic Acid',
+        'F': 'Phenylalanine',
+        'G': 'Glycine',
+        'H': 'Histidine',
+        'I': 'Isoleucine',
+        'K': 'Lysine',
+        'L': 'Leucine',
+        'M': 'Methionine',
+        'N': 'Asparagine',
+        'P': 'Proline',
+        'Q': 'Glutamine',
+        'R': 'Arginine',
+        'S': 'Serine',
+        'T': 'Threonine',
+        'V': 'Valine',
+        'W': 'Tryptophan',
+        'Y': 'Tyrosine'
+    }
+    return  amino_acid_dict
+
+
 class CalculatePeptideFeatures(object):
-    def __init__(self,seq_max_len,list_sequences,storage_folder):
+    """Properties table (radius etc) from https://www.researchgate.net/publication/15556561_Global_Fold_Determination_from_a_Small_Number_of_Distance_Restraints"""
+    def __init__(self,seq_max_len,list_sequences,storage_folder,return_aa_freqs=False,only_w=True):
         self.storage_folder = storage_folder
         self.seq_max_len = seq_max_len
         self.aminoacid_properties = pd.read_csv("{}/aminoacid_properties.txt".format(storage_folder),sep = "\s+")
         self.list_sequences = list_sequences
+        self.return_aa_freqs = return_aa_freqs
+        self.only_w = only_w
         self.corrected_aa_types = len(set().union(*self.list_sequences))
-        self.aminoacids_list = aminoacid_names_dict(self.corrected_aa_types)
+        self.aminoacids_dict = aminoacid_names_dict(self.corrected_aa_types)
+        self.aminoacids_list = list(self.aminoacids_dict.keys())
         self.gravy_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["Hydropathy_index"].values.tolist()))
         self.volume_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["Volume(A3)"].values.tolist()))
         self.radius_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["Radius"].values.tolist()))
@@ -1241,9 +1468,12 @@ class CalculatePeptideFeatures(object):
         side_chain_pka = sum(list( map(lambda aa: self.side_chain_pka_dict[aa], list(seq))) + pads)/len(seq)
         aromaticity = calculate_aromaticity(seq)
         extintion_coefficient_reduced,extintion_coefficient_cystines = calculate_extintioncoefficient(seq)
-        #aminoacid_frequencies = list(map(lambda aa,seq: seq.count(aa)/len(seq),self.aminoacids_list,[seq]*len(self.aminoacids_list)))
+        aminoacid_frequencies = list(map(lambda aa,seq: seq.count(aa)/len(seq),self.aminoacids_list,[seq]*len(self.aminoacids_list)))
         #aminoacid_frequencies_dict = dict(zip(self.aminoacids_list,aminoacid_frequencies))
-        return molecular_weight,volume,radius,bulkiness,isoelectric,gravy,side_chain_pka,aromaticity,extintion_coefficient_reduced,extintion_coefficient_cystines#,aminoacid_frequencies_dict
+        if self.return_aa_freqs:
+            return molecular_weight,volume,radius,bulkiness,isoelectric,gravy,side_chain_pka,aromaticity,extintion_coefficient_reduced,extintion_coefficient_cystines,*aminoacid_frequencies
+        else:
+            return molecular_weight,volume,radius,bulkiness,isoelectric,gravy,side_chain_pka,aromaticity,extintion_coefficient_reduced,extintion_coefficient_cystines
 
     def calculate_aminoacid_frequencies(self,seq,seq_max_len):
 
@@ -1275,18 +1505,46 @@ class CalculatePeptideFeatures(object):
         if self.list_sequences:
             results = list(map(lambda seq: self.calculate_features(seq,self.seq_max_len), self.list_sequences))
             zipped_results = list(zip(*results))
-            features_dict = {"molecular_weights":np.array(zipped_results[0]),
-                                "volume":np.array(zipped_results[1]),
-                                "radius":np.array(zipped_results[2]),
-                                "bulkiness":np.array(zipped_results[3]),
-                                "isoelectric":np.array(zipped_results[4]),
-                                "gravy":np.array(zipped_results[5]),
-                                "side_chain_pka":np.array(zipped_results[6]),
-                                "aromaticity":np.array(zipped_results[7]),
-                                "extintion_coefficient_cysteines":np.array(zipped_results[8]),
-                                "extintion_coefficient_cystines": np.array(zipped_results[9]),
+            if self.return_aa_freqs:
+                features_dict = {"molecular_weights": np.array(zipped_results[0]),
+                                 "volume": np.array(zipped_results[1]),
+                                 "radius": np.array(zipped_results[2]),
+                                 "bulkiness": np.array(zipped_results[3]),
+                                 "isoelectric": np.array(zipped_results[4]),
+                                 "gravy": np.array(zipped_results[5]),
+                                 "side_chain_pka": np.array(zipped_results[6]),
+                                 "aromaticity": np.array(zipped_results[7]),
+                                 "extintion_coefficient_cysteines": np.array(zipped_results[8]),
+                                 "extintion_coefficient_cystines": np.array(zipped_results[9]),
                                  #"aminoacid_frequencies_dict":dict(zip(self.list_sequences,zipped_results[10]))
-                                }
+                                 }
+
+                frequencies_dict = dict.fromkeys(self.aminoacids_list)
+                for i in range(10,len(self.aminoacids_list) + 10):
+                    aa_name = self.aminoacids_list[int(i-10)]
+                    aa_freq = np.array(zipped_results[i])
+                    frequencies_dict[aa_name] = aa_freq
+
+                if self.only_w :
+                    features_dict["Tryptophan"] = frequencies_dict["W"]
+                else:
+                    features_dict = {**features_dict,**frequencies_dict}
+
+                #features_dict[""] = frequencies_dict["W"]
+
+            else:
+                features_dict = {"molecular_weights":np.array(zipped_results[0]),
+                                    "volume":np.array(zipped_results[1]),
+                                    "radius":np.array(zipped_results[2]),
+                                    "bulkiness":np.array(zipped_results[3]),
+                                    "isoelectric":np.array(zipped_results[4]),
+                                    "gravy":np.array(zipped_results[5]),
+                                    "side_chain_pka":np.array(zipped_results[6]),
+                                    "aromaticity":np.array(zipped_results[7]),
+                                    "extintion_coefficient_cysteines":np.array(zipped_results[8]),
+                                    "extintion_coefficient_cystines": np.array(zipped_results[9]),
+                                     #"aminoacid_frequencies_dict":dict(zip(self.list_sequences,zipped_results[10]))
+                                    }
         else:
             features_dict = {"molecular_weights":None,
                                 "volume":None,
@@ -1314,6 +1572,9 @@ class CalculatePeptideFeatures(object):
     def aminoacid_embedding(self):
         if self.list_sequences:
             results = list(map(lambda seq: self.calculate_features(seq,self.seq_max_len), self.list_sequences))
+
+
+
             return results
 
         else:
@@ -1355,7 +1616,8 @@ def build_features_dicts(dataset_info):
             "radius_dict":radius_dict,
             "side_chain_pka_dict":side_chain_pka_dict,
             "isoelectric_dict":isoelectric_dict,
-            "bulkiness_dict":bulkiness_dict}
+            "bulkiness_dict":bulkiness_dict,
+            "storage_folder":storage_folder}
 
 def merge_in_left_order(x, y, on=None):
     x = x.copy()
@@ -1380,24 +1642,38 @@ def generate_mask(max_len, length):
     seq_mask = np.array([True] * (length) + [False] * (max_len - length))
     return seq_mask[None, :]
 
-def clean_generated_sequences(seq_int,seq_mask,zero_character,min_len):
+def clean_generated_sequences(seq_int,seq_mask,zero_character,min_len,max_len,keep_truncated=False):
     """"""
     seq_mask = np.array(seq_mask)
     seq_int = np.array(seq_int)
-    idx = np.where(seq_int == zero_character)[0]
-    if idx.size == 0:
-        seq_mask = np.ones_like(seq_int).astype(bool)
-        return (seq_int[None,:],seq_mask[None,:])
-    else:
-        if idx[0] > min_len -1: #truncate sequences (else completely discard)
-            seq_int[idx[0]:] = zero_character
-            seq_mask[idx[0]:] = False
+    if zero_character is not None:
+        idx = np.where(seq_int == zero_character)[0]
+        if idx.size == 0:
+            seq_mask = np.ones_like(seq_int).astype(bool)
             return (seq_int[None,:],seq_mask[None,:])
+        else:
+            if idx[0] > min_len -1: #truncate sequences
+                seq_int[idx[0]:] = zero_character
+                seq_mask[idx[0]:] = False
+                return (seq_int[None,:],seq_mask[None,:])
+            else: #remove the intermediate gaps and join the remainindings to max len keep if it fits the minimum length criteria
+                if keep_truncated:
+                    idx_mask = np.ones_like(seq_int).astype(bool)
+                    idx_mask[idx] = False
+                    seq_int_masked = seq_int[idx_mask] #select only no gaps
+                    seq_int_list = seq_int_masked.tolist() + [0]*(max_len-len(seq_int_masked))
+                    seq_int = np.array(seq_int_list).astype(int)
+                    seq_mask = seq_int.astype(bool)
+                    if np.sum(seq_mask) >= min_len:
+                        return (seq_int[None,:],seq_mask[None,:])
 
-def numpy_to_fasta(aa_sequences,binary_pedictions,probabilities,results_dir,title_name=""):
+    else:
+        return (seq_int[None,:],seq_mask[None,:])
+
+def numpy_to_fasta(aa_sequences,binary_pedictions,probabilities,results_dir,folder_name="",title_name=""):
     print("Saving generated sequences to fasta & text files ")
-    f1 = open("{}/generated_epitopes{}.fasta".format(results_dir,title_name), "a+")
-    f2 = open("{}/generated_epitopes{}.txt".format(results_dir,title_name), "a+")
+    f1 = open("{}/epitopes{}.fasta".format(results_dir,title_name), "a+")
+    f2 = open("{}/epitopes{}.txt".format(results_dir,title_name), "a+")
 
     headers_list  = list(map(lambda idx,label,prob: ">Epitope_{}_class_{}_probability_{}\n".format(idx,label,prob), list(range(aa_sequences.shape[0])),binary_pedictions.tolist(),probabilities.tolist()))
 
@@ -1413,18 +1689,38 @@ def numpy_to_fasta(aa_sequences,binary_pedictions,probabilities,results_dir,titl
 
     df = pd.DataFrame({"Epitopes":sequences_list,"Negative_score":probabilities[:,0].tolist(),"Positive_score":probabilities[:,1].tolist()})
     df["Epitopes"] = df["Epitopes"].str.replace("\n","")
-    df.to_csv("{}/generated_epitopes{}.tsv".format(results_dir,title_name),sep="\t",index=False)
+    df.to_csv("{}/epitopes.tsv".format(results_dir),sep="\t",index=False)
 
-    VegvisirPlots.plot_logos(sequences_list,results_dir,title_name)
+    VegvisirPlots.plot_generated_labels_histogram(df,results_dir)
+    VegvisirPlots.plot_logos(sequences_list,results_dir,"ALL_generated")
+
+    positive_sequences = df[df["Positive_score"] >= 0.6]
+    positive_sequences_list = positive_sequences["Epitopes"].tolist()
+
+    if positive_sequences_list:
+        VegvisirPlots.plot_logos(positive_sequences_list,results_dir,"POSITIVES_generated")
+
+    negative_sequences = df[df["Negative_score"] < 0.4]
+    negative_sequences_list = negative_sequences["Epitopes"].tolist()
+
+    if negative_sequences_list:
+        VegvisirPlots.plot_logos(negative_sequences_list,results_dir,"NEGATIVES_generated")
 
 def squeeze_tensor(required_ndims,tensor):
     """Squeezes a tensor to match ndim"""
     size = torch.tensor(tensor.shape)
     ndims = len(size)
+    idx_ones = (size == 1)
+    if True in idx_ones:
+        ones_pos = size.tolist().index(1)
     if ndims > required_ndims:
         while ndims > required_ndims:
             if tensor.shape[0] == 1:
                 tensor = tensor.squeeze(0)
+                size = torch.tensor(tensor.shape)
+                ndims = len(size)
+            elif True in idx_ones:
+                tensor = tensor.squeeze(ones_pos)
                 size = torch.tensor(tensor.shape)
                 ndims = len(size)
             else:
@@ -1433,6 +1729,120 @@ def squeeze_tensor(required_ndims,tensor):
         return tensor
     else:
         return tensor
+
+def clustering_accuracy(binary_arr):
+    """Computes a clustering accuracy score"""
+    maxlen = binary_arr.shape[0]
+    count_ones, count_zeros = 0, 0
+    max_count_ones, max_count_zeros = 0, 0
+    previdx_ones, previdx_zeros = 0, 0
+    groups_counts_ones, groups_counts_zeros = defaultdict(), defaultdict() #registers the start index of the 1ś clusters
+    for idx,num in enumerate(binary_arr):
+        if num != 1:
+            max_count_ones = max(max_count_ones, count_ones)
+            if idx == 0:
+                groups_counts_ones[previdx_ones] = count_ones #previous index plus 1
+            else:
+                groups_counts_ones[previdx_ones +1] = count_ones #previous index plus 1
+            previdx_ones=idx
+            count_ones = 0
+            count_zeros += 1
+        else:
+            max_count_zeros = max(max_count_zeros, count_zeros)
+            if idx == 0:
+                groups_counts_zeros[previdx_zeros] = count_zeros #previous index plus 1
+            else:
+                groups_counts_zeros[previdx_zeros + 1] = count_zeros #previous index plus 1
+            count_zeros = 0
+            previdx_zeros=idx
+            count_ones += 1
+
+    if previdx_zeros + 1 < maxlen:
+        groups_counts_zeros[previdx_zeros + 1] = count_zeros #previous index plus 1, have to add this here
+    if previdx_ones + 1 < maxlen:
+        groups_counts_ones[previdx_ones + 1] = count_ones #previous index plus 1, have to add this here
+
+    maxcountones = max(max_count_ones, count_ones)
+    maxcountzeros = max(max_count_zeros, count_zeros)
+    total_std_idx = np.std(np.arange(maxlen))
+    total_ones = np.sum(binary_arr)
+    total_zeros = binary_arr.shape[0] - total_ones
+
+
+    # Highlight: Transform to array keeping only the results for the ones
+    starting_idx_ones = np.array([key for key, val in groups_counts_ones.items() if val != 0])
+    idx_ones = np.array(binary_arr == 1)
+    idx_ones = np.arange(maxlen)[idx_ones]
+    cluster_sizes_ones = np.array([val for key, val in groups_counts_ones.items() if val != 0])
+    #counts_array_ones = np.concatenate([starting_idx[:, None], cluster_size[:, None]], axis=1)
+
+    if cluster_sizes_ones.size != 0:
+        std_idx_ones = np.std(idx_ones)
+        max_size_ones = np.max(cluster_sizes_ones)
+    else:
+        std_idx_ones = total_std_idx
+        max_size_ones = total_ones = 1
+
+    starting_idx_zeros = np.array([key for key, val in groups_counts_zeros.items() if val != 0])
+    idx_zeros = np.array(binary_arr == 0)
+    idx_zeros = np.arange(maxlen)[idx_zeros]
+    cluster_sizes_zeros = np.array([val for key, val in groups_counts_zeros.items() if val != 0])
+
+    if cluster_sizes_zeros.size != 0:
+        std_idx_zeros = np.std(idx_zeros)
+        max_size_zeros = np.max(cluster_sizes_zeros)
+    else:
+        std_idx_zeros = total_std_idx
+        max_size_zeros = total_zeros = 1
+
+    score_a = ((max_size_ones*100/total_ones) + (max_size_zeros*100/total_zeros)) / 2
+    score_b = ((std_idx_ones*100/total_std_idx) + (std_idx_zeros*100/total_std_idx) + 2*(max_size_ones*100/total_ones) + 2*(max_size_zeros*100/total_zeros)) / 6
+
+    return {"maxcountones": maxcountones,
+            "group_counts_ones": groups_counts_ones,
+            "maxcountzeros": maxcountzeros,
+            "group_counts_zeros": groups_counts_zeros,
+            "clustering_score_a" : score_a,
+            "clustering_score_b" : score_b
+            }
+
+def clustering_significance(labels):
+    """Performs a permutation test on the location of the labels (idx label 0 or idx label 1) to estimate the significance of the clusters, whether they are due to random or not ...
+    NOTES:
+        For a given array of clustered labels of size N, calculate the average rank of one of the two labels, say label 1. Call this value <R_1>
+
+        Next repeat 10000 times:permute the order of the array of clustered labels (each time with a new seed)
+                calculate the average rank of the entries with label 1, <R_1_perm>
+        Next,
+        if <R_1>  < N/2:
+                the p-value for the rank of label 1 entries in the original data is random will be equal to the proportion of <R_1_perm> values that are lower than <R_1>
+        else
+                the p-value for the rank of label 1 entries in the original data is random will be equal to the proportion of <R_1_perm> values that are higher than <R_1>
+    """
+
+    idx_ones = np.where(labels==1)[0].astype(float)
+    ndata = labels.shape[0]
+    r1_avg = np.average(idx_ones)
+    def calculate_r1(i,labels):
+        np.random.seed(i)
+        shuffled_labels = np.array(labels).copy()
+        np.random.shuffle(shuffled_labels)
+        idx_ones_shuffled = np.where(shuffled_labels==1)[0].astype(float)
+        r1_permuted = np.average(idx_ones_shuffled)
+        return r1_permuted
+
+    r1_permuted_list = list(map(lambda i: calculate_r1(i,labels), list(range(10000))))
+
+    r1_permuted_arr = np.array(r1_permuted_list)
+    if r1_avg < ndata/2:
+        lower_idx = np.where(r1_permuted_arr < r1_avg)[0]
+
+        pval = len(lower_idx)/ndata
+    else:
+        higher_idx = np.where(r1_permuted_arr > r1_avg)[0]
+        pval = len(higher_idx)/ndata
+    return pval
+
 
 #TODO: Put into new plots_utils.py, however right now it is annoying to change the structure because of dill
 import matplotlib.pyplot as plt
