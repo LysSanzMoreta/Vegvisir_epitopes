@@ -82,10 +82,17 @@ g1.map(plt.scatter, "total_bill", "tip", edgecolor="w")
 g1_axes[0].set_xlabel("X")
 g1_axes[0].set_ylabel("Y")
 
-g2 = sns.FacetGrid(tips,  hue="smoker")
-g2_axes = g2.axes.flatten()
+#g2 = sns.FacetGrid(tips,  hue="smoker")
+#g2_axes = g2.axes.flatten()
 #divider2 = make_axes_locatable(g2_axes[0])
-g2.map(plt.scatter, "total_bill", "tip", edgecolor="w")
+#g2.map(plt.scatter, "total_bill", "tip", edgecolor="w")
+
+g2 = sns.jointplot(data=tips,
+                   x="total_bill", y="tip",
+                   #hue = "sex",
+                   kind="kde",
+                   #space=0, color="g"
+                   )
 
 g3 = sns.FacetGrid(tips,  hue="smoker")
 g3.map(plt.scatter, "total_bill", "tip", edgecolor="w")
@@ -101,7 +108,7 @@ gs = gridspec.GridSpec(2, 6,width_ratios=[2,1,0.1,0.07,1,0.1])
 
 mg0 = SeabornFig2Grid(g0, fig, gs[0:2,0])
 mg1 = SeabornFig2Grid(g1, fig, gs[0,1])
-#mg2 = SeabornFig2Grid(g2, fig, gs[0,4])
+mg2 = SeabornFig2Grid(g2, fig, gs[0,4])
 mg3 = SeabornFig2Grid(g3, fig, gs[1,1])
 mg4 = SeabornFig2Grid(g4, fig, gs[1,4])
 
@@ -117,22 +124,17 @@ cbax4 = plt.subplot(gs[1,5]) # Place it where it should be.
 #cb2 = Colorbar(ax = cbax2, mappable = plt.cm.ScalarMappable(cmap="viridis"))
 #cb2.set_ticks([0,1],labels=alleles_ticks)
 
-alleles_ticks = ["One","Two","Three","Four","Five"]
+alleles_labels = ["One","Two","Three","Four","Five"]
 unique_alleles = [0,1,2,3,4] #this is a list, that is why it works latter
 colormap_unique = matplotlib.cm.get_cmap("viridis", len(unique_alleles))
+#colormap_unique =  matplotlib.colors.LinearSegmentedColormap.from_list("allcmap",["#fafa6e","#ffd151","#ffbc49","#ffa745","#62006d"])
+
+
 cb2 = Colorbar(ax=cbax2,
-               mappable=plt.cm.ScalarMappable(norm=BoundaryNorm(unique_alleles + [max(unique_alleles) +1], len(unique_alleles)),cmap=colormap_unique),
+               mappable=plt.cm.ScalarMappable(norm=BoundaryNorm(unique_alleles, len(unique_alleles)),cmap=colormap_unique),
                boundaries=unique_alleles)
-# cb2.ax.xaxis.set_ticks_position('none')
-#cb2.ax.set_xticks([])
-#cb2.ax.tick_params(size=0) #set size of the ticks to 0
-ticks_locations = np.arange(0.5,len(unique_alleles),1)
-#n_clusters = len(unique_alleles)
-#ticks_locations = (np.arange(n_clusters) + 0.5)*(n_clusters-1)/n_clusters
-cb2.set_ticks(ticks_locations)
 
-
-cb2.set_ticklabels(alleles_ticks)
+cb2.set_ticklabels(alleles_labels)
 cb2.ax.tick_params(size=0) #set size of the ticks to 0
 
 

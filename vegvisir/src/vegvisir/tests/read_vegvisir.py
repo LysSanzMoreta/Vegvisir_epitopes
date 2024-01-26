@@ -5,8 +5,8 @@ import umap
 from sklearn.metrics import auc, roc_auc_score, roc_curve, confusion_matrix, matthews_corrcoef, precision_recall_curve, average_precision_score, recall_score
 
 def test_correctness(results):
-    target_scores = results[["Vegvisir_negative_prob", "Vegvisir_positive_prob"]].to_numpy().astype(float)
 
+    target_scores = results[["Vegvisir_negative_prob", "Vegvisir_positive_prob"]].to_numpy().astype(float)
 
     targets = np.array(results["Target_corrected"].tolist())
     onehot_labels = np.zeros((targets.shape[0], 2))

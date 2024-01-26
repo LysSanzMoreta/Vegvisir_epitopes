@@ -324,12 +324,14 @@ def custom_dataset(script_dir,storage_folder,args,results_dir,corrected_paramete
             else:
                 train_data["allele_encoded"] = np.random.choice([0,1],train_data.shape[0])
             name_suffix = "_custom_dataset"
+
             #allele_counts_dict = train_data["allele"].value_counts().to_dict()
             #allele_dict = dict(zip(allele_counts_dict.keys(), list(range(len(allele_counts_dict.keys())))))
             #allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))), allele_counts_dict.keys()))
             #json.dump(allele_dict_reversed,open('{}/{}/alleles_dict.txt'.format(storage_folder, args.dataset_name), 'w'), indent=2)
             filters_dict,analysis_mode = select_filters(args)
-
+        else:
+            raise ValueError("Train path {} not found".format(args.train_path))
 
     if args.test_path is not None:
         print("Loading your test sequences")
@@ -355,7 +357,8 @@ def custom_dataset(script_dir,storage_folder,args,results_dir,corrected_paramete
                 pass
             else:
                 test_data["allele_encoded"] = np.random.choice([0, 1], test_data.shape[0])
-
+    else:
+        raise ValueError("Test path {} not found".format(args.test_path))
 
     if args.train_path is not None and args.test_path is not None:
 
@@ -1140,7 +1143,7 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir,corrected_paramete
     # nan_rows = data[data["confidence_score"].isna()]
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
 
-    VegvisirPlots.plot_data_information_reduced(data, filters_dict, storage_folder, args, name_suffix)
+    VegvisirPlots.plot_data_information_reduced1(data, filters_dict, storage_folder, args, name_suffix)
 
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
 
@@ -1741,7 +1744,7 @@ def viral_dataset13(script_dir,storage_folder,args,results_dir,corrected_paramet
     # nan_rows = data[data["confidence_score"].isna()]
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
 
-    VegvisirPlots.plot_data_information_reduced(data, filters_dict, storage_folder, args, name_suffix)
+    VegvisirPlots.plot_data_information_reduced1(data, filters_dict, storage_folder, args, name_suffix)
 
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
 
@@ -1897,7 +1900,7 @@ def viral_dataset14(script_dir,storage_folder,args,results_dir,corrected_paramet
     # nan_rows = data[data["confidence_score"].isna()]
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
 
-    VegvisirPlots.plot_data_information_reduced(data, filters_dict, storage_folder, args, name_suffix)
+    VegvisirPlots.plot_data_information_reduced1(data, filters_dict, storage_folder, args, name_suffix)
 
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
 
@@ -2304,8 +2307,6 @@ def data_volumetrics(seq_max_len,epitopes_list,data,epitopes_array_mask,storage_
                                                                             confidence_scores)
     if plot_volumetrics:
         print("Plotting volumetrics analysis")
-
-
         #Highlight: Train
         volumetrics_dict_all_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.all.tolist(),storage_folder).volumetrics_summary()
         subfolders = "{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode)
@@ -2320,7 +2321,6 @@ def data_volumetrics(seq_max_len,epitopes_list,data,epitopes_array_mask,storage_
         volumetrics_dict_high_confidence_negatives_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.high_confidence_negatives.tolist(),storage_folder).volumetrics_summary()
         subfolders = "{}/Train/{}/neighbours1/highconfnegatives".format(args.sequence_type, analysis_mode)
         VegvisirPlots.plot_volumetrics(volumetrics_dict_high_confidence_negatives_train, seq_max_len, None,storage_folder, args, subfolders)
-
         #Highlight: Test
         volumetrics_dict_all_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.all.tolist(),storage_folder).volumetrics_summary()
         subfolders = "{}/Test/{}/neighbours1/all".format(args.sequence_type, analysis_mode)
@@ -2335,10 +2335,9 @@ def data_volumetrics(seq_max_len,epitopes_list,data,epitopes_array_mask,storage_
         volumetrics_dict_high_confidence_negatives_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.high_confidence_negatives.tolist(),storage_folder).volumetrics_summary()
         subfolders = "{}/Test/{}/neighbours1/highconfnegatives".format(args.sequence_type, analysis_mode)
         VegvisirPlots.plot_volumetrics(volumetrics_dict_high_confidence_negatives_test, seq_max_len,None, storage_folder, args, subfolders)
-
     if plot_covariance:
         print("Plotting features covariance analysis")
-        if args.dataset_name == "viral_dataset9":
+        if args.dataset_name in ["viral_dataset9","viral_dataset15"]:
             use_precomputed_features = False
         else:
             use_precomputed_features = True
@@ -2347,22 +2346,25 @@ def data_volumetrics(seq_max_len,epitopes_list,data,epitopes_array_mask,storage_
         feature_embedded_peptides =  VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw.tolist(),storage_folder).aminoacid_embedding()
         feature_embedded_peptides_df = pd.DataFrame({"{}".format(args.sequence_type):epitopes_array_raw.tolist(), "Embedding":feature_embedded_peptides, "target_corrected":labels_arr})
         feature_embedded_peptides_df.to_csv("{}/{}/similarities/{}/EMBEDDED_epitopes.tsv".format(storage_folder,args.dataset_name,subfolders),sep="\t")
+        features_dict_all = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw.tolist(),storage_folder,return_aa_freqs=True,only_w=False).features_summary()
 
-        features_dict_all = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw.tolist(),storage_folder).features_summary()
+
+
         VegvisirPlots.plot_features_covariance(epitopes_array_raw.tolist(),features_dict_all,seq_max_len,immunodominance_scores,storage_folder,args,subfolders,tag="_immunodominance_scores",use_precomputed_features=use_precomputed_features)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw.tolist(),features_dict_all,seq_max_len,labels_arr,storage_folder,args,subfolders,tag="_binary_labels",use_precomputed_features=use_precomputed_features)
+        exit()
         #Highlight: Train
         features_dict_all_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.all.tolist(),storage_folder).features_summary()
         subfolders = "{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_train.all.tolist(),features_dict_all_train,seq_max_len,immunodominance_scores[training],storage_folder,args,subfolders,tag="_immunodominance_scores",use_precomputed_features=use_precomputed_features)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_train.all.tolist(),features_dict_all_train,seq_max_len,labels_arr[training],storage_folder,args,subfolders,tag="_binary_labels",use_precomputed_features=use_precomputed_features)
-        features_dict_positives_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.positives.tolist(),storage_folder).features_summary()
+        features_dict_positives_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.positives.tolist(),storage_folder,return_aa_freqs=True,only_w=False).features_summary()
         subfolders = "{}/Train/{}/neighbours1/positives".format(args.sequence_type, analysis_mode)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_train.positives.tolist(),features_dict_positives_train, seq_max_len,immunodominance_scores[training][epitopes_array_raw_division_train.positives_idx],storage_folder, args, subfolders,tag="_immunodominance_scores",use_precomputed_features=use_precomputed_features)
-        features_dict_negatives_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.negatives.tolist(),storage_folder).features_summary()
+        features_dict_negatives_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.negatives.tolist(),storage_folder,return_aa_freqs=True,only_w=False).features_summary()
         subfolders = "{}/Train/{}/neighbours1/negatives".format(args.sequence_type, analysis_mode)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_train.negatives.tolist(),features_dict_negatives_train, seq_max_len,immunodominance_scores[training][epitopes_array_raw_division_train.negatives_idx], storage_folder, args, subfolders,tag="_immunodominance_scores",use_precomputed_features=use_precomputed_features)
-        features_dict_high_confidence_negatives_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.high_confidence_negatives.tolist(),storage_folder).features_summary()
+        features_dict_high_confidence_negatives_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.high_confidence_negatives.tolist(),storage_folder,return_aa_freqs=True,only_w=False).features_summary()
         subfolders = "{}/Train/{}/neighbours1/highconfnegatives".format(args.sequence_type, analysis_mode)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_train.high_confidence_negatives.tolist(),features_dict_high_confidence_negatives_train, seq_max_len, immunodominance_scores[training][epitopes_array_raw_division_train.high_conf_negatives_idx],storage_folder, args, subfolders,tag="_immunodominance_scores",use_precomputed_features=use_precomputed_features)
         #Highlight: Test
@@ -2370,14 +2372,14 @@ def data_volumetrics(seq_max_len,epitopes_list,data,epitopes_array_mask,storage_
         subfolders = "{}/Test/{}/neighbours1/all".format(args.sequence_type, analysis_mode)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_test.all.tolist(),features_dict_all_test, seq_max_len, immunodominance_scores[np.invert(training)],storage_folder, args, subfolders,tag="_immunodominance_scores",use_precomputed_features=use_precomputed_features)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_test.all.tolist(),features_dict_all_test, seq_max_len, labels_arr[np.invert(training)],storage_folder, args, subfolders,tag="_binary_labels",use_precomputed_features=use_precomputed_features)
-        features_dict_positives_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.positives.tolist(),storage_folder).features_summary()
+        features_dict_positives_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.positives.tolist(),storage_folder,return_aa_freqs=True,only_w=False).features_summary()
         subfolders = "{}/Test/{}/neighbours1/positives".format(args.sequence_type, analysis_mode)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_test.positives.tolist(),features_dict_positives_test, seq_max_len,immunodominance_scores[np.invert(training)][epitopes_array_raw_division_test.positives_idx],storage_folder, args, subfolders,tag="_immunodominance_scores",use_precomputed_features=use_precomputed_features)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_test.positives.tolist(),features_dict_positives_test, seq_max_len,labels_arr[np.invert(training)][epitopes_array_raw_division_test.positives_idx],storage_folder, args, subfolders,tag="_binary_labels",use_precomputed_features=use_precomputed_features)
-        features_dict_negatives_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.negatives.tolist(),storage_folder).features_summary()
+        features_dict_negatives_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.negatives.tolist(),storage_folder,return_aa_freqs=True,only_w=False).features_summary()
         subfolders = "{}/Test/{}/neighbours1/negatives".format(args.sequence_type, analysis_mode)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_test.negatives.tolist(),features_dict_negatives_test, seq_max_len,immunodominance_scores[np.invert(training)][epitopes_array_raw_division_test.negatives_idx], storage_folder, args, subfolders,tag="_immunodominance_scores",use_precomputed_features=use_precomputed_features)
-        features_dict_high_confidence_negatives_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.high_confidence_negatives.tolist(),storage_folder).features_summary()
+        features_dict_high_confidence_negatives_test = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_test.high_confidence_negatives.tolist(),storage_folder,return_aa_freqs=True,only_w=False).features_summary()
         subfolders = "{}/Test/{}/neighbours1/highconfnegatives".format(args.sequence_type, analysis_mode)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw_division_test.high_confidence_negatives.tolist(),features_dict_high_confidence_negatives_test,
                                                seq_max_len,immunodominance_scores[np.invert(training)][epitopes_array_raw_division_test.high_conf_negatives_idx],
@@ -2968,13 +2970,15 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
     epitopes_array_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(epitopes_array_int)
     epitopes_array_onehot_encoding = VegvisirUtils.convert_to_onehot(epitopes_array_int,dimensions=epitopes_array_blosum.shape[2])
     #Highlight: Features correlations
-    # if args.learning_type == "unsupervised":
-    #     #data_volumetrics(seq_max_len,epitopes_list, data, epitopes_mask, storage_folder, args, filters_dict,analysis_mode,plot_volumetrics=False,plot_covariance=True)
-    #     all_sim_results = data_exploration(data, epitopes_array_blosum, epitopes_array_int, epitopes_mask, aa_dict, aa_list,
-    #                                        blosum_norm, seq_max_len, storage_folder, args, corrected_aa_types,
-    #                                        analysis_mode, filters_dict)
-    #     positional_weights = all_sim_results.positional_weights
-    #     positional_weights_mask = (positional_weights[..., None] > 0.6).any(-1)
+    plot_vol = False
+    #if args.learning_type == "unsupervised":
+    if plot_vol:
+        data_volumetrics(seq_max_len,epitopes_list, data, epitopes_mask, storage_folder, args, filters_dict,analysis_mode,plot_volumetrics=False,plot_covariance=True)
+        all_sim_results = data_exploration(data, epitopes_array_blosum, epitopes_array_int, epitopes_mask, aa_dict, aa_list,
+                                           blosum_norm, seq_max_len, storage_folder, args, corrected_aa_types,
+                                           analysis_mode, filters_dict)
+        positional_weights = all_sim_results.positional_weights
+        positional_weights_mask = (positional_weights[..., None] > 0.6).any(-1)
 
 
     if args.dataset_name not in  ["viral_dataset6","viral_dataset8","viral_dataset10","viral_dataset11"]:

@@ -1387,15 +1387,45 @@ def calculate_extintioncoefficient(seq):
     excoef_cysteines, excoef_cystines = ProteinAnalysis(seq).molar_extinction_coefficient()
     return excoef_cysteines,excoef_cystines
 
+
+def aa_dict_1letter_full():
+    amino_acid_dict = {
+        'A': 'Alanine',
+        'C': 'Cysteine',
+        'D': 'Aspartic Acid',
+        'E': 'Glutamic Acid',
+        'F': 'Phenylalanine',
+        'G': 'Glycine',
+        'H': 'Histidine',
+        'I': 'Isoleucine',
+        'K': 'Lysine',
+        'L': 'Leucine',
+        'M': 'Methionine',
+        'N': 'Asparagine',
+        'P': 'Proline',
+        'Q': 'Glutamine',
+        'R': 'Arginine',
+        'S': 'Serine',
+        'T': 'Threonine',
+        'V': 'Valine',
+        'W': 'Tryptophan',
+        'Y': 'Tyrosine'
+    }
+    return  amino_acid_dict
+
+
 class CalculatePeptideFeatures(object):
     """Properties table (radius etc) from https://www.researchgate.net/publication/15556561_Global_Fold_Determination_from_a_Small_Number_of_Distance_Restraints"""
-    def __init__(self,seq_max_len,list_sequences,storage_folder):
+    def __init__(self,seq_max_len,list_sequences,storage_folder,return_aa_freqs=False,only_w=True):
         self.storage_folder = storage_folder
         self.seq_max_len = seq_max_len
         self.aminoacid_properties = pd.read_csv("{}/aminoacid_properties.txt".format(storage_folder),sep = "\s+")
         self.list_sequences = list_sequences
+        self.return_aa_freqs = return_aa_freqs
+        self.only_w = only_w
         self.corrected_aa_types = len(set().union(*self.list_sequences))
-        self.aminoacids_list = aminoacid_names_dict(self.corrected_aa_types)
+        self.aminoacids_dict = aminoacid_names_dict(self.corrected_aa_types)
+        self.aminoacids_list = list(self.aminoacids_dict.keys())
         self.gravy_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(),self.aminoacid_properties["Hydropathy_index"].values.tolist()))
         self.volume_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["Volume(A3)"].values.tolist()))
         self.radius_dict = dict(zip(self.aminoacid_properties["1letter"].values.tolist(), self.aminoacid_properties["Radius"].values.tolist()))
@@ -1438,9 +1468,12 @@ class CalculatePeptideFeatures(object):
         side_chain_pka = sum(list( map(lambda aa: self.side_chain_pka_dict[aa], list(seq))) + pads)/len(seq)
         aromaticity = calculate_aromaticity(seq)
         extintion_coefficient_reduced,extintion_coefficient_cystines = calculate_extintioncoefficient(seq)
-        #aminoacid_frequencies = list(map(lambda aa,seq: seq.count(aa)/len(seq),self.aminoacids_list,[seq]*len(self.aminoacids_list)))
+        aminoacid_frequencies = list(map(lambda aa,seq: seq.count(aa)/len(seq),self.aminoacids_list,[seq]*len(self.aminoacids_list)))
         #aminoacid_frequencies_dict = dict(zip(self.aminoacids_list,aminoacid_frequencies))
-        return molecular_weight,volume,radius,bulkiness,isoelectric,gravy,side_chain_pka,aromaticity,extintion_coefficient_reduced,extintion_coefficient_cystines#,aminoacid_frequencies_dict
+        if self.return_aa_freqs:
+            return molecular_weight,volume,radius,bulkiness,isoelectric,gravy,side_chain_pka,aromaticity,extintion_coefficient_reduced,extintion_coefficient_cystines,*aminoacid_frequencies
+        else:
+            return molecular_weight,volume,radius,bulkiness,isoelectric,gravy,side_chain_pka,aromaticity,extintion_coefficient_reduced,extintion_coefficient_cystines
 
     def calculate_aminoacid_frequencies(self,seq,seq_max_len):
 
@@ -1472,18 +1505,46 @@ class CalculatePeptideFeatures(object):
         if self.list_sequences:
             results = list(map(lambda seq: self.calculate_features(seq,self.seq_max_len), self.list_sequences))
             zipped_results = list(zip(*results))
-            features_dict = {"molecular_weights":np.array(zipped_results[0]),
-                                "volume":np.array(zipped_results[1]),
-                                "radius":np.array(zipped_results[2]),
-                                "bulkiness":np.array(zipped_results[3]),
-                                "isoelectric":np.array(zipped_results[4]),
-                                "gravy":np.array(zipped_results[5]),
-                                "side_chain_pka":np.array(zipped_results[6]),
-                                "aromaticity":np.array(zipped_results[7]),
-                                "extintion_coefficient_cysteines":np.array(zipped_results[8]),
-                                "extintion_coefficient_cystines": np.array(zipped_results[9]),
+            if self.return_aa_freqs:
+                features_dict = {"molecular_weights": np.array(zipped_results[0]),
+                                 "volume": np.array(zipped_results[1]),
+                                 "radius": np.array(zipped_results[2]),
+                                 "bulkiness": np.array(zipped_results[3]),
+                                 "isoelectric": np.array(zipped_results[4]),
+                                 "gravy": np.array(zipped_results[5]),
+                                 "side_chain_pka": np.array(zipped_results[6]),
+                                 "aromaticity": np.array(zipped_results[7]),
+                                 "extintion_coefficient_cysteines": np.array(zipped_results[8]),
+                                 "extintion_coefficient_cystines": np.array(zipped_results[9]),
                                  #"aminoacid_frequencies_dict":dict(zip(self.list_sequences,zipped_results[10]))
-                                }
+                                 }
+
+                frequencies_dict = dict.fromkeys(self.aminoacids_list)
+                for i in range(10,len(self.aminoacids_list) + 10):
+                    aa_name = self.aminoacids_list[int(i-10)]
+                    aa_freq = np.array(zipped_results[i])
+                    frequencies_dict[aa_name] = aa_freq
+
+                if self.only_w :
+                    features_dict["Tryptophan"] = frequencies_dict["W"]
+                else:
+                    features_dict = {**features_dict,**frequencies_dict}
+
+                #features_dict[""] = frequencies_dict["W"]
+
+            else:
+                features_dict = {"molecular_weights":np.array(zipped_results[0]),
+                                    "volume":np.array(zipped_results[1]),
+                                    "radius":np.array(zipped_results[2]),
+                                    "bulkiness":np.array(zipped_results[3]),
+                                    "isoelectric":np.array(zipped_results[4]),
+                                    "gravy":np.array(zipped_results[5]),
+                                    "side_chain_pka":np.array(zipped_results[6]),
+                                    "aromaticity":np.array(zipped_results[7]),
+                                    "extintion_coefficient_cysteines":np.array(zipped_results[8]),
+                                    "extintion_coefficient_cystines": np.array(zipped_results[9]),
+                                     #"aminoacid_frequencies_dict":dict(zip(self.list_sequences,zipped_results[10]))
+                                    }
         else:
             features_dict = {"molecular_weights":None,
                                 "volume":None,
@@ -1511,6 +1572,9 @@ class CalculatePeptideFeatures(object):
     def aminoacid_embedding(self):
         if self.list_sequences:
             results = list(map(lambda seq: self.calculate_features(seq,self.seq_max_len), self.list_sequences))
+
+
+
             return results
 
         else:

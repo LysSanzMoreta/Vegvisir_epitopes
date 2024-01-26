@@ -122,6 +122,30 @@ def analysis_models():
     """Analyses the results of all possible model combinations (stress testing)"""
 
 
+    #TODO: if we use these results, remember to overwrite first
+    dict_results_predefined_partitions_viral_dataset9_HPO_z4 = {"Icore": {
+        "random-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_09_30_14h40min14s079250ms_60epochs_supervised_Icore_blosum_random_TESTING",
+        "random-9mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_09_30_17h15min50s152080ms_60epochs_supervised_Icore_blosum_random_TESTING_9mers",
+        "shuffled-labels-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2024_01_05_13h53min07s802216ms_60epochs_supervised_Icore_blosum_shuffled_labels_TESTING",
+        "shuffled-labels-9mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2024_01_05_17h25min02s465640ms_60epochs_supervised_Icore_blosum_shuffled_labels_TESTING_9mers",
+        "shuffled-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_09_30_19h03min53s442087ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
+        "shuffled-9mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_09_30_21h42min48s429149ms_60epochs_supervised_Icore_blosum_shuffled_TESTING_9mers",
+        "raw-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_09_30_23h31min43s312787ms_60epochs_supervised_Icore_blosum_TESTING",
+        "raw-9mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_10_01_02h11min08s246199ms_60epochs_supervised_Icore_blosum_TESTING_9mers",
+    },
+        "Icore_non_anchor": {
+            "random-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2024_01_04_15h27min51s990487ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING",
+            "random-7mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2024_01_04_17h57min56s830659ms_60epochs_supervised_Icore_non_anchor_blosum_random_TESTING_7mers",
+            "shuffled-labels-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2024_01_05_15h30min41s915011ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_labels_TESTING",
+            "shuffled-labels-7mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2024_01_05_18h54min24s164426ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_labels_TESTING_7mers",
+            "shuffled-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2024_01_04_19h10min56s999489ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING",
+            "shuffled-7mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2024_01_04_21h45min57s411435ms_60epochs_supervised_Icore_non_anchor_blosum_shuffled_TESTING_7mers",
+            "raw-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2024_01_04_22h57min45s635314ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING",
+            "raw-7mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2024_01_05_01h41min31s003842ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING_7mers"
+        }}
+
+
+
     dict_results_predefined_partitions_viral_dataset15_HPO_z2 = {"Icore": {
         "random-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_viral_dataset15_z2/PLOTS_Vegvisir_viral_dataset15_2024_01_19_14h07min03s957241ms_60epochs_supervised_Icore_blosum_random_TESTING",
         "random-9mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_viral_dataset15_z2/PLOTS_Vegvisir_viral_dataset15_2024_01_19_15h50min05s747259ms_60epochs_supervised_Icore_blosum_random_TESTING_9mers",
@@ -143,7 +167,7 @@ def analysis_models():
             "raw-blosum-7mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_viral_dataset15_z2/PLOTS_Vegvisir_viral_dataset15_2024_01_19_22h47min48s596273ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING_7mers"
         }}
 
-    dict_results_predefined_partitions_viral_dataset15_z16 = {"Icore": {
+    dict_results_predefined_partitions_viral_dataset15_HPO_z16 = {"Icore": {
         "random-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_viral_dataset15/PLOTS_Vegvisir_viral_dataset15_2024_01_19_00h04min32s272010ms_60epochs_supervised_Icore_blosum_random_TESTING",
         "random-9mers": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_viral_dataset15/PLOTS_Vegvisir_viral_dataset15_2024_01_19_01h09min17s856077ms_60epochs_supervised_Icore_blosum_random_TESTING_9mers",
         "shuffled-variable-length": "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_viral_dataset15/PLOTS_Vegvisir_viral_dataset15_2024_01_19_01h52min54s450522ms_60epochs_supervised_Icore_blosum_shuffled_TESTING",
@@ -166,43 +190,52 @@ def analysis_models():
     #Highlight: K-fold comparisons
 
     #VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder = "Benchmark/Plots",title="predefined_partitions_HPO_blosum_SHUFFLED_LABELS",overwrite=False)
-    #VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_viral_dataset15,kfolds=5,results_folder = "Benchmark/Plots",title="VIRAL_DATASET15_nooptimized",overwrite=False)
-
     #VegvisirPlots.plot_kfold_comparisons(args,script_dir,dict_results_predefined_partitions_viral_dataset15,kfolds=5,results_folder = "Benchmark/Plots",title="VIRAL_DATASET15_HPO",overwrite=False)
 
 
-    #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_blosum,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_HPO_blosum_SHUFFLED_LABELS",overwrite_correlations=False,overwrite_all=False)
-    #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_viral_dataset15,kfolds=5,results_folder="Benchmark/Plots",subtitle="VIRAL_DATASET15_nooptimized",overwrite_correlations=False,overwrite_all=False)
-    #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_viral_dataset15,kfolds=5,results_folder="Benchmark/Plots",subtitle="VIRAL_DATASET15_HPO",overwrite_correlations=False,overwrite_all=False)
-
+    #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_viral_dataset9_HPO_z4,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_VIRAL_DATASET9_z4_NEWWWW",overwrite_correlations=True,overwrite_all=False)
+    #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_viral_dataset15_HPO_z16,kfolds=5,results_folder="Benchmark/Plots",subtitle="VIRAL_DATASET15_HPO_z16_tryptophan",overwrite_correlations=False,overwrite_all=False)
     dict_results_benchmark= { "Icore" :{
-        #"raw-onehot-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO/Predefined_partitions/Icore/PLOTS_Vegvisir_viral_dataset9_2023_08_30_03h07min36s214823ms_60epochs_supervised_Icore_blosum_TESTING",
-        #"raw-blosum-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_09_30_23h31min43s312787ms_60epochs_supervised_Icore_blosum_TESTING",
-        "raw-variable-length":dict_results_predefined_partitions_viral_dataset15_z16["Icore"]["raw-variable-length"]
+        "raw-variable-length-vd15":dict_results_predefined_partitions_viral_dataset15_HPO_z16["Icore"]["raw-variable-length"],
+        "raw-variable-length-vd9":dict_results_predefined_partitions_viral_dataset9_HPO_z4["Icore"]["raw-variable-length"]
     }}
 
 
-    #Highlight: Benchmarking #TODO: redo
-    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length",folder="Benchmark/Plots",title="VIRAL_DATASET15_HPO")
+    #Highlight: Benchmarking
+    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd9",folder="Benchmark/Plots",title="VIRAL_DATASET9_HPO_z4")
+    #Highlight: works
+    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",folder="Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_only_overlapped_seqs_TESSTING",keep_only_overlapped=True,aggregated_not_overlap=False,keep_all=False,only_ppv1=False)
+    #Highlight: works
+    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",folder="Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_removed_ALL_overlapping_seqs_TESSTING",keep_only_overlapped=False,aggregated_not_overlap=True,keep_all=False)
+    #Highlight: works
+    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",folder="Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_TESSTING",keep_only_overlapped=False,aggregated_not_overlap=False,keep_all=True,only_ppv1=False) #keeps all sequences
+    #Highlight: works
+    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",folder="Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_Vegvisir_keep_all_common_sequences_TESSTING",keep_only_overlapped=True,aggregated_not_overlap=True,only_ppv1=True,keep_all=False)
+    #Highlight: works
+    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",folder="Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_Vegvisir_removed_overlapping_sequences_per_model_TESSTING",keep_only_overlapped=False,aggregated_not_overlap=False,keep_all=False,only_ppv1=False)
+
+
+    exit()
+
     #Highlight: Model stress comparison
-    #VegvisirPlots.plot_model_stressing_comparison(dict_results_predefined_partitions_viral_dataset15,script_dir,results_folder="Benchmark/Plots",encoding="-blosum-",subtitle="VIRAL_DATASET15_HPO")
-    VegvisirPlots.plot_model_stressing_comparison(dict_results_predefined_partitions_viral_dataset15_z16,script_dir,results_folder="Benchmark/Plots",encoding="-",subtitle="VIRAL_DATASET15_HPO")
-    #VegvisirPlots.plot_model_stressing_comparison(dict_results_predefined_partitions_onehot,script_dir,results_folder="Benchmark/Plots",encoding="-onehot-",subtitle="HPO_onehot")
+    #VegvisirPlots.plot_model_stressing_comparison1(dict_results_predefined_partitions_viral_dataset9_HPO_z4,script_dir,results_folder="Benchmark/Plots",encoding="-",subtitle="VIRAL_DATASET9_HPO_z4",keyname="viral_dataset9")
+    VegvisirPlots.plot_model_stressing_comparison2(dict_results_predefined_partitions_viral_dataset15_HPO_z16,script_dir,results_folder="Benchmark/Plots",encoding="-",subtitle="VIRAL_DATASET15_HPO_z16_ONLY_VEGVISIR",keyname="viral_dataset15")
 
     exit()
 
 
 def hierarchical_clustering():
 
-    vegvisir_folder_HPO_blosum = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_09_30_23h31min43s312787ms_60epochs_supervised_Icore_blosum_TESTING"
     vegvisir_folder_z34 = "/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_12_26_18h37min00s675744ms_60epochs_supervised_Icore_blosum_TESTING_z34"
-    vegvisir_folder_z4 = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_09_30_23h31min43s312787ms_60epochs_supervised_Icore_blosum_TESTING"
-    vegvisir_folder_z30 = "/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset13_2024_01_05_21h14min29s243245ms_60epochs_supervised_Icore_60_TESTING_z30"
-    external_paths_dict = {"embedded_epitopes":"{}/vegvisir/src/vegvisir/data/viral_dataset9/similarities/Icore/All/diff_allele/diff_len/neighbours1/all/EMBEDDED_epitopes.tsv".format(script_dir),
-                           "esmb1_path":"{}/vegvisir/src/vegvisir/data/viral_dataset9/Epitopes_info_TRAIN_esmb1.tsv".format(script_dir)}
-    vegvisir_viral_dataset15 = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_viral_dataset15/PLOTS_Vegvisir_viral_dataset15_2024_01_19_05h26min27s211598ms_60epochs_supervised_Icore_blosum_TESTING"
-    #VegvisirPlots.plot_hierarchical_clustering(vegvisir_folder_z4, external_paths_dict,folder="/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots",title="blosum_z4_VALID-clusteringscore")
-    VegvisirPlots.plot_hierarchical_clustering(vegvisir_viral_dataset15, external_paths_dict,folder="/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots",title="VIRAL_DATASET15_HPO")
+    vegvisir_folder_viral_dataset_9_z4 = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_blosum/Predefined_partitions/PLOTS_Vegvisir_viral_dataset9_2023_09_30_23h31min43s312787ms_60epochs_supervised_Icore_blosum_TESTING"
+    vegvisir_folder_viral_dataset_9_z30 = "/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset13_2024_01_05_21h14min29s243245ms_60epochs_supervised_Icore_60_TESTING_z30"
+    vegvisir_viral_dataset15_z16 = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_viral_dataset15/PLOTS_Vegvisir_viral_dataset15_2024_01_19_05h26min27s211598ms_60epochs_supervised_Icore_blosum_TESTING"
+    external_paths_dict = {"embedded_epitopes":"{}/vegvisir/src/vegvisir/data/viral_dataset15/similarities/Icore/All/diff_allele/diff_len/neighbours1/all/EMBEDDED_epitopes.tsv".format(script_dir),
+                           #"esmb1_path":"{}/vegvisir/src/vegvisir/data/common_files/Epitopes_info_TRAIN_esmb1.tsv".format(script_dir),
+                           "esmb1_path":"{}/vegvisir/src/vegvisir/data/common_files/ESMB1_all.csv".format(script_dir)
+                           }
+    #VegvisirPlots.plot_hierarchical_clustering(vegvisir_folder_viral_dataset_9_z4, external_paths_dict,folder="/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots",title="VIRAL_DATASET9_HPO_z9_tryptophan",keyname="viral_dataset9")
+    VegvisirPlots.plot_hierarchical_clustering(vegvisir_viral_dataset15_z16, external_paths_dict,folder="/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_tryptophan",keyname="viral_dataset15")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
@@ -310,13 +343,14 @@ if __name__ == "__main__":
 
     parser.add_argument('-hpo', type=str2bool, nargs='?', default=False,help='<True> Performs Hyperparameter optimization with Ray Tune')
     best_config = {0: "{}/BEST_hyperparameter_dict_onehot.p".format(script_dir),
-                   1: "{}/BEST_hyperparameter_dict_blosum.p".format(script_dir),
-                   2: "{}/BEST_hyperparameter_dict_blosum_z16.p".format(script_dir),
-                   3: None}
-    parser.add_argument('-config-dict', nargs='?', default=best_config[3], type=str2None,help='Path to the HPO optimized hyperparameter dict. Overrules the previous hyperparameters')
+                   1: "{}/BEST_hyperparameter_dict_blosum.p".format(script_dir),#best hpo for vd15
+                   2: "{}/BEST_hyperparameter_dict_blosum_z16.p".format(script_dir), #second best hpo for vd15
+                   3: "{}/BEST_hyperparameter_dict_blosum_vd9_z34.p".format(script_dir), #second best hpo
+                   4: None}
+    parser.add_argument('-config-dict', nargs='?', default=best_config[2], type=str2None,help='Path to the HPO optimized hyperparameter dict. Overrules the previous hyperparameters')
 
     #Highlight: Evaluation modes
-    parser.add_argument('-train', type=str2bool, nargs='?', default=True,help='<True> Run the model '
+    parser.add_argument('-train', type=str2bool, nargs='?', default=False,help='<True> Run the model '
                                                                               '\n <False> Make benchmarking plots or load previously trained model, if pargs.pretrained_model is not None ')
     parser.add_argument('-validate', type=str2bool, nargs='?', default=False, help='Evaluate the model on the validation dataset. Only needed for model design')
     parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
@@ -347,9 +381,11 @@ if __name__ == "__main__":
                             2:"/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/benchmark_dataset/Icore/random_variable_length_Icore_sequences_viral_dataset9.tsv",
                             3:"/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/benchmark_dataset/Icore/variable_length_Icore_sequences_viral_dataset9_TRAIN.tsv",
                             4: "/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/benchmark_dataset/Icore_non_anchor/variable_length_Icore_non_anchor_sequences_viral_dataset9_TRAIN.tsv",
-                            5: "/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/benchmark_dataset/Icore_non_anchor/random_variable_length_Icore_non_anchor_sequences_viral_dataset9.tsv"}
-    parser.add_argument('-train-path', type=str2None, nargs='?', default=unobserved_sequences[4],help="Path to an external training dataset. It only activates if args.dataset_name = custom_dataset. ")
-    parser.add_argument('-test-path', type=str2None, nargs='?', default= unobserved_sequences[5], help='Path to (test) sequences to predict/classify')
+                            5: "/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/benchmark_dataset/Icore_non_anchor/random_variable_length_Icore_non_anchor_sequences_viral_dataset9.tsv",
+                            6:"/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/benchmark_dataset/Icore/variable_length_Icore_sequences_viral_dataset15_TRAIN.tsv",
+                            7:"/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/benchmark_dataset/Icore/random_variable_length_Icore_sequences_viral_dataset15.tsv"}
+    parser.add_argument('-train-path', type=str2None, nargs='?', default=unobserved_sequences[6],help="Path to an external training dataset. It only activates if args.dataset_name = custom_dataset. ")
+    parser.add_argument('-test-path', type=str2None, nargs='?', default= unobserved_sequences[7], help='Path to (test) sequences to predict/classify')
 
 
 
@@ -368,7 +404,9 @@ if __name__ == "__main__":
                         4:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2023_12_26_19h11min19s422780ms_60epochs_supervised_Icore_60_TESTING_z30",
                         5:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2024_01_08_03h27min20s749801ms_60epochs_supervised_Icore_60_random_TESTING",
                         6:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset14_2024_01_09_15h22min37s940180ms_60epochs_supervised_Icore_blosum_TESTING",
-                        7:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2024_01_11_15h29min17s494812ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING"}
+                        7:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset9_2024_01_11_15h29min17s494812ms_60epochs_supervised_Icore_non_anchor_blosum_TESTING",
+                        8:"/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset15_2024_01_24_16h35min18s664516ms_60epochs_supervised_Icore_blosum_TESTING_z16"
+                        }
 
     parser.add_argument('-pretrained-model', type=str2None, nargs='?', default="{}".format(pretrained_model[1]),help='Load the checkpoints (state_dict and optimizer) from a previous run \n'
                                                                                                 '<None>: Trains model from scratch \n'
@@ -416,14 +454,17 @@ if __name__ == "__main__":
             args = Namespace(**args_dict)
         else:
             args_dict["dataset_name"] = args.dataset_name
-            args_dict["learning_type"] = args.learning_type
+            #args_dict["learning_type"] = args.learning_type
             args_dict["sequence_type"] = args.sequence_type
             args_dict["num_epochs"] = 0
-            args_dict["train_path"] = args.train_path
-            args_dict["test_path"] = args.test_path
+            args_dict["train"] = args.train
+            args_dict["validate"] = args.validate
+            args_dict["test"] = args.test
             args_dict["generate"] = args.generate
             args_dict["immunomodulate"] = args.immunomodulate
-            warnings.warn("Overriding most of your current args except <learning_type>,<dataset_name>,<sequence_type>,<num_obs_classes>,<num_classes>")
+            args_dict["train_path"] = args.train_path
+            args_dict["test_path"] = args.test_path
+            warnings.warn("Overriding most of your current args except <dataset_name>,<sequence_type>,<num_obs_classes>,<num_classes>,<generate>,<iimunomodulate> ...")
             args = Namespace(**args_dict)
     if args.train:
         main()
