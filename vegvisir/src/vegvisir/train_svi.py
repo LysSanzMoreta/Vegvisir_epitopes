@@ -102,7 +102,7 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
 
         binary_class_prediction = VegvisirUtils.squeeze_tensor(1,sampling_output["predictions"]).detach()
         logits_class_prediction = VegvisirUtils.squeeze_tensor(2,sampling_output["class_logits"]).detach()
-        probs_class_prediction = torch.nn.Sigmoid()(logits_class_prediction)
+        probs_class_prediction = torch.nn.functional.softmax(logits_class_prediction)
         attn_weights = VegvisirUtils.squeeze_tensor(3,sampling_output["attn_weights"]).detach().cpu().numpy()
         attention_weights.append(attn_weights)
         encoder_hidden = VegvisirUtils.squeeze_tensor(4,sampling_output["encoder_hidden_states"]).detach().cpu().numpy()
@@ -273,7 +273,7 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
 
             binary_class_prediction = VegvisirUtils.squeeze_tensor(1, sampling_output["predictions"]).detach()
             logits_class_prediction = VegvisirUtils.squeeze_tensor(2, sampling_output["class_logits"]).detach()
-            probs_class_prediction = torch.nn.Sigmoid()(logits_class_prediction)
+            probs_class_prediction = torch.nn.functional.softmax(logits_class_prediction)
             attn_weights = VegvisirUtils.squeeze_tensor(3, sampling_output["attn_weights"]).detach().cpu().numpy()
             attention_weights.append(attn_weights)
             encoder_hidden = VegvisirUtils.squeeze_tensor(4, sampling_output["encoder_hidden_states"]).detach().cpu().numpy()
@@ -442,7 +442,7 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
                 binary_class_prediction = binary_class_prediction.squeeze(1) #necessary sometimes when adding .to_event(1)
 
             logits_class_prediction = sampling_output["class_logits"].detach().permute(1,0,2)
-            probs_class_prediction = torch.nn.Sigmoid()(logits_class_prediction)
+            probs_class_prediction = torch.nn.functional.softmax(logits_class_prediction)
             reconstructed_sequences = VegvisirUtils.squeeze_tensor(3, sampling_output["sequences"]).detach().permute(1,0,2)
             attn_weights = sampling_output["attn_weights"].squeeze(0).detach().cpu().permute(1,0,2,3).numpy()
             attention_weights.append(attn_weights)
@@ -480,7 +480,7 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
             immunodominace_score_expanded =  immunodominace_score[:,None].expand(batch_size,args.num_samples)
             confidence_score_expanded =  confidence_score[:,None].expand(batch_size,args.num_samples)
             alleles_expanded =  alleles[:,None].expand(batch_size,args.num_samples)
-            latent_spaces = torch.concatenate([true_labels_batch_expanded[:,:,None],identifiers_expanded[:,:,None],partitions_expanded[:,:,None], immunodominace_score_expanded[:,:,None], confidence_score_expanded[:,:,None],latent_spaces],axis=2)
+            latent_spaces = torch.concatenate([true_labels_batch_expanded[:,:,None],identifiers_expanded[:,:,None],partitions_expanded[:,:,None], immunodominace_score_expanded[:,:,None], confidence_score_expanded[:,:,None],alleles_expanded[:,:,None],latent_spaces],axis=2)
             latent_space_samples.append(latent_spaces)
             #Highlight: Single latent space observation
             latent_space_obs = torch.column_stack([true_labels_batch, identifiers, partitions, immunodominace_score, confidence_score,alleles, latent_space_obs])
@@ -635,8 +635,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
                         batch_mask = list(map(lambda length: VegvisirUtils.generate_mask(maxlen_generated, length), lenghts_sample))
                         batch_mask = torch.from_numpy(np.concatenate(batch_mask, axis=0))
 
-                        batch_mask_blosum = np.broadcast_to(batch_mask[:, None, :, None], (
-                        num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).copy()
+                        batch_mask_blosum = np.broadcast_to(batch_mask[:, None, :, None], (num_synthetic_peptides_batch, 2, maxlen_generated, model_load.aa_types)).copy()
                         batch_mask_blosum = torch.from_numpy(batch_mask_blosum).to(args.device)
                         guide_estimates = {
                             "rnn_hidden": h_0_GUIDE.expand(1 * 2, num_synthetic_peptides_batch, args.hidden_dim * 2).contiguous(),
@@ -685,22 +684,27 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
                         identical_to_train_bool = np.any(np.array(generated_sequences_int[:, None] == train_dataset[None, :]).all((-1)) == True, axis=0)
                         identical_to_train_idx, = np.where(identical_to_train_bool == True)
                         identical_to_train_idx = np.invert(np.array(np.arange(num_synthetic_peptides_batch)[..., None] == identical_to_train_idx).any(-1))
-                        # Highlight: Remove duplicates
+                        # Highlight: Remove inner duplicates
                         unique_idx = np.array(np.arange(num_synthetic_peptides_batch)[..., None] == unique_idx).any(-1)
-                        # Highlight: Merge the indicators of the NON duplicates (so that we can discard the duplicates, keep the unique ones)
+                        # Highlight: Merge the indicators of the all the NON duplicates (so that we can discard all the duplicates, keep the unique ones)
                         unique_idx = unique_idx * identical_to_train_idx
                         # Highlight: Deal with gaps i.e Remove the sequences that have a gap in positions < 8
                         if zero_character is not None:
+                            print("Reached here")
                             clean_results = list(map(lambda seq_int, seq_mask: VegvisirUtils.clean_generated_sequences(seq_int,
                                                                                                                        seq_mask,
                                                                                                                        zero_character,
-                                                                                                                      min_len=8,
-                                                                                                                      max_len=maxlen_generated),generated_sequences_int.tolist(), batch_mask.numpy().tolist()))
+                                                                                                                       min_len=8,
+                                                                                                                       max_len=maxlen_generated),
+                                                                                                                       generated_sequences_int.tolist(),
+                                                                                                                       batch_mask.numpy().tolist()))
+
+
                             discarded_sequences = list(map(lambda v, i: i if v is None else None, clean_results, list(range(len(clean_results)))))
                             discarded_sequences = np.array(list(filter(lambda i: i is not None, discarded_sequences)))
                             clean_results = list(filter(lambda v: v is not None, clean_results))
-
                             clean_results = list(zip(*clean_results))
+
                             # clean_generated_sequences = clean_results[0]
                             if len(clean_results) > 1:
                                 clean_generated_masks = clean_results[1]
@@ -725,14 +729,11 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
                         if np.sum(keep_idx) != 0:
                             generated_sequences_int = generated_sequences_int[keep_idx]
                             batch_mask = generated_sequences_mask = batch_mask[keep_idx]
-
                             generated_sequences_raw = np.vectorize(aminoacids_dict_reversed.get)(generated_sequences_int)
                             generated_sequences_blosum = np.vectorize(blosum_array_dict.get, signature='()->(n)')(generated_sequences_int)
-
-
                             n_seqs_clean = generated_sequences_int.shape[0]
                             class_logits = sampling_output["class_logits"].detach().cpu().permute(1, 0, 2)
-                            class_probabilities = torch.nn.Sigmoid()(class_logits)
+                            class_probabilities = torch.nn.functional.softmax(class_logits)
 
                             if sampling_output["predictions"].shape == (args.num_samples, num_synthetic_peptides_batch):
                                 binary_predictions = sampling_output["predictions"].detach().cpu().permute(1, 0).numpy()[keep_idx]
@@ -986,6 +987,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
                                 keep_idx = np.invert((np.arange(num_synthetic_peptides_batch)[..., None] == discarded_sequences).any(-1))
                                 batch_mask = batch_mask.numpy()
                                 batch_mask[keep_idx] = generated_sequences_mask
+                                del clean_generated_masks
                             else:
                                 keep_idx = np.ones(num_synthetic_peptides_batch).astype(bool)
 
@@ -1006,7 +1008,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
 
                         n_seqs_clean = generated_sequences_int.shape[0]
                         class_logits = sampling_output["class_logits"].detach().cpu().permute(1, 0, 2)
-                        class_probabilities = torch.nn.Sigmoid()(class_logits)
+                        class_probabilities = torch.nn.functional.softmax(class_logits)
 
                         if sampling_output["predictions"].shape == (args.num_samples, num_synthetic_peptides_batch):
                             binary_predictions = sampling_output["predictions"].detach().cpu().permute(1, 0).numpy()[keep_idx]
@@ -1051,7 +1053,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
                         del sampling_output, binary_frequencies, binary_mode,binary_predictions
                         if argmax:
                             del sequences_logits
-                        del unique_sequences,unique_idx,identical_to_train_idx,identical_to_train_bool,clean_results,discarded_sequences, clean_generated_masks,generated_sequences_mask
+                        del unique_sequences,unique_idx,identical_to_train_idx,identical_to_train_bool,clean_results,discarded_sequences,generated_sequences_mask
                         del keep_idx, generated_sequences_int, generated_sequences_blosum,generated_sequences_raw, class_logits,class_probabilities
                         del confidence_score,true_labels,true_onehot, n_seqs_clean
                         del latent_space,identifiers,partitions,immunodominace_score
@@ -1892,11 +1894,12 @@ def train_model(config=None,dataset_info=None,additional_info=None,args=None):
             print("Joining Training & validation datasets to perform testing...")
             train_idx = (train_idx.int() + valid_idx.int()).bool()
             load_model(train_idx, test_idx, dataset_info, args, additional_info)
-        else:
+        elif args.test and not args.validate:
             print("Joining Training & validation datasets to perform testing...")
             train_idx = (train_idx.int() + valid_idx.int()).bool()
             load_model(train_idx, test_idx, dataset_info, args, additional_info, mode="Test")
-
+        else:
+            raise ValueError("Please set args.test or args.validate to True")
     else:
         if not args.test and args.validate:
             print("Only Training & Validation")
@@ -1912,13 +1915,15 @@ def train_model(config=None,dataset_info=None,additional_info=None,args=None):
                 print("Joining Training & validation datasets to perform testing...")
             train_idx = (train_idx.int() + valid_idx.int()).bool()
             epoch_loop(train_idx, test_idx, dataset_info, args, additional_info, mode="Test",config=config)
-        else:
+        elif args.test and not args.validate:
             if args.dataset_name == "viral_dataset7" and not args.test:
                 warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
             else:
                 print("Joining Training & validation datasets to perform testing...")
             train_idx = (train_idx.int() + valid_idx.int()).bool()
             epoch_loop(train_idx, test_idx, dataset_info, args, additional_info,mode="Test",config=config)
+        else:
+            raise ValueError("Please set args.test or args.validate to True")
 def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid",fold=""):
     """Load pre-trained parameters"""
     print("Loading dataset into pre-trained model...")

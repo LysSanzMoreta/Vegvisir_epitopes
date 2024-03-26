@@ -164,7 +164,8 @@ class VEGVISIRGUIDES(EasyGuide):
                 "rnn_final_hidden_bidirectional": rnn_final_hidden_state_bidirectional,
                 "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
                 "rnn_hidden_states":rnn_hidden_states,
-                "sampling_type":self.generate_sampling_type}
+                "sampling_type":self.generate_sampling_type
+                }
 
     def guide_unsupervised(self, batch_data, batch_mask, epoch, guide_estimates, sample=False):
         """
@@ -386,7 +387,6 @@ class VEGVISIRGUIDES(EasyGuide):
                 "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
                 "rnn_hidden_states": rnn_hidden_states,
                 "sampling_type":self.generate_sampling_type}
-
 
     def guide(self,batch_data,batch_mask,epoch,guide_estimates,sample):
         if self.seq_max_len == self.max_len:

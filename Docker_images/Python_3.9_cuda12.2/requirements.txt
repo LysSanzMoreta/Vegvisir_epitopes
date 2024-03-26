@@ -1,0 +1,13 @@
+#gget>=0.28.4 --config-settings="--build-option=--ignore-installed"
+gget
+cellxgene-census
+twine
+build
+dromi
+imgkit
+logomaker
+graphviz
+#numba==0.59 --config-settings="--build-option=--ignore-installed"
+#scikit-misc>=0.3.1 --config-settings="--build-option=--ignore-installed"
+#scikit-misc --config-settings="--build-option=--ignore-installed"
+#jax[cuda12_pip] --config-settings="--build-option=-f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"

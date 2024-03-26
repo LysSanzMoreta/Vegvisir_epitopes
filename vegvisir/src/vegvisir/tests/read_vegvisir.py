@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import umap
 from sklearn.metrics import auc, roc_auc_score, roc_curve, confusion_matrix, matthews_corrcoef, precision_recall_curve, average_precision_score, recall_score
-
+import torch
+import torch.nn.functional as f
 def test_correctness(results):
 
     target_scores = results[["Vegvisir_negative_prob", "Vegvisir_positive_prob"]].to_numpy().astype(float)
@@ -48,5 +49,25 @@ def test_correctness(results):
     plt.clf()
 
 
-results_train = pd.read_csv("epitopes_info_TRAIN.tsv",sep="\t")
-results_test = pd.read_csv("epitopes_info_TEST.tsv",sep="\t")
+
+def test_prob_join(results):
+    target_scores = results[["Vegvisir_negative_prob", "Vegvisir_positive_prob"]].to_numpy().astype(float)
+    targets = np.array(results["Target_corrected"].tolist())
+
+
+    #target_scores = torch.randn((4,2)).float()
+    #target_scores = np.array([[0.5,0.2],[0.3,0.4],[0.2,0.2]])
+    #print(target_scores)
+    probs = f.softmax(torch.from_numpy(target_scores),dim=-1)
+    fpr, tpr, _ = roc_curve(targets, probs[:,1])
+    roc_auc = auc(fpr, tpr)
+
+
+
+results_train = pd.read_csv("Epitopes_predictions_Train_fold_0.tsv",sep="\t")
+#test_correctness(results_train)
+test_prob_join(results_train)
+
+results_test = pd.read_csv("Epitopes_predictions_Test_fold_0.tsv",sep="\t")
+
+test_prob_join(results_test)

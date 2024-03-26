@@ -202,7 +202,6 @@ class VEGVISIRModelClass(nn.Module):
 
         # Highlight: xb
         xb = torch.from_numpy(guide_estimates["latent_z"][idx_train][:,6:]).T.to(OU_mean_generated.device)  # [z_dim,n_train]
-
         assert xb.shape == (self.z_dim,n_train), "Perhaps you forgot that the latent space has some columns stacked"
         # Highlight:µb
         OU_mean_train = torch.zeros((n_train,))

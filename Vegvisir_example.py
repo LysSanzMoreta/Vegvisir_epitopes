@@ -195,6 +195,7 @@ def analysis_models():
 
     #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_viral_dataset9_HPO_z4,kfolds=5,results_folder="Benchmark/Plots",subtitle="predefined_partitions_VIRAL_DATASET9_z4_NEWWWW",overwrite_correlations=True,overwrite_all=False)
     #VegvisirPlots.plot_kfold_latent_correlations(args,script_dir,dict_results_predefined_partitions_viral_dataset15_HPO_z16,kfolds=5,results_folder="Benchmark/Plots",subtitle="VIRAL_DATASET15_HPO_z16_tryptophan",overwrite_correlations=False,overwrite_all=False)
+
     dict_results_benchmark= { "Icore" :{
         "raw-variable-length-vd15":dict_results_predefined_partitions_viral_dataset15_HPO_z16["Icore"]["raw-variable-length"],
         "raw-variable-length-vd9":dict_results_predefined_partitions_viral_dataset9_HPO_z4["Icore"]["raw-variable-length"]
@@ -202,24 +203,37 @@ def analysis_models():
 
 
     #Highlight: Benchmarking
-    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd9",folder="Benchmark/Plots",title="VIRAL_DATASET9_HPO_z4")
+   # VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd9",folder="Benchmark/Plots",title="VIRAL_DATASET9_HPO_z4")
     #Highlight: works
-    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",folder="Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_only_overlapped_seqs_TESSTING",keep_only_overlapped=True,aggregated_not_overlap=False,keep_all=False,only_ppv1=False)
-    #Highlight: works
-    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",folder="Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_removed_ALL_overlapping_seqs_TESSTING",keep_only_overlapped=False,aggregated_not_overlap=True,keep_all=False)
-    #Highlight: works
-    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",folder="Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_TESSTING",keep_only_overlapped=False,aggregated_not_overlap=False,keep_all=True,only_ppv1=False) #keeps all sequences
-    #Highlight: works
-    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",folder="Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_Vegvisir_keep_all_common_sequences_TESSTING",keep_only_overlapped=True,aggregated_not_overlap=True,only_ppv1=True,keep_all=False)
-    #Highlight: works
-    #VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",folder="Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_Vegvisir_removed_overlapping_sequences_per_model_TESSTING",keep_only_overlapped=False,aggregated_not_overlap=False,keep_all=False,only_ppv1=False)
+    VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",
+                                            folder="Benchmark/Plots",
+                                            title="VIRAL_DATASET15_HPO_z16_only_overlapped_seqs_ENSEMBL",
+                                            keep_only_overlapped=True,aggregated_not_overlap=False,keep_all=False,only_class1=False,ensemble=True)
 
+    ##Highlight: works
+    VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",
+                                            folder="Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_removed_ALL_overlapping_seqs_ENSEMBL",
+                                            keep_only_overlapped=False,aggregated_not_overlap=True,keep_all=False,only_class1=False,ensemble=True)
 
-    exit()
+    ##Highlight: works
+    VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",
+                                            folder="Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_ENSEMBL",
+                                            keep_only_overlapped=False,aggregated_not_overlap=False,keep_all=True,only_class1=False,ensemble=True) #keeps all sequences
+
+    ##Highlight: works
+    VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",
+                                            folder="Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_Vegvisir_keep_all_common_sequences_ENSEMBL",
+                                            keep_only_overlapped=True,aggregated_not_overlap=True,only_class1=True,ensemble=True)
+    ##Highlight: works
+    VegvisirPlots.plot_benchmarking_results(dict_results_benchmark,script_dir,keyname="raw-variable-length-vd15",folder="Benchmark/Plots",
+                                            title="VIRAL_DATASET15_HPO_z16_Vegvisir_removed_overlapping_sequences_per_model_ENSEMBL",
+                                            keep_only_overlapped=False,aggregated_not_overlap=False,keep_all=False,only_class1=False,ensemble=True)
+
 
     #Highlight: Model stress comparison
     #VegvisirPlots.plot_model_stressing_comparison1(dict_results_predefined_partitions_viral_dataset9_HPO_z4,script_dir,results_folder="Benchmark/Plots",encoding="-",subtitle="VIRAL_DATASET9_HPO_z4",keyname="viral_dataset9")
-    VegvisirPlots.plot_model_stressing_comparison2(dict_results_predefined_partitions_viral_dataset15_HPO_z16,script_dir,results_folder="Benchmark/Plots",encoding="-",subtitle="VIRAL_DATASET15_HPO_z16_ONLY_VEGVISIR",keyname="viral_dataset15")
+    # VegvisirPlots.plot_model_stressing_comparison2(dict_results_predefined_partitions_viral_dataset15_HPO_z16,script_dir,results_folder="Benchmark/Plots",
+    #                                                encoding="-",subtitle="VIRAL_DATASET15_HPO_z16_ONLY_VEGVISIR_ENSEMBL",keyname="viral_dataset15",ensemble=True)
 
     exit()
 
@@ -236,6 +250,25 @@ def hierarchical_clustering():
                            }
     #VegvisirPlots.plot_hierarchical_clustering(vegvisir_folder_viral_dataset_9_z4, external_paths_dict,folder="/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots",title="VIRAL_DATASET9_HPO_z9_tryptophan",keyname="viral_dataset9")
     VegvisirPlots.plot_hierarchical_clustering(vegvisir_viral_dataset15_z16, external_paths_dict,folder="/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots",title="VIRAL_DATASET15_HPO_z16_tryptophan",keyname="viral_dataset15")
+
+def ablation_study():
+    #/home/lys/Dropbox/PostDoc/vegvisir/Ablation_studies/Likelihood/Ablation_study_likelihood/PLOTS_Vegvisir_viral_dataset15_2024_03_25_22h25min27s788645ms_60epochs_supervised_Icore_blosum_TESTING
+    ablation_dict = { 1:"/home/lys/Dropbox/PostDoc/vegvisir/Ablation_studies/Likelihood/Ablation_study_likelihood/PLOTS_Vegvisir_viral_dataset15_2024_03_25_22h25min27s788645ms_60epochs_supervised_Icore_blosum_TESTING",
+                     10:"/home/lys/Dropbox/PostDoc/vegvisir/Ablation_studies/Likelihood/Ablation_study_likelihood/PLOTS_Vegvisir_viral_dataset15_2024_03_25_22h55min51s373033ms_60epochs_supervised_Icore_blosum_TESTING",
+                     20:"/home/lys/Dropbox/PostDoc/vegvisir/Ablation_studies/Likelihood/Ablation_study_likelihood/PLOTS_Vegvisir_viral_dataset15_2024_03_25_23h25min33s535839ms_60epochs_supervised_Icore_blosum_TESTING",
+                     30:"/home/lys/Dropbox/PostDoc/vegvisir/Ablation_studies/Likelihood/Ablation_study_likelihood/PLOTS_Vegvisir_viral_dataset15_2024_03_25_23h56min02s283158ms_60epochs_supervised_Icore_blosum_TESTING",
+                     40:"/home/lys/Dropbox/PostDoc/vegvisir/Ablation_studies/Likelihood/Ablation_study_likelihood/PLOTS_Vegvisir_viral_dataset15_2024_03_26_00h25min27s753388ms_60epochs_supervised_Icore_blosum_TESTING",
+                     50:"/home/lys/Dropbox/PostDoc/vegvisir/Ablation_studies/Likelihood/Ablation_study_likelihood/PLOTS_Vegvisir_viral_dataset15_2024_03_26_00h55min37s940818ms_60epochs_supervised_Icore_blosum_TESTING",
+                     60:"/home/lys/Dropbox/PostDoc/vegvisir/Ablation_studies/Likelihood/Ablation_study_likelihood/PLOTS_Vegvisir_viral_dataset15_2024_03_26_01h27min12s342080ms_60epochs_supervised_Icore_blosum_TESTING",
+                     70:"/home/lys/Dropbox/PostDoc/vegvisir/Ablation_studies/Likelihood/Ablation_study_likelihood/PLOTS_Vegvisir_viral_dataset15_2024_03_26_02h01min50s511689ms_60epochs_supervised_Icore_blosum_TESTING",
+                     }
+    VegvisirPlots.plot_ablation_study(ablation_dict,script_dir,"/home/lys/Dropbox/PostDoc/vegvisir/Ablation_studies/Likelihood",subtitle="",ensemble=True)
+
+
+    vegvisir_dict = {"raw-variable-length":"/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Vegvisir_benchmarking/HPO_viral_dataset15/PLOTS_Vegvisir_viral_dataset15_2024_01_19_05h26min27s211598ms_60epochs_supervised_Icore_blosum_TESTING"}
+
+    #VegvisirPlots.plot_metrics_per_length(vegvisir_dict,script_dir,folder="/home/lys/Dropbox/PostDoc/vegvisir/Ablation_studies/Lengths",subtitle="")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
@@ -344,32 +377,32 @@ if __name__ == "__main__":
     parser.add_argument('-hpo', type=str2bool, nargs='?', default=False,help='<True> Performs Hyperparameter optimization with Ray Tune')
     best_config = {0: "{}/BEST_hyperparameter_dict_onehot.p".format(script_dir),
                    1: "{}/BEST_hyperparameter_dict_blosum.p".format(script_dir),#best hpo for vd15
-                   2: "{}/BEST_hyperparameter_dict_blosum_z16.p".format(script_dir), #second best hpo for vd15
+                   2: "{}/BEST_hyperparameter_dict_blosum_z16.p".format(script_dir), #second best hpo for vd15, the first one was z2 and that is too small
                    3: "{}/BEST_hyperparameter_dict_blosum_vd9_z34.p".format(script_dir), #second best hpo
                    4: None}
     parser.add_argument('-config-dict', nargs='?', default=best_config[2], type=str2None,help='Path to the HPO optimized hyperparameter dict. Overrules the previous hyperparameters')
 
     #Highlight: Evaluation modes
-    parser.add_argument('-train', type=str2bool, nargs='?', default=False,help='<True> Run the model '
-                                                                              '\n <False> Make benchmarking plots or load previously trained model, if pargs.pretrained_model is not None ')
+    parser.add_argument('-train', type=str2bool, nargs='?', default=True,help='<True> Run the model '
+                                                                              '\n <False> Makes benchmarking plots or loads previously trained model, if pargs.pretrained_model is not None ')
     parser.add_argument('-validate', type=str2bool, nargs='?', default=False, help='Evaluate the model on the validation dataset. Only needed for model design')
     parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
 
     #Highlight: Generating new sequences from a trained model
-    parser.add_argument('-generate', type=str2bool, nargs='?', default=False, help='<True> Generate new neo-epitopes labelled and with a confidence score based on the training dataset. Please use args.validate False '
+    parser.add_argument('-generate', type=str2bool, nargs='?', default=True, help='<True> Generate new neo-epitopes labelled and with a confidence score based on the training dataset. Please use args.validate False '
                                                                                    '\n <False> Do nothing')
-    parser.add_argument('-num-synthetic-peptides', type=int, nargs='?', default=10, help='<True> Generate new neo-epitopes labelled and with a confidence score. IMPORTANT: The total number of generated peptides is'
+    parser.add_argument('-num-synthetic-peptides', type=int, nargs='?', default=30, help='<True> Generate new neo-epitopes labelled and with a confidence score. IMPORTANT: The total number of generated peptides is'
                                                                                           'equal to args.num_synthetic_peptides*args.num_samples*args.num_generate_loops')
     parser.add_argument('-num-generate-loops', type=int, nargs='?', default=1, help='Number of times to repeat the sampling loop')
     parser.add_argument('-generate-sampling-type', type=str, nargs='?', default="conditional", help='<conditional> \n'
                                                                                                     '<independent>')
     parser.add_argument('-generate-argmax', type=str2bool, nargs='?', default=False, help='True \n False')
 
-    #Highlight: immunomodulating a sequence
+    #Highlight: immunomodulating (supression or enhancing of immunogencity) a sequence
     immunomodulate_path = {0:"{}/immunomodulate_sequences.txt".format(script_dir),
                            1:None}
-    parser.add_argument('-immunomodulate', type=str2bool, nargs='?', default=False, help='<True> Predict latent representation for the given sequences and generate new neo-epitopes labelled and with a confidence score based only on the input sequences via args.immunomodulate_path. Please use args.validate False''<False> Do nothing')
-    parser.add_argument('-num-immunomodulate-peptides', type=int, nargs='?', default=100, help='Number of generated peptides generated from the sequence to immunomodulate. The total number of generated peptides'
+    parser.add_argument('-immunomodulate', type=str2bool, nargs='?', default=True, help='<True> Predict latent representation for the given sequences and generate new neo-epitopes labelled and with a confidence score based only on the input sequences via args.immunomodulate_path. Please use args.validate False''<False> Do nothing')
+    parser.add_argument('-num-immunomodulate-peptides', type=int, nargs='?', default=10, help='Number of generated peptides generated from the sequence to immunomodulate. The total number of generated peptides'
                                                                                                 'is equal to args.num_immunomodulates_peptides*args.num_samples')
     parser.add_argument('-immunomodulate-path', type=str2None, nargs='?', default= immunomodulate_path[0], help='Path to text file containing sequences to change their immunogenicity')
 
@@ -414,32 +447,31 @@ if __name__ == "__main__":
 
     #Highlight: DO NOT CHANGE ANYTHING ELSE DOWN HERE
     args = parser.parse_args()
-
     if args.use_cuda:
         if torch.cuda.is_available():
-            torch.set_default_tensor_type(torch.cuda.DoubleTensor)
-            #cuda_device = "cuda:{}".format(os.environ["CUDA_VISIBLE_DEVICES"]) if args.hpo else "cuda"
-            cuda_device = "cuda"
-            parser.add_argument('--device',type=str,default="{}".format(cuda_device) ,nargs='?', help='Device choice (cpu, cuda:0, cuda:1, ...), behaviour linked to use_cuda')
+                device = "cuda"
+                torch.set_default_device(device)
+                torch.set_default_tensor_type(torch.cuda.DoubleTensor)
+                args.__dict__["device"] = device
         else:
-            print("Cuda (gpu) not found falling back to cpu")
-            torch.set_default_tensor_type(torch.DoubleTensor)
-            parser.add_argument('--device',type=str,default="cpu" ,nargs='?', help='Device choice (cpu, cuda:0, cuda:1), linked to use_cuda')
-            parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=False,help='True: Use GPU; False: Use CPU')
+                print("Cuda (gpu) not found falling back to cpu")
+                device = "cpu"
+                torch.set_default_tensor_type(torch.DoubleTensor)
+                torch.set_default_device(device)
+                args.__dict__["device"] = device
+                args.__dict__["use_cuda"] = False
     else:
+        device = "cpu"
         torch.set_default_tensor_type(torch.DoubleTensor)
-        parser.add_argument('--device', type=str, default="cpu", nargs='?',help='Device choice (cpu, cuda:0, cuda:1), linked to use_cuda')
+        torch.set_default_device(device)
+        args.__dict__["device"] = device
+
     if args.dataset_name in ["viral_dataset6","viral_dataset8","viral_dataset10","viral_dataset11"]:
-        parser.add_argument('-num_classes', type=int, nargs='?', default=3,help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')
-        parser.add_argument('-num_obs_classes', type=int, nargs='?', default=2,help='Number of prediction classes. The model performs a regression task and the binary classification is derived from the entropy value')
-
+        args.__dict__["num_classes"] = 3 #Number of predicted classes
+        args.__dict__["num_obs_classes"] = 2 #Number of observed classes
     else:
-        parser.add_argument('-num_classes', type=int, nargs='?', default=2,
-                            help='Number of data type classes (includes observed and unobserved). The model performs a regression task and the binary classification is derived from the entropy value')
-        parser.add_argument('-num_obs_classes', type=int, nargs='?', default=2,
-                            help='Number of observed classes (positives, negatives). The model performs a regression task and the binary classification is derived from the entropy value')
-
-    args = parser.parse_args()
+        args.__dict__["num_classes"] = 2 #Number of predicted classes
+        args.__dict__["num_obs_classes"] = 2 #Number of observed classes
     #pyro.set_rng_seed(0)
     #torch.manual_seed(0)
     pyro.enable_validation(False)
@@ -464,12 +496,13 @@ if __name__ == "__main__":
             args_dict["immunomodulate"] = args.immunomodulate
             args_dict["train_path"] = args.train_path
             args_dict["test_path"] = args.test_path
-            warnings.warn("Overriding most of your current args except <dataset_name>,<sequence_type>,<num_obs_classes>,<num_classes>,<generate>,<iimunomodulate> ...")
+            warnings.warn("Overriding some of your current args except <dataset_name>,<sequence_type>,<num_obs_classes>,<num_classes>,<generate>,<iimunomodulate> ...")
             args = Namespace(**args_dict)
     if args.train:
         main()
     else:
         analysis_models()
         #hierarchical_clustering()
+        #ablation_study()
 
 

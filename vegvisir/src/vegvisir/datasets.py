@@ -257,13 +257,11 @@ def immunomodulate_dataset(script_dir,storage_folder,args,results_dir,corrected_
             immunomodulate_data["confidence_score"] = 0
             immunomodulate_data["org_name"] = 0
             immunomodulate_data["allele"] = "HLA-A0101"
+            immunomodulate_data["allele_encoded"] = 0
             filters_dict, analysis_mode = select_filters(args)
             data_info = process_data(immunomodulate_data, args, storage_folder, script_dir, analysis_mode, filters_dict,corrected_parameters=corrected_parameters)
 
             return data_info
-
-
-
     else:
         raise ValueError("You have selected args.immunomodulate == True, however args.immunomodulate_path has not recieved any valid path."
                          "\n Switch off args.immunomodulate or input a valid path")
@@ -2352,7 +2350,7 @@ def data_volumetrics(seq_max_len,epitopes_list,data,epitopes_array_mask,storage_
 
         VegvisirPlots.plot_features_covariance(epitopes_array_raw.tolist(),features_dict_all,seq_max_len,immunodominance_scores,storage_folder,args,subfolders,tag="_immunodominance_scores",use_precomputed_features=use_precomputed_features)
         VegvisirPlots.plot_features_covariance(epitopes_array_raw.tolist(),features_dict_all,seq_max_len,labels_arr,storage_folder,args,subfolders,tag="_binary_labels",use_precomputed_features=use_precomputed_features)
-        exit()
+
         #Highlight: Train
         features_dict_all_train = VegvisirUtils.CalculatePeptideFeatures(seq_max_len,epitopes_array_raw_division_train.all.tolist(),storage_folder).features_summary()
         subfolders = "{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode)

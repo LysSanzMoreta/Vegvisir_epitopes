@@ -12,7 +12,7 @@ import numpy as np
 import vegvisir
 import vegvisir.train as VegvisirTrain
 import vegvisir.train_svi as VegvisirTrainSVI
-import vegvisir.train_rf as VegvisirTrainRF
+#import vegvisir.train_rf as VegvisirTrainRF
 from collections import namedtuple
 import ray
 from ray import tune

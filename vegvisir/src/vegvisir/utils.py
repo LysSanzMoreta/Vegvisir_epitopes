@@ -1207,7 +1207,7 @@ def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
     Calculates the amount of vector similarity/distance change between the hidden representations of the positions in the sequence for both backward and forward RNN hidden states.
     1) For a given sequence with 2 sequences of hidden states [2,L,Hidden_dim]
 
-        A) Calculate cosine similarities for each of the forward and backward hidden states  (vectors) of an RNN
+        A) Calculate the cosine similarities between all the hidden states of the forward and backward networks of an RNN
         Forward = Cos_sim([Hidden_states[0],Hidden_states[0]]
         Backward = Cos_sim([Hidden_states[1],Hidden_states[1]]
 
@@ -1239,7 +1239,7 @@ def information_shift(arr,arr_mask,diag_idx_maxlen,max_len):
         #Highlight: ignore the positions that have paddings
         n_paddings = (arr_mask.shape[0] - arr_mask.sum()) # max_len - true_len
         keep = cos_sim_diag.shape[0] - n_paddings #number of elements in the offset diagonal - number of "False" or paddings along the sequence
-        if keep <= 0: #when all the sequence is paddings or only one position is not a padding, every position gets value 0
+        if keep <= 0: #when all the sequence is made of paddings or only one position is not a padding, every position gets value 0
             if idx == 0:
                 forward = np.zeros((max_len-1))
             else:
@@ -1361,30 +1361,45 @@ def convert_to_pandas_dataframe(epitopes_padded,data,storage_folder,args,use_tes
 
 def calculate_isoelectric(seq):
     seq = "".join(seq).replace("#","").replace("-","")
-    isoelectric = IP(seq).pi()
+    if seq:
+        isoelectric = IP(seq).pi()
+    else:
+        isoelectric = 0
     return isoelectric
 
 def calculate_molecular_weight(seq):
     seq = "".join(seq).replace("#","").replace("-","")
-    molecular_weight = ProteinAnalysis(seq).molecular_weight()
+    if seq:
+        molecular_weight = ProteinAnalysis(seq).molecular_weight()
+    else:
+        molecular_weight = 0
     return molecular_weight
 
 def calculate_aromaticity(seq):
     seq = "".join(seq).replace("#","").replace("-","")
-    aromaticity = ProteinAnalysis(seq).aromaticity()
+    if seq:
+        aromaticity = ProteinAnalysis(seq).aromaticity()
+    else:
+        aromaticity = 0
     return aromaticity
 
 def calculate_gravy(seq):
     "GRAVY (grand average of hydropathy)"
     seq = "".join(seq).replace("#","").replace("-","")
-    gravy = ProteinAnalysis(seq).gravy()
+    if seq:
+        gravy = ProteinAnalysis(seq).gravy()
+    else:
+        gravy = 0
     return gravy
 
 def calculate_extintioncoefficient(seq):
     """Calculates the molar extinction coefficient assuming cysteines (reduced) and cystines residues (Cys-Cys-bond)
     :param str seq"""
     seq = "".join(seq).replace("#","").replace("-","")
-    excoef_cysteines, excoef_cystines = ProteinAnalysis(seq).molar_extinction_coefficient()
+    if seq:
+        excoef_cysteines, excoef_cystines = ProteinAnalysis(seq).molar_extinction_coefficient()
+    else:
+        excoef_cysteines, excoef_cystines = 0,0
     return excoef_cysteines,excoef_cystines
 
 
@@ -1692,7 +1707,12 @@ def numpy_to_fasta(aa_sequences,binary_pedictions,probabilities,results_dir,fold
     df.to_csv("{}/epitopes.tsv".format(results_dir),sep="\t",index=False)
 
     VegvisirPlots.plot_generated_labels_histogram(df,results_dir)
-    VegvisirPlots.plot_logos(sequences_list,results_dir,"ALL_generated")
+
+    #try:
+    sequences_list2 = list(map(lambda seq: "{}".format("".join(seq).replace("#", "-")), aa_sequences.tolist()))
+    VegvisirPlots.plot_logos(sequences_list2,results_dir,"ALL_generated")
+    #except:
+    #    pass
 
     positive_sequences = df[df["Positive_score"] >= 0.6]
     positive_sequences_list = positive_sequences["Epitopes"].tolist()

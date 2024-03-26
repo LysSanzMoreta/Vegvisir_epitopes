@@ -616,20 +616,20 @@ def calculate_similarities_parallel(array, max_len, array_mask, storage_folder,a
                                                kmers_cosine_similarity_mean=np.ma.getdata(kmers_cosine_similarity_mean))
         print("Visualizing heatmaps...")
         VegvisirPlots.plot_heatmap(positional_weights, "Positional Weights",
-                                   "{}/{}/similarities/{}/HEATMAP_positional_weights.png".format(storage_folder,
+                                   "{}/{}/similarities/{}/HEATMAP_positional_weights.jpg".format(storage_folder,
                                                                                               args.dataset_name,analysis_mode))
         VegvisirPlots.plot_heatmap(percent_identity_mean, "Percent Identity",
-                                   "{}/{}/similarities/{}/HEATMAP_percent_identity_mean.png".format(storage_folder,
+                                   "{}/{}/similarities/{}/HEATMAP_percent_identity_mean.jpg".format(storage_folder,
                                                                                                  args.dataset_name,analysis_mode))
         VegvisirPlots.plot_heatmap(cosine_similarity_mean, "Cosine similarity",
-                                   "{}/{}/similarities/{}/HEATMAP_cosine_similarity_mean.png".format(storage_folder,
+                                   "{}/{}/similarities/{}/HEATMAP_cosine_similarity_mean.jpg".format(storage_folder,
                                                                                                   args.dataset_name,analysis_mode))
         VegvisirPlots.plot_heatmap(kmers_pid_similarity, "Kmers ({}) percent identity".format(ksize),
-                                   "{}/{}/similarities/{}/HEATMAP_kmers_pid_similarity_{}ksize.png".format(storage_folder,
+                                   "{}/{}/similarities/{}/HEATMAP_kmers_pid_similarity_{}ksize.jpg".format(storage_folder,
                                                                                                         args.dataset_name,analysis_mode,
                                                                                                         ksize))
         VegvisirPlots.plot_heatmap(kmers_cosine_similarity, "Kmers ({}) cosine similarity".format(ksize),
-                                   "{}/{}/similarities/{}/HEATMAP_kmers_cosine_similarity_{}ksize.png".format(storage_folder,
+                                   "{}/{}/similarities/{}/HEATMAP_kmers_cosine_similarity_{}ksize.jpg".format(storage_folder,
                                                                                                            args.dataset_name,analysis_mode,
                                                                                                            ksize))
 

@@ -4,7 +4,6 @@ from .utils import *
 from .nnalign import *
 from .plots import *
 from .train import *
-from .train_rf import *
 from .load_utils import *
 from .models import *
 from .model_utils import *
