@@ -99,6 +99,19 @@ def replace_nan(x,x_unique,replace_val=0.0):
             np.append(x_unique,[0])
     return x,x_unique
 
+
+def find_mode(a):
+    mode_values = a.mode(dropna=False) #pd.series.mode()
+    if len(mode_values) == 0:
+        return np.nan
+    else:
+        return mode_values.iloc[0]
+
+    # vals,counts = np.unique(a,return_counts=True) #works if there are non nan values
+    # index = np.argmax(counts)
+    # return vals[index]
+
+
 def aminoacid_names_dict(aa_types,zero_characters = []):
     """ Returns an aminoacid associated to a integer value
     All of these values are mapped to 0:
@@ -1434,7 +1447,7 @@ class CalculatePeptideFeatures(object):
     def __init__(self,seq_max_len,list_sequences,storage_folder,return_aa_freqs=False,only_w=True):
         self.storage_folder = storage_folder
         self.seq_max_len = seq_max_len
-        self.aminoacid_properties = pd.read_csv("{}/aminoacid_properties.txt".format(storage_folder),sep = "\s+")
+        self.aminoacid_properties = pd.read_csv("{}/common_files/aminoacid_properties.txt".format(storage_folder),sep = "\s+")
         self.list_sequences = list_sequences
         self.return_aa_freqs = return_aa_freqs
         self.only_w = only_w
@@ -1727,7 +1740,7 @@ def numpy_to_fasta(aa_sequences,binary_pedictions,probabilities,results_dir,fold
         VegvisirPlots.plot_logos(negative_sequences_list,results_dir,"NEGATIVES_generated")
 
 def squeeze_tensor(required_ndims,tensor):
-    """Squeezes a tensor to match ndim"""
+    """Squeezes a tensor to match required_ndim without leftover empty dimensions (1)"""
     size = torch.tensor(tensor.shape)
     ndims = len(size)
     idx_ones = (size == 1)

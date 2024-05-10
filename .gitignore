@@ -67,3 +67,9 @@ Results_netMHCpan/Conditional_sampling/
 vegvisir/src/vegvisir/tests/Epitopes_predictions_Test_fold_0.tsv
 
 vegvisir/src/vegvisir/tests/Epitopes_predictions_Train_fold_0.tsv
+
+Results_netMHCpan/Independent_sampling/old_plots/
+
+Results_netMHCpan/Independent_sampling/
+
+Results_netMHCpan/vegvisir_Generated/

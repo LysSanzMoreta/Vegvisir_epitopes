@@ -14,7 +14,7 @@ from glob import glob
 from pathlib import Path
 
 import dill
-import imgkit
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.colors import Normalize, BoundaryNorm, LinearSegmentedColormap

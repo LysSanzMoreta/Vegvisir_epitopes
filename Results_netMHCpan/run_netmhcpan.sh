@@ -21,7 +21,7 @@ echo $arg
 if getopts "r:" arg; then
       echo "Results path:  $OPTARG"
       results=$OPTARG
-      echo "Here1"
+      echo "I have accepted the argument -r"
 else
       results="/home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan"
       echo "Results path : $results"
@@ -34,7 +34,7 @@ echo $arg
 if getopts "ft:" arg; then
       echo "Folder type:  $OPTARG"
       foldertype=$OPTARG
-      echo "Here2"
+      echo "I have accepted the argument -f"
 else
       foldertype="Generated"
       echo "Folder type : $foldertype"
@@ -43,8 +43,8 @@ echo $arg
 ############################################
 
 shopt -s expand_aliases
-#alias netmhcpan='sh /home/lys/netMHCpan-4.1/netMHCpan'
-alias netmhcpan='sh /home/lys/netMHCpan-4.1/Linux_x86_64/bin/netMHCpan'
+alias netmhcpan='sh /home/lys/netMHCpan-4.1/netMHCpan' #recall to open netmhcpan with tar -zxvf, do not right click and extract
+
 
 ##Create directory with current date/time to store the results
 #time_stamp=$(date +%Y_%m_%d_%T)
@@ -65,6 +65,7 @@ do
   fi
   echo "Running NetMHCpan with alleles: $line"
   echo "$results/${foldername}_${foldertype}/group${counter}_alleles.txt"
-  netmhcpan -p $peptides -a $line -l , > "$results/${foldername}_${foldertype}/group${counter}_alleles"
+  #netmhcpan -p $peptides -a $line -l , > "$results/${foldername}_${foldertype}/group${counter}_alleles"
+  /home/lys/netMHCpan-4.1/netMHCpan -p $peptides -a $line -l , > "$results/${foldername}_${foldertype}/group${counter}_alleles"
   counter=$((counter+=1))
 done

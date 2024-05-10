@@ -26,10 +26,11 @@ import vegvisir.plots as VegvisirPlots
 from argparse import Namespace
 
 if "CUDA_VISIBLE_DEVICES" in os.environ:
-    pass
+    device = "cuda:{}".format(os.environ['CUDA_VISIBLE_DEVICES'])
 else:
     print("Cuda device has not been specified in your environment variables, setting it to cuda device 0")
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    device = "cuda:0"
 #os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:20000" #Not useful to prevent memory crashes :(
 print("Loading Vegvisir module from {}".format(vegvisir.__file__))
 now = datetime.datetime.now()
@@ -275,7 +276,7 @@ if __name__ == "__main__":
     parser.add_argument('-name','--dataset-name', type=str, nargs='?',
                         #default="custom_dataset_random",
                         #default="custom_dataset_random_icore_non_anchor",
-                        default="viral_dataset15",
+                        default="viral_dataset17",
                         help='Dataset project name, look at vegvisir.available_datasets(). The data should be always located at vegvisir/src/vegvisir/data \n'
                              'custom_dataset: Perform training or prediction (by setting the args.pretrained_model to the folder path with the model checkpoints). Remember to define also train_path, test_path'
                              'viral_dataset3 : Supervised learning. Only sequences, partitioned into train,validation and (old) test.If args.test = True, then the (old) assigned test is used \n'
@@ -286,17 +287,18 @@ if __name__ == "__main__":
                              'viral_dataset8: Semisupervised learning. Same dataset as viral_dataset6 (containing unobserved datapoints), where the original test dataset is left out from the training (not mixed in).If args.test = True, then the (old) assigned test is used \n'
                              'viral_dataset9: Supervised learning. Uses the OLD test,train and validation are mixed into the train. Same as viral_dataset7 with a new test dataset. New test dataset available when using args.test=True \n'
                              'viral_dataset10: Semisupervised learning. Same as viral_dataset6 (containing unobserved datapoints) with a new test dataset (OLD test,train and validation are mixed). New test available when using args.test=True \n'
-                             'viral_dataset11: Semisupervised learning.Similar to viral_dataset6 (containing unobserved datapoints), but the (old) test is incorporated as an unobserved sequence as well. (old) test available when using args.test=True \n'
+                             'viral_dataset11: Semisupervised learning. Similar to viral_dataset6 (containing unobserved datapoints), but the (old) test is incorporated as an unobserved sequence as well. (old) test available when using args.test=True \n'
                              'viral_dataset12: Prediction.Training only on the unobserved data points with randomly assigned labels. MHC binders without binary targets'
                              'viral_dataset13: Supervised training. Same train dataset as viral_dataset9 , el test incluye los peptidos descartados que no tenian informacion sobre el numero de pacientes testeados'
                              'viral_dataset14: Supervised training. Peptide sequences restricted to binders from alleles HLA-A2402, HLA-A2301 and HLA-2407 '
-                             'viral_dataset15: Supervised training. Same datasets as in viral_dataset9 with different partitioning, everythin mixed up'
+                             'viral_dataset15: Supervised training. Same data points as in viral_dataset9 with different partitioning, everythin mixed up. USED IN THE PAPER'
                              'viral_dataset16: Supervised training. Same as viral_dataset15 restricte dto binders to alleles HLA-A2402, HLA-A2301 and HLA-2407'
+                             'viral_dataset17: Semisupervised training. Semisupervised equivalent to viral dataset 15 (simply add unobserved data points)  '
                              )
     #Highlight: Dataset configurations: Use with the default datasets (not custom ones)
     parser.add_argument('-predefined-partitions', type=str2bool, nargs='?', default= True, help='<True> Divides the dataset into train, validation and test according to pre-specified partitions (in the sequences file, use a column named partitions)'
                                                                                                 '<False> Performs a random stratified train, validation and test split')
-    parser.add_argument('-num-unobserved', type=int, nargs='?', default=5000, help='Use with datasets for semi supervised training: <viral_dataset6> or <viral_dataset8>. \n'
+    parser.add_argument('-num-unobserved', type=int, nargs='?', default=20000, help='Use with datasets for semi supervised training: <viral_dataset6> or <viral_dataset8>. \n'
                                                                                    'It establishes the number of unobserved(unlabelled) datapoints to use')
     parser.add_argument('-aa-types', type=int, nargs='?', default=20, help='Define the number of unique amino acid types. It determines the blosum matrix to be used. \n'
                                                                            ' If the sequence contains gaps, the script will use 20 aa + 1 gap character. The script automatically corrects issues ')
@@ -362,7 +364,7 @@ if __name__ == "__main__":
     parser.add_argument('-likelihood-scale', type=int, nargs='?', default=100, help='Scaling the log p( class | Z) of the variational autoencoder (cold posterior)')
     parser.add_argument('-hidden-dim', type=int, nargs='?', default=40, help='Dimensions of fully connected networks')
     parser.add_argument('-embedding-dim', type=int, nargs='?', default=40, help='Embedding dimensions, use with self-attention. NOT USED---> DELETE SOOn') #TODO: Remove
-    parser.add_argument('-lt','--learning-type', type=str, nargs='?', default="supervised", help='<supervised_no_decoder> simpler model architecture with only an encoder and a classifier'
+    parser.add_argument('-lt','--learning-type', type=str, nargs='?', default="semisupervised", help='<supervised_no_decoder> simpler model architecture with only an encoder and a classifier'
                                                                                                  '<unsupervised> Unsupervised learning. No classification is performed \n'
                                                                                                  '<semisupervised> Semi-supervised model/learning. The likelihood of the class (p(c | z)) is only computed and maximized using the most confident scores. \n '
                                                                                                             'The non confident data points are inferred by the guide \n'
@@ -386,7 +388,7 @@ if __name__ == "__main__":
     parser.add_argument('-train', type=str2bool, nargs='?', default=True,help='<True> Run the model '
                                                                               '\n <False> Makes benchmarking plots or loads previously trained model, if pargs.pretrained_model is not None ')
     parser.add_argument('-validate', type=str2bool, nargs='?', default=False, help='Evaluate the model on the validation dataset. Only needed for model design')
-    parser.add_argument('-test', type=str2bool, nargs='?', default=True, help='Evaluate the model on the external test dataset')
+    parser.add_argument('-test', type=str2bool, nargs='?', default=False, help='Evaluate the model on the external test dataset')
 
     #Highlight: Generating new sequences from a trained model
     parser.add_argument('-generate', type=str2bool, nargs='?', default=True, help='<True> Generate new neo-epitopes labelled and with a confidence score based on the training dataset. Please use args.validate False '
@@ -447,28 +449,27 @@ if __name__ == "__main__":
 
     #Highlight: DO NOT CHANGE ANYTHING ELSE DOWN HERE
     args = parser.parse_args()
+    torch.set_default_dtype(torch.float64)
     if args.use_cuda:
         if torch.cuda.is_available():
-                device = "cuda"
-                torch.set_default_device(device)
-                torch.set_default_tensor_type(torch.cuda.DoubleTensor)
+                print("Using cuda")
+                #device = "cuda"
+                torch.set_default_device(device) #use the device selected above
                 args.__dict__["device"] = device
         else:
-                print("Cuda (gpu) not found falling back to cpu")
+                print("Cuda (gpu) not found falling back to cpu. Depending on availability, please make sure to use cuda:0 (CUDA_VISIBLE_DEVICES=0) or cuda:1 (CUDA_VISIBLE_DEVICES=1)")
                 device = "cpu"
-                torch.set_default_tensor_type(torch.DoubleTensor)
                 torch.set_default_device(device)
                 args.__dict__["device"] = device
                 args.__dict__["use_cuda"] = False
     else:
         device = "cpu"
-        torch.set_default_tensor_type(torch.DoubleTensor)
         torch.set_default_device(device)
         args.__dict__["device"] = device
 
-    if args.dataset_name in ["viral_dataset6","viral_dataset8","viral_dataset10","viral_dataset11"]:
-        args.__dict__["num_classes"] = 3 #Number of predicted classes
-        args.__dict__["num_obs_classes"] = 2 #Number of observed classes
+    if args.dataset_name in ["viral_dataset6","viral_dataset8","viral_dataset10","viral_dataset11","viral_dataset17"]:
+        args.__dict__["num_classes"] = 3 #Number of observed classes
+        args.__dict__["num_obs_classes"] = 2 #Number of predicted classes
     else:
         args.__dict__["num_classes"] = 2 #Number of predicted classes
         args.__dict__["num_obs_classes"] = 2 #Number of observed classes

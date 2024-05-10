@@ -27,7 +27,8 @@ import vegvisir.models as VegvisirModels
 import vegvisir.guides as VegvisirGuides
 import vegvisir.similarities as VegvisirSimilarities
 import vegvisir.mutual_information as VegvisirMI
-from ray.air import Checkpoint, session
+from ray.air import session #https://stackoverflow.com/questions/77785794/importerror-cannot-import-name-checkpoint-from-ray-air
+from ray.train import Checkpoint
 
 ModelLoad = namedtuple("ModelLoad",["args","max_len","seq_max_len","n_data","input_dim","aa_types","blosum","blosum_weighted","class_weights"])
 minidatasetinfo = namedtuple("minidatasetinfo", ["seq_max_len", "corrected_aa_types","num_classes","num_obs_classes","storage_folder"])
@@ -1899,7 +1900,10 @@ def train_model(config=None,dataset_info=None,additional_info=None,args=None):
             train_idx = (train_idx.int() + valid_idx.int()).bool()
             load_model(train_idx, test_idx, dataset_info, args, additional_info, mode="Test")
         else:
-            raise ValueError("Please set args.test or args.validate to True")
+            print("Joining train, validation and test datasets to perform training solely (useful for generating data based on the entire dataset) \n The Train & Test folders become the same one")
+            train_idx = torch.ones(data_blosum.shape[0]).bool().to("cpu")
+            load_model(train_idx, train_idx, dataset_info, args, additional_info)
+            #raise ValueError("Please set args.test or args.validate to True")
     else:
         if not args.test and args.validate:
             print("Only Training & Validation")
@@ -1920,10 +1924,15 @@ def train_model(config=None,dataset_info=None,additional_info=None,args=None):
                 warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
             else:
                 print("Joining Training & validation datasets to perform testing...")
-            train_idx = (train_idx.int() + valid_idx.int()).bool()
+            train_idx = (train_idx.int() + valid_idx.int()).bool().to(args.device)
             epoch_loop(train_idx, test_idx, dataset_info, args, additional_info,mode="Test",config=config)
         else:
-            raise ValueError("Please set args.test or args.validate to True")
+            print("Joining train, validation and test datasets to perform training solely (useful for generating data based on the entire dataset) \n The Test folder is the same as Train folder")
+            train_idx = torch.ones(data_blosum.shape[0]).bool().to("cpu")
+            # test_idx = torch.zeros(data_blosum.shape[0]).bool().to("cpu")
+            # test_idx[:10] = True
+            epoch_loop(train_idx, train_idx, dataset_info, args, additional_info)
+            #raise ValueError("Please set args.test or args.validate to True")
 def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid",fold=""):
     """Load pre-trained parameters"""
     print("Loading dataset into pre-trained model...")
