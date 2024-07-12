@@ -67,7 +67,7 @@ colors_list_aa = ["black", "plum", "lime", "navy", "turquoise", "peachpuff", "pa
 
 PlotSettings = namedtuple("PlotSettings",["values","colormap_unique","colors_feature","unique_values"])
 
-def plot_generated_labels_histogram(dataframe,results_dir):
+def plot_generated_labels_histogram(dataframe:pd.DataFrame,results_dir:str):
     fig, ax = plt.subplots(nrows=1,ncols=1, figsize=(11, 10))
 
     plt.hist(dataframe["Positive_score"],color=colors_dict[1],bins=10)
@@ -78,9 +78,9 @@ def plot_generated_labels_histogram(dataframe,results_dir):
     plt.clf()
     plt.close(fig)
 
-def plot_data_information(data, filters_dict, storage_folder, args, name_suffix):
+def plot_data_information(data:np.ndarray, filters_dict:dict, storage_folder:str, args:namedtuple, name_suffix:str):
     """"""
-    ndata = data.shape[0]
+    #ndata = data.shape[0]
     fig, ax = plt.subplots(nrows=3,ncols=4, figsize=(11, 10))
     num_bins = 50
 
@@ -291,7 +291,7 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     plt.clf()
     plt.close(fig)
 
-def plot_data_information_reduced1(data, filters_dict, storage_folder, args, name_suffix):
+def plot_data_information_reduced1(data:pd.DataFrame, filters_dict:dict, storage_folder:str, args:namedtuple, name_suffix:str):
     """"""
     ndata = data.shape[0]
     fig, ax = plt.subplots(nrows=2,ncols=4, figsize=(15, 10))
@@ -514,7 +514,7 @@ def plot_data_information_reduced1(data, filters_dict, storage_folder, args, nam
     plt.clf()
     plt.close(fig)
 
-def plot_data_information_reduced2(data, filters_dict, storage_folder, args, name_suffix):
+def plot_data_information_reduced2(data:pd.DataFrame, filters_dict:dict, storage_folder:str, args:namedtuple, name_suffix:str):
     """"""
     ndata = data.shape[0]
     fig, ax = plt.subplots(nrows=2,ncols=4, figsize=(15, 10))
@@ -1499,6 +1499,8 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
     confidence_scores_unique = np.unique(confidence_scores).tolist()
     colormap_confidence = matplotlib.cm.get_cmap('plasma_r', len(confidence_scores_unique))
     colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
+
+
     colors_confidence = np.vectorize(colors_dict.get, signature='()->(n)')(confidence_scores)
     # Highlight: Immunodominance scores colors
     immunodominance_scores = latent_space[:, 3]
@@ -4848,7 +4850,7 @@ def process_nnalign(results_path, seqs_df,stress_dataset,mode="train",save_plot=
     plt.xlabel('Recall', fontsize=20)
     plt.legend(loc='lower right', prop={'size': 15})
     plt.title("Average Precision curves \n NNAlign ({})".format(mode))
-    plt.savefig("/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots/NNAlign_PrecisionRecall_curves_{}".format(mode))
+    plt.savefig("Benchmark/Plots/NNAlign_PrecisionRecall_curves_{}".format(mode))
     plt.clf()
     plt.close(fig)
 
@@ -5244,12 +5246,12 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
 
     #Highlight: NNalign results for viral_dataset9
     if keyname == "raw-variable-length-vd9":
-        nnalign_results_path_train_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_07_01_2024/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_3369/nnalign_peplen_8-11_iter_100_3369.lg9.sorted.pred"
-        nnalign_results_path_test_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_07_01_2024/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_3369/test_Icore_variable_length_Icore_sequences_viral_dataset9_lg9_10424.evalset.txt"
+        nnalign_results_path_train_full = "Benchmark/Other_Programs/NNAlign_results_07_01_2024/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_3369/nnalign_peplen_8-11_iter_100_3369.lg9.sorted.pred"
+        nnalign_results_path_test_full = "Benchmark/Other_Programs/NNAlign_results_07_01_2024/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_3369/test_Icore_variable_length_Icore_sequences_viral_dataset9_lg9_10424.evalset.txt"
 
     else: #Highlight: NNalign results for viral_dataset15
-        nnalign_results_path_train_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_19_01_2024/Icore/variable_length_Icore_sequences_viral_dataset15/nnalign_peplen_8-11_iter_100_10523/nnalign_peplen_8-11_iter_100_10523.lg9.sorted.pred"
-        nnalign_results_path_test_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_19_01_2024/Icore/variable_length_Icore_sequences_viral_dataset15/nnalign_peplen_8-11_iter_100_10523/test_Icore_variable_length_Icore_sequences_viral_dataset15_lg9_13809.evalset.txt"
+        nnalign_results_path_train_full = "Benchmark/Other_Programs/NNAlign_results_19_01_2024/Icore/variable_length_Icore_sequences_viral_dataset15/nnalign_peplen_8-11_iter_100_10523/nnalign_peplen_8-11_iter_100_10523.lg9.sorted.pred"
+        nnalign_results_path_test_full = "Benchmark/Other_Programs/NNAlign_results_19_01_2024/Icore/variable_length_Icore_sequences_viral_dataset15/nnalign_peplen_8-11_iter_100_10523/test_Icore_variable_length_Icore_sequences_viral_dataset15_lg9_13809.evalset.txt"
 
     train_test_df = pd.concat([train_df,test_df],axis=0)
     (nnalign_results_train_roc_auc_dict,nnalign_results_train_auc01_dict, nnalign_results_train_ppv_dict,
@@ -5791,16 +5793,16 @@ def plot_model_stressing_comparison1(dict_results_vegvisir,script_dir,results_fo
 
                 stress_dataset = stress_mode_dict[stress_mode].replace("Icore",sequence_type) #This is weird, but i do not feel like making it better
                 if keyname == "viral_dataset9":
-                    folders_list = glob("/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_07_01_2024/{}/{}/*/".format(sequence_type, stress_dataset), recursive=True)
+                    folders_list = glob("Benchmark/Other_Programs/NNAlign_results_07_01_2024/{}/{}/*/".format(sequence_type, stress_dataset), recursive=True)
                     folder_name = Path(folders_list[0]).parts[-1]
                     subfolders_list = glob(
                         "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_07_01_2024/{}/{}/{}/*".format(
                             sequence_type, stress_dataset, folder_name), recursive=True)
 
                 else:
-                    folders_list = glob("/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_19_01_2024/{}/{}/*/".format(sequence_type,stress_dataset),recursive=True)
+                    folders_list = glob("Benchmark/Other_Programs/NNAlign_results_19_01_2024/{}/{}/*/".format(sequence_type,stress_dataset),recursive=True)
                     folder_name = Path(folders_list[0]).parts[-1]
-                    subfolders_list = glob("/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_19_01_2024/{}/{}/{}/*".format(sequence_type,stress_dataset,folder_name),recursive=True)
+                    subfolders_list = glob("Benchmark/Other_Programs/NNAlign_results_19_01_2024/{}/{}/{}/*".format(sequence_type,stress_dataset,folder_name),recursive=True)
 
 
                 nnalign_results_path_train_full = list(filter(lambda x: "lg9.sorted.pred" in x, subfolders_list))[0]

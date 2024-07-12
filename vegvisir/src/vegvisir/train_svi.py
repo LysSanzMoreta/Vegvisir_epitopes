@@ -217,6 +217,7 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
     return train_loss,target_accuracy,predictions_dict,latent_arr, reconstruction_accuracies_dict
 def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
     """
+    Validation/Test loop
     :param svi: pyro infer engine
     :param dataloader data_loader: Pytorch dataloader
     :param namedtuple args
@@ -379,6 +380,7 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
     return valid_loss,target_accuracy,predictions_dict,latent_arr, reconstruction_accuracies_dict
 def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
     """
+    Sampling from the posterior distribution
     :param svi: pyro infer engine
     :param dataloader data_loader: Pytorch dataloader
     :param namedtuple args
@@ -567,7 +569,21 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
                         }
     return sample_loss, target_accuracy, predictions_dict, latent_observation_arr, reconstruction_accuracies_dict
 def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_info, additional_info,
-                  train_predictive_samples_dict):
+                  train_predictive_samples_dict): #TODO: Merge with immunomodulation loop
+    """
+    Generation of new sequences from the latent posterior distribution
+
+    :param svi:
+    :param Vegvisir:
+    :param guide:
+    :param data_loader:
+    :param args:
+    :param model_load:
+    :param dataset_info:
+    :param additional_info:
+    :param train_predictive_samples_dict:
+    :return:
+    """
     Vegvisir.train(False)
     Vegvisir.eval()
     #Highlight: Determine how to split the calculation
@@ -845,6 +861,20 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
 
     return generated_out_dict, latent_space
 def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_info,additional_info,train_predictive_samples_dict):
+    """
+    Prediction of the latent representation for the given sequences and generation of new sequences
+    from the latent posterior distribution given those predicted latent repretation
+    :param svi:
+    :param Vegvisir:
+    :param guide:
+    :param data_loader:
+    :param args:
+    :param model_load:
+    :param dataset_info:
+    :param additional_info:
+    :param train_predictive_samples_dict:
+    :return:
+    """
     Vegvisir.train(False)
     Vegvisir.eval()
     #Highlight: Determine how to split the calculation
@@ -1113,14 +1143,20 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
     del custom_features_dicts, aminoacids_dict_reversed, train_dataset
     gc.collect()
     return generated_out_dict, latent_space
-def save_script(results_dir,output_name,script_name):
-    """Saves the python script and its contents"""
+
+def save_script(results_dir:str,output_name:str,script_name:str):
+    """Saves the python script and its contents
+    :param str results_dir
+    :param str output_name
+    :param str script_name
+    """
     out_file = open("{}/{}.py".format(results_dir,output_name), "a+")
     script_file = open("{}/{}.py".format(os.path.dirname(vegvisir.__file__),script_name), "r+")
     text = script_file.readlines()
     out_file.write("".join(text))
     out_file.close()
-def select_quide(Vegvisir,model_load,n_data,choice="autodelta"):
+
+def select_quide(Vegvisir:nn.Module,model_load:namedtuple,n_data:int,choice:str="autodelta"):
     """Select the guide type
     :param nn.module Vegvisir
     :param namedtuple model_load
@@ -1133,7 +1169,7 @@ def select_quide(Vegvisir,model_load,n_data,choice="autodelta"):
              "custom":VegvisirGuides.VEGVISIRGUIDES(Vegvisir.model,model_load,Vegvisir)}
     return guide[choice]
     #return poutine.scale(guide[choice],scale=1.0/n_data) #Scale the ELBo to the data size
-def select_model(model_load,results_dir,fold,args):
+def select_model(model_load:namedtuple,results_dir:str,fold:int,args:namedtuple):
     """Select among the available models at models.py"""
     print(args.learning_type )
     if model_load.seq_max_len == model_load.max_len:
@@ -1162,7 +1198,7 @@ def select_model(model_load,results_dir,fold,args):
     with torch.no_grad():
         vegvisir_model.apply(init_weights)
     return vegvisir_model
-def config_build(args,results_dir):
+def config_build(args:namedtuple,results_dir:str):
     """Select a default configuration dictionary. It can load a string dictionary from the command line (using json) or use the default parameters
     :param namedtuple args"""
     if args.hpo or args.config_dict:
@@ -1327,7 +1363,7 @@ def kfold_crossvalidation(config=None,dataset_info=None,additional_info=None,arg
         else:
             raise ValueError("Please set args.test to True ")
 def output_processing(mode,fold,args,loader_kwargs, dataset_info, additional_info,results_dir,svi, Vegvisir,optimizer, guide, train_loader, valid_loader, model_load,train_predictions_dict,valid_predictions_dict):
-
+    """Process the output of the model"""
     train_predictive_samples_loss, train_predictive_samples_accuracy, train_predictive_samples_dict, train_predictive_samples_latent_space, train_predictive_samples_reconstruction_accuracy_dict = sample_loop(
         svi, Vegvisir, guide, train_loader, args, model_load)
     torch.cuda.empty_cache()
@@ -1485,8 +1521,8 @@ def output_processing(mode,fold,args,loader_kwargs, dataset_info, additional_inf
 def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid",fold="",config=None):
     """
     Training loop
-    :param arr train_idx:
-    :param arr valid_idx:
+    :param np.ndarray train_idx:
+    :param np.ndarray valid_idx:
     :param namedtuple dataset_info:
     :param namedtuple args
     :param namedtuple additional_info

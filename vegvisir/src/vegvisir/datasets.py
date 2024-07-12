@@ -29,6 +29,8 @@ import vegvisir.load_utils as VegvisirLoadUtils
 import vegvisir.plots as VegvisirPlots
 import vegvisir.mutual_information as VegvisirMI
 from collections import Counter
+import gdown
+from typing import Union
 plt.style.use('ggplot')
 DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_array_raw","data_array_int","data_array_int_mask",
                                         "data_array_blosum_encoding",
@@ -54,25 +56,35 @@ DatasetDivision = namedtuple("DatasetDivision",["all","all_mask","positives","po
                                                 "high_confidence_negatives_mask","high_conf_negatives_idx"])
 SimilarityResults = namedtuple("SimilarityResults",["positional_weights","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity"])
 
-def available_datasets():
-    """Prints the available datasets"""
-    #TODO: Print description
-    datasets = {0:"custom_dataset",
-                1:"viral_dataset3",
-                2:"viral_dataset4",
-                3:"viral_dataset5",
-                4:"viral_dataset6",
-                5:"viral_dataset7",
-                6:"viral_dataset8",
-                7:"viral_dataset9",
-                8:"viral_dataset10",
-                9:"viral_dataset11",
-                10:"viral_dataset12",
-                11:"viral_dataset13",
-                12:"viral_dataset14",
-                13:"viral_dataset15",
-                }
-    return datasets
+
+def check_and_download_data(storage_folder):
+    """Checks the existance of the data files, otherwise it downloads them
+    :param storage_folder: str Loaction of the data folder"""
+
+    download_url = "https://drive.google.com/drive/folders/1tPRGOJ0cQdLyW2GbdI2vnz1Sfr4RSKNf?usp=sharing"
+    dir_name = '{}/common_files'.format(storage_folder)
+    if os.path.isdir(dir_name):
+        if not os.listdir(dir_name):
+            print("Directory is empty")
+            # if download:
+            os.remove(dir_name)
+            print("Data directory is missing. Downloading, this might take a while. If you see an error like \n"
+                  " 'Cannot retrieve the public link of the file. You may need to change the permission to <Anyone with the link>, or have had many accesses', \n"
+                  "just wait, too many requests have been made to the google drive folder \n"
+                  "Otherwise just download the data sets MANUALLY from the google drive url : \n {} into the {}/common_files".format(download_url,storage_folder))
+            gdown.download_folder(download_url, output='{}/common_files'.format(storage_folder), quiet=True,
+                                  use_cookies=False, remaining_ok=True)
+            # else:
+            #     pass
+        else:
+            print("Dataset is ready in the folder: {}/common_files!".format(storage_folder))
+    else:
+        print("Data directory is missing. Downloading it, this might take a while. If you see an error like \n"
+              " 'Cannot retrieve the public link of the file. You may need to change the permission to <Anyone with the link>, or have had many accesses', \n"
+              "just wait, too many requests have been made to the google drive folder \n"
+              "Otherwise just download the data sets MANUALLY from the google drive url : \n {} into the {}/common_files".format(download_url,storage_folder))
+        gdown.download_folder(download_url, output='{}/common_files'.format(storage_folder), quiet=True,
+                              use_cookies=False, remaining_ok=True)
 
 def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     """Selects from available datasets
@@ -102,6 +114,9 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
                  "viral_dataset17":viral_dataset17,
                  }
     storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
+    #Highlight: Check if the data is there, otherwise download it
+    check_and_download_data(storage_folder)
+    VegvisirUtils.folders(args.dataset_name, storage_folder,overwrite=False)
     if args.learning_type == "semisupervised":
         if args.dataset_name in ["viral_dataset3","viral_dataset7","viral_dataset9"]:
             raise ValueError("Please select viral_dataset6 or viral_dataset8 or viral_dataset10 for semisupervised learning, else select supervised learning")
@@ -122,10 +137,21 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
         data_immunomodulate_load_function = dataset_load_fx(func_dict["immunomodulate_dataset"],script_dir,storage_folder,args,results_dir,(dataset.corrected_aa_types,dataset.unique_lens))
         dataset_immunomodulate = data_immunomodulate_load_function(script_dir, storage_folder, args, results_dir,(dataset.corrected_aa_types,dataset.unique_lens))
         dataset = dataset._replace(immunomodulate_dataset=dataset_immunomodulate)
-    print("Data retrieved")
+
     return dataset
 
-def select_filters(args):
+def select_filters(args:namedtuple):
+    """Creates a dictionary with a specific set of filters:
+       KEY
+       filter_kmers: bool | str Restrict or not to peptides of fixed length
+       group_alleles: bool Aggregate the target values of the peptides bound to different alleles
+       filter_alleles: bool
+       filter_ntested: bool | int Filter the peptides with a subject count lower than the given integer and only keep if all "negative"
+       filter_lowconfidence: bool Remove those peptides that have been undertested
+       corrected_immunodom: bool | int Reassign to  low value (0.01) the immonoprevalence of peptides with number of tested individuals lower than a number
+       :return filters_dict:
+       :
+    """
     if args.filter_kmers:
         if args.sequence_type == "Icore_non_anchor":
             kmer_size = 7
@@ -139,7 +165,8 @@ def select_filters(args):
                     "filter_alleles":[False], #if True keeps the most common allele
                     "filter_ntested":[False,10],
                     "filter_lowconfidence":[False],
-                    "corrected_immunodominance_score":[False,10]}
+                    "corrected_immunoprevalence_score":[False,10]
+                    }
 
     allele_selection = {True:"same_allele",False:"diff_allele"}
     len_selection = {True:"same_len",False:"diff_len"}
@@ -150,8 +177,9 @@ def select_filters(args):
 
     return filters_dict,analysis_mode
 
-def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,unobserved=False,no_subjects_test=False,plot_histograms=True):
+def group_and_filter(data:pd.DataFrame,args:namedtuple,storage_folder:str,filters_dict:dict,dataset_info_file,unobserved=False,no_subjects_test=False,plot_histograms=True):
     """Filters, groups and prepares the files from the viral_dataset*() functions
+    :param data pd.DataFrame
     :param bool unobserved: Indicates the presence of unlabelled/unobserved data , which is missing the number of patients tested
     :param bool no_subjects_test: Boolean to circumvent that some of the labelled data is missing the information on the number of tested people (no_subjects)"""
     if filters_dict["filter_ntested"][0]:
@@ -167,8 +195,8 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,uno
 
     data["immunodominance_score"] = data["immunodominance_score"].fillna(data["target"])
 
-    if filters_dict["corrected_immunodominance_score"][0]:
-        treshold = filters_dict["corrected_immunodominance_score"][1]
+    if filters_dict["corrected_immunoprevalence_score"][0]:
+        treshold = filters_dict["corrected_immunoprevalence_score"][1]
         data.loc[(data["Assay_number_of_subjects_tested"] < treshold) | (data["Assay_number_of_subjects_responded"] == 0), "immunodominance_score"] = 0.01
 
     # Highlight: Scale-standarize values . This is done here for visualization purposes, it is done afterwards separately for train, eval and test
@@ -221,13 +249,17 @@ def group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,uno
 
     return data.copy()
 
-def check_overlap(data):
+def check_overlap(data: pd.DataFrame):
+    """Tests whether there is an overlap between the train and test dataset"""
     train = data[data["training"] == True]
     test = data[data["training"] == False]
     overlap = pd.merge(train,test,on = ["Icore"],how="inner")
     assert overlap.size == 0, "Test data points included in the train dataset"
 
-def save_alleles(data,storage_folder,args):
+def save_alleles(data: pd.DataFrame,storage_folder:str,args:namedtuple):
+    """Stores information about the alleles and returns the most commonly found allele in the dataset
+    return
+      :str : Most common allele"""
     alleles_counts = data.value_counts("allele")
     most_common_allele = alleles_counts.index[0] #allele with most conserved positions HLA-B0707, the most common allele here is also ok
     alleles_list = alleles_counts.index.tolist()
@@ -239,10 +271,12 @@ def save_alleles(data,storage_folder,args):
         alleles_file.write("{}\n".format(segment))
     return most_common_allele
 
-def immunomodulate_dataset(script_dir,storage_folder,args,results_dir,corrected_parameters):
-    """Builds a Vegvisir dataset that can be integrated with the model's pipeline
+def immunomodulate_dataset(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
+    """Builds a Vegvisir dataset that can be integrated with the model's pipeline and be used for the immunomodulation pipeline
     NOTES:
         Immunomodulated sequences paper: https://doi.org/10.1074/jbc.M503060200
+    :return
+      pd.DataFrame
     """
 
     if args.immunomodulate_path is not None and os.path.exists(args.immunomodulate_path):
@@ -267,30 +301,26 @@ def immunomodulate_dataset(script_dir,storage_folder,args,results_dir,corrected_
         raise ValueError("You have selected args.immunomodulate == True, however args.immunomodulate_path has not recieved any valid path."
                          "\n Switch off args.immunomodulate or input a valid path")
 
-def custom_dataset(script_dir,storage_folder,args,results_dir,corrected_parameters=None): #TODO: Finish
+def custom_dataset(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]): #TODO: Finish
     """
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
-                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
                   training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   target: Pre-assigned target(given)
                   target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
-            """
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
+    """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
 
     if args.train_path is not None:
@@ -383,30 +413,27 @@ def custom_dataset(script_dir,storage_folder,args,results_dir,corrected_paramete
 
     return data_info
 
-def viral_dataset3(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset3(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-
+    Supervised learning. Only sequences, partitioned into train,validation and (old) test.If args.test = True, then the (old) assigned test is used
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
-                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
                   training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   target: Pre-assigned target(given)
                   target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
-            """
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
+    """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
     data = pd.read_csv("{}/common_files/dataset_target.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
 
@@ -443,7 +470,8 @@ def viral_dataset3(script_dir,storage_folder,args,results_dir,corrected_paramete
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
     data_species["allele_encoded"] = data_species["allele"]
     data_species.replace({"allele_encoded": allele_dict},inplace=True)
 
@@ -466,30 +494,27 @@ def viral_dataset3(script_dir,storage_folder,args,results_dir,corrected_paramete
 
     return data_info
 
-def viral_dataset4(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset4(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele: MHC allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training: True, include in training, False include in test
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition: partition number
-
+    Supervised learning. viral_dataset3 sequences + Peptide Features
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
-                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
                   training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   target: Pre-assigned target(given)
                   target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
-            """
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
+    """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
     data_features = pd.read_csv("{}/common_files/dataset_all_features.tsv".format(storage_folder),sep="\s+",index_col=0)
     data_partitions = pd.read_csv("{}/common_files/dataset_target.tsv".format(storage_folder),sep = "\t",index_col=0)
@@ -530,7 +555,8 @@ def viral_dataset4(script_dir,storage_folder,args,results_dir,corrected_paramete
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
     #features_names.append("allele_encoded")
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
@@ -551,22 +577,26 @@ def viral_dataset4(script_dir,storage_folder,args,results_dir,corrected_paramete
 
     return data_info
 
-def viral_dataset5(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset5(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    Contains "artificial" or fake negative epitopes solely in the test dataset. The artificial negatives can be identified by having a inmmunodominance score of
-    HEADER descriptions:
-    allele: MHC allele
-    Icore: Interaction peptide core
-    Number of Subjects Tested
-    Number of Subjects Responded
-    target
-    training
-    Icore_non_anchor
-    partition
-    confidence_score
-    immunodominance
-    Length
-    Rnk_EL
+    Supervised learning. Contains additional artificially generated negative data points in the (old) test dataset
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
+    return
+          :param pandas dataframe: Results pandas dataframe with the following structure:
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
+                  training: True assign data point to train , else assign to Test (given)
+                  target: Pre-assigned target(given)
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
     """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
     data_partitions = pd.read_csv("{}/common_files/dataset_target_correction_artificial_negatives.tsv".format(storage_folder,args.dataset_name),sep = "\t")
@@ -611,7 +641,8 @@ def viral_dataset5(script_dir,storage_folder,args,results_dir,corrected_paramete
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
 
@@ -637,32 +668,26 @@ def viral_dataset5(script_dir,storage_folder,args,results_dir,corrected_paramete
 
     return data_info
 
-def viral_dataset6(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset6(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    Collects IEDB data and creates artificially generated epitopes. The artificial epitopes are designed by randomly chopping viral proteins onto peptides and then checking binding to MHC with NetMHC-pan
-
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-
+    Semisupervised learning. Contains additional unobserved data points for semi supervised learning. Train, validation and (old) test are mixed. If args.test = True, then 1 partition is selected as test
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  allele: MHC allele
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
+                  training: True assign data point to train , else assign to Test (given)
+                  target: Pre-assigned target(given)
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
                   immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
-                  training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
-                  target: Pre-assigned target (given)
-                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
     """
 
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
@@ -734,7 +759,8 @@ def viral_dataset6(script_dir,storage_folder,args,results_dir,corrected_paramete
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
 
     data["training"] = True
     data.loc[(data["target"] == 2), "target_corrected"] = 2
@@ -759,35 +785,27 @@ def viral_dataset6(script_dir,storage_folder,args,results_dir,corrected_paramete
 
     return data_info
 
-def viral_dataset7(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset7(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-    Of: The starting position of the Core within the Peptide (if > 0, the method predicts a N-terminal protrusion) (derived from the prediction with NetMHCpan-4.1).
-    Gp: Position of the deletion, if any (derived from the prediction with NetMHCpan-4.1).
-    Gl: Length of the deletion, if any (derived from the prediction with NetMHCpan-4.1).
-    Ip: Position of the insertion, if any (derived from the prediction with NetMHCpan-4.1).
-    Il: Length of the insertion, if any (derived from the prediction with NetMHCpan-4.1).
-
+    Supervised learning. Same dataset as viral_dataset3, but the (old) test dataset is mixed with the train and validation datasets
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
-                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
                   training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   target: Pre-assigned target(given)
                   target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
-            """
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
+    """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
     new_partitions = pd.read_csv("{}/common_files/Viruses_db_partitions_notest.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
 
@@ -837,7 +855,8 @@ def viral_dataset7(script_dir,storage_folder,args,results_dir,corrected_paramete
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
 
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file)
@@ -857,32 +876,27 @@ def viral_dataset7(script_dir,storage_folder,args,results_dir,corrected_paramete
 
     return data_info
 
-def viral_dataset8(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset8(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    Collects IEDB data and creates artificially generated epitopes. The artificial epitopes are designed by randomly chopping viral proteins onto peptides and then checking binding to MHC with NetMHC-pan
-
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-
+    Semisupervised learning. Same dataset as viral_dataset6 (containing unobserved datapoints), where the original test dataset is left out from the training (not mixed in).
+    If args.test = True, then the (old) assigned test is used
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  allele: MHC allele
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
+                  training: True assign data point to train , else assign to Test (given)
+                  target: Pre-assigned target(given)
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
                   immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
-                  training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
-                  target: Pre-assigned target (given)
-                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
     """
 
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
@@ -970,7 +984,8 @@ def viral_dataset8(script_dir,storage_folder,args,results_dir,corrected_paramete
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
 
 
     data.loc[(data["target"] == 2), "target_corrected"] = 2
@@ -995,38 +1010,28 @@ def viral_dataset8(script_dir,storage_folder,args,results_dir,corrected_paramete
 
     return data_info
 
-def viral_dataset9(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset9(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-    Of: The starting position of the Core within the Peptide (if > 0, the method predicts a N-terminal protrusion) (derived from the prediction with NetMHCpan-4.1).
-    Gp: Position of the deletion, if any (derived from the prediction with NetMHCpan-4.1).
-    Gl: Length of the deletion, if any (derived from the prediction with NetMHCpan-4.1).
-    Ip: Position of the insertion, if any (derived from the prediction with NetMHCpan-4.1).
-    Il: Length of the insertion, if any (derived from the prediction with NetMHCpan-4.1).
-    org_name:
-    org_family:
-    org_genus:
-    kingdom:
+    Supervised learning. Uses the OLD test,train and validation are mixed into the train. Same as viral_dataset7 with a new test dataset.
+    New test dataset available when using args.test=True
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
-                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
                   training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   target: Pre-assigned target(given)
                   target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
-            """
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
+    """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
     new_partitions = pd.read_csv("{}/common_files/Viruses_db_partitions_notest.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
 
@@ -1119,7 +1124,8 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir,corrected_paramete
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
 
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,no_subjects_test=False,plot_histograms=False)
@@ -1149,32 +1155,28 @@ def viral_dataset9(script_dir,storage_folder,args,results_dir,corrected_paramete
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
     return data_info
 
-def viral_dataset10(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset10(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    Collects IEDB data and creates artificially generated epitopes. The artificial epitopes are designed by randomly chopping viral proteins onto peptides and then checking binding to MHC with NetMHC-pan
-
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-
+    Semisupervised learning. Same as viral_dataset6 (containing unobserved datapoints) with a new test dataset (OLD test,train and validation are mixed).
+    New test available when using args.test=True
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  allele: MHC allele
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
+                  training: True assign data point to train , else assign to Test (given)
+                  target: Pre-assigned target(given)
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
                   immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
-                  training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
-                  target: Pre-assigned target (given)
-                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
+
     """
 
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
@@ -1292,7 +1294,8 @@ def viral_dataset10(script_dir,storage_folder,args,results_dir,corrected_paramet
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
 
 
 
@@ -1326,32 +1329,27 @@ def viral_dataset10(script_dir,storage_folder,args,results_dir,corrected_paramet
 
     return data_info
 
-def viral_dataset11(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset11(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    Collects IEDB data and creates artificially generated epitopes. The artificial epitopes are designed by randomly chopping viral proteins onto peptides and then checking binding to MHC with NetMHC-pan
-
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-
+    Semisupervised learning. Similar to viral_dataset6 (containing unobserved datapoints), but the (old) test is incorporated as an unobserved sequence as well.
+    (Old) test available when using args.test=True
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  allele: MHC allele
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
+                  training: True assign data point to train , else assign to Test (given)
+                  target: Pre-assigned target(given)
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
                   immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
-                  training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
-                  target: Pre-assigned target (given)
-                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
     """
 
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
@@ -1444,7 +1442,8 @@ def viral_dataset11(script_dir,storage_folder,args,results_dir,corrected_paramet
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
 
     test_data["allele_encoded"] = test_data["allele"]
     test_data.replace({"allele_encoded": allele_dict},inplace=True)
@@ -1476,32 +1475,26 @@ def viral_dataset11(script_dir,storage_folder,args,results_dir,corrected_paramet
 
     return data_info
 
-def viral_dataset12(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset12(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    Collects IEDB data and creates artificially generated epitopes. The artificial epitopes are designed by randomly chopping viral proteins onto peptides and then checking binding to MHC with NetMHC-pan
-
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-
+    Prediction only .Training only on the unobserved data points with randomly assigned labels. MHC binders without binary targets
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  allele: MHC allele
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
+                  training: True assign data point to train , else assign to Test (given)
+                  target: Pre-assigned target(given)
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
                   immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
-                  training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
-                  target: Pre-assigned target (given)
-                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
     """
 
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
@@ -1565,7 +1558,8 @@ def viral_dataset12(script_dir,storage_folder,args,results_dir,corrected_paramet
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
 
     data["training"] = True #in this dataset wwe only do validation, not testing
     data["target_corrected"] = 2 #need to keep it "unobserved" for the grouping function
@@ -1596,38 +1590,28 @@ def viral_dataset12(script_dir,storage_folder,args,results_dir,corrected_paramet
 
     return data_info
 
-def viral_dataset13(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset13(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-    Of: The starting position of the Core within the Peptide (if > 0, the method predicts a N-terminal protrusion) (derived from the prediction with NetMHCpan-4.1).
-    Gp: Position of the deletion, if any (derived from the prediction with NetMHCpan-4.1).
-    Gl: Length of the deletion, if any (derived from the prediction with NetMHCpan-4.1).
-    Ip: Position of the insertion, if any (derived from the prediction with NetMHCpan-4.1).
-    Il: Length of the insertion, if any (derived from the prediction with NetMHCpan-4.1).
-    org_name:
-    org_family:
-    org_genus:
-    kingdom:
+    Supervised training. Same train dataset as viral_dataset9. The test incluye includes discarded peptides without information about
+    the number o patients tested
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
-                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
                   training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   target: Pre-assigned target(given)
                   target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
-            """
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
+    """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
     new_partitions = pd.read_csv("{}/common_files/Viruses_db_partitions_notest.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
 
@@ -1719,7 +1703,8 @@ def viral_dataset13(script_dir,storage_folder,args,results_dir,corrected_paramet
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
 
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,no_subjects_test=False,plot_histograms=False)
@@ -1750,38 +1735,27 @@ def viral_dataset13(script_dir,storage_folder,args,results_dir,corrected_paramet
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
     return data_info
 
-def viral_dataset14(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset14(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-    Of: The starting position of the Core within the Peptide (if > 0, the method predicts a N-terminal protrusion) (derived from the prediction with NetMHCpan-4.1).
-    Gp: Position of the deletion, if any (derived from the prediction with NetMHCpan-4.1).
-    Gl: Length of the deletion, if any (derived from the prediction with NetMHCpan-4.1).
-    Ip: Position of the insertion, if any (derived from the prediction with NetMHCpan-4.1).
-    Il: Length of the insertion, if any (derived from the prediction with NetMHCpan-4.1).
-    org_name:
-    org_family:
-    org_genus:
-    kingdom:
+    Supervised training. Peptide sequences restricted to binders from alleles HLA-A2402, HLA-A2301 and HLA-2407
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
-                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
                   training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   target: Pre-assigned target(given)
                   target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
-            """
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
+    """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
     new_partitions = pd.read_csv("{}/common_files/Viruses_db_partitions_notest.tsv".format(storage_folder,args.dataset_name),sep = "\t",index_col=0)
 
@@ -1875,7 +1849,8 @@ def viral_dataset14(script_dir,storage_folder,args,results_dir,corrected_paramet
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
 
 
     data = group_and_filter(data,args,storage_folder,filters_dict,dataset_info_file,no_subjects_test=False,plot_histograms=False)
@@ -1911,38 +1886,28 @@ def viral_dataset14(script_dir,storage_folder,args,results_dir,corrected_paramet
 
     return data_info
 
-def viral_dataset15(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset15(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-    Of: The starting position of the Core within the Peptide (if > 0, the method predicts a N-terminal protrusion) (derived from the prediction with NetMHCpan-4.1).
-    Gp: Position of the deletion, if any (derived from the prediction with NetMHCpan-4.1).
-    Gl: Length of the deletion, if any (derived from the prediction with NetMHCpan-4.1).
-    Ip: Position of the insertion, if any (derived from the prediction with NetMHCpan-4.1).
-    Il: Length of the insertion, if any (derived from the prediction with NetMHCpan-4.1).
-    org_name:
-    org_family:
-    org_genus:
-    kingdom:
+    DATASET used in the article. Supervised training. Same data points as in viral_dataset9 with different partitioning, everythin mixed up.
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
-                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
                   training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   target: Pre-assigned target(given)
                   target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
-            """
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
+
+    """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
 
     #new_partitions.columns = ["Icore","allele","Core","Of","Gp","Gl","Ip","Il","Rnk_EL","org_id","uniprot_id","target","start_prot","Icore_non_anchor","partition"]
@@ -2020,7 +1985,8 @@ def viral_dataset15(script_dir,storage_folder,args,results_dir,corrected_paramet
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
 
 
 
@@ -2052,38 +2018,28 @@ def viral_dataset15(script_dir,storage_folder,args,results_dir,corrected_paramet
 
     return data_info
 
-def viral_dataset16(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset16(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-    Of: The starting position of the Core within the Peptide (if > 0, the method predicts a N-terminal protrusion) (derived from the prediction with NetMHCpan-4.1).
-    Gp: Position of the deletion, if any (derived from the prediction with NetMHCpan-4.1).
-    Gl: Length of the deletion, if any (derived from the prediction with NetMHCpan-4.1).
-    Ip: Position of the insertion, if any (derived from the prediction with NetMHCpan-4.1).
-    Il: Length of the insertion, if any (derived from the prediction with NetMHCpan-4.1).
-    org_name:
-    org_family:
-    org_genus:
-    kingdom:
+    Supervised training. Same as viral_dataset15 restricte dto binders to alleles HLA-A2402, HLA-A2301 and HLA-2407
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
-                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
                   training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   target: Pre-assigned target(given)
                   target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
-            """
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
+                  immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
+                  immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
+
+    """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
 
     #new_partitions.columns = ["Icore","allele","Core","Of","Gp","Gl","Ip","Il","Rnk_EL","org_id","uniprot_id","target","start_prot","Icore_non_anchor","partition"]
@@ -2161,7 +2117,8 @@ def viral_dataset16(script_dir,storage_folder,args,results_dir,corrected_paramet
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
 
 
 
@@ -2194,32 +2151,27 @@ def viral_dataset16(script_dir,storage_folder,args,results_dir,corrected_paramet
 
     return data_info
 
-def viral_dataset17(script_dir,storage_folder,args,results_dir,corrected_parameters=None):
+def viral_dataset17(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
-    Collects IEDB data and creates artificially generated epitopes. The artificial epitopes are designed by randomly chopping viral proteins onto peptides and then checking binding to MHC with NetMHC-pan
-
-    ####################
-    #HEADER DESCRIPTIONS#
-    ####################
-    allele
-    Icore: Interaction core. This is the sequence of the binding core including eventual insertions of deletions (derived from the prediction of the likelihood of binding of the peptide to the reported MHC-I with NetMHCpan-4.1).
-    Number of Subjects Tested: number of papers where the peptide-MHC was reported to have a positive interaction with the TCR.
-    Number of Subjects Responded
-    target: target value (1: immunogenic/positive, 0:non-immunogenic/negative).
-    training
-    Icore_non_anchor: Peptide without the amino acids that are anchored to the MHC
-    partition
-
+    Semisupervised training. Semisupervised equivalent to viral dataset 15 (with added unobserved data points per partition)
+    :param script_dir: Folder containing the base built dataframe and other text and plots
+    :param storage_folder: Path to common data files
+    :param args
+    :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore:Interaction peptide core
-                  allele: MHC allele
+                  Icore: nteraction peptide core
+                  Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
+                  training: True assign data point to train , else assign to Test (given)
+                  target: Pre-assigned target(given)
+                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  partition: Indicates partition assignment within 5-fold cross validation (given)
                   immunodominance_score: Number of + / Number of tested. Except for when the number of tested subjects is lower than 10 and all the subjects where negative, the conficence score is lowered to 0.1
                   immunodominance_score_scaled: Number of + / Number of tested ---> Minmax scaled to 0-1 range (only for visualization purposed, this step is re-done for each partition to avoid data leakage from test to train
-                  training: True assign data point to train , else assign to Test (given)
-                  partition: Indicates partition assignment within 5-fold cross validation (given)
-                  target: Pre-assigned target (given)
-                  target_corrected: Corrected target based on the immunodominance score, it is negative (0) only and only if the number of tested subjects is higher than 10 and all of them tested negative
+                  confidence_score
+                  allele: MHC allele information
+                  allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
+
     """
 
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
@@ -2342,7 +2294,8 @@ def viral_dataset17(script_dir,storage_folder,args,results_dir,corrected_paramet
     allele_dict_reversed = dict(zip(list(range(len(allele_counts_dict.keys()))),allele_counts_dict.keys()))
     json.dump(allele_dict_reversed, open('{}/{}/alleles_dict.txt'.format(storage_folder,args.dataset_name), 'w'), indent=2)
     data["allele_encoded"] = data["allele"]
-    data.replace({"allele_encoded": allele_dict},inplace=True)
+    with pd.option_context('future.no_silent_downcasting', True):
+        data.replace({"allele_encoded": allele_dict},inplace=True)
 
 
     #TODO: New partitioning
@@ -2382,12 +2335,13 @@ def viral_dataset17(script_dir,storage_folder,args,results_dir,corrected_paramet
     return data_info
 
 
-
-def data_class_division(array,array_mask,idx,labels,confidence_scores):
+def data_class_division(array: np.array,array_mask:np.ndarray,idx:np.ndarray,labels:np.ndarray,confidence_scores:np.ndarray):
     """
     Divide the dataset onto data points from positive, negative or high confident negatives
-    :param array: epitopes_array_int, apitopes_array_blosum, epitopes_array_blosum_norm_group, epitopes_array_aa_group
-    :param idx: training or test idx
+    :param np.array array: epitopes_array_int, apitopes_array_blosum, epitopes_array_blosum_norm_group, epitopes_array_aa_group
+    :param np.array array_mask: Boolean masking some sequences
+    :param np.array idx: training or test idx
+    :param labels
     :return:
     """
     #TODO: not indexing by train or test
@@ -2424,6 +2378,13 @@ def data_class_division(array,array_mask,idx,labels,confidence_scores):
     return data_subdivision
 
 def build_exploration_folders(args,storage_folder,filters_dict):
+    """
+    Creates folders where to store plots
+    :param namedtuple args:
+    :param str storage_folder: Path to common data files
+    :param dict filters_dict:
+    :return:
+    """
 
     for mode in ["All","Train", "Test"]:
         if args.sequence_type == "Icore":
@@ -2461,6 +2422,10 @@ def build_exploration_folders(args,storage_folder,filters_dict):
         VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/{}/same_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
 
 def sample_datapoints_mi(a,b):
+    """Calculate the number of data points to subsample to equal both classes
+    :param np.array a
+    :param np.array b
+    """
 
     longest, shortest = [(0, 1) if a.shape[0] >b.shape[0] else (1, 0)][0]
     dict_counts = {0: a.shape[0],1: b.shape[0]}
@@ -2470,7 +2435,24 @@ def sample_datapoints_mi(a,b):
     idx_sample = (idx_longest[..., None] == idx_sample).any(-1)
     return idx_sample,dict_counts[longest]
 
-def data_volumetrics(seq_max_len,epitopes_list,data,epitopes_array_mask,storage_folder,args,filters_dict,analysis_mode,plot_volumetrics=False,plot_covariance=False):
+def data_volumetrics(seq_max_len:int,epitopes_list:list,data:pd.DataFrame,
+                     epitopes_array_mask:np.ndarray,storage_folder:str,args:namedtuple,
+                     filters_dict:dict,analysis_mode:str,plot_volumetrics:bool =False,plot_covariance: bool=False):
+    """
+    Plot different metrics
+    :param seq_max_len: Longest sequence in the array
+    :param epitopes_list:
+    :param data:
+    :param epitopes_array_mask:
+    :param storage_folder:
+    :param args:
+    :param filters_dict:
+    :param analysis_mode:
+    :param plot_volumetrics:
+    :param plot_covariance:
+    :return:
+    """
+
     if not os.path.exists("{}/{}/similarities/{}".format(storage_folder, args.dataset_name, args.sequence_type)):
         build_exploration_folders(args, storage_folder, filters_dict)
     else:
@@ -2569,7 +2551,8 @@ def data_volumetrics(seq_max_len,epitopes_list,data,epitopes_array_mask,storage_
                                                seq_max_len,immunodominance_scores[np.invert(training)][epitopes_array_raw_division_test.high_conf_negatives_idx],
                                                storage_folder, args, subfolders,tag="_immunodominance_scores",use_precomputed_features=use_precomputed_features)
 
-def vector_analysis(seq_max_len,data,data_blosum,epitopes_array_mask,storage_folder,args,filters_dict,analysis_mode,analyse = True):
+def vector_analysis(seq_max_len:int,data:np.ndarray,data_blosum:np.ndarray,epitopes_array_mask:np.ndarray,storage_folder:str,
+                    args:namedtuple,filters_dict:dict,analysis_mode:str,analyse:bool = True):
     if not os.path.exists("{}/{}/similarities/{}".format(storage_folder, args.dataset_name, args.sequence_type)):
         build_exploration_folders(args, storage_folder, filters_dict)
     else:
@@ -2619,7 +2602,10 @@ def vector_analysis(seq_max_len,data,data_blosum,epitopes_array_mask,storage_fol
         subfolders = "{}/Test/{}/neighbours1/highconfnegatives".format(args.sequence_type, analysis_mode)
         VegvisirPlots.plot_volumetrics(volumetrics_dict_high_confidence_negatives_test, seq_max_len,None, storage_folder, args, subfolders)
 
-def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_array_mask,aa_dict,aa_list,blosum_norm,seq_max_len,storage_folder,args,corrected_aa_types,analysis_mode,filters_dict):
+def data_exploration(data:np.ndarray,epitopes_array_blosum:np.ndarray,epitopes_array_int:np.ndarray,
+                     epitopes_array_mask:np.ndarray,aa_dict:dict,aa_list:list,blosum_norm:np.ndarray,
+                     seq_max_len:int,storage_folder:str,args:namedtuple,corrected_aa_types:Union[int,float],analysis_mode:bool,filters_dict:dict):
+    """Plotting function"""
 
     if not os.path.exists("{}/{}/similarities/{}".format(storage_folder,args.dataset_name,args.sequence_type)):
         build_exploration_folders(args, storage_folder,filters_dict)
@@ -3008,7 +2994,8 @@ def data_exploration(data,epitopes_array_blosum,epitopes_array_int,epitopes_arra
         labels = np.unique(clustering.labels_,return_counts=True)
     return all_sim_results
 
-def process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,sequences_list,data,storage_folder="/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/"):
+def process_sequences(args:namedtuple,unique_lens:list,corrected_aa_types:Union[int,float],
+                      seq_max_len:Union[int,float],sequences_list:list,data:np.ndarray,storage_folder:str="/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/"):
     """Pads, randomizes or mutates a list of sequences to be converted onto a numpy array"""
     if len(unique_lens) > 1:  # Highlight: Pad the sequences (relevant when they differ in length)
         aa_dict = VegvisirUtils.aminoacid_names_dict(corrected_aa_types, zero_characters=["#"])
@@ -3053,13 +3040,18 @@ def process_sequences(args,unique_lens,corrected_aa_types,seq_max_len,sequences_
 
     return sequences_padded,sequences_padded_mask,aa_dict,blosum_array,blosum_dict,blosum_array_dict
 
-def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,features_names=None,plot_blosum=False,plot_umap=False,corrected_parameters=None):
+def process_data(data:pd.DataFrame,args:namedtuple,storage_folder:str,script_dir:str,analysis_mode:str,
+                 filters_dict:dict,features_names=None,plot_blosum=False,plot_umap=False,corrected_parameters=None):
     """
+    Builds a namedtuple with all the data necessary for the model
     Notes:
       - Mid-padding : https://www.nature.com/articles/s41598-020-71450-8
     :param pandas dataframe data: Contains Icore, immunodominance_score, immunodominance_score_scaled, training , partition and Rnk_EL
     :param args: Commmand line arguments
-    :param storage_folder: Data location path
+    :param str storage_folder: Data location path
+    :param str script_dir
+    :param str analysis_mode
+    :param dict filters_dict
     """
 
     sequence_column = filters_dict["filter_kmers"][2]
@@ -3317,42 +3309,47 @@ def process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,
         VegvisirPlots.plot_data_umap(data_array_blosum_norm,data_info.seq_max_len,data_info.max_len,storage_folder,args.dataset_name)
     return data_info
 
-def prepare_nnalign_no_test(args,storage_folder,data,column_names):
-    data_train = data[(data["training"] == 1) & (data["partition"] != 4)][column_names]
-    data_valid = data[(data["training"] == 1) & (data["partition"] == 4)][column_names]
-    data_train = data_train.astype({'partition': 'int'})
-    data_valid = data_valid.astype({'partition': 'int'})
-    data_train["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
-
-    data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
-    data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name), sep="\t",index=False,header=None) #TODO: Header None?
-    VegvisirNNalign.run_nnalign(args,storage_folder)
-
-def prepare_nnalign(args,storage_folder,data,column_names,no_test=True):
-
-    if no_test:
-        warnings.warn("Creating only training dataset for NNAlign (otherwise please set <no_test> to False")
-        column_names.remove("partition")
-        data_train = data[column_names]
-        #data["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder, args.dataset_name), sep="\t",index=False, header=None)
-
-        data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder, args.dataset_name), sep="\t",
-                          index=False, header=None)
-
-    else:
-        data_train = data[data["training"] == True][column_names]
-        data_valid = data[data["training"] == False][column_names]
-        data_train = data_train.astype({'partition': 'int'})
-        data_valid.drop("partition",axis=1,inplace=True)
-        data_train["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
-
-        data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
-        data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name), sep="\t",index=False,header=None) #TODO: Header None?
-
-    exit()
-    VegvisirNNalign.run_nnalign(args,storage_folder)
+# def prepare_nnalign_no_test(args,storage_folder,data,column_names):
+#
+#     data_train = data[(data["training"] == 1) & (data["partition"] != 4)][column_names]
+#     data_valid = data[(data["training"] == 1) & (data["partition"] == 4)][column_names]
+#     data_train = data_train.astype({'partition': 'int'})
+#     data_valid = data_valid.astype({'partition': 'int'})
+#     data_train["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
+#
+#     data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
+#     data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name), sep="\t",index=False,header=None) #TODO: Header None?
+#     VegvisirNNalign.run_nnalign(args,storage_folder)
+#
+# def prepare_nnalign(args,storage_folder,data,column_names,no_test=True):
+#
+#     if no_test:
+#         warnings.warn("Creating only training dataset for NNAlign (otherwise please set <no_test> to False")
+#         column_names.remove("partition")
+#         data_train = data[column_names]
+#         #data["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder, args.dataset_name), sep="\t",index=False, header=None)
+#
+#         data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder, args.dataset_name), sep="\t",
+#                           index=False, header=None)
+#
+#     else:
+#         data_train = data[data["training"] == True][column_names]
+#         data_valid = data[data["training"] == False][column_names]
+#         data_train = data_train.astype({'partition': 'int'})
+#         data_valid.drop("partition",axis=1,inplace=True)
+#         data_train["Icore"].to_csv("{}/{}/viral_seq2logo.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
+#
+#         data_train.to_csv("{}/{}/viral_nnalign_input_train.tsv".format(storage_folder,args.dataset_name),sep="\t",index=False,header=None)
+#         data_valid.to_csv("{}/{}/viral_nnalign_input_valid.tsv".format(storage_folder,args.dataset_name), sep="\t",index=False,header=None) #TODO: Header None?
+#
+#     exit()
+#     VegvisirNNalign.run_nnalign(args,storage_folder)
 
 def set_confidence_score(data):
+    """Assign a confidenc score to the label/class each data point according to degree of testing that the data
+     point has been gone through
+     :param pd.DataFrame data
+     """
     pd.options.mode.chained_assignment = None #supresses some warnings
 
     nmax_tested = data["Assay_number_of_subjects_tested"].max()
