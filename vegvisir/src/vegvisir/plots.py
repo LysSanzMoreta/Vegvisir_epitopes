@@ -12,6 +12,7 @@ import subprocess
 from collections import defaultdict
 from glob import glob
 from pathlib import Path
+from typing import Union
 
 import dill
 
@@ -877,7 +878,7 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
         plt.clf()
         plt.close(fig)
 
-def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,analysis_mode,mode):
+def plot_aa_frequencies(data_array:Union[np.ndarray,pd.DataFrame],aa_types,aa_dict,max_len,storage_folder,args,analysis_mode,mode):
     """Creates a bar plot per position in the sequence to show the amino acid frequencies"""
 
     aa_groups_colors_dict,aa_groups_dict,groups_names_colors_dict,aa_by_groups_dict = VegvisirUtils.aminoacids_groups(aa_dict)
@@ -939,7 +940,7 @@ def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,
     plt.clf()
     plt.close(fig)
 
-def plot_heatmap(array, title,file_name):
+def plot_heatmap(array:np.ndarray, title,file_name):
     fig = plt.figure(figsize=(20, 20))
     sns.heatmap(array, cmap='RdYlGn_r',yticklabels=False,xticklabels=False)
     plt.title(title)
@@ -1499,8 +1500,11 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
     confidence_scores_unique = np.unique(confidence_scores).tolist()
     colormap_confidence = matplotlib.cm.get_cmap('plasma_r', len(confidence_scores_unique))
     colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
-
-
+    print("confidence scores")
+    print(confidence_scores)
+    print("colors dict")
+    print(colors_dict)
+    print(confidence_scores.shape)
     colors_confidence = np.vectorize(colors_dict.get, signature='()->(n)')(confidence_scores)
     # Highlight: Immunodominance scores colors
     immunodominance_scores = latent_space[:, 3]
@@ -2323,24 +2327,28 @@ def plot_latent_space(args,dataset_info,latent_space,predictions_dict,sample_mod
     """
     -Notes on UMAP: https://www.arxiv-vanity.com/papers/2009.12981/
     """
-    reducer = umap.UMAP()
-    print("Started UMAP projections")
-    umap_proj = reducer.fit_transform(latent_space[:, 6:])
-    print("Finished UMAP projections")
-    settings =plot_preprocessing(umap_proj, dataset_info, predictions_dict, sample_mode, results_dir, method,
-                       vector_name="latent_space_z", n_clusters=4)
+    if latent_space.size > 0 or not None:
+        reducer = umap.UMAP()
+        print("Started UMAP projections")
+        umap_proj = reducer.fit_transform(latent_space[:, 6:])
+        print("Finished UMAP projections")
+        settings =plot_preprocessing(umap_proj, dataset_info, predictions_dict, sample_mode, results_dir, method,
+                           vector_name="latent_space_z", n_clusters=4)
 
-    plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
-    plot_scatter_reduced(umap_proj,args,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
-    if vector_name == "latent_space_z":
-        plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
-    if plot_correlations and vector_name == "latent_space_z":
-        reducer = umap.UMAP(n_components=1)
-        umap_proj_1d = reducer.fit_transform(latent_space[:, 6:]).squeeze(-1)
-        plot_latent_correlations_1d(umap_proj_1d,args, settings,dataset_info, latent_space, sample_mode, results_dir, method,
-                                 vector_name)
-    del umap_proj
-    gc.collect()
+        plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
+        plot_scatter_reduced(umap_proj,args,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
+        if vector_name == "latent_space_z":
+            plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
+        if plot_correlations and vector_name == "latent_space_z":
+            reducer = umap.UMAP(n_components=1)
+            umap_proj_1d = reducer.fit_transform(latent_space[:, 6:]).squeeze(-1)
+            plot_latent_correlations_1d(umap_proj_1d,args, settings,dataset_info, latent_space, sample_mode, results_dir, method,
+                                     vector_name)
+        del umap_proj
+        gc.collect()
+    else:
+        print("Latent space size : {}".format(latent_space.shape))
+        print("No latent representations could be sampled")
 
 def plot_gradients(gradient_norms,results_dir,mode):
     print("Plotting gradients")

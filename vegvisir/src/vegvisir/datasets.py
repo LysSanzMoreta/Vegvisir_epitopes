@@ -3363,7 +3363,9 @@ def set_confidence_score(data):
     data.loc[(data["Assay_number_of_subjects_tested"] <= 10) & (data["Assay_number_of_subjects_responded"] > 0), "confidence_score"] = 1
     data.loc[(data["Assay_number_of_subjects_tested"] <= 20) & (data["Assay_number_of_subjects_responded"] == 0), "confidence_score"] = 0.35
     data.loc[(data["Assay_number_of_subjects_tested"] <= 20) & (data["Assay_number_of_subjects_responded"] > 0), "confidence_score"] = 1
-    nan_rows = data[data["confidence_score"].isna()]
+
+    #nan_rows = data[data["confidence_score"].isna()]
+    data.loc[data["confidence_score"].isna(),"confidence_score"] = 0.01
     #print(nan_rows[["Assay_number_of_subjects_tested","Assay_number_of_subjects_responded"]])
     return data
 
