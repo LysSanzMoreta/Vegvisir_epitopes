@@ -14,25 +14,3 @@ python -m twine upload --repository pypi dist/* -u ... -p ...
  python -m twine upload --skip-existing --repository pypi dist/* -u ... -p ... #to re-upload same version
 
 
-
-{
-  "optimizer_config": {
-    "lr": 0.001,
-    "beta1": 0.91,
-    "beta2": 0.9999,
-    "eps": 1e-08,
-    "weight_decay": 0,
-    "clip_norm": 10,
-    "lrd": 1,
-    "momentum": 0.9971307489623908
-  },
-  "general_config": {
-    "batch_size": 140,
-    "encoding": "onehot",
-    "likelihood_scale": 50,
-    "num_epochs": 60,
-    "num_samples": 50,
-    "hidden_dim": 20,
-    "z_dim": 34
-  }
-}

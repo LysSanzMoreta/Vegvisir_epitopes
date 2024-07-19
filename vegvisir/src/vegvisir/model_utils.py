@@ -1,11 +1,18 @@
+#!/usr/bin/env python3
+"""
+=======================
+2024: Lys Sanz Moreta
+Vegvisir (VAE): T-cell epitope classifier
+=======================
+"""
 import time
-
 import torch.nn as nn
 import torch
 from pyro.nn import PyroModule
 import  vegvisir
 from vegvisir.utils import extract_windows_vectorized
 from collections import namedtuple
+
 OutputNN = namedtuple("OutputNN",["output","attn_weights","encoder_hidden_states","decoder_hidden_states","encoder_final_hidden","decoder_final_hidden","init_h_0_decoder"])
 
 class Attention1(nn.Module):

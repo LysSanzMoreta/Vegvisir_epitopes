@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
 """
 =======================
-2022-2023: Lys Sanz Moreta
-Vegvisir :
+2024: Lys Sanz Moreta
+Vegvisir (VAE): T-cell epitope classifier
 =======================
 """
 import argparse
@@ -1714,6 +1715,8 @@ def clean_generated_sequences(seq_int:list,seq_mask:list,zero_character:int,min_
                 seq_int[idx[0]:] = zero_character
                 seq_mask[idx[0]:] = False
                 return (seq_int[None,:],seq_mask[None,:])
+            elif idx.size == max_len:
+                return (None,None)
             else: #remove the intermediate gaps and join the remainindings to max len keep if it fits the minimum length criteria
                 if keep_truncated:
                     idx_mask = np.ones_like(seq_int).astype(bool)

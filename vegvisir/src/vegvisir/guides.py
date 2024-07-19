@@ -1,14 +1,15 @@
+#!/usr/bin/env python3
 """
 =======================
-2023: Lys Sanz Moreta
-Vegvisir
+2024: Lys Sanz Moreta
+Vegvisir (VAE): T-cell epitope classifier
 =======================
 """
 from pyro.contrib.easyguide import EasyGuide
 from pyro.nn import PyroParam
 from vegvisir.models import *
 from vegvisir.model_utils import *
-from vegvisir.losses import *
+#from vegvisir.losses import *
 import torch.nn as nn
 import torch
 import pyro
@@ -44,7 +45,6 @@ class VEGVISIRGUIDES(EasyGuide):
         self.input_dim = model_load.input_dim
         self.generate_sampling_type = model_load.args.generate_sampling_type
         self.logsoftmax = nn.LogSoftmax(dim=-1)
-        self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
         #self.embedding = Embed(self.blosum,self.embedding_dim,self.aa_types,self.device)
         self.h_0_GUIDE = nn.Parameter(torch.randn(self.gru_hidden_dim).type(self.tensor_type), requires_grad=True).to(device=self.device)
         #self.decoder_guide = RNN_model(self.aa_types,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)

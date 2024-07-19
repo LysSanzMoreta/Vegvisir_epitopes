@@ -1,6 +1,5 @@
-
+#Run as . ./myscript.sh
 ###Highlight:Predefined_partitions: Icore
-
 
 #CUDA_VISIBLE_DEVICES=1 python Vegvisir_example.py -n 60 -name viral_dataset15 -lt supervised -predefined-partitions True -train True -test True -validate True -generate False -immunomodulate False -num-samples 60 -shuffle False -shuffle-labels False -random True -k-folds 5 -filter-kmers False -encoding blosum -plot-all False -save-all False -st Icore -pretrained-model "None" -hpo False;
 #CUDA_VISIBLE_DEVICES=1 python Vegvisir_example.py -n 60 -name viral_dataset15 -lt supervised -predefined-partitions True -train True -test True -validate True -generate False -immunomodulate False -num-samples 60 -shuffle False -shuffle-labels False -random True -k-folds 5 -filter-kmers True -encoding blosum -plot-all False -save-all False -st Icore -pretrained-model "None" -hpo False;

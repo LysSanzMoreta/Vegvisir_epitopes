@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
 """
 =======================
-2023: Lys Sanz Moreta
-Vegvisir :
+2024: Lys Sanz Moreta
+Vegvisir (VAE): T-cell epitope classifier
 =======================
 """
 import gc
@@ -40,11 +41,12 @@ from joblib import Parallel, delayed
 import multiprocessing
 import os
 from scipy import stats
-import vegvisir.similarities as VegvisirSimilarities
+#import vegvisir.similarities as VegvisirSimilarities
 from collections import namedtuple
 import dataframe_image as dfi
 import statsmodels.api as sm
 import logomaker
+import dromi
 
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
@@ -1500,11 +1502,7 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
     confidence_scores_unique = np.unique(confidence_scores).tolist()
     colormap_confidence = matplotlib.cm.get_cmap('plasma_r', len(confidence_scores_unique))
     colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
-    print("confidence scores")
-    print(confidence_scores)
-    print("colors dict")
-    print(colors_dict)
-    print(confidence_scores.shape)
+
     colors_confidence = np.vectorize(colors_dict.get, signature='()->(n)')(confidence_scores)
     # Highlight: Immunodominance scores colors
     immunodominance_scores = latent_space[:, 3]
@@ -1780,9 +1778,13 @@ def plot_scatter_reduced(umap_proj,args,dataset_info,latent_space,predictions_di
         # Highlight: Alleles colors
         alleles_settings = define_colormap(dataframe["alleles"].tolist(), "tab20")
 
-        alleles_custom_cmap = LinearSegmentedColormap.from_list('alleles_cmap', alleles_colors)
-        matplotlib.cm.register_cmap("alleles_cmap", alleles_custom_cmap,override_builtin=True)
-        alleles_palette = sns.color_palette("alleles_cmap", n_colors=len(alleles_colors), desat=0)
+        alleles_custom_cmap = LinearSegmentedColormap.from_list(f"alleles_cmap_{vector_name}_{sample_mode}_{method}_list", alleles_colors)
+
+        #matplotlib.cm.register("alleles_cmap", alleles_custom_cmap,override_builtin=True) #deprecated
+        print(f"registering: alleles_cmap_{vector_name}_{sample_mode}_{method}")
+        matplotlib.colormaps.register(name = f"alleles_cmap_{vector_name}_{sample_mode}_{method}",cmap = alleles_custom_cmap)
+        #alleles_palette = sns.color_palette("alleles_cmap", n_colors=len(alleles_colors), desat=0)
+        alleles_palette = sns.color_palette(f"alleles_cmap_{vector_name}_{sample_mode}_{method}", n_colors=len(alleles_colors), desat=0)
         alleles_palette_hue = pd.unique(alleles_cluster_grouped["allele"].map(alleles_encoded_dict_reversed)) #TODO: There is a nan allele, so that it follows the same order as the allele_colors.tsv--> needs to be mapped to 0,1,--
 
         if plot_kde:
@@ -2150,7 +2152,7 @@ def plot_latent_correlations(umap_proj,dataset_info,latent_space,predictions_dic
     class_0_idx = (true_labels[...,None] == 0).any(-1)
     class_1_idx = (true_labels[...,None] == 1).any(-1)
 
-    cosine_dist = 1- VegvisirSimilarities.cosine_similarity(umap_proj[:,None], umap_proj[:,None], correlation_matrix=False, parallel=False).squeeze(-1).squeeze(-1)
+    cosine_dist = 1- dromi.cosine_similarity(umap_proj[:,None], umap_proj[:,None], correlation_matrix=False, parallel=False).squeeze(-1).squeeze(-1)
     euclidean = np.linalg.norm(umap_proj[:,None]-umap_proj[None,:],axis=-1)
 
     def compute(distance,ax):
@@ -2491,7 +2493,7 @@ def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold,
     plt.clf()
     plt.close(fig)
 
-def micro_auc(args,onehot_labels,y_prob,idx):
+def micro_auc(args:namedtuple,onehot_labels,y_prob,idx):
     """Calculates the AUC for a multi-class problem"""
 
     micro_roc_auc_ovr = roc_auc_score(
@@ -2805,6 +2807,8 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
                 plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
                 plt.clf()
                 plt.close(fig)
+                del samples_results
+                gc.collect()
 
     return metrics_summary_dict
 
@@ -2977,6 +2981,8 @@ def plot_classification_metrics_per_species(dataset_info,args,predictions_dict,f
                     plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
                     plt.clf()
                     plt.close(fig)
+                    del samples_results
+                    gc.collect()
         plt.title("ROC curves per species")
         plt.savefig("{}/{}/ROC_curves_per_species_fold{}_{}.png".format(results_dir, mode, fold, sample_mode))
         plt.clf()

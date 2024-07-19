@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+"""
+=======================
+2024: Lys Sanz Moreta
+Vegvisir (VAE): T-cell epitope classifier
+=======================
+"""
 import gc
 import json
 import signal
@@ -19,13 +26,14 @@ from pyro.infer.autoguide import AutoDelta,AutoNormal,AutoDiagonalNormal
 from  pyro.infer import SVI,config_enumerate, Predictive
 import pyro.poutine as poutine
 import pyro
+import dromi
 import vegvisir
 import vegvisir.utils as VegvisirUtils
 import vegvisir.load_utils as VegvisirLoadUtils
 import vegvisir.plots as VegvisirPlots
 import vegvisir.models as VegvisirModels
 import vegvisir.guides as VegvisirGuides
-import vegvisir.similarities as VegvisirSimilarities
+#import vegvisir.similarities as VegvisirSimilarities
 import vegvisir.mutual_information as VegvisirMI
 from ray.air import session #https://stackoverflow.com/questions/77785794/importerror-cannot-import-name-checkpoint-from-ray-air
 from ray.train import Checkpoint
@@ -616,8 +624,9 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
     custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
     aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
     train_dataset = torch.concatenate([batch_data["batch_data_int"][:, 1].squeeze(1) for batch_data in data_loader],dim=0).detach().cpu().numpy()
-    # train_raw = np.vectorize(aminoacids_dict_reversed.get)(train_dataset)
-    # VegvisirPlots.plot_logos(list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), train_raw.tolist())), additional_info.results_dir, "_TRAIN_raw")
+
+    train_raw = np.vectorize(aminoacids_dict_reversed.get)(train_dataset)
+    VegvisirPlots.plot_logos(list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), train_raw.tolist())), additional_info.results_dir, "_TRAIN_raw")
 
     generated_out_dict= defaultdict(lambda: list())
     with (torch.no_grad()):  # do not update parameters with the generative data
@@ -838,12 +847,12 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
         signal.signal(signal.SIGALRM, handle_timeout)
         signal.alarm(600)  # 10 minutes
         try:
-            generated_sequences_cosine_similarity = VegvisirSimilarities.cosine_similarity(generated_sequences_blosum,
+            generated_sequences_cosine_similarity = dromi.cosine_similarity(generated_sequences_blosum,
                                                                                            generated_sequences_blosum,
                                                                                            correlation_matrix=False,
                                                                                            parallel=False)
             batch_size = 100 if generated_sequences_blosum.shape[0] > 100 else generated_sequences_blosum.shape[0]
-            positional_weights = VegvisirSimilarities.importance_weight(generated_sequences_cosine_similarity,
+            positional_weights = dromi.importance_weight(generated_sequences_cosine_similarity,
                                                                         maxlen_generated, generated_sequences_mask,
                                                                         batch_size=batch_size, neighbours=1)
             VegvisirPlots.plot_heatmap(positional_weights, "Cosine similarity \n positional weights",
@@ -910,7 +919,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
     aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
     train_dataset = torch.concatenate([batch_data["batch_data_int"][:, 1].squeeze(1) for batch_data in data_loader],dim=0).detach().cpu().numpy()
     # train_raw = np.vectorize(aminoacids_dict_reversed.get)(train_dataset)
-    # VegvisirPlots.plot_logos(list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), train_raw.tolist())), additional_info.results_dir, "_TRAIN_raw")
+    VegvisirPlots.plot_logos(list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), train_raw.tolist())), additional_info.results_dir, "_TRAIN_raw")
 
     generated_out_dict= defaultdict(lambda: list())
     with torch.no_grad():  # do not update parameters with the generative data
@@ -1123,12 +1132,12 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
         signal.signal(signal.SIGALRM, handle_timeout)
         signal.alarm(600)  # 10 minutes
         try:
-            generated_sequences_cosine_similarity = VegvisirSimilarities.cosine_similarity(generated_sequences_blosum,
+            generated_sequences_cosine_similarity = dromi.cosine_similarity(generated_sequences_blosum,
                                                                                            generated_sequences_blosum,
                                                                                            correlation_matrix=False,
                                                                                            parallel=False)
             batch_size = 100 if generated_sequences_blosum.shape[0] > 100 else generated_sequences_blosum.shape[0]
-            positional_weights = VegvisirSimilarities.importance_weight(generated_sequences_cosine_similarity,
+            positional_weights = dromi.importance_weight(generated_sequences_cosine_similarity,
                                                                         maxlen_generated, generated_sequences_mask,
                                                                         batch_size=batch_size, neighbours=1)
             VegvisirPlots.plot_heatmap(positional_weights, "Cosine similarity \n positional weights",
@@ -1457,14 +1466,16 @@ def output_processing(mode,fold,args,loader_kwargs, dataset_info, additional_inf
         VegvisirPlots.plot_latent_space(args, dataset_info, valid_predictive_samples_latent_space, valid_summary_dict,"samples", results_dir, method=mode)
 
         if args.generate:
-            VegvisirPlots.plot_latent_space(args, dataset_info, generated_latent_space, generated_summary_dict,
-                                            "samples" if args.num_samples > 1 else "single_sample", results_dir,
-                                            method="Generated")
+            if generated_latent_space.size != 0:
+                VegvisirPlots.plot_latent_space(args, dataset_info, generated_latent_space, generated_summary_dict,
+                                                "samples" if args.num_samples > 1 else "single_sample", results_dir,
+                                                method="Generated")
         if args.immunomodulate:
-            VegvisirPlots.plot_latent_space(args, dataset_info, immunomodulate_latent_space,
-                                            immunomodulate_summary_dict,
-                                            "samples" if args.num_samples > 1 else "single_sample", results_dir,
-                                            method="Immunomodulated")
+            if immunomodulate_latent_space.size != 0:
+                VegvisirPlots.plot_latent_space(args, dataset_info, immunomodulate_latent_space,
+                                                immunomodulate_summary_dict,
+                                                "samples" if args.num_samples > 1 else "single_sample", results_dir,
+                                                method="Immunomodulated")
 
         # VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
         # VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)

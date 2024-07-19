@@ -1,3 +1,4 @@
+#Run as . ./myscript.sh
 #Highlight:Predefined_partitions: Icore_non_anchor
 
 #

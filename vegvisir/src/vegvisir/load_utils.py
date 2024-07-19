@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
 """
 =======================
-2023: Lys Sanz Moreta
-Vegvisir :
+2024: Lys Sanz Moreta
+Vegvisir (VAE): T-cell epitope classifier
 =======================
 """
 import random
@@ -111,13 +112,8 @@ def redefine_class_proportions(dataset,n_positives,n_negatives,positives_proport
         else:
             print("Not removing any data points")
             return dataset
-
-
-
-
-
-
     return dataset
+
 
 def trainevaltest_split_kfolds(data,args,results_dir,seq_max_len,max_len,features_names,partition_test,method="predefined_partitions"):
     """Perform kfolds partitions division and test split"""
@@ -238,7 +234,7 @@ def trainevaltest_split_kfolds(data,args,results_dir,seq_max_len,max_len,feature
 def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names,partition_test,method="predefined_partitions_discard_test"):
     """Perform train-valid-test split"""
     info_file = open("{}/dataset_info.txt".format(results_dir),"a+")
-    if data.ndim == 4: #TODO:not sure why the list comprehesion does not work with lambda
+    if data.ndim == 4:
         idx_select = lambda x,n: x[:,0,0,n] #TODO: Use ellipsis? so far not working, this is best
     else:
         idx_select = lambda x,n: x[:,0,n]
@@ -407,14 +403,6 @@ class SequencePadding(object):
 
     def run(self):
 
-        # padded_sequences = {"no_padding": list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds)),
-        #                     #"ends":list(map(lambda seq: (list(seq.ljust(self.seq_max_len, "#")),list(seq.ljust(self.seq_max_len, "#"))),self.sequences)) ,
-        #                     "ends": list(map(lambda seq,seed: self.ends_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds)),
-        #                     "random":list(map(lambda seq,seed: self.random_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds)),
-        #                     "borders":list(map(lambda seq,seed: self.border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds)),
-        #                     "replicated_borders":list(map(lambda seq,seed: self.replicated_border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds))
-        #                     }
-
         if self.method == "no_padding":
             result = list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds))
         elif self.method == "ends":
@@ -559,13 +547,6 @@ class SequenceRandomGeneration(object):
         self.aminoacids_list = np.array(list(VegvisirUtils.aminoacid_names_dict(20).keys()))
 
     def run(self):
-
-        # padded_sequences = { "no_padding": list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len),self.sequences,self.random_seeds)),
-        #                     "ends": list(map(lambda seq,seed: self.ends_padding(seq,seed, self.seq_max_len),self.sequences,self.random_seeds)),
-        #                     "random":list(map(lambda seq,seed: self.random_padding(seq,seed, self.seq_max_len), self.sequences,self.random_seeds)),
-        #                     "borders":list(map(lambda seq,seed: self.border_padding(seq,seed, self.seq_max_len), self.sequences,self.random_seeds)),
-        #                     "replicated_borders":list(map(lambda seq,seed: self.replicated_border_padding(seq,seed, self.seq_max_len), self.sequences,self.random_seeds))
-        #                     }
 
         if self.method == "no_padding":
             result = list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len),self.sequences,self.random_seeds))

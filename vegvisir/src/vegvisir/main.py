@@ -1,24 +1,21 @@
+#!/usr/bin/env python3
 """
 =======================
-2023: Lys Sanz Moreta
-Vegvisir :
+2024: Lys Sanz Moreta
+Vegvisir (VAE): T-cell epitope classifier
 =======================
 """
 import json
 from argparse import Namespace
-
 import numpy as np
-
 import vegvisir
-import vegvisir.train as VegvisirTrain
 import vegvisir.train_svi as VegvisirTrainSVI
-#import vegvisir.train_rf as VegvisirTrainRF
 from collections import namedtuple
 import ray
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
-
 from functools import partial
+
 AdditionalInfo = namedtuple("AdditionalInfo",["results_dir"])
 
 
@@ -139,15 +136,10 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
 def run(dataset_info,results_dir,args):
     """Execute K-fold cross validation over the processed dataset"""
     additional_info = AdditionalInfo(results_dir=results_dir)
-    if args.run_nnalign:
-        print("Done running NNAlign ....")
 
-    elif args.hpo:
+    if args.hpo:
         hyperparameter_optimization(dataset_info, additional_info, args)
     else:
-        #VegvisirTrain.kfold_crossvalidation(dataset_info,additional_info,args)
-        #VegvisirTrain.train_model(dataset_info,additional_info,args) #ordinary train,val,test split without k-fold cross validation.The validation set changes every time
-        #VegvisirTrainSVI.kfold_crossvalidation(dataset_info,additional_info,args)
 
         assert args.num_synthetic_peptides < 10000, "Please generate less than 10000 peptides, otherwise the computations might not be posible or they might take too long"
 

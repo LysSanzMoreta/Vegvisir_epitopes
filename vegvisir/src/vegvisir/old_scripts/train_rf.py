@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+"""
+=======================
+2024: Lys Sanz Moreta
+Vegvisir (VAE): T-cell epitope classifier
+=======================
+"""
 from xgboost import XGBClassifier,XGBRegressor
 import xgboost as xgb
 import vegvisir.load_utils as VegvisirLoadUtils

@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
 """
 =======================
-2023: Lys Sanz Moreta
-Vegvisir :
+2024: Lys Sanz Moreta
+Vegvisir (VAE): T-cell epitope classifier
 =======================
 """
 import json
@@ -10,6 +11,7 @@ import pickle
 import warnings
 from argparse import Namespace
 
+import dromi
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,12 +24,12 @@ except:
 import scipy
 import torch
 from sklearn.cluster import DBSCAN
-import vegvisir.nnalign as VegvisirNNalign
+#import vegvisir.nnalign as VegvisirNNalign
 import vegvisir.utils as VegvisirUtils
-import vegvisir.similarities as VegvisirSimilarities
+#import vegvisir.similarities as VegvisirSimilarities
 import vegvisir.load_utils as VegvisirLoadUtils
 import vegvisir.plots as VegvisirPlots
-import vegvisir.mutual_information as VegvisirMI
+#import vegvisir.mutual_information as VegvisirMI
 from collections import Counter
 import gdown
 from typing import Union
@@ -94,6 +96,7 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
     """
 
     func_dict = {"immunomodulate_dataset":immunomodulate_dataset,
+                 "custom_dataset":custom_dataset,
                  "custom_dataset_binders":custom_dataset,
                  "custom_dataset_random":custom_dataset,
                  "custom_dataset_random_icore_non_anchor":custom_dataset,
@@ -243,9 +246,9 @@ def group_and_filter(data:pd.DataFrame,args:namedtuple,storage_folder:str,filter
         name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
         VegvisirPlots.plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
 
-    #Highlight: Prep data to run in NNalign
-    if args.run_nnalign:
-        prepare_nnalign(args,storage_folder,data,[filters_dict["filter_kmers"][2],"target_corrected","partition"])
+    # #Highlight: Prep data to run in NNalign
+    # if args.run_nnalign:
+    #     prepare_nnalign(args,storage_folder,data,[filters_dict["filter_kmers"][2],"target_corrected","partition"])
 
     return data.copy()
 
@@ -325,11 +328,16 @@ def custom_dataset(script_dir:str,storage_folder:str,args:namedtuple,results_dir
 
     if args.train_path is not None:
         print("Loading your train sequences")
+
+
         if os.path.exists(args.train_path):
             train_data = pd.read_csv("{}".format(args.train_path),sep="\t")
-            #train_data = train_data[["Icore", "target_corrected"]] #TODO:target
+            assert any(x in train_data.columns.tolist() for x in ['Icore','Icore_non_anchor']), "Missing at least one compulsory column 'Icore' or 'Icore_non_anchor'"
             if "Icore" not in train_data.columns:
-                train_data = train_data.rename(columns={"Icore_non_anchor":"Icore"})
+                test_data = train_data[["Icore_non_anchor"]]
+                args.__dict__["sequence_type"] = "Icore_non_anchor"
+            else:
+                test_data = train_data[["Icore"]]
 
             if "partition" in train_data.columns:
                 train_data = train_data[["Icore","target_corrected","partition"]]
@@ -366,10 +374,12 @@ def custom_dataset(script_dir:str,storage_folder:str,args:namedtuple,results_dir
         print("Loading your test sequences")
         if os.path.exists(args.test_path):
             test_data = pd.read_csv("{}".format(args.test_path),sep="\t")
+            assert any(x in test_data.columns.tolist() for x in ['Icore','Icore_non_anchor']), "Missing at least one compulsory column 'Icore' or 'Icore_non_anchor'"
             if "Icore" not in test_data.columns:
-                test_data = test_data.rename(columns={"Icore_non_anchor":"Icore"})
+                test_data = test_data[["Icore_non_anchor"]]
+                args.__dict__["sequence_type"] = "Icore_non_anchor"
             else:
-                test_data = test_data[["Icore"]] #TODO: If incore non anchor not in columns make it equal to icore
+                test_data = test_data[["Icore"]]
             test_data = test_data.dropna(axis=1)
             test_data = test_data.drop_duplicates(subset=['Icore'])
             test_data["training"] = False
@@ -395,19 +405,14 @@ def custom_dataset(script_dir:str,storage_folder:str,args:namedtuple,results_dir
 
     elif args.train_path is not None:
         print("You did not provide a test dataset, therefore predictions/training will be made only in your train dataset. Setting args.test to False")
-        args_dict = vars(args)
-        args_dict["test"] = False
-        args_dict["validate"] = False
-        args = Namespace(**args_dict)
+        args.__dict__["test"] = False
+        args.__dict__["validate"] = False
         data = train_data
     else:
         print("You did not provide a train dataset, therefore predictions/training will be made only in your test dataset. Setting args.train to False")
-        args_dict = vars(args)
-        args_dict["test"] = False
-        args_dict["validate"] = False
-        args = Namespace(**args_dict)
+        args.__dict__["train"] = False
+        args.__dict__["validate"] = False
         data = test_data
-
 
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
@@ -2812,20 +2817,20 @@ def data_exploration(data:np.ndarray,epitopes_array_blosum:np.ndarray,epitopes_a
     if plot_cosine_similarity:
         print("Calculating  epitopes similarity matrices (this might take a while, 15 minutes for 10000 sequences) ....")
 
-        # all_sim_results =VegvisirSimilarities.calculate_similarities_parallel(epitopes_array_blosum,
+        # all_sim_results =dromi.calculate_similarities_parallel(epitopes_array_blosum,
         #                                                               seq_max_len,
         #                                                               epitopes_array_mask,
         #                                                               storage_folder, args,
         #                                                              "{}/All/{}/neighbours1/all".format(args.sequence_type,analysis_mode),
         #                                                               ksize=ksize)
 
-        negatives_sim_results =VegvisirSimilarities.calculate_similarities_parallel(epitopes_array_blosum_division_all.negatives,
+        negatives_sim_results =dromi.calculate_similarities_parallel(epitopes_array_blosum_division_all.negatives,
                                                                       seq_max_len,
                                                                       epitopes_array_blosum_division_all.negatives_mask,
                                                                       storage_folder, args,
                                                                      "{}/All/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode),
                                                                       ksize=ksize)
-        positives_sim_results = VegvisirSimilarities.calculate_similarities_parallel(
+        positives_sim_results = dromi.calculate_similarities_parallel(
                                                                         epitopes_array_blosum_division_all.positives,
                                                                         seq_max_len,
                                                                         epitopes_array_blosum_division_all.positives_mask,
@@ -2837,13 +2842,13 @@ def data_exploration(data:np.ndarray,epitopes_array_blosum:np.ndarray,epitopes_a
         # train_idx_select, train_longest_array = sample_datapoints_mi(epitopes_array_int_division_train.positives,
         #                                                              epitopes_array_int_division_train.negatives)
 
-        train_all_sim_results =VegvisirSimilarities.calculate_similarities_parallel(epitopes_array_blosum_division_train.all,
+        train_all_sim_results =dromi.calculate_similarities_parallel(epitopes_array_blosum_division_train.all,
                                                                       seq_max_len,
                                                                       epitopes_array_blosum_division_train.all_mask,
                                                                       storage_folder, args,
                                                                      "{}/Train/{}/neighbours1/all".format(args.sequence_type,analysis_mode),
                                                                      ksize=ksize)
-        train_positives_sim_results = VegvisirSimilarities.calculate_similarities_parallel(
+        train_positives_sim_results = dromi.calculate_similarities_parallel(
             epitopes_array_blosum_division_train.positives,
             seq_max_len,
             epitopes_array_blosum_division_train.positives_mask,
@@ -2852,14 +2857,14 @@ def data_exploration(data:np.ndarray,epitopes_array_blosum:np.ndarray,epitopes_a
             ksize=ksize)
 
         #if epitopes_array_int_division_train.negatives.shape[0] == train_longest_array:
-        train_negatives_sim_results=VegvisirSimilarities.calculate_similarities_parallel(epitopes_array_blosum_division_train.negatives,
+        train_negatives_sim_results=dromi.calculate_similarities_parallel(epitopes_array_blosum_division_train.negatives,
                                                                           seq_max_len,
                                                                           epitopes_array_blosum_division_train.negatives_mask,
                                                                           storage_folder, args,
                                                                          "{}/Train/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode),
                                                                           ksize=ksize)
 
-        train_high_conf_sim_results=VegvisirSimilarities.calculate_similarities_parallel(epitopes_array_blosum_division_train.high_confidence_negatives,
+        train_high_conf_sim_results=dromi.calculate_similarities_parallel(epitopes_array_blosum_division_train.high_confidence_negatives,
                                                                       seq_max_len,
                                                                       epitopes_array_blosum_division_train.high_confidence_negatives_mask,
                                                                       storage_folder, args,
@@ -2873,7 +2878,7 @@ def data_exploration(data:np.ndarray,epitopes_array_blosum:np.ndarray,epitopes_a
                              "high_conf_negatives":train_high_conf_sim_results}
 
         #Highlight: Test dataset
-        test_all_sim_results = VegvisirSimilarities.calculate_similarities_parallel(
+        test_all_sim_results = dromi.calculate_similarities_parallel(
             epitopes_array_blosum_division_test.all,
             seq_max_len,
             epitopes_array_blosum_division_test.all_mask,
@@ -2881,7 +2886,7 @@ def data_exploration(data:np.ndarray,epitopes_array_blosum:np.ndarray,epitopes_a
             "{}/Test/{}/neighbours1/all".format(args.sequence_type, analysis_mode),
             ksize=ksize)
 
-        test_positives_sim_results = VegvisirSimilarities.calculate_similarities_parallel(
+        test_positives_sim_results = dromi.calculate_similarities_parallel(
             epitopes_array_blosum_division_test.positives,
             seq_max_len,
             epitopes_array_blosum_division_test.positives_mask,
@@ -2889,14 +2894,14 @@ def data_exploration(data:np.ndarray,epitopes_array_blosum:np.ndarray,epitopes_a
             "{}/Test/{}/neighbours1/positives".format(args.sequence_type,analysis_mode),
             ksize=ksize)
 
-        test_negatives_sim_results = VegvisirSimilarities.calculate_similarities_parallel(
+        test_negatives_sim_results = dromi.calculate_similarities_parallel(
             epitopes_array_blosum_division_test.negatives,
             seq_max_len,
             epitopes_array_blosum_division_test.negatives_mask,
             storage_folder, args,
             "{}/Test/{}/neighbours1/negatives".format(args.sequence_type,analysis_mode),
             ksize=ksize)
-        test_high_conf_negatives_sim_results = VegvisirSimilarities.calculate_similarities_parallel(
+        test_high_conf_negatives_sim_results = dromi.calculate_similarities_parallel(
             epitopes_array_blosum_division_test.high_confidence_negatives,
             seq_max_len,
             epitopes_array_blosum_division_test.high_confidence_negatives_mask,
