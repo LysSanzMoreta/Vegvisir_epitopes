@@ -28,12 +28,10 @@ class VEGVISIRGUIDES(EasyGuide):
         self.vegvisir_model = Vegvisir
         self.blosum = model_load.blosum
         self.learning_type = model_load.args.learning_type
-        self.glitch = model_load.args.glitch
         self.aa_types = model_load.aa_types
         self.max_len = model_load.max_len
         self.seq_max_len = model_load.seq_max_len
         self.hidden_dim = model_load.args.hidden_dim
-        self.embedding_dim = model_load.args.embedding_dim
         self.gru_hidden_dim = self.hidden_dim*2
         self.z_dim = model_load.args.z_dim
         self.device = model_load.args.device
@@ -122,7 +120,7 @@ class VEGVISIRGUIDES(EasyGuide):
                 "rnn_final_hidden_bidirectional": rnn_final_hidden_state_bidirectional,
                 "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
                 "rnn_hidden_states": rnn_hidden_states,
-                "sampling_type":self.generate_sampling_type}
+                "sampling_type":self.generate_sampling_type} #TODO: Rm
 
     def guide_supervised(self, batch_data, batch_mask,epoch,guide_estimates,sample=False):
         """
@@ -391,20 +389,20 @@ class VEGVISIRGUIDES(EasyGuide):
     def guide(self,batch_data,batch_mask,epoch,guide_estimates,sample):
         if self.seq_max_len == self.max_len:
             if self.learning_type == "supervised":
-                if self.glitch:
-                    return self.guide_supervised_glitch(batch_data,batch_mask,epoch,guide_estimates,sample)
-                else:
-                    return self.guide_supervised(batch_data,batch_mask,epoch, guide_estimates,sample)
+                # if self.glitch:
+                #     return self.guide_supervised_glitch(batch_data,batch_mask,epoch,guide_estimates,sample)
+                # else:
+                return self.guide_supervised(batch_data,batch_mask,epoch, guide_estimates,sample)
             elif self.learning_type == "unsupervised":
-                if self.glitch:
-                    return self.guide_unsupervised_glitched(batch_data, batch_mask,epoch,guide_estimates, sample)
-                else:
-                    return self.guide_unsupervised(batch_data, batch_mask,epoch,guide_estimates, sample)
+                # if self.glitch:
+                #     return self.guide_unsupervised_glitched(batch_data, batch_mask,epoch,guide_estimates, sample)
+                # else:
+                return self.guide_unsupervised(batch_data, batch_mask,epoch,guide_estimates, sample)
             elif self.learning_type == "semisupervised":
-                if self.glitch:
-                    return self.guide_semisupervised_glitched(batch_data, batch_mask, epoch, guide_estimates, sample)
-                else:
-                    return self.guide_semisupervised(batch_data, batch_mask, epoch, guide_estimates, sample)
+                # if self.glitch:
+                #     return self.guide_semisupervised_glitched(batch_data, batch_mask, epoch, guide_estimates, sample)
+                # else:
+                return self.guide_semisupervised(batch_data, batch_mask, epoch, guide_estimates, sample)
         else:
             raise ValueError("guide not implemented for features, re-do")
 

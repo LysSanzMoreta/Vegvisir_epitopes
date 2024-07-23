@@ -4846,7 +4846,7 @@ def process_nnalign(results_path, seqs_df,stress_dataset,mode="train",save_plot=
     #if save_plot:
     # A "micro-average": quantifying score on all classes jointly
     precision["micro"], recall["micro"], _ = precision_recall_curve(
-        nnalign_results_full["targets"].ravel(), nnalign_results_full["Prediction"].ravel()
+        nnalign_results_full["targets"].to_numpy().ravel(), nnalign_results_full["Prediction"].to_numpy().ravel()
     )
     precision_recall_joint = np.concatenate([precision["ordinary"][None,:],recall["ordinary"][None,:]],axis=0)
     max_precision_recall_combo = precision_recall_joint[:,precision_recall_joint.sum(axis=0).argmax()]
@@ -5167,22 +5167,22 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     #
     # metrics_results_dict = plot_kfold_comparison_helper(metrics_keys, script_dir, folder=vegvisir_folder, overwrite=False, kfolds=5)
 
-    #Highlight: Find the sequence overlap with the train datasets from the other programs to take it into account for the metrics
+    #Highlight: Find the sequence overlap with the train datasets from the other programs to take it into account for the metrics. This file indicates as True if the sequence is present in the dataset
     other_programs_sequence_overlap = pd.read_csv("{}/Benchmark/Other_Programs/dataset_partitioned_overlap_benchmark.tsv".format(script_dir),sep="\t")
 
     # #Highlight: invert the dataframe to see the performance on the sequences that have been used for training the benchmarking programs
-    if keep_only_overlapped:#keep the sequences in the original training datasets
+    if keep_only_overlapped:#keep the sequences in the original training datasets that overlap with Vegvisir's
         #other_programs_sequence_overlap_inverted = other_programs_sequence_overlap.applymap(lambda x: not x).astype(bool) #invert to check results on the overlapped sequences
-        other_programs_sequence_overlap_inverted = other_programs_sequence_overlap.map(lambda x: not x).astype(bool) #invert to check results on the overlapped sequences
+        other_programs_sequence_overlap_inverted = other_programs_sequence_overlap.map(lambda x: not x).astype(bool) #invert booleans to check results on the overlapped sequences
         other_programs_sequence_overlap_inverted["Icore"] = other_programs_sequence_overlap["Icore"]
         other_programs_sequence_overlap = other_programs_sequence_overlap_inverted
 
     other_programs_sequence_overlap["MixMHCPred"] = False
-    other_programs_sequence_overlap["NetMHC"] = False #assign to Fals, since we keep everything with False
+    other_programs_sequence_overlap["NetMHC"] = False #assign to False, since we keep everything with False
 
     if aggregated_not_overlap:#use the sequences found in all the datasets (overlapped_per_model= True) or not (overlapped_per_model=False)
         aggregated_overlap_idx = other_programs_sequence_overlap.loc[:, ~other_programs_sequence_overlap.columns.isin(['Icore',"target","partition"])].to_numpy()
-        aggregated_overlap_idx = pd.DataFrame({"Aggregated_overlap":np.mean(aggregated_overlap_idx,axis=1).astype(bool)}) #all the sequences not present in any of the benchmark training datasets
+        aggregated_overlap_idx = pd.DataFrame({"Aggregated_overlap":np.mean(aggregated_overlap_idx,axis=1).astype(bool)}) #track all the sequences not present in any of the benchmark training datasets
         #print(aggregated_overlap_idx["Aggregated_overlap"].sum())
         other_programs_sequence_overlap = pd.concat([other_programs_sequence_overlap["Icore"],aggregated_overlap_idx],axis=1)
 
@@ -5209,10 +5209,11 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     vegvisir_results_ap_train = {"Vegvisir": np.round((np.mean(np.array(metrics_results_train["ap_class_0"])) + np.mean(np.array(metrics_results_train["ap_class_1"]))) / 2, 2)}
     vegvisir_results_pval_train = {"Vegvisir":np.mean(np.array(metrics_results_train["pval_class_0"])) + np.mean(np.array(metrics_results_train["pval_class_1"]))}
 
-    if only_class1:
+    if only_class1: #some statistics are uni-class
         vegvisir_results_auc01_train = {"Vegvisir":np.round(np.mean(np.array(metrics_results_train["auc01_class_1"])), 2)}
         vegvisir_results_ppv_train = {"Vegvisir":np.round(np.mean(np.array(metrics_results_train["ppv_mod_class_1"])), 2)}
-        #vegvisir_results_ap_train = {"Vegvisir":np.round(np.mean(np.array(metrics_results_train["ap_class_1"])), 2)}
+        if keep_only_overlapped and aggregated_not_overlap:
+            vegvisir_results_ap_train = {"Vegvisir":np.round(np.mean(np.array(metrics_results_train["ap_class_1"])), 2)}
         vegvisir_results_pval_train = {"Vegvisir":np.mean(np.array(metrics_results_train["pval_class_1"]))}
 
     else:
@@ -5240,7 +5241,8 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     if only_class1:
         vegvisir_results_auc01_test = {"Vegvisir":np.round(np.mean(np.array(metrics_results_test["auc01_class_1"])), 3)}
         vegvisir_results_ppv_test = {"Vegvisir":np.round(np.mean(np.array(metrics_results_test["ppv_mod_class_1"])), 3)}
-        #vegvisir_results_ap_test = {"Vegvisir":np.round(np.array(metrics_results_test["ap_class_1"]), 3)}
+        if keep_only_overlapped and aggregated_not_overlap:
+            vegvisir_results_ap_test = {"Vegvisir":np.round(np.array(metrics_results_test["ap_class_1"]), 3)}
         vegvisir_results_pval_test = {"Vegvisir":np.mean(np.array(metrics_results_test["pval_class_1"]))}
 
     else:
@@ -5267,7 +5269,7 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
         nnalign_results_path_train_full = "Benchmark/Other_Programs/NNAlign_results_19_01_2024/Icore/variable_length_Icore_sequences_viral_dataset15/nnalign_peplen_8-11_iter_100_10523/nnalign_peplen_8-11_iter_100_10523.lg9.sorted.pred"
         nnalign_results_path_test_full = "Benchmark/Other_Programs/NNAlign_results_19_01_2024/Icore/variable_length_Icore_sequences_viral_dataset15/nnalign_peplen_8-11_iter_100_10523/test_Icore_variable_length_Icore_sequences_viral_dataset15_lg9_13809.evalset.txt"
 
-    train_test_df = pd.concat([train_df,test_df],axis=0)
+    #train_test_df = pd.concat([train_df,test_df],axis=0)
     (nnalign_results_train_roc_auc_dict,nnalign_results_train_auc01_dict, nnalign_results_train_ppv_dict,
      nnalign_results_train_ap_dict,nnalign_results_train_pval_dict,nnalign_results_train_precision_dict,nnalign_results_train_recall_dict) = process_nnalign(nnalign_results_path_train_full,train_df,keyname,mode="train")
     (nnalign_results_test_roc_auc_dict,nnalign_results_test_auc01_dict, nnalign_results_test_ppv_dict,
@@ -5282,14 +5284,12 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     #pd.set_option('display.max_columns', None)
 
     def process_results_option_a(seqs_df,training=True):
-        """Aggregate results based on same Icore and remove the allele prediction effect"""
+        """Aggregate results based on same Icore and remove the possible allele-encoding prediction effect"""
         #other_programs_results_mode= other_programs_results[other_programs_results["training"] == training]
         #missing_seqs = seqs_df[~seqs_df["Icore"].isin(other_programs_results["Icore"])]
         #other_programs_results_mode= other_programs_results[other_programs_results["training"] == training] #Highlight: This training flag corresponds solely to the viral_dataset9, not viral_dataset15
 
         other_programs_results_mode = other_programs_results[other_programs_results["Icore"].isin(seqs_df["Icore"].values.tolist())]
-
-
 
         other_programs_results_mode = other_programs_results_mode[["Icore","target_corrected","PRIME_rank","PRIME_score","MixMHCpred_rank_binding","IEDB_immuno","DeepImmuno","DeepNetBim_binding","DeepNetBim_immuno","DeepNetBim_immuno_probability","BigMHC","NetMHCpan_binding"]]
         #Highlight: Grouping by alleles ---> To make similar to vegvisir's logic
@@ -5314,13 +5314,8 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     other_programs_results_test = process_results_option_a(test_df,training=False)
     #Highlight: Make sure that the information on the overlapped sequences has the same order
     #Before
-
-    #other_programs_sequence_overlap_train = VegvisirUtils.merge_in_left_order(other_programs_results_train[["Icore"]],other_programs_sequence_overlap,on="Icore") #guarantees the same order of Icore
     other_programs_sequence_overlap_train = VegvisirUtils.merge_in_left_order(other_programs_results_train[["Icore"]],other_programs_sequence_overlap,on="Icore") #guarantees the same order of Icore
-
-
     #After
-    #other_programs_sequence_overlap_test = VegvisirUtils.merge_in_left_order(other_programs_results_test[["Icore"]],other_programs_sequence_overlap,on="Icore") #guarantees the same order of Icore
     other_programs_sequence_overlap_test = VegvisirUtils.merge_in_left_order(other_programs_results_test[["Icore"]],other_programs_sequence_overlap,on="Icore") #guarantees the same order of Icore
 
     programs_list = ["PRIME_rank","PRIME_score","MixMHCpred_rank_binding","IEDB_immuno","DeepImmuno","DeepNetBim_binding","DeepNetBim_immuno","DeepNetBim_immuno_probability","BigMHC","NetMHCpan_binding"]
@@ -5337,7 +5332,6 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     auc_results_train = list(zip(*auc_results_train))
     roc_auc_results_train = auc_results_train[0]
     auc01_results_train = auc_results_train[1]
-
 
     if keep_all:
         auc_results_test = list(map(lambda program,program2: calculate_auc(other_programs_results_test["target_corrected"],other_programs_results_test[program],None),programs_list,programs_list2 ))
@@ -5486,23 +5480,6 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     recall_results_test_dict = {key: val for key, val in recall_results_test_dict.items() if key in benchmark_programs_list}
 
     colors_dict = {"Train":"skyblue","Test":"tomato"}
-
-    # print(programs_list)
-    # print("Train")
-    # print(pval_results_train)
-    # print("Test")
-    # print(pval_results_test)
-    # print("NNAlign-------------------")
-    # print("Train")
-    # print(nnalign_results_train_pval_dict)
-    # print("Test")
-    # print(nnalign_results_test_pval_dict)
-    # print("Vegvisir------------------")
-    # print("Train")
-    # print(vegvisir_results_pval_train)
-    # print("test")
-    # print(vegvisir_results_pval_test)
-    # exit()
 
 
     plot_only_auc_ap = True
@@ -5688,6 +5665,8 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
 
     #plt.show()
     #plt.savefig("{}/{}/Benchmarking_{}_{}.jpg".format(script_dir,folder,title,suffix))
+    plt.show()
+    exit()
     plt.savefig("{}/{}/Benchmarking_{}_{}.svg".format(script_dir, folder, title, suffix))
     plt.savefig("{}/{}/Benchmarking_{}_{}.pdf".format(script_dir, folder, title, suffix))
 

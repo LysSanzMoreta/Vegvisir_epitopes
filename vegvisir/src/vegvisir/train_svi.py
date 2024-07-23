@@ -1627,7 +1627,7 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     # if args.learning_type in ["semisupervised","unsupervised"]:
     #     guide = config_enumerate(select_quide(Vegvisir,model_load,n_data,args.guide))
     # else:
-    guide = select_quide(Vegvisir,model_load,n_data,args.guide)
+    guide = select_quide(Vegvisir,model_load,n_data,"custom")
     #svi = SVI(poutine.scale(Vegvisir.model,scale=1.0/n_data), poutine.scale(guide,scale=1.0/n_data), optimizer, loss_func)
     n = 50
     data_args_0 = {"blosum":train_data_blosum.to(args.device)[:n],
@@ -2067,7 +2067,7 @@ def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     # if args.learning_type in ["semisupervised","unsupervised"]:
     #     guide = config_enumerate(select_quide(Vegvisir,model_load,n_data,args.guide))
     # else:
-    guide = select_quide(Vegvisir,model_load,n_data,args.guide)
+    guide = select_quide(Vegvisir,model_load,n_data,"custom")
     #svi = SVI(poutine.scale(Vegvisir.model,scale=1.0/n_data), poutine.scale(guide,scale=1.0/n_data), optimizer, loss_func)
     n = 50
     data_args_0 = {"blosum":train_data_blosum.to(args.device)[:n],

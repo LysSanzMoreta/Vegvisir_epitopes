@@ -1,4 +1,6 @@
 .idea/*
+.idea (Selective Sync Conflict*
+
 data/*
 data/Immnunogenicity/*
 data*
@@ -73,3 +75,7 @@ Results_netMHCpan/Independent_sampling/old_plots/
 Results_netMHCpan/Independent_sampling/
 
 Results_netMHCpan/vegvisir_Generated/
+
+.idea (Selective Sync Conflict 1)/
+
+__pycache__/
