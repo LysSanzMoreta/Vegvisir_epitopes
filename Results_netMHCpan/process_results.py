@@ -1,0 +1,416 @@
+import os,sys
+import io
+import argparse
+from argparse import RawTextHelpFormatter
+from collections import Counter
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import mmap
+import seaborn as sns
+import torch.nn.functional
+
+local_repository=True
+script_dir = os.path.dirname(os.path.abspath(__file__)).replace("Results_netMHCpan","")
+
+if local_repository: #TODO: The local imports are extremely slow
+     sys.path.insert(1, "{}/vegvisir/src".format(script_dir))
+     import vegvisir
+else:#pip installed module
+     import vegvisir
+
+import vegvisir.plots as VegvisirPlots
+import vegvisir.similarities as VegvisirSimilarities
+import vegvisir.utils as VegvisirUtils
+from vegvisir import str2bool,str2None
+
+from collections import namedtuple
+
+DatasetInfo = namedtuple("datasetinfo",["corrected_aa_types","seq_max_len"])
+
+def split_string(string,maxlen):
+    string = string.split()
+    string_len = len(string)
+    if string_len == 0 or string_len == 1:
+        return None
+    elif string[0] == "#" or string[0] == "Protein" or string[0].startswith("HLA-") or string[0] == "Pos":
+        return None
+    elif string_len < maxlen:
+        string += [""]*(maxlen-string_len)
+        return string
+    else:
+        return string
+
+def read_dataframe(folder_path,folder_type,make_plots=False,subset_sequences=True):
+    """Reads the NetMHCpan folder results across all the tested alleles"""
+    headers =  ["Pos","MHC", "Peptide", "Core", "Of", "Gp", "Gl", "Ip", "Il", "Icore","Identity", "Score_EL", "%Rank_EL" "BindLevel"]
+
+    files = os.listdir(folder_path)
+    #ignore_str = "-"*123 + "\n"
+    maxlen = len(headers)
+    epitopes_all_df_list = []
+    for filename in files:
+        if ".png" not in filename and ".tsv" not in filename:
+            with open("{}/{}".format(folder_path,filename), 'rb', 0) as file:
+                s = mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ)
+                lines = s.read().decode("utf-8").split("\n")
+                list_of_lines = list(map(lambda string: split_string(string,maxlen),lines))
+                list_of_lines = list(filter(lambda v: v is not None, list_of_lines))
+                zipped = list(zip(*list_of_lines))
+                Pos = pd.Series(zipped[0])
+                MHC = pd.Series(zipped[1])
+                Peptide = pd.Series(zipped[2])
+                Core = pd.Series(zipped[3])
+                Of = pd.Series(zipped[4])
+                Gp = pd.Series(zipped[5])
+                Gl = pd.Series(zipped[6])
+                Ip = pd.Series(zipped[7])
+                Il = pd.Series(zipped[8])
+                Icore = pd.Series(zipped[9])
+                Identity = pd.Series(zipped[10])
+                Score_EL = pd.Series(zipped[11])
+                Rank_EL = pd.Series(zipped[12])
+
+                df = pd.DataFrame({"Pos":Pos,
+                                   "MHC":MHC,
+                                   "Epitopes":Peptide,
+                                   "Core":Core,
+                                   "Of":Of,
+                                   "Gp":Gp,
+                                   "Gl":Gl,
+                                   "Ip":Ip,
+                                   "Il":Il,
+                                   "Icore":Icore,
+                                   "Identity":Identity,
+                                   "Score_EL":Score_EL,
+                                   "%Rank_EL":Rank_EL})
+
+
+
+                epitopes_all_df_list.append(df)
+
+    epitopes_all_df = pd.concat(epitopes_all_df_list,axis=0)
+    epitopes_all_df = epitopes_all_df.drop("Icore",axis=1)
+    if subset_sequences:
+        epitopes_all_df = epitopes_all_df.sample(10000,replace=False)
+
+    epitopes_all_df["%Rank_EL"] = epitopes_all_df["%Rank_EL"].fillna(100).replace('', '100').astype(float)
+    epitopes_all_df["Score_EL"] = epitopes_all_df["Score_EL"].fillna(0).replace('', '0').astype(float)
+
+    #epitopes_all_df[["%Rank_EL","Score_EL"]] = epitopes_all_df[["%Rank_EL","Score_EL"]].astype(float)
+    n_unique = len(epitopes_all_df["Epitopes"].unique())
+
+
+    #Highlight: Read the dataframe with the generated sequences with their scores
+    epitopes_folder_path = "{}/{}/epitopes.tsv".format(folder_path.replace("Results_netMHCpan/","").replace("_immunomodulate","").replace("_generated",""),folder_type)
+    epitopes_scores_df = pd.read_csv(epitopes_folder_path.replace("_Generated","").replace("_Immunomodulated",""), sep="\t")
+    epitopes_scores_df=epitopes_scores_df.rename(columns={"Epitopes":"Icore"})
+    epitopes_all_df = epitopes_all_df.rename(columns={"Epitopes": "Icore"})
+
+    epitopes_all_df["Icore"] = epitopes_all_df["Icore"].str.replace("X", "")
+    epitopes_all_df = epitopes_all_df.merge(epitopes_scores_df,on="Icore",how="left")
+
+    weak_binders = epitopes_all_df[(epitopes_all_df["%Rank_EL"] <= 2.0) & (epitopes_all_df["%Rank_EL"] > 0.5) ]
+    strong_binders = epitopes_all_df[epitopes_all_df["%Rank_EL"] <= 0.5 ]
+
+    weak_binders_count = weak_binders.groupby('MHC', as_index=False)[["Icore"]].size()
+    weak_binders_count["Binder_type"] = "Weak"
+    weak_binders_epitopes = weak_binders.groupby('MHC', as_index=False)[["Icore"]].agg(lambda srs: Counter(list(srs)).most_common(1)[0][0])
+
+    weak_binders_df = pd.concat([weak_binders_epitopes,weak_binders_count.drop("MHC",axis=1)],axis=1)
+    weak_binders_df["Icore"] = weak_binders_df["Icore"].str.replace("X","")
+    weak_binders_df.drop_duplicates(["Icore"],inplace=True)
+
+    weak_binders_df=weak_binders_df.merge(epitopes_scores_df,on="Icore",how="left") #it is just "easier" to merge again
+
+    strong_binders_count = strong_binders.groupby('MHC', as_index=False)[["Icore"]].size()
+    strong_binders_count["Binder_type"] = "Strong"
+    strong_binders_epitopes = strong_binders.groupby('MHC', as_index=False)[["Icore"]].agg(lambda srs: Counter(list(srs)).most_common(1)[0][0])
+    strong_binders_df = pd.concat([strong_binders_epitopes,strong_binders_count.drop("MHC",axis=1)],axis=1)
+    strong_binders_df["Icore"] = strong_binders_df["Icore"].str.replace("X","")
+    strong_binders_df.drop_duplicates(["Icore"],inplace=True)
+
+    strong_binders_df=strong_binders_df.merge(epitopes_scores_df,on="Icore",how="left")
+
+    binders_df = pd.concat([weak_binders_count,strong_binders_count],axis=0)
+    binders_df["size"] = ((binders_df["size"]/n_unique)*100).round(2)
+
+    epitopes_binders = pd.concat([weak_binders_df,strong_binders_df],axis=0)
+    epitopes_binders["Icore"] = epitopes_binders["Icore"].str.ljust(11, fillchar='#')
+
+
+    epitopes_binders = epitopes_binders.dropna(subset=["Negative_score","Positive_score"],axis=0)
+    epitopes_padded = epitopes_binders["Icore"].tolist()
+
+    positive_sequences = epitopes_binders[epitopes_binders["Positive_score"] >= 0.6]
+    positive_sequences_list = positive_sequences["Icore"].tolist()
+
+    negative_sequences = epitopes_binders[epitopes_binders["Negative_score"] >= 0.6]
+    negative_sequences_list = negative_sequences["Icore"].tolist()
+    #binders_df = binders_df.sort_values(by=['size'],ascending=False) #Highlight: Activate if want to order by counts
+    # nrows_empty = len(binders_df["size"])
+    # size_with_empty_rows = [0]*nrows_empty*2
+    # size_with_empty_rows[::2] = binders_df["size"].values.tolist()
+    #
+    # mhc_with_empty_rows = [0]*nrows_empty*2
+    # mhc_with_empty_rows[::2] = binders_df["MHC"].values.tolist()
+    #
+    # binder_type_with_empty_rows = [0] * nrows_empty * 2
+    # binder_type_with_empty_rows[::2] = binders_df["Binder_type"].values.tolist()
+    # binders_df_empty_rows = pd.DataFrame({"size":size_with_empty_rows,"MHC":mhc_with_empty_rows,"Binder_type":binder_type_with_empty_rows})
+
+    fig, ax = plt.subplots(figsize=(18, 18))
+    #sns.catplot(y='MHC', x='size', hue='Binder_type', kind='bar', data=binders_df,width=1,dodge=True,ax=ax)
+    sns.barplot(y='MHC', x='size', hue='Binder_type', data=binders_df,width=0.8,dodge=True,ax=ax)
+    ax.spines[['right', 'top']].set_visible(False)
+    #ax.axes.set_ylim(-0.5, n_unique)
+    ax.set_xlabel('Percentage of binders', fontsize=15)
+    def change_width(ax, new_value):
+        for patch in ax.patches:
+            current_width = patch.get_width()
+            diff = current_width - new_value
+            # we change the bar width
+            patch.set_width(new_value)
+            # we recenter the bar
+            patch.set_x(patch.get_x() + diff * .5)
+
+    def change_height(ax, new_value):
+        for patch in ax.patches:
+            current_height = patch.get_height()
+            diff = current_height - new_value
+
+            # we change the bar width
+            patch.set_height(new_value)
+
+            # we recenter the bar
+            patch.set_y(patch.get_y() + diff * .5)
+
+    #change_width(ax, 1.5)
+    #change_height(ax, 1.5)
+    plt.xticks(fontsize=20)
+    plt.title("MHC-binding count from generated epitopes",fontsize=20)
+    plt.legend(bbox_to_anchor=(1.05, 0.5), loc='upper right',fontsize=20)
+    plt.savefig("{}/barplot_{}.png".format(folder_path,folder_type),dpi=600)
+
+    sequences = positive_sequences_list + negative_sequences_list
+
+    labels = np.array([1]*len(positive_sequences_list) + [0]*len(negative_sequences_list))
+
+    if make_plots:
+
+        calculate_peptide_features_correlations(sequences, labels, "{}".format(folder_path))
+
+        VegvisirPlots.plot_logos(epitopes_padded,"{}".format(folder_path),"_binders_MHC_all")
+        VegvisirPlots.plot_logos(positive_sequences_list,"{}".format(folder_path),"_binders_MHC_positives")
+        VegvisirPlots.plot_logos(negative_sequences_list,"{}".format(folder_path),"_binders_MHC_negatives")
+
+        plot_positional_weights(epitopes_padded,11,"ALL","{}".format(folder_path))
+        plot_positional_weights(positive_sequences_list,11,"POSITIVES","{}".format(folder_path))
+        plot_positional_weights(negative_sequences_list,11,"NEGATIVES","{}".format(folder_path))
+
+    return epitopes_binders, epitopes_all_df
+
+def build_arrays(sequences):
+    blosum_array, blosum_dict, blosum_array_dict = VegvisirUtils.create_blosum(21, "BLOSUM62",
+                                                                               zero_characters=["#"],
+                                                                               include_zero_characters=True)
+    aa_dict = VegvisirUtils.aminoacid_names_dict(21, zero_characters=["#"])
+
+    sequences = list(map(lambda seq:list(seq.replace("X","#")),sequences))
+    sequences_raw = np.array(sequences)
+
+
+    sequences_int = np.vectorize(aa_dict.get)(sequences_raw)
+    sequences_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(sequences_int)
+
+    sequences_mask = sequences_int.astype(bool)
+
+    return sequences_raw,sequences_int,sequences_blosum,sequences_mask
+
+def plot_positional_weights(sequences,maxlen,subtitle,results_dir):
+
+    sequences_raw, sequences_int, sequences_blosum, sequences_mask = build_arrays(sequences)
+    generated_sequences_cosine_similarity = VegvisirSimilarities.cosine_similarity(sequences_blosum,
+                                                                                   sequences_blosum,
+                                                                                   correlation_matrix=False,
+                                                                                   parallel=False)
+    batch_size = 100 if sequences_blosum.shape[0] > 100 else sequences_blosum.shape[0]
+    positional_weights = VegvisirSimilarities.importance_weight(generated_sequences_cosine_similarity,
+                                                                maxlen, sequences_mask,
+                                                                batch_size=batch_size, neighbours=1)
+    VegvisirPlots.plot_heatmap(positional_weights, "Cosine similarity \n positional weights",
+                               "{}/Generated_MHC_bound_positional_weights_{}.png".format(results_dir,subtitle))
+
+def calculate_peptide_features_correlations(sequences,labels,results_dir,filename=""):
+    """"""
+    #sequences_raw, sequences_int, sequences_blosum, sequences_mask = build_arrays(sequences)
+    seq_max_len = 11
+
+    storage_folder = "/home/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data"
+
+    features_dict = VegvisirUtils.CalculatePeptideFeatures(seq_max_len, sequences,storage_folder).features_summary()
+
+    spearman_correlations = list(map(lambda feat1, feat2: VegvisirUtils.calculate_correlations(feat1, feat2, method="spearman"),[labels] * len(features_dict.keys()), list(features_dict.values())))
+    spearman_correlations = list(zip(*spearman_correlations))
+    spearman_coefficients = np.array(spearman_correlations[0])
+    spearman_coefficients = np.round(spearman_coefficients, 2)
+
+    # Highlight: Plot spearman coefficients
+    fontsize = 15
+    with plt.style.context('classic'):
+        fig, ax1 = plt.subplots(nrows=1, ncols=1, figsize=(15, 12),sharey="all")  # gridspec_kw={'width_ratios': [4.5, 0.5]}
+
+        n_feats = len(features_dict.keys())
+        index = np.arange(n_feats)
+        positive_idx = np.array(spearman_coefficients >= 0)  # divide the coefficients in negative and positive to plot them separately
+        right_arr = np.zeros(n_feats)
+        left_arr = np.zeros(n_feats)
+        right_arr[positive_idx] = spearman_coefficients[positive_idx]
+        left_arr[~positive_idx] = spearman_coefficients[~positive_idx]
+
+        ax1.barh(index, left_arr, align="center", color="mediumorchid",zorder=1)  # zorder indicates the plotting order, supposedly
+        ax1.barh(index, right_arr, align="center", color="seagreen", zorder=2)
+
+        position_labels = list(range(0, n_feats))
+        ax1.axvline(0)
+
+        def clean_labels(label):
+            if label == "extintion_coefficient_cystines":
+                label = "extintion coefficient \n (cystines)"
+            elif label == "extintion_coefficient_cysteines":
+                label = "extintion coefficient \n (cysteines)"
+            else:
+                label = label.replace("_", " ")
+
+            return label
+
+        labels_names = list(map(lambda label: clean_labels(label), list(features_dict.keys())))
+        ax1.yaxis.set_ticks(position_labels)
+        ax1.set_yticklabels(labels_names, fontsize=fontsize, rotation=0, weight='bold')
+        ax1.tick_params(axis="x", labelsize=fontsize)
+        # ax1.set_xticklabels(ax1.get_xticks(), weight='bold')
+        ax1.tick_params(
+            axis='y',  # changes apply to the y-axis
+            which='both',  # both major and minor ticks are affected
+            bottom=False,  # ticks along the bottom edge are off
+            top=False,  # ticks along the top edge are off
+            labelbottom=False,
+            left=False,
+            right=False)  # labels along the bottom edge are off
+        plt.subplots_adjust(left=0.28)
+        # ax1.margins(y=0.15)
+        ax1.spines[['right', 'top', 'left']].set_visible(False)
+
+        fig.suptitle("Correlation coefficients: Features vs Predicted targets", fontsize=fontsize + 8,weight='bold')
+        plt.savefig("{}/Generated_target_features_correlations_{}".format(results_dir,filename), dpi=700)
+
+def combine_folder_results(results_dict,folder_path,filename, folder_type="Generated"):
+    """"""
+    epitopes_binders_df_list = []
+    epitopes_all_df_list = []
+    for key,val in results_dict.items():
+        epitopes_binders_df, epitopes_all_df = read_dataframe(folder_path=val, folder_type=folder_type, make_plots=False,subset_sequences=False)
+        epitopes_binders_df_list.append(epitopes_binders_df)
+        epitopes_all_df_list.append(epitopes_all_df)
+
+    #for dataframes_list,dataframes_name in zip([epitopes_all_df_list,epitopes_binders_df_list],["all_{}".format(filename),"binders_MHC_{}".format(filename)]):
+    #for dataframes_list,dataframes_name in zip([epitopes_binders_df_list],["binders_MHC_{}".format(filename)]):
+    for dataframes_list,dataframes_name in zip([epitopes_all_df_list],["all_{}".format(filename)]):
+        print("Evaluating {}".format(dataframes_name))
+        epitopes = pd.concat(dataframes_list)
+        epitopes = epitopes.drop_duplicates(subset="Icore")
+        #epitopes = epitopes[epitopes[["Positive_score","Negative_score"]].notnull()]
+        print(epitopes.shape)
+        epitopes.to_csv("{}/Generated_{}.tsv".format(folder_path,dataframes_name),sep="\t")
+        epitopes["Icore"] = epitopes["Icore"].str.ljust(11, fillchar='#')
+        epitopes_padded = epitopes["Icore"].tolist()
+
+        softmax_scores = torch.nn.functional.softmax(torch.from_numpy(epitopes[["Positive_score","Negative_score"]].values),dim=-1).cpu().numpy()
+        print(softmax_scores)
+
+        epitopes[["Positive_score", "Negative_score"]] = softmax_scores
+
+        positive_sequences = epitopes[epitopes["Positive_score"] >= 0.7]
+        positive_sequences_list = positive_sequences["Icore"].tolist()
+        positive_sequences["Icore"].to_csv("{}/Generated_{}_positives.tsv".format(folder_path, dataframes_name), sep="\t",index=False)
+
+        negative_sequences = epitopes[epitopes["Positive_score"] < 0.3]
+        negative_sequences_list = negative_sequences["Icore"].tolist()
+        negative_sequences["Icore"].to_csv("{}/Generated_{}_negative.tsv".format(folder_path, dataframes_name), sep="\t",index=False)
+
+        sequences = positive_sequences_list + negative_sequences_list
+
+        labels = np.array([1]*len(positive_sequences_list) + [0]*len(negative_sequences_list))
+        #calculate_peptide_features_correlations(sequences, labels, "{}".format(folder_path),dataframes_name)
+
+        # VegvisirPlots.plot_logos(epitopes_padded, "{}".format(folder_path), dataframes_name)
+        # VegvisirPlots.plot_logos(positive_sequences_list, "{}".format(folder_path), "{}_positives".format(dataframes_name))
+        # VegvisirPlots.plot_logos(negative_sequ
+        # ences_list, "{}".format(folder_path), "{}_negatives".format(dataframes_name))
+
+        # if len(epitopes_padded) < 10000:
+        #     plot_positional_weights(epitopes_padded, 11, "_{}_ALL".format(dataframes_name), "{}".format(folder_path))
+        #     plot_positional_weights(positive_sequences_list, 11, "_{}_POSITIVES".format(dataframes_name), "{}".format(folder_path))
+        #     plot_positional_weights(negative_sequences_list, 11, "_{}_NEGATIVES".format(dataframes_name), "{}".format(folder_path))
+
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description="NetMHCpan process results args",formatter_class=RawTextHelpFormatter)
+    parser.add_argument('-folder-path',"--folder-path", type=str, nargs='?', default="", help='path to results')
+    parser.add_argument('-folder-type',"--folder-type", type=str, nargs='?', default="Generated", help='path to results')
+    parser.add_argument('-combine-results',"--combine-results", type=str2bool, nargs='?', default=True, help='')
+    args = parser.parse_args()
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+
+    # results_dict_generated_conditional_sampling = {
+    #     "folder1":"{}/PLOTS_Vegvisir_viral_dataset9_2023_12_29_15h31min21s577193ms_0epochs_supervised_Icore_0_TESTING".format(script_dir),
+    #     "folder2":"{}/PLOTS_Vegvisir_viral_dataset9_2023_12_29_19h32min20s745052ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+    #     "folder3":"{}/PLOTS_Vegvisir_viral_dataset9_2023_12_29_21h02min38s346973ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+    #     "folder4":"{}/PLOTS_Vegvisir_viral_dataset9_2023_12_29_22h30min58s427689ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+    #     "folder5":"{}/PLOTS_Vegvisir_viral_dataset9_2023_12_30_12h26min26s976339ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+    #     "folder6":"{}/PLOTS_Vegvisir_viral_dataset9_2023_12_30_13h43min42s487903ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+    # }
+    folder = "_Generated"
+    results_dict_generated_conditional_sampling = {
+        "folder1":"{}/PLOTS_Vegvisir_viral_dataset15_2024_03_27_19h25min02s448145ms_60epochs_supervised_Icore_blosum_TESTING_Generated".format(script_dir),
+        "folder2":"{}/PLOTS_Vegvisir_viral_dataset15_2024_03_27_19h40min20s623600ms_60epochs_supervised_Icore_blosum_TESTING_Generated".format(script_dir),
+        #"folder3":"{}/PLOTS_Vegvisir_viral_dataset15_2024_03_27_19h51min29s483666ms_60epochs_supervised_Icore_blosum_TESTING_Generated".format(script_dir),
+
+    }
+
+    # results_dict_generated_independent_sampling = {
+    #     "folder1": "{}/PLOTS_Vegvisir_viral_dataset9_2024_01_03_23h25min49s189481ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+    #     "folder2": "{}/PLOTS_Vegvisir_viral_dataset9_2024_01_04_00h03min36s184279ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+    #     "folder3": "{}/PLOTS_Vegvisir_viral_dataset9_2024_01_04_00h23min58s573204ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+    #     "folder4": "{}/PLOTS_Vegvisir_viral_dataset9_2024_01_04_00h59min34s300268ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+    #     "folder5": "{}/PLOTS_Vegvisir_viral_dataset9_2024_01_04_01h30min13s606843ms_60epochs_supervised_Icore_blosum_TESTING".format(script_dir),
+    # }
+    #
+    # results_dict_generated_independent_sampling = {
+    #     "folder1":"{}/PLOTS_Vegvisir_viral_dataset15_2024_03_27_19h15min48s745646ms_60epochs_supervised_Icore_blosum_TESTING_Generated".format(script_dir),
+    #     "folder2":"{}/PLOTS_Vegvisir_viral_dataset15_2024_03_27_19h30min55s270247ms_60epochs_supervised_Icore_blosum_TESTING_Generated".format(script_dir),
+    #     "folder3":"{}/PLOTS_Vegvisir_viral_dataset15_2024_03_27_19h46min03s397524ms_60epochs_supervised_Icore_blosum_TESTING_Generated".format(script_dir),
+    # }
+
+    results_dict_generated_independent_sampling = {
+        "folder1":"{}/PLOTS_Vegvisir_viral_dataset15_2024_03_28_15h08min36s122719ms_100epochs_supervised_Icore_blosum_Generated".format(script_dir),
+        "folder2":"{}/PLOTS_Vegvisir_viral_dataset15_2024_03_28_15h23min04s900117ms_100epochs_supervised_Icore_blosum_Generated".format(script_dir),
+        "folder3":"{}/PLOTS_Vegvisir_viral_dataset15_2024_03_28_15h37min25s194518ms_100epochs_supervised_Icore_blosum_Generated".format(script_dir),
+        "folder4":"{}/PLOTS_Vegvisir_viral_dataset15_2024_03_28_15h51min54s701614ms_100epochs_supervised_Icore_blosum_Generated".format(script_dir),
+        "folder5":"{}/PLOTS_Vegvisir_viral_dataset15_2024_03_28_16h06min07s433770ms_100epochs_supervised_Icore_blosum_Generated".format(script_dir),
+        "folder6":"{}/PLOTS_Vegvisir_viral_dataset15_2024_03_28_16h20min27s835979ms_100epochs_supervised_Icore_blosum_Generated".format(script_dir),
+    }
+
+    if args.combine_results:
+        #combine_folder_results(results_dict_generated_conditional_sampling,filename="round1",folder_path="/home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/Conditional_sampling")
+        combine_folder_results(results_dict_generated_independent_sampling,filename="round1",folder_path="/home/lys/Dropbox/PostDoc/vegvisir/Results_netMHCpan/Independent_sampling")
+
+    else:
+        read_dataframe(args.folder_path,args.folder_type)
+
+    #/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset15_2024_03_27_19h15min48s745646ms_60epochs_supervised_Icore_blosum_TESTING

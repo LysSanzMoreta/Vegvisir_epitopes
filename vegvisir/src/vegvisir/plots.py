@@ -3121,7 +3121,7 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
         idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
         encoder_final_hidden_state = summary_dict["encoder_final_hidden_state_{}".format(sample_mode)]
         decoder_final_hidden_state = summary_dict["decoder_final_hidden_state_{}".format(sample_mode)]
-        print("Plotting Hidden dimensions latent space")
+        #print("Plotting Hidden dimensions latent space")
         #plot_latent_space(args,dataset_info,encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden_state")
         #plot_latent_space(args,dataset_info,decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden_state")
 

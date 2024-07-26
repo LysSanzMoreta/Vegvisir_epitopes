@@ -111,7 +111,7 @@ def main(args):
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Vegvisir_checkpoints"), script_dir)
     VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Scripts"), script_dir)
 
-    vegvisir_dataset = vegvisir.select_dataset(args.dataset_name, script_dir,args,results_dir, update=False)
+    vegvisir_dataset,args = vegvisir.select_dataset(args.dataset_name, script_dir,args,results_dir, update=False)
 
     json.dump(args.__dict__, open('{}/commandline_args.txt'.format(results_dir), 'w'), indent=2)
 
@@ -122,7 +122,7 @@ def parser_args(parser,device,script_dir):
     parser.add_argument('-name', '--dataset-name', type=str, nargs='?',
                         # default="custom_dataset_random",
                         # default="custom_dataset_random_icore_non_anchor",
-                        default="viral_dataset15",
+                        default="custom_dataset",
                         help='Dataset project name, look at vegvisir.available_datasets(). In case the folder is not automatically created, you can manually place it at vegvisir/src/vegvisir/data \n'
                              'custom_dataset: Perform training or prediction (by setting the args.pretrained_model to the folder path with the model checkpoints) on a given dataset. Remember to define also train_path, test_path'
                              'viral_dataset3 : Supervised learning. Only sequences, partitioned into train,validation and (old) test.If args.test = True, then the (old) assigned test is used \n'
@@ -204,7 +204,7 @@ def parser_args(parser,device,script_dir):
 
     parser.add_argument('-z-dim', '--z-dim', type=int, nargs='?', default=30,
                         help='HPO*. Latent space dimensionality')
-    parser.add_argument('-likelihood-scale', type=int, nargs='?', default=100,
+    parser.add_argument('-likelihood-scale', type=int, nargs='?', default=80,
                         help='HPO* .Scaling the log p( class | Z) of the variational autoencoder (cold posterior)')
 
     parser.add_argument('-lt', '--learning-type', type=str, nargs='?', default="supervised",
@@ -233,9 +233,9 @@ def parser_args(parser,device,script_dir):
     # Highlight: Evaluation modes
     parser.add_argument('-train', type=str2bool, nargs='?', default=True, help='<True> Run the model over the training data '
                                                                                '\n <False> Makes benchmarking plots (Functions migrated to Vegvisir_analysis) or loads previously trained model, if pargs.pretrained_model is not None')
-    parser.add_argument('-validate', type=str2bool, nargs='?', default=True,
+    parser.add_argument('-validate', type=str2bool, nargs='?', default=False,
                         help='Evaluate the model on the validation dataset. Only needed for model design')
-    parser.add_argument('-test', type=str2bool, nargs='?', default=False,
+    parser.add_argument('-test', type=str2bool, nargs='?', default=True,
                         help='Evaluate the model on the external test dataset')
 
     # Highlight: Generating new sequences from a trained model
@@ -264,15 +264,16 @@ def parser_args(parser,device,script_dir):
     parser.add_argument('-immunomodulate-path', type=str2None, nargs='?', default=immunomodulate_path[0],
                         help='Path to text file containing sequences to change their immunogenicity')
 
+    #/home/dragon/drive/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/benchmark_datasets/Icore/variable_length_Icore_sequences_viral_dataset15_TRAIN.tsv
     # Highlight: Re-training the model
-    unobserved_sequences = {0: "vegvisir/src/vegvisir/data/custom_dataset/unobserved_grouped_alleles_train.tsv",
+    unobserved_sequences = {0: f"{script_dir}/vegvisir/src/vegvisir/data/custom_dataset/unobserved_grouped_alleles_train.tsv",
                             1: None,
-                            2: "vegvisir/src/vegvisir/data/benchmark_dataset/Icore/random_variable_length_Icore_sequences_viral_dataset9.tsv",
-                            3: "vegvisir/src/vegvisir/data/benchmark_dataset/Icore/variable_length_Icore_sequences_viral_dataset9_TRAIN.tsv",
-                            4: "vegvisir/src/vegvisir/data/benchmark_dataset/Icore_non_anchor/variable_length_Icore_non_anchor_sequences_viral_dataset9_TRAIN.tsv",
-                            5: "vegvisir/src/vegvisir/data/benchmark_dataset/Icore_non_anchor/random_variable_length_Icore_non_anchor_sequences_viral_dataset9.tsv",
-                            6: "vegvisir/src/vegvisir/data/benchmark_dataset/Icore/variable_length_Icore_sequences_viral_dataset15_TRAIN.tsv",
-                            7: "vegvisir/src/vegvisir/data/benchmark_dataset/Icore/random_variable_length_Icore_sequences_viral_dataset15.tsv"}
+                            2: f"{script_dir}/vegvisir/src/vegvisir/data/benchmark_datasets/Icore/random_variable_length_Icore_sequences_viral_dataset9.tsv",
+                            3: f"{script_dir}/vegvisir/src/vegvisir/data/benchmark_datasets/Icore/variable_length_Icore_sequences_viral_dataset9_TRAIN.tsv",
+                            4: f"{script_dir}/vegvisir/src/vegvisir/data/benchmark_datasets/Icore_non_anchor/variable_length_Icore_non_anchor_sequences_viral_dataset9_TRAIN.tsv",
+                            5: f"{script_dir}/vegvisir/src/vegvisir/data/benchmark_datasets/Icore_non_anchor/random_variable_length_Icore_non_anchor_sequences_viral_dataset9.tsv",
+                            6: f"{script_dir}/vegvisir/src/vegvisir/data/benchmark_datasets/Icore/variable_length_Icore_sequences_viral_dataset15_TRAIN.tsv",
+                            7: f"{script_dir}/vegvisir/src/vegvisir/data/benchmark_datasets/Icore/random_variable_length_Icore_sequences_viral_dataset15.tsv"}
     parser.add_argument('-train-path', type=str2None, nargs='?', default=unobserved_sequences[6],
                         help="Path to an external training dataset. It only activates if args.dataset_name = custom_dataset. ")
     parser.add_argument('-test-path', type=str2None, nargs='?', default=unobserved_sequences[7],

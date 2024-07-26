@@ -17,7 +17,7 @@ Isolated Python environment: `micromamba env create -n vegvisir -f env.yaml` whe
 R isolated environment: Install R 4.1.2 and packages following the script found at Docker_images/Python_3.*/install_R_packages.sh
 
 
-> INPUT FILE
+> INPUT FILE: Using your own dataset
 
 1. Create a TSV file with the following format:
 
@@ -33,8 +33,15 @@ FAYGKRHKDML	0	0.0	HLA-C0602	FYGKRHKDML	0	0	0	1	5	True	0.0	0.0	0
 Compulsory column is <Icore> or <Icore_non_anchor>, if the other columns are not provided they will be assigned to zeroes, random values etc
 
 
-2. Select args.dataset_name as `custom_dataset` and point to the file in args.train_path 
-3. 
+2. Select args.dataset_name as `custom_dataset` and point to the file in args.train_path
+
+> USING THE PUBLISHED RESULTS
+
+1. Select the following arguments and the run
+   - args.dataset_name: `viral_dataset15`
+   - args.config_dict: 
+2. If the necessary files are not available in the vegvisir/src/data folder, they will be downloaded there
+
 
 
 > USAGE
@@ -58,3 +65,7 @@ The main script that controls the model is Vegvisir_example.py and can be used i
 6. Benchmarking
    
     Please train the model first  using Hyperparameter optimization
+
+> FOLDERS MEANING
+> 
+> 

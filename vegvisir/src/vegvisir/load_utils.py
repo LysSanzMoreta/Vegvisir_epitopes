@@ -247,6 +247,15 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
         dataset_proportions(train_data,results_dir, type="Train")
         dataset_proportions(valid_data,results_dir, type="Valid")
         dataset_proportions(test_data,results_dir, type="Test")
+    elif method == "random_stratified_keep_test":
+        data_labels = idx_select(data,0)
+        traineval_data, test_data = data[idx_select(data,3) == 1] ,data[idx_select(data,3) == 0]
+        #traineval_labels = traineval_data[:,0,0,0]
+        traineval_labels = idx_select(traineval_data,0)
+        train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13, stratify=traineval_labels,shuffle=True)
+        dataset_proportions(train_data,results_dir, type="Train")
+        dataset_proportions(valid_data,results_dir, type="Valid")
+        dataset_proportions(test_data,results_dir, type="Test")
     elif method == "random_stratified_discard_predefined_test":
         """Discard the predefined test dataset"""
         #data = data[data[:,0,0,3] == 1] #pick only the pre assigned training data
@@ -338,16 +347,11 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
             partition_idx = np.random.randint(0,5) #random selection of a partition as the validation
             #partition_idx = 3
 
-        if args.dataset_name == "viral_dataset_california":
-            #traineval_labels = traineval_data[:,0,0,0]
-            traineval_labels = idx_select(traineval_data,0)
 
-            train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
-        else:
-            #train_data = traineval_data[traineval_data[:, 0, 0, 2] != partition_idx] #Highlight: was using data before #TODO: Check that data points are not mixed or lost
-            train_data = traineval_data[idx_select(traineval_data,2) != partition_idx] #Highlight: was using data before #TODO: Check that data points are not mixed or lost
-            #valid_data = traineval_data[traineval_data[:, 0, 0, 2] == partition_idx] #data[data[:, 0, 0, 3] == 1.]
-            valid_data = traineval_data[idx_select(traineval_data,2) == partition_idx] #data[data[:, 0, 0, 3] == 1.]
+        #train_data = traineval_data[traineval_data[:, 0, 0, 2] != partition_idx] #Highlight: was using data before #TODO: Check that data points are not mixed or lost
+        train_data = traineval_data[idx_select(traineval_data,2) != partition_idx] #Highlight: was using data before #TODO: Check that data points are not mixed or lost
+        #valid_data = traineval_data[traineval_data[:, 0, 0, 2] == partition_idx] #data[data[:, 0, 0, 3] == 1.]
+        valid_data = traineval_data[idx_select(traineval_data,2) == partition_idx] #data[data[:, 0, 0, 3] == 1.]
 
 
         dataset_proportions(train_data, results_dir, type="Train")

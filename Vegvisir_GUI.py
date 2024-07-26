@@ -17,6 +17,7 @@ from argparse import RawTextHelpFormatter
 local_repository=True
 script_dir = os.path.dirname(os.path.abspath(__file__))
 if local_repository: #TODO: The local imports are extremely slow
+     print("Importing local repository")
      sys.path.insert(1, "{}/vegvisir/src".format(script_dir))
      import vegvisir
 else:#pip installed module

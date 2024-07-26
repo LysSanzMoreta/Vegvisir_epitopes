@@ -62,9 +62,14 @@ SimilarityResults = namedtuple("SimilarityResults",["positional_weights","percen
 def check_and_download_data(storage_folder):
     """Checks the existance of the data files, otherwise it downloads them
     :param storage_folder: str Loaction of the data folder"""
-
-    download_url = "https://drive.google.com/drive/folders/1tPRGOJ0cQdLyW2GbdI2vnz1Sfr4RSKNf?usp=sharing"
     dir_name = '{}/common_files'.format(storage_folder)
+    if not os.path.exists(storage_folder):
+        print("Data folder does not exist, creating it")
+        VegvisirUtils.folders(storage_folder,overwrite=False)
+        VegvisirUtils.folders(dir_name,overwrite=False)
+    download_url = "https://drive.google.com/drive/folders/1tPRGOJ0cQdLyW2GbdI2vnz1Sfr4RSKNf?usp=sharing"
+    download_url2 = "https://drive.google.com/drive/folders/1kZScet33u6nC8eKURAAd1HYLUtbOyEP5?usp=sharing"
+    download_url3 = "https://drive.google.com/drive/folders/14eUEgmolm-RnpyGlqy1umAzIXl6uHtuf?usp=sharing"
     if os.path.isdir(dir_name):
         if not os.listdir(dir_name):
             print("Directory is empty")
@@ -73,19 +78,26 @@ def check_and_download_data(storage_folder):
             print("Data directory is missing. Downloading, this might take a while. If you see an error like \n"
                   " 'Cannot retrieve the public link of the file. You may need to change the permission to <Anyone with the link>, or have had many accesses', \n"
                   "just wait, too many requests have been made to the google drive folder \n"
-                  "Otherwise just download the data sets MANUALLY from the google drive url : \n {} into the {}/common_files".format(download_url,storage_folder))
+                  "Otherwise just download the data sets MANUALLY from the google drive url : \n {} into the {}/common_files,"
+                  "\n {} into {}/anchor_info_content and \n "
+                  "{} into {}/benchmark_datasets ".format(download_url,storage_folder,download_url2,storage_folder,download_url3,storage_folder))
             gdown.download_folder(download_url, output='{}/common_files'.format(storage_folder), quiet=True,
                                   use_cookies=False, remaining_ok=True)
-            # else:
-            #     pass
+            gdown.download_folder(download_url, output='{}/anchor_info_content'.format(storage_folder), quiet=True,
+                                  use_cookies=False, remaining_ok=True)
         else:
             print("Dataset is ready in the folder: {}/common_files!".format(storage_folder))
     else:
-        print("Data directory is missing. Downloading it, this might take a while. If you see an error like \n"
+        print("Data directory is missing. Downloading, this might take a while. If you see an error like \n"
               " 'Cannot retrieve the public link of the file. You may need to change the permission to <Anyone with the link>, or have had many accesses', \n"
               "just wait, too many requests have been made to the google drive folder \n"
-              "Otherwise just download the data sets MANUALLY from the google drive url : \n {} into the {}/common_files".format(download_url,storage_folder))
+              "Otherwise just download the data sets MANUALLY from the google drive url : \n {} into the {}/common_files,"
+              "\n {} into {}/anchor_info_content and \n "
+              "{} into {}/benchmark_datasets ".format(download_url, storage_folder, download_url2, storage_folder,
+                                                      download_url3, storage_folder))
         gdown.download_folder(download_url, output='{}/common_files'.format(storage_folder), quiet=True,
+                              use_cookies=False, remaining_ok=True)
+        gdown.download_folder(download_url, output='{}/anchor_info_content'.format(storage_folder), quiet=True,
                               use_cookies=False, remaining_ok=True)
 
 def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
@@ -312,7 +324,7 @@ def custom_dataset(script_dir:str,storage_folder:str,args:namedtuple,results_dir
     :param results_dir: Path to the results of the model
     return
           :param pandas dataframe: Results pandas dataframe with the following structure:
-                  Icore: nteraction peptide core
+                  Icore: Interaction peptide core
                   Icore_non_anchor: Peptide without the amino acids that facilitate anchored to the MHC
                   training: True assign data point to train , else assign to Test (given)
                   target: Pre-assigned target(given)
@@ -325,42 +337,41 @@ def custom_dataset(script_dir:str,storage_folder:str,args:namedtuple,results_dir
                   allele_encoded: MHC allele encoded as an integer given by the alleles_dict.txt
     """
     dataset_info_file = open("{}/dataset_info.txt".format(results_dir), 'a+')
-
+    basic_columns = ['Icore','Icore_non_anchor',"target_corrected","target","partition","allele_encoded"]
     if args.train_path is not None:
         print("Loading your train sequences")
-
-
         if os.path.exists(args.train_path):
             train_data = pd.read_csv("{}".format(args.train_path),sep="\t")
             assert any(x in train_data.columns.tolist() for x in ['Icore','Icore_non_anchor']), "Missing at least one compulsory column 'Icore' or 'Icore_non_anchor'"
+
+            train_data = train_data.loc[:,train_data.columns.isin(basic_columns)]
+
             if "Icore" not in train_data.columns:
-                test_data = train_data[["Icore_non_anchor"]]
                 args.__dict__["sequence_type"] = "Icore_non_anchor"
-            else:
-                test_data = train_data[["Icore"]]
 
-            if "partition" in train_data.columns:
-                train_data = train_data[["Icore","target_corrected","partition"]]
-            else:
-                train_data = train_data[["Icore","target_corrected"]]
-                train_data["partition"] = np.random.choice(np.arange(5),size=train_data.shape[0],replace=True)
-                unique_partitions = train_data["partition"].value_counts()
-
-            #train_data = train_data.replace(columns={"target":"target_corrected"})
-            train_data["training"] = True #np.random.choice([True,False],train_data.shape[0],p=[0.8,0.2]) #For random training & testing
-            if "target_corrected" in train_data.columns:
-                pass
+            if "target" in train_data.columns and not "target_corrected" in train_data.columns:
+                train_data["target"] = train_data["target_corrected"]
+                warnings.warn("I did not find the column <target_corrected> in the TRAIN dataset (args.train_path), however I found <target>, therefore I am refactoring <target> to <target corrected>")
             else:
                 warnings.warn("You did not provide a <target_corrected> column TRAIN dataset (args.train_path), therefore I am setting them to random values")
-                train_data["target_corrected"] = np.random.choice([0,1],train_data.shape[0])
+                targets_fake = np.random.choice([0,1],train_data.shape[0])
+                train_data["target_corrected"] = targets_fake
+                train_data["target"] = targets_fake
+
+            if "partition" not in train_data.columns:
+                train_data["partition"] = np.random.choice(np.arange(5),size=train_data.shape[0],replace=True)
+                warnings.warn("You did not provide a <partitions> column TRAIN dataset (args.train_path), therefore I am setting assigning them randomly to 5 partitions")
+                #unique_partitions = train_data["partition"].value_counts()
+                args.__dict__["predefined_partitions"] = False # this way it activated random stratified partitions later
+
+            train_data["training"] = True
             train_data["immunodominance_score"] = 0
             train_data["confidence_score"] = 0
             train_data["org_name"] = 0
-            if "allele_encoded" in train_data.columns:
-                pass
-            else:
-                train_data["allele_encoded"] = np.random.choice([0,1],train_data.shape[0])
-            name_suffix = "_custom_dataset"
+            if "allele_encoded" not in train_data.columns:
+                warnings.warn("You did not provide a <allele_encoded> column for your TEST dataset (args.test_path), therefore I am setting them to random values")
+                train_data["allele_encoded"] = np.random.choice([0,1,2],train_data.shape[0])
+
 
             #allele_counts_dict = train_data["allele"].value_counts().to_dict()
             #allele_dict = dict(zip(allele_counts_dict.keys(), list(range(len(allele_counts_dict.keys())))))
@@ -370,53 +381,62 @@ def custom_dataset(script_dir:str,storage_folder:str,args:namedtuple,results_dir
         else:
             raise ValueError("Train path {} not found".format(args.train_path))
 
+
     if args.test_path is not None:
         print("Loading your test sequences")
         if os.path.exists(args.test_path):
             test_data = pd.read_csv("{}".format(args.test_path),sep="\t")
             assert any(x in test_data.columns.tolist() for x in ['Icore','Icore_non_anchor']), "Missing at least one compulsory column 'Icore' or 'Icore_non_anchor'"
+
+            test_data = test_data.loc[:, test_data.columns.isin(basic_columns)]
             if "Icore" not in test_data.columns:
-                test_data = test_data[["Icore_non_anchor"]]
                 args.__dict__["sequence_type"] = "Icore_non_anchor"
-            else:
-                test_data = test_data[["Icore"]]
-            test_data = test_data.dropna(axis=1)
-            test_data = test_data.drop_duplicates(subset=['Icore'])
+
             test_data["training"] = False
-            if "target_corrected" in test_data.columns:
-                pass
+            if "target" in test_data.columns and not "target_corrected" in test_data.columns:
+                test_data["target_corrected"] = test_data["target"]
+                warnings.warn("I did not find the column <target_corrected> in the TEST dataset (args.test_path), however I found <target>, therefore I am refactoring <target> to <target corrected>")
             else:
-                warnings.warn("You did not provide a <target_corrected> column for your test dataset (args.test_path), therefore I am setting them to random values")
-                test_data["target_corrected"] = np.random.choice([0,1],test_data.shape[0])
+                warnings.warn("You did not provide a <target_corrected> column for your TEST dataset (args.test_path), therefore I am setting them to random values")
+                targets = np.random.choice([0,1],test_data.shape[0])
+                test_data["target_corrected"] = targets
+                test_data["target"] = targets
             test_data["partition"] = None
             test_data["immunodominance_score"] = 0
             test_data["confidence_score"] = 0
             test_data["org_name"] = 0
-            if "allele_encoded" in test_data.columns:
-                pass
-            else:
-                test_data["allele_encoded"] = np.random.choice([0, 1], test_data.shape[0])
-    else:
-        raise ValueError("Test path {} not found".format(args.test_path))
+            if "allele_encoded" not in test_data.columns:
+                warnings.warn("You did not provide a <allele_encoded> column for your TEST dataset (args.test_path), therefore I am setting them to random values")
+                test_data["allele_encoded"] = np.random.choice([0, 1,2], test_data.shape[0])
+
 
     if args.train_path is not None and args.test_path is not None:
-
             data = pd.concat([train_data,test_data],axis=0).reset_index()
-
-    elif args.train_path is not None:
+    elif args.train_path is not None and args.test_path is None:
         print("You did not provide a test dataset, therefore predictions/training will be made only in your train dataset. Setting args.test to False")
         args.__dict__["test"] = False
         args.__dict__["validate"] = False
         data = train_data
-    else:
+    elif args.test_path is not None and args.train_path is None:
         print("You did not provide a train dataset, therefore predictions/training will be made only in your test dataset. Setting args.train to False")
         args.__dict__["train"] = False
         args.__dict__["validate"] = False
         data = test_data
+    else:
+        raise ValueError("You selected <custom_dataset> and did not provide a Train dataset (args.train_path{}) or Test dataset (args.test_path={})".format(args.train_path,args.test_path))
+
+    nan_rows = data[data["allele_encoded"].isna()]
+    if nan_rows.size != 0:
+        highest_encoded_value = max(list(data["allele_encoded"].value_counts().to_dict().keys()))
+        data.loc[data["allele_encoded"].isna(), "allele_encoded"] = highest_encoded_value + 1
+        warnings.warn("Nan values detected in allele encoded, assigning to UNKNOWN allele number : {}".format(highest_encoded_value))
 
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
+    name_suffix = "custom_dataset"
+    VegvisirPlots.plot_data_information_reduced2(data, filters_dict, storage_folder, args, name_suffix)
+    data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
 
-    return data_info
+    return data_info,args
 
 def viral_dataset3(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -497,7 +517,7 @@ def viral_dataset3(script_dir:str,storage_folder:str,args:namedtuple,results_dir
 
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
-    return data_info
+    return data_info,args
 
 def viral_dataset4(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -580,7 +600,7 @@ def viral_dataset4(script_dir:str,storage_folder:str,args:namedtuple,results_dir
     VegvisirPlots.plot_features_histogram(data,features_names,"{}/{}".format(storage_folder,args.dataset_name),name_suffix)
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict,features_names=features_names)
 
-    return data_info
+    return data_info,args
 
 def viral_dataset5(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -671,7 +691,7 @@ def viral_dataset5(script_dir:str,storage_folder:str,args:namedtuple,results_dir
 
 
 
-    return data_info
+    return data_info,args
 
 def viral_dataset6(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -788,7 +808,7 @@ def viral_dataset6(script_dir:str,storage_folder:str,args:namedtuple,results_dir
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
-    return data_info
+    return data_info,args
 
 def viral_dataset7(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -879,7 +899,7 @@ def viral_dataset7(script_dir:str,storage_folder:str,args:namedtuple,results_dir
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
-    return data_info
+    return data_info,args
 
 def viral_dataset8(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -1013,7 +1033,7 @@ def viral_dataset8(script_dir:str,storage_folder:str,args:namedtuple,results_dir
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
-    return data_info
+    return data_info,args
 
 def viral_dataset9(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -1158,7 +1178,7 @@ def viral_dataset9(script_dir:str,storage_folder:str,args:namedtuple,results_dir
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
 
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
-    return data_info
+    return data_info,args
 
 def viral_dataset10(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -1332,7 +1352,7 @@ def viral_dataset10(script_dir:str,storage_folder:str,args:namedtuple,results_di
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
-    return data_info
+    return data_info,args
 
 def viral_dataset11(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -1478,7 +1498,7 @@ def viral_dataset11(script_dir:str,storage_folder:str,args:namedtuple,results_di
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
-    return data_info
+    return data_info,args
 
 def viral_dataset12(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -1593,7 +1613,7 @@ def viral_dataset12(script_dir:str,storage_folder:str,args:namedtuple,results_di
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
-    return data_info
+    return data_info,args
 
 def viral_dataset13(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -1738,7 +1758,7 @@ def viral_dataset13(script_dir:str,storage_folder:str,args:namedtuple,results_di
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
 
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
-    return data_info
+    return data_info,args
 
 def viral_dataset14(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -1883,13 +1903,9 @@ def viral_dataset14(script_dir:str,storage_folder:str,args:namedtuple,results_di
 
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t",index=False)
 
-
-
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
-
-
-    return data_info
+    return data_info,args
 
 def viral_dataset15(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -2021,7 +2037,7 @@ def viral_dataset15(script_dir:str,storage_folder:str,args:namedtuple,results_di
 
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
-    return data_info
+    return data_info,args
 
 def viral_dataset16(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -2154,7 +2170,7 @@ def viral_dataset16(script_dir:str,storage_folder:str,args:namedtuple,results_di
 
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
-    return data_info
+    return data_info,args
 
 def viral_dataset17(script_dir:str,storage_folder:str,args:namedtuple,results_dir:str,corrected_parameters:Union[tuple,str]):
     """
@@ -2331,13 +2347,14 @@ def viral_dataset17(script_dir:str,storage_folder:str,args:namedtuple,results_di
 
     VegvisirPlots.plot_data_information_reduced2(data, filters_dict, storage_folder, args, name_suffix)
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
+    print("Finish this!")
     exit()
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 
 
 
-    return data_info
+    return data_info,args
 
 
 def data_class_division(array: np.array,array_mask:np.ndarray,idx:np.ndarray,labels:np.ndarray,confidence_scores:np.ndarray):

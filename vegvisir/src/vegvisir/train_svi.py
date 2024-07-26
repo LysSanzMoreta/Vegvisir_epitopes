@@ -1456,7 +1456,8 @@ def output_processing(mode,fold,args,loader_kwargs, dataset_info, additional_inf
 
 
 
-
+    n_train = train_predictive_samples_latent_space.shape[0]
+    n_valid = valid_predictive_samples_latent_space.shape[0]
     if args.plot_all:
         # VegvisirPlots.plot_gradients(gradient_norms, results_dir, "Train_{}".format(mode))
         ##VegvisirPlots.plot_latent_space(args,dataset_info,train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
@@ -1479,13 +1480,17 @@ def output_processing(mode,fold,args,loader_kwargs, dataset_info, additional_inf
 
         # VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
         # VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
-        VegvisirPlots.plot_attention_weights(train_summary_dict, dataset_info, results_dir,
-                                             method="Train{}".format(fold))
-        VegvisirPlots.plot_attention_weights(valid_summary_dict, dataset_info, results_dir, method=mode)
 
-        VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir, args,
-                                             method="Train{}".format(fold))
-        VegvisirPlots.plot_hidden_dimensions(valid_summary_dict, dataset_info, results_dir, args, method=mode)
+        if n_train < 10000 :
+            VegvisirPlots.plot_attention_weights(train_summary_dict, dataset_info, results_dir,
+                                                 method="Train{}".format(fold))
+            VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir, args,
+                                                 method="Train{}".format(fold))
+        if n_valid < 10000:
+            VegvisirPlots.plot_attention_weights(valid_summary_dict, dataset_info, results_dir, method=mode)
+
+
+            VegvisirPlots.plot_hidden_dimensions(valid_summary_dict, dataset_info, results_dir, args, method=mode)
 
     Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir), optimizer, guide)
 
@@ -1552,6 +1557,8 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     data_array_blosum_encoding_mask = dataset_info.data_array_blosum_encoding_mask
     data_array_onehot_encoding_mask = dataset_info.data_array_onehot_encoding_mask
     data_positional_weights_mask = dataset_info.positional_weights_mask
+    train_idx = train_idx.to(data_blosum.device)
+    valid_idx = valid_idx.to(data_blosum.device)
     train_data_blosum = data_blosum[train_idx]
     valid_data_blosum = data_blosum[valid_idx]
 
@@ -1703,8 +1710,8 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                 multi_class="ovr",
                 average="micro",
             )
-            train_auk_score = VegvisirUtils.AUK(probabilities= train_predictions_dict["binary"][train_observed_idx],labels=train_predictions_dict["true"][train_observed_idx]).calculate_auk()
-            train_auk.append(train_auk_score)
+            #train_auk_score = VegvisirUtils.AUK(probabilities= train_predictions_dict["binary"][train_observed_idx],labels=train_predictions_dict["true"][train_observed_idx]).calculate_auk()
+            #train_auk.append(train_auk_score)
             train_auc.append(train_micro_roc_auc_ovr)
 
             #valid_true_prob = valid_predictions_dict["probs"][np.arange(0, valid_true.shape[0]), valid_true.long()]  # pick the probability of the true target
@@ -1717,8 +1724,8 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
                 multi_class="ovr",
                 average="micro",
             )
-            valid_auk_score = VegvisirUtils.AUK(probabilities=valid_predictions_dict["binary"][valid_observed_idx], labels=valid_predictions_dict["true"][valid_observed_idx]).calculate_auk()
-            valid_auk.append(valid_auk_score)
+            #valid_auk_score = VegvisirUtils.AUK(probabilities=valid_predictions_dict["binary"][valid_observed_idx], labels=valid_predictions_dict["true"][valid_observed_idx]).calculate_auk()
+            #valid_auk.append(valid_auk_score)
             valid_auc.append(valid_micro_roc_auc_ovr)
 
             VegvisirPlots.plot_loss(train_loss,valid_loss,epochs_list,"Train_{}".format(mode),results_dir)
@@ -1726,113 +1733,16 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
             VegvisirPlots.plot_accuracy(train_reconstruction_dict,valid_reconstruction_dict,epochs_list,"Train_{}_single_sample".format(mode),results_dir)
             VegvisirPlots.plot_logits_entropies(train_reconstruction_dict,valid_reconstruction_dict,epochs_list,"Train_{}_single_sample".format(mode),results_dir)
             VegvisirPlots.plot_classification_score(train_auc,valid_auc,epochs_list,"Train_{}".format(mode),additional_info.results_dir,method="AUC")
-            VegvisirPlots.plot_classification_score(train_auk,valid_auk,epochs_list,"Train_{}".format(mode),additional_info.results_dir,method="AUK")
+            #VegvisirPlots.plot_classification_score(train_auk,valid_auk,epochs_list,"Train_{}".format(mode),additional_info.results_dir,method="AUK")
             Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir), optimizer,guide)
-            # Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_train{}.p".format(results_dir,fold),
-            #                            {"latent_space": train_latent_space,
-            #                             "predictions_dict":train_predictions_dict})
-            # Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_{}.p".format(results_dir,mode.lower()),
-            #                            {"latent_space": valid_latent_space,
-            #                             "predictions_dict":valid_predictions_dict})
+
             if epoch == args.num_epochs:
                 outputprocessing = output_processing(mode, fold, args, loader_kwargs,
                                   dataset_info, additional_info, results_dir,
                                   svi,Vegvisir, optimizer, guide,
                                   train_loader, valid_loader, model_load,
                                   train_predictions_dict, valid_predictions_dict)
-                # print("Calculating Monte Carlo estimate of the posterior predictive")
-                # train_predictive_samples_loss, train_predictive_samples_accuracy, train_predictive_samples_dict, train_predictive_samples_latent_space,train_predictive_samples_reconstruction_accuracy_dict = sample_loop(svi, Vegvisir, guide, train_loader, args, model_load)
-                # torch.cuda.empty_cache()
-                # valid_predictive_samples_loss, valid_predictive_samples_accuracy, valid_predictive_samples_dict, valid_predictive_samples_latent_space, valid_predictive_samples_reconstruction_accuracy_dict = sample_loop(svi, Vegvisir, guide, valid_loader, args, model_load)
-                # torch.cuda.empty_cache()
-                # if args.generate:
-                #     print("Generating neo-epitopes ...")
-                #     generated_dict,generated_latent_space = generate_loop(svi, Vegvisir, guide, train_loader, args, model_load,dataset_info,additional_info,train_predictive_samples_dict)
-                #     torch.cuda.empty_cache()
-                #     generated_summary_dict = VegvisirUtils.manage_predictions_generative(args,generated_dict)
-                #     VegvisirUtils.save_results_table(generated_summary_dict,generated_latent_space,dataset_info,results_dir,method="Generated")
-                #
-                # else:
-                #     generated_summary_dict = None
-                # if args.immunomodulate:
-                #     immunomodulate_dataset = dataset_info.immunomodulate_dataset
-                #     nseqs = len(immunomodulate_dataset.data_array_blosum_encoding)
-                #     custom_dataset_immunomodulate = VegvisirLoadUtils.CustomDataset(immunomodulate_dataset.data_array_blosum_encoding,
-                #                                                            immunomodulate_dataset.data_array_int,
-                #                                                            immunomodulate_dataset.data_array_onehot_encoding,
-                #                                                            immunomodulate_dataset.data_array_blosum_norm,
-                #                                                            immunomodulate_dataset.data_array_blosum_encoding_mask,
-                #                                                            immunomodulate_dataset.positional_weights_mask[:nseqs],
-                #                                                            )
-                #
-                #     immuno_loader = DataLoader(custom_dataset_immunomodulate, batch_size=nseqs, shuffle=False,
-                #                               generator=torch.Generator(device=args.device), **kwargs)
-                #     immunomodulate_dict,immunomodulate_latent_space = immunomodulation_loop(svi, Vegvisir, guide, immuno_loader, args, model_load,dataset_info,additional_info,train_predictive_samples_dict)
-                #     immunomodulate_summary_dict = VegvisirUtils.manage_predictions_generative(args,immunomodulate_dict)
-                #     VegvisirUtils.save_results_table(immunomodulate_summary_dict,immunomodulate_latent_space, dataset_info,results_dir,method="Immunomodulated")
-                #
-                #
-                #
-                #
-                # train_summary_dict = VegvisirUtils.manage_predictions(train_predictive_samples_dict,args,train_predictions_dict)
-                # valid_summary_dict = VegvisirUtils.manage_predictions(valid_predictive_samples_dict,args,valid_predictions_dict)
-                #
-                # VegvisirUtils.save_results_table(train_summary_dict,train_predictive_samples_latent_space, args,dataset_info,results_dir,method="Train{}".format(fold))
-                # VegvisirUtils.save_results_table(valid_summary_dict,valid_predictive_samples_latent_space, args, dataset_info,results_dir,method=mode)
-                #
-                # if args.plot_all:
-                #     #VegvisirPlots.plot_gradients(gradient_norms, results_dir, "Train_{}".format(mode))
-                #     ##VegvisirPlots.plot_latent_space(args,dataset_info,train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
-                #     ##VegvisirPlots.plot_latent_space(args,dataset_info,valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
-                #     VegvisirPlots.plot_latent_space(args,dataset_info,train_predictive_samples_latent_space, train_summary_dict, "samples",results_dir, method="Train{}".format(fold))
-                #     VegvisirPlots.plot_latent_space(args,dataset_info,valid_predictive_samples_latent_space,valid_summary_dict, "samples",results_dir, method=mode)
-                #     if args.generate:
-                #         VegvisirPlots.plot_latent_space(args,dataset_info,generated_latent_space,generated_summary_dict, "samples" if args.num_samples > 1 else "single_sample",results_dir, method="Generated")
-                #     if args.immunomodulate:
-                #         VegvisirPlots.plot_latent_space(args,dataset_info,immunomodulate_latent_space,immunomodulate_summary_dict, "samples" if args.num_samples > 1 else "single_sample",results_dir, method="Immunomodulated")
-                #
-                #     #VegvisirPlots.plot_latent_vector(train_latent_space, train_summary_dict, "single_sample",results_dir, method="Train{}".format(fold))
-                #     #VegvisirPlots.plot_latent_vector(valid_latent_space,valid_summary_dict, "single_sample",results_dir, method=mode)
-                #     VegvisirPlots.plot_attention_weights(train_summary_dict,dataset_info,results_dir,method="Train{}".format(fold))
-                #     VegvisirPlots.plot_attention_weights(valid_summary_dict,dataset_info,results_dir,method=mode)
-                #
-                #     VegvisirPlots.plot_hidden_dimensions(train_summary_dict, dataset_info, results_dir,args, method="Train{}".format(fold))
-                #     VegvisirPlots.plot_hidden_dimensions(valid_summary_dict, dataset_info, results_dir,args, method=mode)
-                #
-                # Vegvisir.save_checkpoint_pyro("{}/Vegvisir_checkpoints/checkpoints.pt".format(results_dir),optimizer,guide)
-                #
-                # if args.save_all:
-                #     Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_train{}{}.p".format(results_dir,mode.lower().split("_")[0],fold),
-                #                                {"latent_space": train_predictive_samples_latent_space,
-                #                                 #"predictions_dict":train_predictions_dict,
-                #                                 "summary_dict": train_summary_dict,
-                #                                 "dataset_info":dataset_info})
-                #     Vegvisir.save_model_output("{}/Vegvisir_checkpoints/model_outputs_{}.p".format(results_dir,mode.lower()),
-                #                                {"latent_space": valid_predictive_samples_latent_space,
-                #                                 #"predictions_dict": valid_predictions_dict,
-                #                                 "summary_dict": valid_summary_dict,
-                #                                 "dataset_info":dataset_info})
-                #
-                # else:
-                #     selection_keys = ["true_samples","true_onehot_samples","confidence_scores_samples","class_probs_predictions_samples_average","data_int_samples"]
-                #     miniinfo = minidatasetinfo(seq_max_len=dataset_info.seq_max_len,
-                #                                corrected_aa_types=dataset_info.corrected_aa_types,
-                #                                storage_folder=dataset_info.storage_folder,
-                #                                num_classes=args.num_classes,
-                #                                num_obs_classes=args.num_obs_classes)
-                #     Vegvisir.save_model_output(
-                #         "{}/Vegvisir_checkpoints/model_outputs_train_{}{}.p".format(results_dir,mode.lower().split("_")[0], fold),
-                #         {"latent_space": train_predictive_samples_latent_space,
-                #          "summary_dict": {key: train_summary_dict[key] for key in selection_keys},
-                #          "dataset_info": miniinfo,
-                #          "args":args})
-                #
-                #     Vegvisir.save_model_output(
-                #         "{}/Vegvisir_checkpoints/model_outputs_{}.p".format(results_dir, mode.lower()),
-                #         {"latent_space": valid_predictive_samples_latent_space,
-                #          "summary_dict": {key: valid_summary_dict[key] for key in selection_keys},
-                #          "dataset_info": miniinfo,
-                #          "args":args})
+
             else:
                 outputprocessing = None
 
@@ -1906,13 +1816,18 @@ def train_model(config=None,dataset_info=None,additional_info=None,args=None):
     data_blosum = dataset_info.data_array_blosum_encoding
     seq_max_len = dataset_info.seq_max_len
     results_dir = additional_info.results_dir
+
     #Highlight: Train- Test split and kfold generator
     if args.predefined_partitions:
         partitioning_method = "predefined_partitions" if args.test else"predefined_partitions_discard_test"
         if args.dataset_name in ["viral_dataset6","viral_dataset7"]:
             partitioning_method = "predefined_partitions_diffused_test_create_new_test" if args.test else "predefined_partitions_diffused_test"
     else:
-        partitioning_method = "random_stratified"
+        if args.dataset_name == "custom_dataset":
+            partitioning_method = "random_stratified_keep_test"
+        else: # the train, valid and test splits are assigned as random
+            partitioning_method = "random_stratified"
+
 
     train_data_blosum,valid_data_blosum,test_data_blosum = VegvisirLoadUtils.trainevaltest_split(data_blosum,
                                                                                                  args,results_dir,
@@ -1922,9 +1837,10 @@ def train_model(config=None,dataset_info=None,additional_info=None,args=None):
                                                                                                  method=partitioning_method)
 
     #Highlight:Also split the rest of arrays
-    train_idx = (data_blosum[:,0,0,1][..., None] == train_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
-    valid_idx = (data_blosum[:,0,0,1][..., None] == valid_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
-    test_idx = (data_blosum[:,0,0,1][..., None] == test_data_blosum[:,0,0,1]).any(-1) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
+    train_idx = (data_blosum[:,0,0,1][..., None] == train_data_blosum[:,0,0,1]).any(-1).to(data_blosum.device) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
+    valid_idx = (data_blosum[:,0,0,1][..., None] == valid_data_blosum[:,0,0,1]).any(-1).to(data_blosum.device) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
+    test_idx = (data_blosum[:,0,0,1][..., None] == test_data_blosum[:,0,0,1]).any(-1).to(data_blosum.device) #the data and the adjacency matrix have not been shuffled,so we can use it for indexing. It does not matter that train-data has been shuffled or not
+
 
     print('\t Number train data points: {}; Proportion: {}'.format(train_data_blosum.shape[0],(train_data_blosum.shape[0]*100)/train_data_blosum.shape[0]))
     print('\t Number eval data points: {}; Proportion: {}'.format(valid_data_blosum.shape[0],(valid_data_blosum.shape[0]*100)/valid_data_blosum.shape[0]))
@@ -2094,8 +2010,6 @@ def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
             parameter.copy_(pretrained_params_dict_guide[name])
         for name, parameter in Vegvisir.named_parameters():
             parameter.copy_(pretrained_params_dict_model[name])
-
-    #TODO: TEST
 
 
     outputprocessing = output_processing(mode, fold, args, loader_kwargs,

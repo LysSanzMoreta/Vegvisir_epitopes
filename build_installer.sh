@@ -1,4 +1,3 @@
-sudo apt update
-sudo apt install wine
-#pyinstaller Vegvisir_GUI.py
-wine pyinstaller --onefile Vegvisir_GUI.py
+micromamba activate vegvisir
+pyi-makespec Vegvisir_GUI.py
+pyinstaller Vegvisir_GUI.spec
