@@ -201,7 +201,8 @@ def parser_args(parser,device,script_dir):
     parser.add_argument('-clip-gradients', type=bool, nargs='?', default=True,
                         help='Computes the 2D Euclidean norm of the gradient to normalize the gradient by that value and \n '
                              ' prevent exploding gradients (small gradients that lead to abscence of training) ')
-
+    parser.add_argument('-hidden-dim', '--hidden-dim', type=int, nargs='?', default=40,
+                        help="HPO*. Global parameter that controls the network's dimensionalities")
     parser.add_argument('-z-dim', '--z-dim', type=int, nargs='?', default=30,
                         help='HPO*. Latent space dimensionality')
     parser.add_argument('-likelihood-scale', type=int, nargs='?', default=80,
@@ -220,12 +221,8 @@ def parser_args(parser,device,script_dir):
     parser.add_argument('-hpo', type=str2bool, nargs='?', default=False,
                         help='<True> Performs Hyperparameter optimization with Ray Tune')
 
-    best_config = {0: "{}/BEST_hyperparameter_dict_onehot.p".format(script_dir),
-                   1: "{}/BEST_hyperparameter_dict_blosum.p".format(script_dir),  # best hpo for vd15
-                   2: "{}/BEST_hyperparameter_dict_blosum_z16.p".format(script_dir),
-                   # second best hpo for vd15, the first one was z2 and that is too small
-                   3: "{}/BEST_hyperparameter_dict_blosum_vd9_z34.p".format(script_dir),  # second best hpo
-                   4: None}
+    best_config = {1: "{}/BEST_hyperparameter_dict_blosum_vd15_z16.p".format(script_dir),
+                   2: None}
     parser.add_argument('-config-dict', nargs='?', default=best_config[2], type=str2None,
                         help='Path to the HPO optimized hyperparameter dict. Overrules the previous hyperparameters marked as HPO*.\n'
                              'Set to None to use the values in the parser.')
