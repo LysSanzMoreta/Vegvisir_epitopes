@@ -1,11 +1,18 @@
+#!/usr/bin/env python3
+"""
+=======================
+2024: Lys Sanz Moreta
+Vegvisir (VAE): T-cell epitope classifier
+=======================
+"""
 import time
-
 import torch.nn as nn
 import torch
 from pyro.nn import PyroModule
 import  vegvisir
 from vegvisir.utils import extract_windows_vectorized
 from collections import namedtuple
+
 OutputNN = namedtuple("OutputNN",["output","attn_weights","encoder_hidden_states","decoder_hidden_states","encoder_final_hidden","decoder_final_hidden","init_h_0_decoder"])
 
 class Attention1(nn.Module):
@@ -674,7 +681,6 @@ class ReverseSequence(object):
         seq_reversed[:seq_len] = seq[:seq_len].flip(dims=[0])
         return seq_reversed[None,:]
 
-
 class CausalCNN(nn.Module):
     def __init__(self,input_dim,max_len,hidden_dim,num_classes,device,loss_type="elbo"):
         super(CausalCNN, self).__init__()
@@ -1134,7 +1140,6 @@ class RNN_guide2(nn.Module):
         rnn_final_hidden_state_bidirectional = rnn_hidden_states[seq_idx,seq_sizes-1]
         rnn_final_hidden_state_bidirectional = torch.concatenate([rnn_final_hidden_state_bidirectional[:,:self.gru_hidden_dim][None,:],rnn_final_hidden_state_bidirectional[:,self.gru_hidden_dim:][None,:]],dim=0) #Highlight: Equivalent to rnn_hidden, prior to normalization
 
-
         forward_out_r,backward_out_r = rnn_hidden_states[:,:,:self.gru_hidden_dim],rnn_hidden_states[:,:,self.gru_hidden_dim:]
         rnn_hidden_states = forward_out_r + backward_out_r
         rnn_hidden_states_bidirectional = torch.concatenate([forward_out_r[:,None],backward_out_r[:,None]],dim=1)
@@ -1144,7 +1149,13 @@ class RNN_guide2(nn.Module):
         z_mean = self.fc2a(output)
         z_scale = self.softplus(torch.exp(0.5*self.fc2b(output)))
 
-        return z_mean,z_scale,rnn_hidden_states,rnn_hidden,rnn_final_hidden_state,rnn_final_hidden_state_bidirectional,rnn_hidden_states_bidirectional
+        return (z_mean,
+                z_scale,
+                rnn_hidden_states,
+                rnn_hidden,
+                rnn_final_hidden_state,
+                rnn_final_hidden_state_bidirectional,
+                rnn_hidden_states_bidirectional)
 
 class RNN_classifier(nn.Module):
     def __init__(self,input_dim,max_len,gru_hidden_dim,num_classes,z_dim,device):

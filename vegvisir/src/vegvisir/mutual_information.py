@@ -1,7 +1,14 @@
+#!/usr/bin/env python3
+"""
+=======================
+2024: Lys Sanz Moreta
+Vegvisir (VAE): T-cell epitope classifier
+=======================
+"""
 import os
 import matplotlib.pyplot as plt
 import numpy as np
-from prody import *
+from prody import parseMSA,buildDirectInfoMatrix
 from Bio import SeqIO,SeqRecord
 from Bio.Seq import Seq
 from sklearn.metrics import mutual_info_score

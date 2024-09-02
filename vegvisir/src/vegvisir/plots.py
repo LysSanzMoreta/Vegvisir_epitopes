@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
 """
 =======================
-2023: Lys Sanz Moreta
-Vegvisir :
+2024: Lys Sanz Moreta
+Vegvisir (VAE): T-cell epitope classifier
 =======================
 """
 import gc
@@ -12,8 +13,10 @@ import subprocess
 from collections import defaultdict
 from glob import glob
 from pathlib import Path
+from typing import Union
 
 import dill
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.colors import Normalize, BoundaryNorm, LinearSegmentedColormap
@@ -38,11 +41,12 @@ from joblib import Parallel, delayed
 import multiprocessing
 import os
 from scipy import stats
-import vegvisir.similarities as VegvisirSimilarities
+#import vegvisir.similarities as VegvisirSimilarities
 from collections import namedtuple
 import dataframe_image as dfi
 import statsmodels.api as sm
 import logomaker
+import dromi
 
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
 plt.style.use('ggplot')
@@ -66,7 +70,7 @@ colors_list_aa = ["black", "plum", "lime", "navy", "turquoise", "peachpuff", "pa
 
 PlotSettings = namedtuple("PlotSettings",["values","colormap_unique","colors_feature","unique_values"])
 
-def plot_generated_labels_histogram(dataframe,results_dir):
+def plot_generated_labels_histogram(dataframe:pd.DataFrame,results_dir:str):
     fig, ax = plt.subplots(nrows=1,ncols=1, figsize=(11, 10))
 
     plt.hist(dataframe["Positive_score"],color=colors_dict[1],bins=10)
@@ -77,9 +81,9 @@ def plot_generated_labels_histogram(dataframe,results_dir):
     plt.clf()
     plt.close(fig)
 
-def plot_data_information(data, filters_dict, storage_folder, args, name_suffix):
+def plot_data_information(data:np.ndarray, filters_dict:dict, storage_folder:str, args:namedtuple, name_suffix:str):
     """"""
-    ndata = data.shape[0]
+    #ndata = data.shape[0]
     fig, ax = plt.subplots(nrows=3,ncols=4, figsize=(11, 10))
     num_bins = 50
 
@@ -290,7 +294,7 @@ def plot_data_information(data, filters_dict, storage_folder, args, name_suffix)
     plt.clf()
     plt.close(fig)
 
-def plot_data_information_reduced1(data, filters_dict, storage_folder, args, name_suffix):
+def plot_data_information_reduced1(data:pd.DataFrame, filters_dict:dict, storage_folder:str, args:namedtuple, name_suffix:str):
     """"""
     ndata = data.shape[0]
     fig, ax = plt.subplots(nrows=2,ncols=4, figsize=(15, 10))
@@ -513,7 +517,7 @@ def plot_data_information_reduced1(data, filters_dict, storage_folder, args, nam
     plt.clf()
     plt.close(fig)
 
-def plot_data_information_reduced2(data, filters_dict, storage_folder, args, name_suffix):
+def plot_data_information_reduced2(data:pd.DataFrame, filters_dict:dict, storage_folder:str, args:namedtuple, name_suffix:str):
     """"""
     ndata = data.shape[0]
     fig, ax = plt.subplots(nrows=2,ncols=4, figsize=(15, 10))
@@ -731,9 +735,9 @@ def plot_data_information_reduced2(data, filters_dict, storage_folder, args, nam
     legends = [mpatches.Patch(color=color, label='Class {}'.format(label))  for label, color in colors_dict.items() if label < args.num_classes]
     fig.legend(handles=legends, prop={'size': fontsize}, loc='center right', bbox_to_anchor=(0.85, 0.5))
     fig.tight_layout(pad=0.1)
-    fig.suptitle("Dataset distributions",fontsize=fontsize)
+    fig.suptitle("Dataset distributions",fontsize=fontsize,x=0.35)
     plt.subplots_adjust(right=0.9,top=0.85,hspace=0.4,wspace=0.4)
-    plt.savefig("{}/{}/Viruses_histograms_{}".format(storage_folder, args.dataset_name, name_suffix), dpi=700)
+    plt.savefig("{}/{}/Viruses_histograms_{}.jpg".format(storage_folder, args.dataset_name, name_suffix), dpi=700)
     plt.clf()
     plt.close(fig)
 
@@ -876,7 +880,7 @@ def plot_data_umap(data_array_blosum_norm,seq_max_len,max_len,script_dir,dataset
         plt.clf()
         plt.close(fig)
 
-def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,analysis_mode,mode):
+def plot_aa_frequencies(data_array:Union[np.ndarray,pd.DataFrame],aa_types,aa_dict,max_len,storage_folder,args,analysis_mode,mode):
     """Creates a bar plot per position in the sequence to show the amino acid frequencies"""
 
     aa_groups_colors_dict,aa_groups_dict,groups_names_colors_dict,aa_by_groups_dict = VegvisirUtils.aminoacids_groups(aa_dict)
@@ -938,7 +942,7 @@ def plot_aa_frequencies(data_array,aa_types,aa_dict,max_len,storage_folder,args,
     plt.clf()
     plt.close(fig)
 
-def plot_heatmap(array, title,file_name):
+def plot_heatmap(array:np.ndarray, title,file_name):
     fig = plt.figure(figsize=(20, 20))
     sns.heatmap(array, cmap='RdYlGn_r',yticklabels=False,xticklabels=False)
     plt.title(title)
@@ -957,8 +961,8 @@ def plot_logos(sequences_list,results_dir,filename=""):
 
     filepath = "{}/SEQUENCES_{}".format(results_dir,filename)
     with open(filepath,"w+") as f:
-            sequences_unpadded =  list(map(lambda seq: seq.replace("#","-"), sequences_list))
-            f.write("\n".join(sequences_unpadded))
+        sequences_unpadded =  list(map(lambda seq: seq.replace("#","-"), sequences_list))
+        f.write("\n".join(sequences_unpadded))
 
     command = 'Rscript'
     script_path = os.path.abspath(os.path.dirname(__file__))
@@ -1498,6 +1502,7 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
     confidence_scores_unique = np.unique(confidence_scores).tolist()
     colormap_confidence = matplotlib.cm.get_cmap('plasma_r', len(confidence_scores_unique))
     colors_dict = dict(zip(confidence_scores_unique, colormap_confidence.colors))
+
     colors_confidence = np.vectorize(colors_dict.get, signature='()->(n)')(confidence_scores)
     # Highlight: Immunodominance scores colors
     immunodominance_scores = latent_space[:, 3]
@@ -1773,9 +1778,13 @@ def plot_scatter_reduced(umap_proj,args,dataset_info,latent_space,predictions_di
         # Highlight: Alleles colors
         alleles_settings = define_colormap(dataframe["alleles"].tolist(), "tab20")
 
-        alleles_custom_cmap = LinearSegmentedColormap.from_list('alleles_cmap', alleles_colors)
-        matplotlib.cm.register_cmap("alleles_cmap", alleles_custom_cmap,override_builtin=True)
-        alleles_palette = sns.color_palette("alleles_cmap", n_colors=len(alleles_colors), desat=0)
+        alleles_custom_cmap = LinearSegmentedColormap.from_list(f"alleles_cmap_{vector_name}_{sample_mode}_{method}_list", alleles_colors)
+
+        #matplotlib.cm.register("alleles_cmap", alleles_custom_cmap,override_builtin=True) #deprecated
+        print(f"registering: alleles_cmap_{vector_name}_{sample_mode}_{method}")
+        matplotlib.colormaps.register(name = f"alleles_cmap_{vector_name}_{sample_mode}_{method}",cmap = alleles_custom_cmap)
+        #alleles_palette = sns.color_palette("alleles_cmap", n_colors=len(alleles_colors), desat=0)
+        alleles_palette = sns.color_palette(f"alleles_cmap_{vector_name}_{sample_mode}_{method}", n_colors=len(alleles_colors), desat=0)
         alleles_palette_hue = pd.unique(alleles_cluster_grouped["allele"].map(alleles_encoded_dict_reversed)) #TODO: There is a nan allele, so that it follows the same order as the allele_colors.tsv--> needs to be mapped to 0,1,--
 
         if plot_kde:
@@ -2143,7 +2152,7 @@ def plot_latent_correlations(umap_proj,dataset_info,latent_space,predictions_dic
     class_0_idx = (true_labels[...,None] == 0).any(-1)
     class_1_idx = (true_labels[...,None] == 1).any(-1)
 
-    cosine_dist = 1- VegvisirSimilarities.cosine_similarity(umap_proj[:,None], umap_proj[:,None], correlation_matrix=False, parallel=False).squeeze(-1).squeeze(-1)
+    cosine_dist = 1- dromi.cosine_similarity(umap_proj[:,None], umap_proj[:,None], correlation_matrix=False, parallel=False).squeeze(-1).squeeze(-1)
     euclidean = np.linalg.norm(umap_proj[:,None]-umap_proj[None,:],axis=-1)
 
     def compute(distance,ax):
@@ -2320,24 +2329,28 @@ def plot_latent_space(args,dataset_info,latent_space,predictions_dict,sample_mod
     """
     -Notes on UMAP: https://www.arxiv-vanity.com/papers/2009.12981/
     """
-    reducer = umap.UMAP()
-    print("Started UMAP projections")
-    umap_proj = reducer.fit_transform(latent_space[:, 6:])
-    print("Finished UMAP projections")
-    settings =plot_preprocessing(umap_proj, dataset_info, predictions_dict, sample_mode, results_dir, method,
-                       vector_name="latent_space_z", n_clusters=4)
+    if latent_space.size > 0 or not None:
+        reducer = umap.UMAP()
+        print("Started UMAP projections")
+        umap_proj = reducer.fit_transform(latent_space[:, 6:])
+        print("Finished UMAP projections")
+        settings =plot_preprocessing(umap_proj, dataset_info, predictions_dict, sample_mode, results_dir, method,
+                           vector_name="latent_space_z", n_clusters=4)
 
-    plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
-    plot_scatter_reduced(umap_proj,args,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
-    if vector_name == "latent_space_z":
-        plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
-    if plot_correlations and vector_name == "latent_space_z":
-        reducer = umap.UMAP(n_components=1)
-        umap_proj_1d = reducer.fit_transform(latent_space[:, 6:]).squeeze(-1)
-        plot_latent_correlations_1d(umap_proj_1d,args, settings,dataset_info, latent_space, sample_mode, results_dir, method,
-                                 vector_name)
-    del umap_proj
-    gc.collect()
+        plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
+        plot_scatter_reduced(umap_proj,args,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
+        if vector_name == "latent_space_z":
+            plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name=vector_name,n_clusters=n_clusters)
+        if plot_correlations and vector_name == "latent_space_z":
+            reducer = umap.UMAP(n_components=1)
+            umap_proj_1d = reducer.fit_transform(latent_space[:, 6:]).squeeze(-1)
+            plot_latent_correlations_1d(umap_proj_1d,args, settings,dataset_info, latent_space, sample_mode, results_dir, method,
+                                     vector_name)
+        del umap_proj
+        gc.collect()
+    else:
+        print("Latent space size : {}".format(latent_space.shape))
+        print("No latent representations could be sampled")
 
 def plot_gradients(gradient_norms,results_dir,mode):
     print("Plotting gradients")
@@ -2480,7 +2493,7 @@ def plot_confusion_matrix(confusion_matrix,performance_metrics,results_dir,fold,
     plt.clf()
     plt.close(fig)
 
-def micro_auc(args,onehot_labels,y_prob,idx):
+def micro_auc(args:namedtuple,onehot_labels,y_prob,idx):
     """Calculates the AUC for a multi-class problem"""
 
     micro_roc_auc_ovr = roc_auc_score(
@@ -2794,6 +2807,8 @@ def plot_classification_metrics(args,predictions_dict,fold,results_dir,mode="Tra
                 plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
                 plt.clf()
                 plt.close(fig)
+                del samples_results
+                gc.collect()
 
     return metrics_summary_dict
 
@@ -2966,6 +2981,8 @@ def plot_classification_metrics_per_species(dataset_info,args,predictions_dict,f
                     plt.savefig("{}/{}/ROC_curves_PER_SAMPLE_{}".format(results_dir, mode, "{}".format(idx_name)))
                     plt.clf()
                     plt.close(fig)
+                    del samples_results
+                    gc.collect()
         plt.title("ROC curves per species")
         plt.savefig("{}/{}/ROC_curves_per_species_fold{}_{}.png".format(results_dir, mode, fold, sample_mode))
         plt.clf()
@@ -3104,7 +3121,7 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
         idx_highconfidence = (confidence_scores[..., None] > 0.7).any(-1)
         encoder_final_hidden_state = summary_dict["encoder_final_hidden_state_{}".format(sample_mode)]
         decoder_final_hidden_state = summary_dict["decoder_final_hidden_state_{}".format(sample_mode)]
-        print("Plotting Hidden dimensions latent space")
+        #print("Plotting Hidden dimensions latent space")
         #plot_latent_space(args,dataset_info,encoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="encoder_final_hidden_state")
         #plot_latent_space(args,dataset_info,decoder_final_hidden_state, summary_dict, sample_mode, results_dir, method, vector_name="decoder_final_hidden_state")
 
@@ -4829,7 +4846,7 @@ def process_nnalign(results_path, seqs_df,stress_dataset,mode="train",save_plot=
     #if save_plot:
     # A "micro-average": quantifying score on all classes jointly
     precision["micro"], recall["micro"], _ = precision_recall_curve(
-        nnalign_results_full["targets"].ravel(), nnalign_results_full["Prediction"].ravel()
+        nnalign_results_full["targets"].to_numpy().ravel(), nnalign_results_full["Prediction"].to_numpy().ravel()
     )
     precision_recall_joint = np.concatenate([precision["ordinary"][None,:],recall["ordinary"][None,:]],axis=0)
     max_precision_recall_combo = precision_recall_joint[:,precision_recall_joint.sum(axis=0).argmax()]
@@ -4847,7 +4864,7 @@ def process_nnalign(results_path, seqs_df,stress_dataset,mode="train",save_plot=
     plt.xlabel('Recall', fontsize=20)
     plt.legend(loc='lower right', prop={'size': 15})
     plt.title("Average Precision curves \n NNAlign ({})".format(mode))
-    plt.savefig("/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Plots/NNAlign_PrecisionRecall_curves_{}".format(mode))
+    plt.savefig("Benchmark/Plots/NNAlign_PrecisionRecall_curves_{}".format(mode))
     plt.clf()
     plt.close(fig)
 
@@ -4950,7 +4967,7 @@ def plot_benchmark_vegvisir_helper(vegvisir_folder,overlap_idx,kfolds=5,aggregat
                 fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
                 roc_auc[i] = auc(fpr[i], tpr[i])
                 roc_auc["auc01_class_{}".format(i)] = roc_auc_score(onehot_targets[:, i], target_scores[:, i],average="weighted", max_fpr=0.1)
-                precision[i], recall[i], _ = precision_recall_curve(onehot_targets[:, i], target_scores[:, i])
+                precision[i], recall[i], thresholds = precision_recall_curve(onehot_targets[:, i], target_scores[:, i])
                 average_precision[i] = average_precision_score(onehot_targets[:, i], target_scores[:, i])
                 ppv_mod[i] = calculate_ppv_modified(onehot_targets[:, i], target_scores[:, i])
                 lrm = sm.Logit(onehot_targets[:, i], target_scores[:, i]).fit(disp=0)
@@ -4975,33 +4992,142 @@ def plot_benchmark_vegvisir_helper(vegvisir_folder,overlap_idx,kfolds=5,aggregat
             metrics_results_dict[mode.lower()]["recall_class_0"].append(recall[0])
             metrics_results_dict[mode.lower()]["recall_class_1"].append(recall[1])
 
-    # print(metrics_results_dict["train"]["roc_auc_class_0"])
-    # print(metrics_results_dict["train"]["auc01_class_0"])
-    # print(metrics_results_dict["train"]["auc01_class_1"])
-    # print(metrics_results_dict["train"]["ppv_mod_class_1"])
-    # print(metrics_results_dict["train"]["ppv_mod_class_0"])
-    #
-    # print("----------------------------")
-    #
-    # print(metrics_results_dict["valid"]["roc_auc_class_0"])
-    # print(metrics_results_dict["valid"]["auc01_class_0"])
-    # print(metrics_results_dict["valid"]["auc01_class_1"])
-    # print(metrics_results_dict["valid"]["ppv_mod_class_1"])
-    # print(metrics_results_dict["valid"]["ppv_mod_class_0"])
-    #
-    # print("----------------------------")
-    #
-    #
-    # print(metrics_results_dict["test"]["roc_auc_class_0"])
-    # print(metrics_results_dict["test"]["auc01_class_0"])
-    # print(metrics_results_dict["test"]["auc01_class_1"])
-    # print(metrics_results_dict["test"]["ppv_mod_class_1"])
-    # print(metrics_results_dict["test"]["ppv_mod_class_0"])
+    # print(metrics_results_dict["train"]["pval_class_0"])
+    # print(metrics_results_dict["train"]["pval_class_1"])
+    # print(metrics_results_dict["test"]["pval_class_0"])
+    # print(metrics_results_dict["test"]["pval_class_1"])
     #
     # exit()
+
     return metrics_results_dict
 
-def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder="Benchmark",title="",keep_only_overlapped=False,aggregated_not_overlap=False,keep_all=True,only_ppv1=True):
+def plot_benchmark_vegvisir_helper2(vegvisir_folder,overlap_idx,kfolds=5,aggregated_not_overlap=True):
+
+    metrics_results_dict = defaultdict(lambda: defaultdict(list))
+
+    for mode in ["Train","Valid","Test"]:
+        for fold in range(kfolds):
+            results = pd.read_csv(f"{vegvisir_folder}/{mode}_fold_{fold}/Epitopes_predictions_{mode}_fold_{fold}.tsv", sep="\t")
+            results = results.merge(overlap_idx,on="Icore",how="left")
+            if aggregated_not_overlap:
+                results = results[results["Aggregated_overlap"] == False]
+                print("--------------------------")
+                print(mode)
+                print(results.shape)
+                print(results["Target_corrected"].sum())
+                print("--------------------------")
+            targets = np.array(results["Target_corrected"].tolist())
+            target_scores = results[["Vegvisir_negative_prob", "Vegvisir_positive_prob"]].to_numpy().astype(float)
+            target_scores =  torch.nn.functional.softmax(torch.from_numpy(target_scores),dim=-1)[:,1].numpy()
+            fpr=dict()
+            tpr=dict()
+            roc_auc=dict()
+            precision = dict()
+            recall=dict()
+            average_precision=dict()
+            ppv_mod=dict()
+            pvals=dict()
+            # ROC AUC per class
+            for i in range(2):
+                fpr[i], tpr[i], _ = roc_curve(targets, target_scores)
+                roc_auc[i] = auc(fpr[i], tpr[i])
+                roc_auc["auc01_class_{}".format(i)] = roc_auc_score(targets, target_scores,average="weighted", max_fpr=0.1)
+                precision[i], recall[i], thresholds = precision_recall_curve(targets, target_scores)
+                average_precision[i] = average_precision_score(targets, target_scores)
+                ppv_mod[i] = calculate_ppv_modified(targets, target_scores)
+                lrm = sm.Logit(targets, target_scores).fit(disp=0)
+                pvals[i] = lrm.pvalues.item()
+
+            # metrics_results_dict[mode]["fpr_0"].append(fpr[0])
+            # metrics_results_dict[mode]["fpr_1"].append(fpr[1])
+            # metrics_results_dict[mode]["tpr_0"].append(tpr[0])
+            # metrics_results_dict[mode]["tpr_1"].append(tpr[1])
+            metrics_results_dict[mode.lower()]["roc_auc_class_0"].append(roc_auc[0])
+            metrics_results_dict[mode.lower()]["roc_auc_class_1"].append(roc_auc[1])
+            metrics_results_dict[mode.lower()]["auc01_class_0"].append(roc_auc[f"auc01_class_{0}"])
+            metrics_results_dict[mode.lower()]["auc01_class_1"].append(roc_auc[f"auc01_class_{1}"])
+            metrics_results_dict[mode.lower()]["pval_class_0"].append(pvals[0])
+            metrics_results_dict[mode.lower()]["pval_class_1"].append(pvals[1])
+            metrics_results_dict[mode.lower()]["ap_class_0"].append(average_precision[0])
+            metrics_results_dict[mode.lower()]["ap_class_1"].append(average_precision[1])
+            metrics_results_dict[mode.lower()]["ppv_mod_class_0"].append(ppv_mod[0])
+            metrics_results_dict[mode.lower()]["ppv_mod_class_1"].append(ppv_mod[1])
+            metrics_results_dict[mode.lower()]["precision_class_0"].append(precision[0])
+            metrics_results_dict[mode.lower()]["precision_class_1"].append(precision[1])
+            metrics_results_dict[mode.lower()]["recall_class_0"].append(recall[0])
+            metrics_results_dict[mode.lower()]["recall_class_1"].append(recall[1])
+
+    return metrics_results_dict
+
+def plot_benchmark_vegvisir_helper3(vegvisir_folder,overlap_idx,kfolds=5,aggregated_not_overlap=True):
+    """Compute Ensembl metrics"""
+    metrics_results_dict = defaultdict(lambda: defaultdict(list))
+
+
+    for mode in ["Train","Test"]:
+        target_scores_list = []
+        for fold in range(kfolds):
+            results = pd.read_csv(f"{vegvisir_folder}/{mode}_fold_{fold}/Epitopes_predictions_{mode}_fold_{fold}.tsv", sep="\t")
+            if overlap_idx is not None:
+                results = results.merge(overlap_idx,on="Icore",how="left")
+            if aggregated_not_overlap:
+                results = results[results["Aggregated_overlap"] == False]
+            targets = np.array(results["Target_corrected"].tolist())
+            onehot_targets = np.zeros((targets.shape[0], 2))
+            onehot_targets[np.arange(0, targets.shape[0]), targets.astype(int)] = 1
+            target_scores = results[["Vegvisir_negative_prob", "Vegvisir_positive_prob"]].to_numpy().astype(float)
+            target_scores_list.append(target_scores)
+
+        target_scores = sum(target_scores_list)/kfolds
+
+        fpr=dict()
+        tpr=dict()
+        roc_auc=dict()
+        precision = dict()
+        recall=dict()
+        average_precision=dict()
+        ppv_mod=dict()
+        pvals=dict()
+        # ROC AUC per class
+        for i in range(2):
+            fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
+            roc_auc[i] = auc(fpr[i], tpr[i])
+            roc_auc["auc01_class_{}".format(i)] = roc_auc_score(onehot_targets[:, i], target_scores[:, i],average="weighted", max_fpr=0.1)
+            precision[i], recall[i], thresholds = precision_recall_curve(onehot_targets[:, i], target_scores[:, i])
+            average_precision[i] = average_precision_score(onehot_targets[:, i], target_scores[:, i])
+            ppv_mod[i] = calculate_ppv_modified(onehot_targets[:, i], target_scores[:, i])
+            lrm = sm.Logit(onehot_targets[:, i], target_scores[:, i]).fit(disp=0)
+            pvals[i] = lrm.pvalues.item()
+
+        # metrics_results_dict[mode]["fpr_0"].append(fpr[0])
+        # metrics_results_dict[mode]["fpr_1"].append(fpr[1])
+        # metrics_results_dict[mode]["tpr_0"].append(tpr[0])
+        # metrics_results_dict[mode]["tpr_1"].append(tpr[1])
+        metrics_results_dict[mode.lower()]["roc_auc_class_0"].append(roc_auc[0])
+        metrics_results_dict[mode.lower()]["roc_auc_class_1"].append(roc_auc[1])
+        metrics_results_dict[mode.lower()]["auc01_class_0"].append(roc_auc[f"auc01_class_{0}"])
+        metrics_results_dict[mode.lower()]["auc01_class_1"].append(roc_auc[f"auc01_class_{1}"])
+        metrics_results_dict[mode.lower()]["pval_class_0"].append(pvals[0])
+        metrics_results_dict[mode.lower()]["pval_class_1"].append(pvals[1])
+        metrics_results_dict[mode.lower()]["ap_class_0"].append(average_precision[0])
+        metrics_results_dict[mode.lower()]["ap_class_1"].append(average_precision[1])
+        metrics_results_dict[mode.lower()]["ppv_mod_class_0"].append(ppv_mod[0])
+        metrics_results_dict[mode.lower()]["ppv_mod_class_1"].append(ppv_mod[1])
+        metrics_results_dict[mode.lower()]["precision_class_0"].append(precision[0])
+        metrics_results_dict[mode.lower()]["precision_class_1"].append(precision[1])
+        metrics_results_dict[mode.lower()]["recall_class_0"].append(recall[0])
+        metrics_results_dict[mode.lower()]["recall_class_1"].append(recall[1])
+
+    # print(metrics_results_dict["train"]["pval_class_0"])
+    # print(metrics_results_dict["train"]["pval_class_1"])
+    # print(metrics_results_dict["test"]["pval_class_0"])
+    # print(metrics_results_dict["test"]["pval_class_1"])
+    #
+    # exit()
+
+    return metrics_results_dict
+
+def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder="Benchmark",title="",keep_only_overlapped=False,aggregated_not_overlap=False,keep_all=True,only_class1=True,ensemble=False):
     """Compare results across different programns on the -golden- dataset that is built from the Icore sequence and sequences of variable length 8-11
 
     :param keep_overlapped : computes metrics for the sequences present in the original training dataset's --> False for benchmark
@@ -5041,25 +5167,24 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     #
     # metrics_results_dict = plot_kfold_comparison_helper(metrics_keys, script_dir, folder=vegvisir_folder, overwrite=False, kfolds=5)
 
-    #Highlight: Find the sequence overlap with the train datasets from the other programs to take it into account for the metrics
+    #Highlight: Find the sequence overlap with the train datasets from the other programs to take it into account for the metrics. This file indicates as True if the sequence is present in the dataset
     other_programs_sequence_overlap = pd.read_csv("{}/Benchmark/Other_Programs/dataset_partitioned_overlap_benchmark.tsv".format(script_dir),sep="\t")
 
     # #Highlight: invert the dataframe to see the performance on the sequences that have been used for training the benchmarking programs
-    if keep_only_overlapped:#keep the sequences in the original training datasets
-        other_programs_sequence_overlap_inverted = other_programs_sequence_overlap.applymap(lambda x: not x).astype(bool) #invert to check results on the overlapped sequences
+    if keep_only_overlapped:#keep the sequences in the original training datasets that overlap with Vegvisir's
+        #other_programs_sequence_overlap_inverted = other_programs_sequence_overlap.applymap(lambda x: not x).astype(bool) #invert to check results on the overlapped sequences
+        other_programs_sequence_overlap_inverted = other_programs_sequence_overlap.map(lambda x: not x).astype(bool) #invert booleans to check results on the overlapped sequences
         other_programs_sequence_overlap_inverted["Icore"] = other_programs_sequence_overlap["Icore"]
         other_programs_sequence_overlap = other_programs_sequence_overlap_inverted
 
     other_programs_sequence_overlap["MixMHCPred"] = False
-    other_programs_sequence_overlap["NetMHC"] = False #assign to Fals, since we keep everything with False
+    other_programs_sequence_overlap["NetMHC"] = False #assign to False, since we keep everything with False
 
     if aggregated_not_overlap:#use the sequences found in all the datasets (overlapped_per_model= True) or not (overlapped_per_model=False)
         aggregated_overlap_idx = other_programs_sequence_overlap.loc[:, ~other_programs_sequence_overlap.columns.isin(['Icore',"target","partition"])].to_numpy()
-        aggregated_overlap_idx = pd.DataFrame({"Aggregated_overlap":np.mean(aggregated_overlap_idx,axis=1).astype(bool)}) #all the sequences not present in any of the benchmark training datasets
+        aggregated_overlap_idx = pd.DataFrame({"Aggregated_overlap":np.mean(aggregated_overlap_idx,axis=1).astype(bool)}) #track all the sequences not present in any of the benchmark training datasets
         #print(aggregated_overlap_idx["Aggregated_overlap"].sum())
         other_programs_sequence_overlap = pd.concat([other_programs_sequence_overlap["Icore"],aggregated_overlap_idx],axis=1)
-
-
 
     train_df = train_df.merge(other_programs_sequence_overlap,on="Icore",how="left")
     test_df = test_df.merge(other_programs_sequence_overlap,on="Icore",how="left")
@@ -5068,7 +5193,11 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
         train_df = train_df[train_df["Aggregated_overlap"] == False]
         test_df = test_df[test_df["Aggregated_overlap"] == False]
 
-    metrics_results_dict = plot_benchmark_vegvisir_helper(vegvisir_folder,other_programs_sequence_overlap,kfolds=5,aggregated_not_overlap=aggregated_not_overlap)
+    if ensemble:
+        metrics_results_dict = plot_benchmark_vegvisir_helper3(vegvisir_folder,other_programs_sequence_overlap,kfolds=5,aggregated_not_overlap=aggregated_not_overlap)
+    else:
+        metrics_results_dict = plot_benchmark_vegvisir_helper2(vegvisir_folder,other_programs_sequence_overlap,kfolds=5,aggregated_not_overlap=aggregated_not_overlap)
+
     metrics_results_train = metrics_results_dict["train"]
     #metrics_results_valid = metrics_results_dict["valid"]
     metrics_results_test = metrics_results_dict["test"]
@@ -5077,23 +5206,23 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     vegvisir_results_roc_auc_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train["roc_auc_class_1"])))/2, 2)}
     #vegvisir_results_roc_auc_train_std = {"Vegvisir":np.round((np.std(np.array(metrics_results_train["roc_auc_class_0"])) + np.std(np.array(metrics_results_train["roc_auc_class_1"])))/2, 2)}
 
+    vegvisir_results_ap_train = {"Vegvisir": np.round((np.mean(np.array(metrics_results_train["ap_class_0"])) + np.mean(np.array(metrics_results_train["ap_class_1"]))) / 2, 2)}
+    vegvisir_results_pval_train = {"Vegvisir":np.mean(np.array(metrics_results_train["pval_class_0"])) + np.mean(np.array(metrics_results_train["pval_class_1"]))}
 
-    if aggregated_not_overlap and keep_only_overlapped:
-        vegvisir_results_ap_train = {"Vegvisir":np.round(np.mean(np.array(metrics_results_train["ap_class_1"])), 3)}
-        vegvisir_results_auc01_train = {"Vegvisir":np.round(np.mean(np.array(metrics_results_train["auc01_class_1"])), 3)}
+    if only_class1: #some statistics are uni-class
+        vegvisir_results_auc01_train = {"Vegvisir":np.round(np.mean(np.array(metrics_results_train["auc01_class_1"])), 2)}
+        vegvisir_results_ppv_train = {"Vegvisir":np.round(np.mean(np.array(metrics_results_train["ppv_mod_class_1"])), 2)}
+        if keep_only_overlapped and aggregated_not_overlap:
+            vegvisir_results_ap_train = {"Vegvisir":np.round(np.mean(np.array(metrics_results_train["ap_class_1"])), 2)}
+        vegvisir_results_pval_train = {"Vegvisir":np.mean(np.array(metrics_results_train["pval_class_1"]))}
+
     else:
-        vegvisir_results_ap_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["ap_class_0"])) + np.mean(np.array(metrics_results_train["ap_class_1"])))/2, 2)}
         vegvisir_results_auc01_train = {"Vegvisir": np.round((np.mean(
             np.array(metrics_results_train["auc01_class_0"])) + np.mean(
             np.array(metrics_results_train["auc01_class_1"]))) / 2, 2)}
-
-    vegvisir_results_pval_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["pval_class_0"])) + np.mean(np.array(metrics_results_train["pval_class_1"])))/2, 3)}
-    if only_ppv1:
-        vegvisir_results_ppv_train = {"Vegvisir": np.round(np.array(metrics_results_train["ppv_mod_class_1"]), 3)}
-    else:
         vegvisir_results_ppv_train = {"Vegvisir": np.round((np.mean(
             np.array(metrics_results_train["ppv_mod_class_0"])) + np.mean(
-            np.array(metrics_results_train["ppv_mod_class_1"]))) / 2, 3)}
+            np.array(metrics_results_train["ppv_mod_class_1"]))) / 2, 2)}
 
     # vegvisir_results_precision_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["precision_class_0"])) + np.mean(np.array(metrics_results_train["precision_class_1"])))/2, 3)}
     # vegvisir_results_recall_train = {"Vegvisir":np.round((np.mean(np.array(metrics_results_train["recall_class_0"])) + np.mean(np.array(metrics_results_train["recall_class_1"])))/2, 3)}
@@ -5105,21 +5234,26 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     vegvisir_results_roc_auc_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test["roc_auc_class_1"])))/2, 2)}
     #vegvisir_results_roc_auc_test_std = {"Vegvisir":np.round((np.std(np.array(metrics_results_test["roc_auc_class_0"])) + np.std(np.array(metrics_results_test["roc_auc_class_1"])))/2, 3)}
 
-    if aggregated_not_overlap and keep_only_overlapped:#the majority of the sequences are +
-        vegvisir_results_ap_test = {"Vegvisir": np.round(np.mean(np.array(metrics_results_test["ap_class_1"])), 3)}
+    #if aggregated_not_overlap and keep_only_overlapped:#the majority of the sequences are +
+    vegvisir_results_ap_test = {"Vegvisir": np.round((np.mean(np.array(metrics_results_test["ap_class_0"])) + np.mean(np.array(metrics_results_test["ap_class_1"]))) / 2, 3)}
+    vegvisir_results_pval_test = {"Vegvisir":(np.mean(np.array(metrics_results_test["pval_class_0"])) + np.mean(np.array(metrics_results_test["pval_class_1"])))/2}
+
+    if only_class1:
         vegvisir_results_auc01_test = {"Vegvisir":np.round(np.mean(np.array(metrics_results_test["auc01_class_1"])), 3)}
+        vegvisir_results_ppv_test = {"Vegvisir":np.round(np.mean(np.array(metrics_results_test["ppv_mod_class_1"])), 3)}
+        if keep_only_overlapped and aggregated_not_overlap:
+            vegvisir_results_ap_test = {"Vegvisir":np.round(np.array(metrics_results_test["ap_class_1"]), 3)}
+        vegvisir_results_pval_test = {"Vegvisir":np.mean(np.array(metrics_results_test["pval_class_1"]))}
 
     else:
-        vegvisir_results_ap_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["ap_class_0"])) + np.mean(np.array(metrics_results_test["ap_class_1"])))/2, 3)}
         vegvisir_results_auc01_test = {"Vegvisir": np.round((np.mean(
             np.array(metrics_results_test["auc01_class_0"])) + np.mean(
             np.array(metrics_results_test["auc01_class_1"]))) / 2, 2)}
+        vegvisir_results_ppv_test = {"Vegvisir": np.round((np.mean(
+            np.array(metrics_results_test["ppv_mod_class_0"])) + np.mean(
+            np.array(metrics_results_test["ppv_mod_class_1"]))) / 2, 2)}
 
-    vegvisir_results_pval_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["pval_class_0"])) + np.mean(np.array(metrics_results_test["pval_class_1"])))/2, 2)}
-    if only_ppv1:
-        vegvisir_results_ppv_test = {"Vegvisir":np.round(np.array(metrics_results_test["ppv_mod_class_1"]), 3)}
-    else:
-        vegvisir_results_ppv_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["ppv_mod_class_0"])) + np.mean(np.array(metrics_results_test["ppv_mod_class_1"])))/2, 3)}
+
     # vegvisir_results_precision_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["precision_class_0"])) + np.mean(np.array(metrics_results_test["precision_class_1"])))/2, 3)}
     # vegvisir_results_recall_test = {"Vegvisir":np.round((np.mean(np.array(metrics_results_test["recall_class_0"])) + np.mean(np.array(metrics_results_test["recall_class_1"])))/2, 3)}
     vegvisir_results_precision_test = {"Vegvisir":np.round(np.mean(np.array(metrics_results_test["precision_class_1"])), 3)}
@@ -5128,14 +5262,14 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
 
     #Highlight: NNalign results for viral_dataset9
     if keyname == "raw-variable-length-vd9":
-        nnalign_results_path_train_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_07_01_2024/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_3369/nnalign_peplen_8-11_iter_100_3369.lg9.sorted.pred"
-        nnalign_results_path_test_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_07_01_2024/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_3369/test_Icore_variable_length_Icore_sequences_viral_dataset9_lg9_10424.evalset.txt"
+        nnalign_results_path_train_full = "Benchmark/Other_Programs/NNAlign_results_07_01_2024/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_3369/nnalign_peplen_8-11_iter_100_3369.lg9.sorted.pred"
+        nnalign_results_path_test_full = "Benchmark/Other_Programs/NNAlign_results_07_01_2024/Icore/variable_length_Icore_sequences_viral_dataset9/nnalign_peplen_8-11_iter_100_3369/test_Icore_variable_length_Icore_sequences_viral_dataset9_lg9_10424.evalset.txt"
 
     else: #Highlight: NNalign results for viral_dataset15
-        nnalign_results_path_train_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_19_01_2024/Icore/variable_length_Icore_sequences_viral_dataset15/nnalign_peplen_8-11_iter_100_10523/nnalign_peplen_8-11_iter_100_10523.lg9.sorted.pred"
-        nnalign_results_path_test_full = "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_19_01_2024/Icore/variable_length_Icore_sequences_viral_dataset15/nnalign_peplen_8-11_iter_100_10523/test_Icore_variable_length_Icore_sequences_viral_dataset15_lg9_13809.evalset.txt"
+        nnalign_results_path_train_full = "Benchmark/Other_Programs/NNAlign_results_19_01_2024/Icore/variable_length_Icore_sequences_viral_dataset15/nnalign_peplen_8-11_iter_100_10523/nnalign_peplen_8-11_iter_100_10523.lg9.sorted.pred"
+        nnalign_results_path_test_full = "Benchmark/Other_Programs/NNAlign_results_19_01_2024/Icore/variable_length_Icore_sequences_viral_dataset15/nnalign_peplen_8-11_iter_100_10523/test_Icore_variable_length_Icore_sequences_viral_dataset15_lg9_13809.evalset.txt"
 
-    train_test_df = pd.concat([train_df,test_df],axis=0)
+    #train_test_df = pd.concat([train_df,test_df],axis=0)
     (nnalign_results_train_roc_auc_dict,nnalign_results_train_auc01_dict, nnalign_results_train_ppv_dict,
      nnalign_results_train_ap_dict,nnalign_results_train_pval_dict,nnalign_results_train_precision_dict,nnalign_results_train_recall_dict) = process_nnalign(nnalign_results_path_train_full,train_df,keyname,mode="train")
     (nnalign_results_test_roc_auc_dict,nnalign_results_test_auc01_dict, nnalign_results_test_ppv_dict,
@@ -5150,14 +5284,12 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     #pd.set_option('display.max_columns', None)
 
     def process_results_option_a(seqs_df,training=True):
-        """Aggregate results based on same Icore and remove the allele prediction effect"""
+        """Aggregate results based on same Icore and remove the possible allele-encoding prediction effect"""
         #other_programs_results_mode= other_programs_results[other_programs_results["training"] == training]
         #missing_seqs = seqs_df[~seqs_df["Icore"].isin(other_programs_results["Icore"])]
         #other_programs_results_mode= other_programs_results[other_programs_results["training"] == training] #Highlight: This training flag corresponds solely to the viral_dataset9, not viral_dataset15
 
         other_programs_results_mode = other_programs_results[other_programs_results["Icore"].isin(seqs_df["Icore"].values.tolist())]
-
-
 
         other_programs_results_mode = other_programs_results_mode[["Icore","target_corrected","PRIME_rank","PRIME_score","MixMHCpred_rank_binding","IEDB_immuno","DeepImmuno","DeepNetBim_binding","DeepNetBim_immuno","DeepNetBim_immuno_probability","BigMHC","NetMHCpan_binding"]]
         #Highlight: Grouping by alleles ---> To make similar to vegvisir's logic
@@ -5182,15 +5314,9 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     other_programs_results_test = process_results_option_a(test_df,training=False)
     #Highlight: Make sure that the information on the overlapped sequences has the same order
     #Before
-
-    #other_programs_sequence_overlap_train = VegvisirUtils.merge_in_left_order(other_programs_results_train[["Icore"]],other_programs_sequence_overlap,on="Icore") #guarantees the same order of Icore
     other_programs_sequence_overlap_train = VegvisirUtils.merge_in_left_order(other_programs_results_train[["Icore"]],other_programs_sequence_overlap,on="Icore") #guarantees the same order of Icore
-
-
     #After
-    #other_programs_sequence_overlap_test = VegvisirUtils.merge_in_left_order(other_programs_results_test[["Icore"]],other_programs_sequence_overlap,on="Icore") #guarantees the same order of Icore
     other_programs_sequence_overlap_test = VegvisirUtils.merge_in_left_order(other_programs_results_test[["Icore"]],other_programs_sequence_overlap,on="Icore") #guarantees the same order of Icore
-
 
     programs_list = ["PRIME_rank","PRIME_score","MixMHCpred_rank_binding","IEDB_immuno","DeepImmuno","DeepNetBim_binding","DeepNetBim_immuno","DeepNetBim_immuno_probability","BigMHC","NetMHCpan_binding"]
     if aggregated_not_overlap:
@@ -5200,13 +5326,12 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
 
     #Highlight: ROC-AUC & AUC-01
     if keep_all:
-        auc_results_train = list(map(lambda program,program2: calculate_auc(other_programs_results_train["target_corrected"],other_programs_results_train[program],None),programs_list,programs_list2 ))
+        auc_results_train = list(map(lambda program,program2: calculate_auc(other_programs_results_train["target_corrected"],other_programs_results_train[program],None),programs_list,programs_list2))
     else:
         auc_results_train = list(map(lambda program,program2: calculate_auc(other_programs_results_train["target_corrected"],other_programs_results_train[program],other_programs_sequence_overlap_train[program2]),programs_list,programs_list2 ))
     auc_results_train = list(zip(*auc_results_train))
     roc_auc_results_train = auc_results_train[0]
     auc01_results_train = auc_results_train[1]
-
 
     if keep_all:
         auc_results_test = list(map(lambda program,program2: calculate_auc(other_programs_results_test["target_corrected"],other_programs_results_test[program],None),programs_list,programs_list2 ))
@@ -5361,7 +5486,7 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     fontsize= 20
     if plot_only_auc_ap:
         suffix = "auc_ap_ppv_mod"
-        fig, [[ax1,ax2],[ax3,ax4]] = plt.subplots(nrows=2, ncols=2, figsize=(17, 30))
+        fig, [[ax1,ax2],[ax3,ax4]] = plt.subplots(nrows=2, ncols=2, figsize=(20, 30))
         i = 0
         positions = []
         labels = []
@@ -5393,63 +5518,63 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
                     rect = bar[0]  # single rectangle
                     ax1.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=int(fontsize - 3),weight='bold')
+                             ha='center', va='center', fontsize=int(fontsize+3),weight='bold')
                 for bar in [bar_train_auc01.patches, bar_test_auc01.patches]:
                     rect = bar[0]  # single rectangle
                     ax2.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=int(fontsize - 3), weight='bold')
+                             ha='center', va='center', fontsize=int(fontsize+3), weight='bold')
                 for bar in [bar_train_ap.patches,bar_test_ap.patches]:
                     rect = bar[0] #single rectangle
                     ax3.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(),2)),
-                             ha='center', va='center',fontsize=int(fontsize - 3),weight='bold')
+                             ha='center', va='center',fontsize=int(fontsize+3),weight='bold')
                 for bar in [bar_train_ppv.patches,bar_test_ppv.patches]:
                     rect = bar[0] #single rectangle
                     ax4.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(),2)),
-                             ha='center', va='center',fontsize=int(fontsize - 3),weight='bold')
+                             ha='center', va='center',fontsize=int(fontsize+3),weight='bold')
 
 
         ax1.axvline(x=0.5, color='goldenrod', linestyle='--',linewidth=4)
-        ax1.set_yticks(positions, labels=labels, fontsize=fontsize,weight='bold')
-        ax1.tick_params(axis='x', labelsize=fontsize)
+        ax1.set_yticks(positions, labels=labels, fontsize=fontsize + 10 ,weight='bold')
+        ax1.tick_params(axis='x', labelsize=fontsize + 10 )
         transformation = transforms.blended_transform_factory(ax1.get_yticklabels()[0].get_transform(), ax1.transData)
         ax1.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
         ax1.set_title("ROC-AUC", fontsize=int(fontsize + 5))
         ax1.margins(x=0.15)
 
-        ax2.set_yticks(positions, labels=labels, fontsize=fontsize,weight='bold')
-        ax2.tick_params(axis='x', labelsize=fontsize)
+        ax2.set_yticks(positions, labels=labels, fontsize=fontsize + 10 ,weight='bold')
+        ax2.tick_params(axis='x', labelsize=fontsize + 10)
         ax2.axvline(x=0.5, color='goldenrod', linestyle='--',linewidth=4)
         transformation = transforms.blended_transform_factory(ax2.get_yticklabels()[0].get_transform(), ax2.transData)
         ax2.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
-        ax2.set_title("AUC-10%", fontsize=int(fontsize + 5))
+        ax2.set_title("ROC-AUC-10%", fontsize=int(fontsize + 5))
         ax2.margins(x=0.15)
 
         ax3.axvline(x=0.5, color='goldenrod', linestyle='--',linewidth=4)
-        ax3.tick_params(axis='x', labelsize=fontsize)
-        ax3.set_yticks(positions, labels=labels, fontsize=fontsize, weight='bold')
+        ax3.tick_params(axis='x', labelsize=fontsize + 10)
+        ax3.set_yticks(positions, labels=labels, fontsize=fontsize + 10, weight='bold')
         transformation = transforms.blended_transform_factory(ax3.get_yticklabels()[0].get_transform(), ax3.transData)
         ax3.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
-        ax3.set_title("Average Precision (AP)", fontsize=int(fontsize + 5))
+        ax3.set_title("Average Precision Recall Curve", fontsize=int(fontsize + 5))
         ax3.margins(x=0.2)
         
         ax4.axvline(x=0.5, color='goldenrod', linestyle='--',linewidth=4)
-        ax4.tick_params(axis='x', labelsize=fontsize)
-        ax4.set_yticks(positions, labels=labels, fontsize=fontsize, weight='bold')
+        ax4.tick_params(axis='x', labelsize=fontsize + 10)
+        ax4.set_yticks(positions, labels=labels, fontsize=fontsize + 10, weight='bold')
         transformation = transforms.blended_transform_factory(ax4.get_yticklabels()[0].get_transform(), ax4.transData)
         ax4.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
-        ax4.set_title("PPV* (modified)", fontsize=int(fontsize + 5))
+        ax4.set_title("Modified Positive Predictive Value", fontsize=int(fontsize + 5))
         ax4.margins(x=0.2)
         for ax in [ax1,ax2,ax2,ax3,ax4]:
             ax.get_yticklabels()[0].set_color("white")
             ax.get_yticklabels()[0].set_weight("bold")
             ax.get_yticklabels()[0].set_bbox(dict(facecolor="mediumseagreen", alpha=0.9))
 
-        plt.subplots_adjust(left=0.15, wspace=0.55,right=0.92)
+        plt.subplots_adjust(left=0.17, wspace=0.55,right=0.9)
         legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in colors_dict.items()]
-        fig.legend(handles=legends, prop={'size': int(fontsize + 5)}, loc='upper center', bbox_to_anchor=(0.5, 0.95))
+        fig.legend(handles=legends, prop={'size': int(fontsize + 8)}, loc='upper center', bbox_to_anchor=(0.5, 0.95))
         fig.suptitle("Benchmark metrics", fontsize=int(fontsize + 12))
 
 
@@ -5539,9 +5664,13 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
         fig.suptitle("Benchmark metrics",fontsize=int(fontsize + 5))
 
     #plt.show()
-    plt.savefig("{}/{}/Benchmarking_{}_{}.jpg".format(script_dir,folder,title,suffix))
+    #plt.savefig("{}/{}/Benchmarking_{}_{}.jpg".format(script_dir,folder,title,suffix))
+    plt.show()
+    exit()
+    plt.savefig("{}/{}/Benchmarking_{}_{}.svg".format(script_dir, folder, title, suffix))
+    plt.savefig("{}/{}/Benchmarking_{}_{}.pdf".format(script_dir, folder, title, suffix))
 
-def plot_model_stressing_comparison1(dict_results_vegvisir,script_dir,results_folder="Benchmark/Plots",subtitle="",encoding="-blosum",keyname="viral_dataset15"):
+def plot_model_stressing_comparison1(dict_results_vegvisir,script_dir,results_folder="Benchmark/Plots",subtitle="",encoding="-blosum",keyname="viral_dataset15",ensemble=False):
 
     """
     :param str encoding: "-blosum-", "-onehot-" or ""
@@ -5657,16 +5786,16 @@ def plot_model_stressing_comparison1(dict_results_vegvisir,script_dir,results_fo
 
                 stress_dataset = stress_mode_dict[stress_mode].replace("Icore",sequence_type) #This is weird, but i do not feel like making it better
                 if keyname == "viral_dataset9":
-                    folders_list = glob("/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_07_01_2024/{}/{}/*/".format(sequence_type, stress_dataset), recursive=True)
+                    folders_list = glob("Benchmark/Other_Programs/NNAlign_results_07_01_2024/{}/{}/*/".format(sequence_type, stress_dataset), recursive=True)
                     folder_name = Path(folders_list[0]).parts[-1]
                     subfolders_list = glob(
                         "/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_07_01_2024/{}/{}/{}/*".format(
                             sequence_type, stress_dataset, folder_name), recursive=True)
 
                 else:
-                    folders_list = glob("/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_19_01_2024/{}/{}/*/".format(sequence_type,stress_dataset),recursive=True)
+                    folders_list = glob("Benchmark/Other_Programs/NNAlign_results_19_01_2024/{}/{}/*/".format(sequence_type,stress_dataset),recursive=True)
                     folder_name = Path(folders_list[0]).parts[-1]
-                    subfolders_list = glob("/home/lys/Dropbox/PostDoc/vegvisir/Benchmark/Other_Programs/NNAlign_results_19_01_2024/{}/{}/{}/*".format(sequence_type,stress_dataset,folder_name),recursive=True)
+                    subfolders_list = glob("Benchmark/Other_Programs/NNAlign_results_19_01_2024/{}/{}/{}/*".format(sequence_type,stress_dataset,folder_name),recursive=True)
 
 
                 nnalign_results_path_train_full = list(filter(lambda x: "lg9.sorted.pred" in x, subfolders_list))[0]
@@ -5957,7 +6086,7 @@ def plot_model_stressing_comparison1(dict_results_vegvisir,script_dir,results_fo
     plt.close(fig4)
     fig4.clf()
 
-def plot_model_stressing_comparison2(dict_results_vegvisir,script_dir,results_folder="Benchmark/Plots",subtitle="",encoding="-blosum",keyname="viral_dataset15"):
+def plot_model_stressing_comparison2(dict_results_vegvisir,script_dir,results_folder="Benchmark/Plots",subtitle="",encoding="-blosum",keyname="viral_dataset15",ensemble=False):
 
     """
     :param str encoding: "-blosum-", "-onehot-" or ""
@@ -5998,10 +6127,10 @@ def plot_model_stressing_comparison2(dict_results_vegvisir,script_dir,results_fo
     labels = []
     tuples_idx_icore = []
     tuples_idx_icore_non_anchor = []
+    filled=False
     for sequence_type in dict_results_vegvisir.keys():
         print("Analyzing {} datasets".format(sequence_type))
         for stress_mode in dict_results_vegvisir[sequence_type].keys():
-            print(stress_mode)
             if encoding in stress_mode:
                 # Highlight: Vegvisir results
                 print("Analizing {}".format(stress_mode))
@@ -6029,8 +6158,13 @@ def plot_model_stressing_comparison2(dict_results_vegvisir,script_dir,results_fo
                 test_df = pd.DataFrame({"Icore": test_sequences_raw, "targets": test_labels})
 
 
+                if ensemble:
+                    metrics_results_dict = plot_benchmark_vegvisir_helper3(vegvisir_folder,None,kfolds=5,aggregated_not_overlap=False)
 
-                metrics_results_dict = plot_kfold_comparison_helper(metrics_keys, script_dir, folder=vegvisir_folder,overwrite=False, kfolds=5)
+                else:
+                    metrics_results_dict = plot_kfold_comparison_helper(metrics_keys, script_dir, folder=vegvisir_folder,overwrite=False, kfolds=5)
+
+
                 metrics_results_train = metrics_results_dict["train"]
                 # metrics_results_valid = metrics_results_dict["valid"]
                 metrics_results_test = metrics_results_dict["test"]
@@ -6039,7 +6173,11 @@ def plot_model_stressing_comparison2(dict_results_vegvisir,script_dir,results_fo
                 vegvisir_results_auc_train = {"Vegvisir": np.round((np.mean(np.array(metrics_results_train["roc_auc_class_0"])) + np.mean(np.array(metrics_results_train["roc_auc_class_1"]))) / 2, 2)}
                 vegvisir_results_auc01_train = {"Vegvisir": np.round((np.mean(np.array(metrics_results_train["auc01_class_0"])) + np.mean(np.array(metrics_results_train["auc01_class_1"]))) / 2, 2)}
                 vegvisir_results_ap_train = {"Vegvisir": np.round((np.mean(np.array(metrics_results_train["ap_class_0"])) + np.mean(np.array(metrics_results_train["ap_class_1"]))) / 2, 2)}
-                vegvisir_results_ppv_train = {"Vegvisir": np.round(np.mean(np.array(metrics_results_train["ppv"])), 2)}
+                if ensemble:
+                    vegvisir_results_ppv_train = {"Vegvisir": np.round((np.mean(np.array(metrics_results_train["ppv_mod_class_0"])) + np.mean(np.array(metrics_results_train["ppv_mod_class_1"]))) / 2, 2)}
+                else:
+                    vegvisir_results_ppv_train = {"Vegvisir": np.round(np.mean(np.array(metrics_results_train["ppv_class_0"])), 2)}
+
                 if sequence_type == "Icore":
                     stress_testing_results_ICORE_dict[stress_mode]["train"] = {"ROC-AUC" : vegvisir_results_auc_train["Vegvisir"],
                                                                         "AUC01": vegvisir_results_auc01_train["Vegvisir"],
@@ -6056,13 +6194,18 @@ def plot_model_stressing_comparison2(dict_results_vegvisir,script_dir,results_fo
                 vegvisir_results_auc_test = {"Vegvisir": np.round((np.mean(np.array(metrics_results_test["roc_auc_class_0"])) + np.mean(np.array(metrics_results_test["roc_auc_class_1"]))) / 2, 2)}
                 vegvisir_results_auc01_test = {"Vegvisir": np.round((np.mean(np.array(metrics_results_test["auc01_class_0"])) + np.mean(np.array(metrics_results_test["auc01_class_1"]))) / 2, 2)}
                 vegvisir_results_ap_test = {"Vegvisir": np.round((np.mean(np.array(metrics_results_test["ap_class_0"])) + np.mean(np.array(metrics_results_test["ap_class_1"]))) / 2, 2)}
-                vegvisir_results_ppv_test = {"Vegvisir": np.round(np.mean(np.array(metrics_results_test["ppv"])), 2)}
+                if ensemble:
+                    vegvisir_results_ppv_test = {"Vegvisir": np.round((np.mean(np.array(metrics_results_test["ppv_mod_class_0"])) + np.mean(np.array(metrics_results_test["ppv_mod_class_1"]))) / 2, 2)}
+                else:
+                    vegvisir_results_ppv_test = {"Vegvisir": np.round(np.mean(np.array(metrics_results_test["ppv"])), 2)}
+
                 if sequence_type == "Icore":
                     stress_testing_results_ICORE_dict[stress_mode]["test"] = {"ROC-AUC": vegvisir_results_auc_test["Vegvisir"],
                                                                         "AUC01": vegvisir_results_auc01_test["Vegvisir"],
                                                                         "PPV*": vegvisir_results_ppv_test["Vegvisir"],
                                                                         "AP": vegvisir_results_ap_test["Vegvisir"]}
                     tuples_idx_icore.append((stress_mode, "test"))
+
                 else:
                     stress_testing_results_ICORENONANCHOR_dict[stress_mode]["test"] = {"ROC-AUC": vegvisir_results_auc_test["Vegvisir"],
                                                                         "AUC01": vegvisir_results_auc01_test["Vegvisir"],
@@ -6092,51 +6235,61 @@ def plot_model_stressing_comparison2(dict_results_vegvisir,script_dir,results_fo
                 bar_train_ap2 = ax7.barh(i, width=vegvisir_results_ap_train["Vegvisir"], color="skyblue",height=0.2)
 
                 bar_test_ap2 = ax8.barh(i, width=vegvisir_results_ap_test["Vegvisir"], height=0.2,color="tomato")
-
+                if sequence_type == "Icore_non_anchor" and not filled:
+                    position_line = i -0.5
+                    ax1.hlines(y=position_line,xmin=0,xmax=1, color='black', linestyle='-', linewidth=4)
+                    ax2.hlines(y=position_line,xmin=0,xmax=1, color='black', linestyle='-', linewidth=4)
+                    ax3.hlines(y=position_line,xmin=0,xmax=1, color='black', linestyle='-', linewidth=4)
+                    ax4.hlines(y=position_line,xmin=0,xmax=1, color='black', linestyle='-', linewidth=4)
+                    ax5.hlines(y=position_line,xmin=0,xmax=1, color='black', linestyle='-', linewidth=4)
+                    ax6.hlines(y=position_line,xmin=0,xmax=1, color='black', linestyle='-', linewidth=4)
+                    ax7.hlines(y=position_line,xmin=0,xmax=1, color='black', linestyle='-', linewidth=4)
+                    ax8.hlines(y=position_line,xmin=0,xmax=1, color='black', linestyle='-', linewidth=4)
+                    filled = True
                 positions.append(i)
-                labels.append("{}\n{}".format(sequence_type.replace("_","-"),stress_mode.replace("{}-".format(encoding),"")))
+                labels.append("{}\n{}\n".format(sequence_type.replace("_","-").upper(),stress_mode.replace("{}-".format(encoding),"").upper()))
                 i += 1
+
                 for bar in [bar_train_auc2.patches]:
                     rect = bar[0]  # single rectangle
                     ax1.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=fontsize, weight='bold')
+                             ha='center', va='center', fontsize=fontsize + 5, weight='bold')
                 for bar in [bar_test_auc2.patches]:
                     rect = bar[0]  # single rectangle
                     ax2.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=fontsize, weight='bold')
-
+                             ha='center', va='center', fontsize=fontsize + 5, weight='bold')
                 for bar in [bar_train_auc012.patches]:
                     rect = bar[0]  # single rectangle
                     ax3.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=fontsize, weight='bold')
+                             ha='center', va='center', fontsize=fontsize + 5, weight='bold')
                 for bar in [bar_test_auc012.patches]:
                     rect = bar[0]  # single rectangle
                     ax4.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=fontsize, weight='bold')
+                             ha='center', va='center', fontsize=fontsize + 5, weight='bold')
                 for bar in [bar_train_ppv2.patches]:
                     rect = bar[0]  # single rectangle
                     ax5.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=fontsize, weight='bold')
+                             ha='center', va='center', fontsize=fontsize + 5, weight='bold')
                 for bar in [bar_test_ppv2.patches]:
                     rect = bar[0]  # single rectangle
                     ax6.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=fontsize, weight='bold')
+                             ha='center', va='center', fontsize=fontsize + 5, weight='bold')
                 for bar in [bar_train_ap2.patches]:
                     rect = bar[0]  # single rectangle
                     ax7.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=fontsize, weight='bold')
+                             ha='center', va='center', fontsize=fontsize + 5, weight='bold')
                 for bar in [bar_test_ap2.patches]:
                     rect = bar[0]  # single rectangle
                     ax8.text(1.05 * rect.get_width(), rect.get_y() + 0.5 * rect.get_height(),
                              '{}'.format(round(rect.get_width(), 2)),
-                             ha='center', va='center', fontsize=fontsize, weight='bold')
+                             ha='center', va='center', fontsize=fontsize + 5, weight='bold')
 
 
 
@@ -6171,12 +6324,14 @@ def plot_model_stressing_comparison2(dict_results_vegvisir,script_dir,results_fo
         new_index = pd.MultiIndex.from_tuples(tuples_idx)
         df = df.reindex(index=new_index)  # guarantees the same order as the dictionary
 
-        df_styled = df.style.format(na_rep="-", escape="latex", precision=2).background_gradient(axis=None,
-                                                                                                 cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" when pandas 2.1 arrives
+        df_styled = df.style.format(na_rep="-", escape="latex", precision=2).background_gradient(axis=None,cmap="YlOrBr").set_table_styles(css)  # TODO: Switch to escape="latex-math" when pandas 2.1 arrives
 
-        dfi.export(df_styled, '{}/{}/{}_DATAFRAME_{}.png'.format(script_dir, results_folder, title, subtitle),
-                   max_cols=-1,
-                   max_rows=-1)
+        # html = df_styled.to_html()
+        # imgkit.from_string(html,'{}/{}/{}_DATAFRAME_{}.jpg'.format(script_dir, results_folder, title, subtitle))
+        # imgkit.from_string(html,'{}/{}/{}_DATAFRAME_{}.pdf'.format(script_dir, results_folder, title, subtitle))
+
+
+        #dfi.export(df_styled, '{}/{}/{}_DATAFRAME_{}.png'.format(script_dir, results_folder, title, subtitle),max_cols=-1,max_rows=-1)
 
         return df
 
@@ -6209,28 +6364,30 @@ def plot_model_stressing_comparison2(dict_results_vegvisir,script_dir,results_fo
 
     #TODO: plotting the axes in a in for loop does not seem to work
     #Highlight: ROC-AUC
-    ax1.set_yticks(positions, labels=labels, fontsize=fontsize, weight='bold')
+    ax1.set_yticks(positions, labels=labels, fontsize=fontsize,  weight='bold')
     ax1.tick_params(axis='x', labelsize=fontsize)
-
     ax1.axvline(x=0.5, color='goldenrod', linestyle='--', linewidth=4)
     transformation = transforms.blended_transform_factory(ax1.get_yticklabels()[0].get_transform(), ax1.transData)
     ax1.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
-    ax1.set_title("Train", fontsize=fontsize)
+    ax1.set_title("Train", fontsize=fontsize+5)
     ax1.margins(x=0.15)
+    ax1.set_xlim(0,1)
 
     ax2.axvline(x=0.5, color='goldenrod', linestyle='--', linewidth=4)
     transformation = transforms.blended_transform_factory(ax2.get_yticklabels()[0].get_transform(), ax2.transData)
     ax2.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
     ax2.tick_params(axis='x', labelsize=fontsize)
     ax2.set_yticks([])
-    ax2.set_title("Test", fontsize=fontsize)
+    ax2.set_title("Test", fontsize=fontsize+5)
     ax2.margins(x=0.15)
+    ax2.set_xlim(0, 1)
 
     fig1.subplots_adjust(left=0.25, wspace=0.2, right=0.84)
-    legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in {"Train":"skyblue","Test":"tomato"}.items()]
-    fig1.legend(handles=legends, prop={'size': 20}, loc='upper center', bbox_to_anchor=(0.55, 0.95))
-    fig1.suptitle("Stress testing: ROC-AUC", fontsize=int(fontsize + 5))
-    fig1.savefig("{}/{}/Benchmarking_stress_testing_{}_{}.jpg".format(script_dir,results_folder,"ROC_AUC",subtitle),dpi=600)
+    legends = [mpatches.Patch(color=color, label='{}'.format(label.upper())) for label, color in {"Train":"skyblue","Test":"tomato"}.items()]
+    fig1.legend(handles=legends, prop={'size': 25}, loc='upper center', bbox_to_anchor=(0.55, 0.95),ncol=2)
+    fig1.suptitle("Stress testing: ROC-AUC", fontsize=int(fontsize + 10))
+    #fig1.savefig("{}/{}/Benchmarking_stress_testing_{}_{}.jpg".format(script_dir,results_folder,"ROC_AUC",subtitle),dpi=600)
+    fig1.savefig("{}/{}/Benchmarking_stress_testing_{}_{}.pdf".format(script_dir,results_folder,"ROC_AUC",subtitle))
     plt.close(fig1)
     fig1.clf()
 
@@ -6240,23 +6397,25 @@ def plot_model_stressing_comparison2(dict_results_vegvisir,script_dir,results_fo
     ax3.axvline(x=0.5, color='goldenrod', linestyle='--', linewidth=4)
     transformation = transforms.blended_transform_factory(ax3.get_yticklabels()[0].get_transform(), ax3.transData)
     ax3.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
-    ax3.set_title("Train", fontsize=fontsize)
+    ax3.set_title("Train", fontsize=fontsize+5)
     ax3.margins(x=0.15)
+    ax3.set_xlim(0,1)
 
     ax4.axvline(x=0.5, color='goldenrod', linestyle='--', linewidth=4)
     transformation = transforms.blended_transform_factory(ax4.get_yticklabels()[0].get_transform(), ax4.transData)
     ax4.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
     ax4.tick_params(axis='x', labelsize=fontsize)
     ax4.set_yticks([])
-    ax4.set_title("Test", fontsize=fontsize)
+    ax4.set_title("Test", fontsize=fontsize+5)
     ax4.margins(x=0.15)
+    ax4.set_xlim(0, 1)
 
 
     fig2.subplots_adjust(left=0.25, wspace=0.2, right=0.84)
-    legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in {"Train":"skyblue","Test":"tomato"}.items()]
-    fig2.legend(handles=legends, prop={'size': 20}, loc='upper center', bbox_to_anchor=(0.55, 0.95))
-    fig2.suptitle("Stress testing: AUC01", fontsize=int(fontsize + 5))
-    fig2.savefig("{}/{}/Benchmarking_stress_testing_{}_{}.jpg".format(script_dir,results_folder,"AUC01",subtitle),dpi=600)
+    fig2.legend(handles=legends, prop={'size': 20}, loc='upper center', bbox_to_anchor=(0.55, 0.95),ncol=2)
+    fig2.suptitle("Stress testing: ROC-AUC-10%", fontsize=int(fontsize + 10))
+    #fig2.savefig("{}/{}/Benchmarking_stress_testing_{}_{}.jpg".format(script_dir,results_folder,"AUC01",subtitle),dpi=600)
+    fig2.savefig("{}/{}/Benchmarking_stress_testing_{}_{}.pdf".format(script_dir,results_folder,"AUC01",subtitle))
     plt.close(fig2)
     fig2.clf()
     #
@@ -6266,23 +6425,25 @@ def plot_model_stressing_comparison2(dict_results_vegvisir,script_dir,results_fo
     ax5.axvline(x=0.5, color='goldenrod', linestyle='--', linewidth=4)
     transformation = transforms.blended_transform_factory(ax5.get_yticklabels()[0].get_transform(), ax5.transData)
     ax5.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
-    ax5.set_title("Train", fontsize=fontsize)
+    ax5.set_title("Train", fontsize=fontsize+5)
     ax5.margins(x=0.15)
+    ax5.set_xlim(0,1)
 
     ax6.axvline(x=0.5, color='goldenrod', linestyle='--', linewidth=4)
     transformation = transforms.blended_transform_factory(ax6.get_yticklabels()[0].get_transform(), ax6.transData)
     ax6.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
     ax6.tick_params(axis='x', labelsize=fontsize)
     ax6.set_yticks([])
-    ax6.set_title("Test", fontsize=fontsize)
+    ax6.set_title("Test", fontsize=fontsize+5)
     ax6.margins(x=0.15)
+    ax6.set_xlim(0, 1)
 
 
     fig3.subplots_adjust(left=0.25, wspace=0.2, right=0.84)
-    legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in {"Train":"skyblue","Test":"tomato"}.items()]
-    fig3.legend(handles=legends, prop={'size': 20}, loc='upper center', bbox_to_anchor=(0.55, 0.95))
-    fig3.suptitle("Stress testing: PPV*", fontsize=int(fontsize + 5))
-    fig3.savefig("{}/{}/Benchmarking_stress_testing_{}_{}.jpg".format(script_dir,results_folder,"PPV",subtitle),dpi=600)
+    fig3.legend(handles=legends, prop={'size': fontsize}, loc='upper center', bbox_to_anchor=(0.55, 0.95),ncol=2)
+    fig3.suptitle("Stress testing: Modified Positive Predictive Value", fontsize=int(fontsize + 10))
+    #fig3.savefig("{}/{}/Benchmarking_stress_testing_{}_{}.jpg".format(script_dir,results_folder,"PPV",subtitle),dpi=600)
+    fig3.savefig("{}/{}/Benchmarking_stress_testing_{}_{}.pdf".format(script_dir,results_folder,"PPV",subtitle))
     plt.close(fig3)
     fig3.clf()
 
@@ -6292,22 +6453,24 @@ def plot_model_stressing_comparison2(dict_results_vegvisir,script_dir,results_fo
     ax7.axvline(x=0.5, color='goldenrod', linestyle='--', linewidth=4)
     transformation = transforms.blended_transform_factory(ax7.get_yticklabels()[0].get_transform(), ax7.transData)
     ax7.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
-    ax7.set_title("Train", fontsize=fontsize)
+    ax7.set_title("Train", fontsize=fontsize+5)
     ax7.margins(x=0.15)
+    ax7.set_xlim(0, 1)
 
     ax8.axvline(x=0.5, color='goldenrod', linestyle='--', linewidth=4)
     transformation = transforms.blended_transform_factory(ax8.get_yticklabels()[0].get_transform(), ax8.transData)
     ax8.text(0.5, -0.30, "0.5", color="dimgrey", ha="right", va="center", transform=transformation, fontsize=fontsize)
     ax8.tick_params(axis='x', labelsize=fontsize)
     ax8.set_yticks([])
-    ax8.set_title("Test", fontsize=fontsize)
+    ax8.set_title("Test", fontsize=fontsize+5)
     ax8.margins(x=0.15)
+    ax8.set_xlim(0, 1)
 
-    fig4.subplots_adjust(left=0.25, wspace=0.2, right=0.84)
-    legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in {"Train":"skyblue","Test":"tomato"}.items()]
-    fig4.legend(handles=legends, prop={'size': 20}, loc='upper center', bbox_to_anchor=(0.55, 0.95))
-    fig4.suptitle("Stress testing: Average Precision", fontsize=int(fontsize + 5))
-    fig4.savefig("{}/{}/Benchmarking_stress_testing_{}_{}.jpg".format(script_dir,results_folder,"AP",subtitle),dpi=600)
+    fig4.subplots_adjust(left=0.25, wspace=0.05, right=0.84)
+    fig4.legend(handles=legends, prop={'size': 25}, loc='upper center', bbox_to_anchor=(0.55, 0.95),ncol=2)
+    fig4.suptitle("Stress testing: Average Precision Recall Curve", fontsize=int(fontsize + 10))
+    #fig4.savefig("{}/{}/Benchmarking_stress_testing_{}_{}.jpg".format(script_dir,results_folder,"AP",subtitle),dpi=600)
+    fig4.savefig("{}/{}/Benchmarking_stress_testing_{}_{}.pdf".format(script_dir,results_folder,"AP",subtitle))
     plt.close(fig4)
     fig4.clf()
 
@@ -6326,7 +6489,7 @@ def plot_hierarchical_clustering(vegvisir_folder,external_paths_dict,folder,titl
     # train_data_int = train_out["summary_dict"]["data_int_samples"]
     # train_latent = train_out["latent_space"]
     # corrected_aa_types = train_out["dataset_info"].corrected_aa_types
-    #
+
     if keyname == "viral_dataset15":
         test_data_int = test_out["summary_dict"]["data_int_samples"]
         test_latent = test_out["latent_space"]
@@ -6336,8 +6499,10 @@ def plot_hierarchical_clustering(vegvisir_folder,external_paths_dict,folder,titl
 
     corrected_aa_types = valid_out["dataset_info"].corrected_aa_types
 
+
     #Highlight: Slice out the sequences
     data_int = test_data_int
+    #data_int = np.concatenate([train_data_int,test_data_int],axis=0)
     sequences_int = data_int[:,1]
     sequences_len = np.sum(sequences_int.astype(bool),axis=-1)
 
@@ -6350,8 +6515,8 @@ def plot_hierarchical_clustering(vegvisir_folder,external_paths_dict,folder,titl
                                                                                include_zero_characters=True)
     sequences_blosum = np.vectorize(blosum_array_dict.get,signature='()->(n)')(sequences_int)
 
+    latent = test_latent[:,6:]
     #latent = np.concatenate([train_latent,test_latent],axis=0)[:,6:]
-    latent = np.concatenate([test_latent],axis=0)[:,6:]
     latent = latent[idx]
     sequences_blosum = sequences_blosum[idx][:,:9]
     sequences_int = sequences_int[idx][:,:9]
@@ -6373,7 +6538,7 @@ def plot_hierarchical_clustering(vegvisir_folder,external_paths_dict,folder,titl
 
     #Highlight: Retrieve the ESMB1 values
 
-    esm1b_df = pd.read_csv(external_paths_dict["esmb1_path"],sep=",")
+    esm1b_df = pd.read_csv(external_paths_dict["esmb1_path"],sep=",",low_memory=False)
     esm1b_df_cols = esm1b_df.columns[(esm1b_df.columns.str.contains("Icore")) | (esm1b_df.columns.str.contains(pat='esm1b_'))]
     esm1b_df = esm1b_df[esm1b_df_cols]
     combined_df = combined_df.merge(esm1b_df,on=["Icore"],how="left")
@@ -6438,6 +6603,140 @@ def plot_hierarchical_clustering(vegvisir_folder,external_paths_dict,folder,titl
     fig.suptitle("Cluster heatmaps (cosine similarity)",fontsize=20,weight="bold")
 
     plt.savefig("{}/Clustermaps_{}.jpg".format(folder,title))
+
+def plot_ablation_study(ablation_dict,script_dir,folder,subtitle,ensemble=False):
+    """"""
+
+    metrics_keys = ["ppv", "fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1", "pval_class_0", "pval_class_1"]
+    roc_auc_results_dict = defaultdict(lambda: defaultdict())
+    for key,vegvisir_folder in ablation_dict.items():
+        if ensemble:
+            metrics_results_dict = plot_benchmark_vegvisir_helper3(vegvisir_folder, None, kfolds=5,aggregated_not_overlap=False)
+
+        else:
+            metrics_results_dict = plot_kfold_comparison_helper(metrics_keys, script_dir, folder=vegvisir_folder,overwrite=False, kfolds=5)
+
+        metrics_results_train = metrics_results_dict["train"]
+        metrics_results_test = metrics_results_dict["test"] #I cannot do an ensemble with the valid data points
+
+        # Highlight: Train results
+        vegvisir_results_auc_train =  np.round((np.mean(
+            np.array(metrics_results_train["roc_auc_class_0"])) + np.mean(
+            np.array(metrics_results_train["roc_auc_class_1"]))) / 2, 2)
+        vegvisir_results_auc_test = np.round((np.mean(
+            np.array(metrics_results_test["roc_auc_class_0"])) + np.mean(
+            np.array(metrics_results_test["roc_auc_class_1"]))) / 2, 2)
+        roc_auc_results_dict[key]["train"] = vegvisir_results_auc_train
+        roc_auc_results_dict[key]["test"] = vegvisir_results_auc_test
+
+
+    fig1, ax1 = plt.subplots(nrows=1, ncols=1, figsize=(15, 15),facecolor='white')
+
+
+
+    x = list(roc_auc_results_dict.keys())
+
+    y_train = [v['train'] for v in roc_auc_results_dict.values()]
+    y_test= [v['test'] for v in roc_auc_results_dict.values()]
+
+    ax1.plot(x,y_train,c= "skyblue",marker = "o",markersize=30)
+    ax1.plot(x,y_test,c= "darkgreen",marker = "o",markersize=30)
+    ax1.set_facecolor("white")
+    ax1.tick_params(axis='x', labelsize=30)
+    ax1.tick_params(axis='y', labelsize=30)
+    ax1.set_xlabel(r"$\beta$ values",fontsize=30)
+    ax1.set_ylabel(r"ROC-AUC",fontsize=30)
+    fig1.suptitle(r"Ablation study: $\beta$ parameter",fontsize=30)
+    legends = [mpatches.Patch(color=color, label='{}'.format(label)) for label, color in {"Train": "skyblue", "Test": "darkgreen"}.items()]
+    fig1.legend(handles=legends, prop={'size': 30}, loc='upper center', bbox_to_anchor=(0.55, 0.95))
+
+    fig1.savefig("{}/Ablation_study_betaparam{}.pdf".format(folder,subtitle))
+
+def plot_benchmark_vegvisir_helper4(vegvisir_folder,overlap_idx,kfolds=5,aggregated_not_overlap=True):
+    """Compute Ensembl metrics per sequence length group"""
+    metrics_results_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
+
+
+    for mode in ["Train","Test"]:
+        target_scores_dict = defaultdict(lambda:defaultdict(list))
+        for fold in range(kfolds):
+            results = pd.read_csv(f"{vegvisir_folder}/{mode}_fold_{fold}/Epitopes_predictions_{mode}_fold_{fold}.tsv", sep="\t")
+
+            results["Length"] = np.array(list(map(len, results["Icore"].tolist())))
+
+            unique_lens = list(set(results["Lengths"].tolist()))
+
+            for seq_len in unique_lens:
+                results_subset = results[results["Length"] == seq_len]
+                if overlap_idx is not None:
+                    results_subset = results_subset.merge(overlap_idx,on="Icore",how="left")
+                if aggregated_not_overlap:
+                    results_subset = results_subset[results_subset["Aggregated_overlap"] == False]
+                targets = np.array(results_subset["Target_corrected"].tolist())
+                onehot_targets = np.zeros((targets.shape[0], 2))
+                onehot_targets[np.arange(0, targets.shape[0]), targets.astype(int)] = 1
+                target_scores = results_subset[["Vegvisir_negative_prob", "Vegvisir_positive_prob"]].to_numpy().astype(float)
+                target_scores_dict[seq_len].append(target_scores)
+
+
+        #TODO: Per sequence length calculate ....
+        target_scores = sum(target_scores_list)/kfolds
+
+        fpr=dict()
+        tpr=dict()
+        roc_auc=dict()
+        precision = dict()
+        recall=dict()
+        average_precision=dict()
+        ppv_mod=dict()
+        pvals=dict()
+        # ROC AUC per class
+        for i in range(2):
+            fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
+            roc_auc[i] = auc(fpr[i], tpr[i])
+            roc_auc["auc01_class_{}".format(i)] = roc_auc_score(onehot_targets[:, i], target_scores[:, i],average="weighted", max_fpr=0.1)
+            precision[i], recall[i], thresholds = precision_recall_curve(onehot_targets[:, i], target_scores[:, i])
+            average_precision[i] = average_precision_score(onehot_targets[:, i], target_scores[:, i])
+            ppv_mod[i] = calculate_ppv_modified(onehot_targets[:, i], target_scores[:, i])
+            lrm = sm.Logit(onehot_targets[:, i], target_scores[:, i]).fit(disp=0)
+            pvals[i] = lrm.pvalues.item()
+
+        # metrics_results_dict[mode]["fpr_0"].append(fpr[0])
+        # metrics_results_dict[mode]["fpr_1"].append(fpr[1])
+        # metrics_results_dict[mode]["tpr_0"].append(tpr[0])
+        # metrics_results_dict[mode]["tpr_1"].append(tpr[1])
+        metrics_results_dict[mode.lower()]["roc_auc_class_0"].append(roc_auc[0])
+        metrics_results_dict[mode.lower()]["roc_auc_class_1"].append(roc_auc[1])
+        metrics_results_dict[mode.lower()]["auc01_class_0"].append(roc_auc[f"auc01_class_{0}"])
+        metrics_results_dict[mode.lower()]["auc01_class_1"].append(roc_auc[f"auc01_class_{1}"])
+        metrics_results_dict[mode.lower()]["pval_class_0"].append(pvals[0])
+        metrics_results_dict[mode.lower()]["pval_class_1"].append(pvals[1])
+        metrics_results_dict[mode.lower()]["ap_class_0"].append(average_precision[0])
+        metrics_results_dict[mode.lower()]["ap_class_1"].append(average_precision[1])
+        metrics_results_dict[mode.lower()]["ppv_mod_class_0"].append(ppv_mod[0])
+        metrics_results_dict[mode.lower()]["ppv_mod_class_1"].append(ppv_mod[1])
+        metrics_results_dict[mode.lower()]["precision_class_0"].append(precision[0])
+        metrics_results_dict[mode.lower()]["precision_class_1"].append(precision[1])
+        metrics_results_dict[mode.lower()]["recall_class_0"].append(recall[0])
+        metrics_results_dict[mode.lower()]["recall_class_1"].append(recall[1])
+
+    # print(metrics_results_dict["train"]["pval_class_0"])
+    # print(metrics_results_dict["train"]["pval_class_1"])
+    # print(metrics_results_dict["test"]["pval_class_0"])
+    # print(metrics_results_dict["test"]["pval_class_1"])
+    #
+    # exit()
+
+    return metrics_results_dict
+
+def plot_metrics_per_length(vegvisir_dict,script_dir,folder,subtitle):
+    """"""
+
+    metrics_keys = ["ppv", "fpr", "tpr", "roc_auc_class_0", "roc_auc_class_1", "pval_class_0", "pval_class_1"]
+    roc_auc_results_dict = defaultdict(lambda: defaultdict())
+    for key,vegvisir_folder in vegvisir_dict.items():
+
+        metrics_results_dict = plot_benchmark_vegvisir_helper4(vegvisir_folder, None, kfolds=5,aggregated_not_overlap=False)
 
 
 

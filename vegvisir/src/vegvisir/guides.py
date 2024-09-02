@@ -1,14 +1,15 @@
+#!/usr/bin/env python3
 """
 =======================
-2023: Lys Sanz Moreta
-Vegvisir
+2024: Lys Sanz Moreta
+Vegvisir (VAE): T-cell epitope classifier
 =======================
 """
 from pyro.contrib.easyguide import EasyGuide
 from pyro.nn import PyroParam
 from vegvisir.models import *
 from vegvisir.model_utils import *
-from vegvisir.losses import *
+#from vegvisir.losses import *
 import torch.nn as nn
 import torch
 import pyro
@@ -27,12 +28,10 @@ class VEGVISIRGUIDES(EasyGuide):
         self.vegvisir_model = Vegvisir
         self.blosum = model_load.blosum
         self.learning_type = model_load.args.learning_type
-        self.glitch = model_load.args.glitch
         self.aa_types = model_load.aa_types
         self.max_len = model_load.max_len
         self.seq_max_len = model_load.seq_max_len
         self.hidden_dim = model_load.args.hidden_dim
-        self.embedding_dim = model_load.args.embedding_dim
         self.gru_hidden_dim = self.hidden_dim*2
         self.z_dim = model_load.args.z_dim
         self.device = model_load.args.device
@@ -44,7 +43,6 @@ class VEGVISIRGUIDES(EasyGuide):
         self.input_dim = model_load.input_dim
         self.generate_sampling_type = model_load.args.generate_sampling_type
         self.logsoftmax = nn.LogSoftmax(dim=-1)
-        self.losses = VegvisirLosses(self.seq_max_len,self.input_dim)
         #self.embedding = Embed(self.blosum,self.embedding_dim,self.aa_types,self.device)
         self.h_0_GUIDE = nn.Parameter(torch.randn(self.gru_hidden_dim).type(self.tensor_type), requires_grad=True).to(device=self.device)
         #self.decoder_guide = RNN_model(self.aa_types,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
@@ -122,7 +120,7 @@ class VEGVISIRGUIDES(EasyGuide):
                 "rnn_final_hidden_bidirectional": rnn_final_hidden_state_bidirectional,
                 "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
                 "rnn_hidden_states": rnn_hidden_states,
-                "sampling_type":self.generate_sampling_type}
+                "sampling_type":self.generate_sampling_type} #TODO: Rm
 
     def guide_supervised(self, batch_data, batch_mask,epoch,guide_estimates,sample=False):
         """
@@ -164,7 +162,8 @@ class VEGVISIRGUIDES(EasyGuide):
                 "rnn_final_hidden_bidirectional": rnn_final_hidden_state_bidirectional,
                 "rnn_hidden_states_bidirectional": rnn_hidden_states_bidirectional,
                 "rnn_hidden_states":rnn_hidden_states,
-                "sampling_type":self.generate_sampling_type}
+                "sampling_type":self.generate_sampling_type
+                }
 
     def guide_unsupervised(self, batch_data, batch_mask, epoch, guide_estimates, sample=False):
         """
@@ -387,24 +386,23 @@ class VEGVISIRGUIDES(EasyGuide):
                 "rnn_hidden_states": rnn_hidden_states,
                 "sampling_type":self.generate_sampling_type}
 
-
     def guide(self,batch_data,batch_mask,epoch,guide_estimates,sample):
         if self.seq_max_len == self.max_len:
             if self.learning_type == "supervised":
-                if self.glitch:
-                    return self.guide_supervised_glitch(batch_data,batch_mask,epoch,guide_estimates,sample)
-                else:
-                    return self.guide_supervised(batch_data,batch_mask,epoch, guide_estimates,sample)
+                # if self.glitch:
+                #     return self.guide_supervised_glitch(batch_data,batch_mask,epoch,guide_estimates,sample)
+                # else:
+                return self.guide_supervised(batch_data,batch_mask,epoch, guide_estimates,sample)
             elif self.learning_type == "unsupervised":
-                if self.glitch:
-                    return self.guide_unsupervised_glitched(batch_data, batch_mask,epoch,guide_estimates, sample)
-                else:
-                    return self.guide_unsupervised(batch_data, batch_mask,epoch,guide_estimates, sample)
+                # if self.glitch:
+                #     return self.guide_unsupervised_glitched(batch_data, batch_mask,epoch,guide_estimates, sample)
+                # else:
+                return self.guide_unsupervised(batch_data, batch_mask,epoch,guide_estimates, sample)
             elif self.learning_type == "semisupervised":
-                if self.glitch:
-                    return self.guide_semisupervised_glitched(batch_data, batch_mask, epoch, guide_estimates, sample)
-                else:
-                    return self.guide_semisupervised(batch_data, batch_mask, epoch, guide_estimates, sample)
+                # if self.glitch:
+                #     return self.guide_semisupervised_glitched(batch_data, batch_mask, epoch, guide_estimates, sample)
+                # else:
+                return self.guide_semisupervised(batch_data, batch_mask, epoch, guide_estimates, sample)
         else:
             raise ValueError("guide not implemented for features, re-do")
 

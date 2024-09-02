@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
 """
 =======================
-2023: Lys Sanz Moreta
-Vegvisir :
+2024: Lys Sanz Moreta
+Vegvisir (VAE): T-cell epitope classifier
 =======================
 """
 import random
@@ -111,13 +112,8 @@ def redefine_class_proportions(dataset,n_positives,n_negatives,positives_proport
         else:
             print("Not removing any data points")
             return dataset
-
-
-
-
-
-
     return dataset
+
 
 def trainevaltest_split_kfolds(data,args,results_dir,seq_max_len,max_len,features_names,partition_test,method="predefined_partitions"):
     """Perform kfolds partitions division and test split"""
@@ -238,13 +234,22 @@ def trainevaltest_split_kfolds(data,args,results_dir,seq_max_len,max_len,feature
 def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names,partition_test,method="predefined_partitions_discard_test"):
     """Perform train-valid-test split"""
     info_file = open("{}/dataset_info.txt".format(results_dir),"a+")
-    if data.ndim == 4: #TODO:not sure why the list comprehesion does not work with lambda
+    if data.ndim == 4:
         idx_select = lambda x,n: x[:,0,0,n] #TODO: Use ellipsis? so far not working, this is best
     else:
         idx_select = lambda x,n: x[:,0,n]
     if method == "random_stratified":
         data_labels = idx_select(data,0)
         traineval_data, test_data = train_test_split(data, test_size=0.1, random_state=13, stratify=data_labels,shuffle=True)
+        #traineval_labels = traineval_data[:,0,0,0]
+        traineval_labels = idx_select(traineval_data,0)
+        train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13, stratify=traineval_labels,shuffle=True)
+        dataset_proportions(train_data,results_dir, type="Train")
+        dataset_proportions(valid_data,results_dir, type="Valid")
+        dataset_proportions(test_data,results_dir, type="Test")
+    elif method == "random_stratified_keep_test":
+        data_labels = idx_select(data,0)
+        traineval_data, test_data = data[idx_select(data,3) == 1] ,data[idx_select(data,3) == 0]
         #traineval_labels = traineval_data[:,0,0,0]
         traineval_labels = idx_select(traineval_data,0)
         train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13, stratify=traineval_labels,shuffle=True)
@@ -342,16 +347,11 @@ def trainevaltest_split(data,args,results_dir,seq_max_len,max_len,features_names
             partition_idx = np.random.randint(0,5) #random selection of a partition as the validation
             #partition_idx = 3
 
-        if args.dataset_name == "viral_dataset_california":
-            #traineval_labels = traineval_data[:,0,0,0]
-            traineval_labels = idx_select(traineval_data,0)
 
-            train_data, valid_data = train_test_split(traineval_data, test_size=0.1, random_state=13,stratify=traineval_labels, shuffle=True)
-        else:
-            #train_data = traineval_data[traineval_data[:, 0, 0, 2] != partition_idx] #Highlight: was using data before #TODO: Check that data points are not mixed or lost
-            train_data = traineval_data[idx_select(traineval_data,2) != partition_idx] #Highlight: was using data before #TODO: Check that data points are not mixed or lost
-            #valid_data = traineval_data[traineval_data[:, 0, 0, 2] == partition_idx] #data[data[:, 0, 0, 3] == 1.]
-            valid_data = traineval_data[idx_select(traineval_data,2) == partition_idx] #data[data[:, 0, 0, 3] == 1.]
+        #train_data = traineval_data[traineval_data[:, 0, 0, 2] != partition_idx] #Highlight: was using data before #TODO: Check that data points are not mixed or lost
+        train_data = traineval_data[idx_select(traineval_data,2) != partition_idx] #Highlight: was using data before #TODO: Check that data points are not mixed or lost
+        #valid_data = traineval_data[traineval_data[:, 0, 0, 2] == partition_idx] #data[data[:, 0, 0, 3] == 1.]
+        valid_data = traineval_data[idx_select(traineval_data,2) == partition_idx] #data[data[:, 0, 0, 3] == 1.]
 
 
         dataset_proportions(train_data, results_dir, type="Train")
@@ -406,14 +406,6 @@ class SequencePadding(object):
         self.random_seeds = self.random_seeds.tolist()
 
     def run(self):
-
-        # padded_sequences = {"no_padding": list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds)),
-        #                     #"ends":list(map(lambda seq: (list(seq.ljust(self.seq_max_len, "#")),list(seq.ljust(self.seq_max_len, "#"))),self.sequences)) ,
-        #                     "ends": list(map(lambda seq,seed: self.ends_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds)),
-        #                     "random":list(map(lambda seq,seed: self.random_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds)),
-        #                     "borders":list(map(lambda seq,seed: self.border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds)),
-        #                     "replicated_borders":list(map(lambda seq,seed: self.replicated_border_padding(seq,seed, self.seq_max_len,self.shuffle), self.sequences,self.random_seeds))
-        #                     }
 
         if self.method == "no_padding":
             result = list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len,self.shuffle),self.sequences,self.random_seeds))
@@ -559,13 +551,6 @@ class SequenceRandomGeneration(object):
         self.aminoacids_list = np.array(list(VegvisirUtils.aminoacid_names_dict(20).keys()))
 
     def run(self):
-
-        # padded_sequences = { "no_padding": list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len),self.sequences,self.random_seeds)),
-        #                     "ends": list(map(lambda seq,seed: self.ends_padding(seq,seed, self.seq_max_len),self.sequences,self.random_seeds)),
-        #                     "random":list(map(lambda seq,seed: self.random_padding(seq,seed, self.seq_max_len), self.sequences,self.random_seeds)),
-        #                     "borders":list(map(lambda seq,seed: self.border_padding(seq,seed, self.seq_max_len), self.sequences,self.random_seeds)),
-        #                     "replicated_borders":list(map(lambda seq,seed: self.replicated_border_padding(seq,seed, self.seq_max_len), self.sequences,self.random_seeds))
-        #                     }
 
         if self.method == "no_padding":
             result = list(map(lambda seq,seed: self.no_padding(seq,seed, self.seq_max_len),self.sequences,self.random_seeds))

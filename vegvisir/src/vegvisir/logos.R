@@ -1,4 +1,10 @@
-
+# #!/usr/bin/env python3
+# """
+# =======================
+# 2024: Lys Sanz Moreta
+# Vegvisir (VAE): T-cell epitope classifier
+# =======================
+# """
 library(ggseqlogo)
 library(ape)
 library(dplyr)
