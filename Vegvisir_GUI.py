@@ -6,27 +6,45 @@ Vegvisir (VAE): T-cell epitope classifier
 =======================
 """
 
-import warnings
-import pyro
-import torch
-import argparse
-import os,sys,ntpath
-import datetime
-import json
+
+import os,sys
+
 from argparse import RawTextHelpFormatter
 local_repository=True
-script_dir = os.path.dirname(os.path.abspath(__file__))
-if local_repository: #TODO: The local imports are extremely slow
-     print("Importing local repository")
-     sys.path.insert(1, "{}/vegvisir/src".format(script_dir))
-     import vegvisir
-else:#pip installed module
-     import vegvisir
-from vegvisir import str2bool,str2None
-import vegvisir.utils as VegvisirUtils
-import vegvisir.plots as VegvisirPlots
+
+# if getattr(sys, 'frozen', False):
+#     script_dir = os.path.dirname(sys.executable)
+# elif __file__:
+#     script_dir = os.path.dirname(__file__)
+
+# if local_repository: #TODO: The local imports are extremely slow
+#      print("Importing local repository")
+#      sys.path.insert(1, "{}/vegvisir/src".format(script_dir))
+#      import vegvisir
+# else:#pip installed module
+#      import vegvisir
+
+
+if getattr(sys, 'frozen', False):
+    # If running in a PyInstaller bundle
+    script_dir = sys._MEIPASS
+else:
+    # Running in normal Python environment
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+sys.path.insert(0, os.path.join(script_dir, 'vegvisir/src'))
+
+print("This is the current script path: {}".format(script_dir))
+
+print("This is the system path: {}".format(sys.path))
+
+
+
+
+import vegvisir
+
 import Vegvisir_analysis as VegvisirAnalysis
-from argparse import Namespace
+
 from gooey import Gooey, GooeyParser
 import Vegvisir_example as VegvisirExample
 

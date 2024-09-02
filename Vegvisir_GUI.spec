@@ -3,21 +3,17 @@
 
 a = Analysis(
     ['Vegvisir_GUI.py'],
-    pathex=[],
+    pathex=['vegvisir/src'],
     binaries=[],
-    datas=[('vegvisir/src','vegvisir/src')],
+    datas=[],
     hiddenimports=[],
-    hookspath=[],
+    hookspath=['vegvisir/src/hooks'],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
     noarchive=False,
     optimize=0,
 )
-
-mpl_font_path = os.path.join('vegvisir', 'src', 'vegvisir','data')
-a.datas = [entry for entry in a.datas if not entry[0].startswith(mpl_font_path)]
-
 pyz = PYZ(a.pure)
 
 exe = EXE(
@@ -25,7 +21,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='Vegvisir_GUI.exe',
+    name='Vegvisir_GUI',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

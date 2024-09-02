@@ -187,7 +187,7 @@ def parser_args(parser,device,script_dir):
                                                                                  '<onehot> One hot encoding of the sequences  ')
 
     parser.add_argument('-subs_matrix', default="BLOSUM62", type=str,
-                        help='Blosum matrix used to to create blosum embeddings, choose one from /home/lys/anaconda3/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data')
+                        help='Blosum matrix used to to create blosum embeddings, choose one from python/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data')
 
     parser.add_argument('-k-folds', type=int, nargs='?', default=1,
                         help='Number of k-folds for k-fold cross validation.\n '
