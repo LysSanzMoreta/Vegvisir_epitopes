@@ -2343,12 +2343,15 @@ def viral_dataset17(script_dir:str,storage_folder:str,args:namedtuple,results_di
     pickle.dump(org_name_dict,open('{}/{}/org_name_dict.pkl'.format(storage_folder,args.dataset_name), 'wb'))
     data = data.replace({"org_name": org_name_dict_reverse})
 
+    new_partitions = pd.read_csv("{}/common_files/viral_dataset17_semisupervised_partitions.tsv".format(storage_folder), sep="\t")
+    new_partitions = new_partitions[["Icore","partition_semisup"]]
+    data = pd.merge(data, new_partitions, on=["Icore"], how="left")
+
     name_suffix = "_".join([key + "_" + "_".join([str(i) for i in val]) for key,val in filters_dict.items()])
 
     VegvisirPlots.plot_data_information_reduced2(data, filters_dict, storage_folder, args, name_suffix)
     data.to_csv("{}/{}/dataset_target_corrected_{}.tsv".format(storage_folder,args.dataset_name,name_suffix),sep="\t")
-    print("Finish this!")
-    exit()
+
     #print(data[data["confidence_score"] > 0.7]["target_corrected"].value_counts())
     data_info = process_data(data,args,storage_folder,script_dir,analysis_mode,filters_dict)
 

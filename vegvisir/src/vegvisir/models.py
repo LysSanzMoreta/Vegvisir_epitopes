@@ -363,7 +363,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
     """
     def __init__(self, ModelLoad):
         VEGVISIRModelClass.__init__(self, ModelLoad)
-        self.gru_hidden_dim = self.hidden_dim*2
+        self.gru_hidden_dim = int(self.hidden_dim*2)
         self.num_params = 2 #number of parameters of the beta distribution
         #self.decoder = RNN_model6(self.z_dim,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
         self.decoder = RNN_model7(self.z_dim,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device).to(self.device) #Highlight: Reconstr accurac too high
@@ -867,7 +867,11 @@ class VegvisirModel5a_semisupervised(VEGVISIRModelClass,PyroModule):
     """
     def __init__(self, ModelLoad):
         VEGVISIRModelClass.__init__(self, ModelLoad)
-        self.gru_hidden_dim = self.hidden_dim * 2
+
+        #self.gru_hidden_dim = self.hidden_dim * 2 if not isinstance(self.hidden_dim,np.int64) else self.hidden_dim.item()*2
+        self.gru_hidden_dim = self.hidden_dim*2
+
+
         self.num_params = 2  # number of parameters of the beta distribution
         # self.decoder = RNN_model6(self.z_dim,self.seq_max_len,self.gru_hidden_dim,self.aa_types,self.z_dim ,self.device)
         self.decoder = RNN_model7(self.z_dim, self.seq_max_len, self.gru_hidden_dim, self.aa_types, self.z_dim,

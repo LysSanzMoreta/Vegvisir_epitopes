@@ -940,6 +940,7 @@ class RNN_model7(nn.Module):
         self.attention = Attention5(self.gru_hidden_dim,self.z_dim,self.device).to(device=self.device)
         self.num_layers = 1
         self.bidirectional = True
+
         self.rnn = nn.GRU(input_size=self.input_dim,
                           hidden_size=self.gru_hidden_dim,
                           batch_first=True,

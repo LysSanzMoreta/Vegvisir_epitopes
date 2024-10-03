@@ -86,30 +86,31 @@ def main(args):
         train_config = "{}epochs".format( json.load(open(args.config_dict,"r+"))["general_config"]["num_epochs"] if args.config_dict is not None and not isinstance(args.config_dict,dict) else args.num_epochs)
 
     results_dir = "{}/PLOTS_Vegvisir_{}_{}_{}_{}_{}{}".format(script_dir, args.dataset_name, now.strftime("%Y_%m_%d_%Hh%Mmin%Ss%fms"),train_config,args.learning_type,args.sequence_type,suffix)
-    VegvisirUtils.folders(ntpath.basename(results_dir), script_dir)
+    basepath = ntpath.basename(results_dir)
+    VegvisirUtils.folders(basepath, script_dir)
     if args.k_folds > 1:
         for kfold in range(args.k_folds):
-            VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Train_fold_{}".format(kfold)), script_dir) #TODO: 2 folders for train
+            VegvisirUtils.folders("{}/{}".format(basepath, "Train_fold_{}".format(kfold)), script_dir) #TODO: 2 folders for train
             if args.test:
-                VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Test_fold_{}".format(kfold)), script_dir)
+                VegvisirUtils.folders("{}/{}".format(basepath, "Test_fold_{}".format(kfold)), script_dir)
                 if args.validate:
-                    VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Valid_fold_{}".format(kfold)),script_dir)
+                    VegvisirUtils.folders("{}/{}".format(basepath, "Valid_fold_{}".format(kfold)),script_dir)
             else:
-                VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Valid_fold_{}".format(kfold)),script_dir)
+                VegvisirUtils.folders("{}/{}".format(basepath, "Valid_fold_{}".format(kfold)),script_dir)
         if args.generate:
-            VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Generated"), script_dir)
+            VegvisirUtils.folders("{}/{}".format(basepath, "Generated"), script_dir)
         if args.immunomodulate:
-            VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Immunomodulated"), script_dir)
+            VegvisirUtils.folders("{}/{}".format(basepath, "Immunomodulated"), script_dir)
     else:
-        VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Train"), script_dir)
-        VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Valid"), script_dir)
-        VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Test"), script_dir)
+        VegvisirUtils.folders("{}/{}".format(basepath,"Train"), script_dir)
+        VegvisirUtils.folders("{}/{}".format(basepath,"Valid"), script_dir)
+        VegvisirUtils.folders("{}/{}".format(basepath,"Test"), script_dir)
         if args.generate:
-            VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Generated"), script_dir)
+            VegvisirUtils.folders("{}/{}".format(basepath, "Generated"), script_dir)
         if args.immunomodulate:
-            VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir), "Immunomodulated"), script_dir)
-    VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Vegvisir_checkpoints"), script_dir)
-    VegvisirUtils.folders("{}/{}".format(ntpath.basename(results_dir),"Scripts"), script_dir)
+            VegvisirUtils.folders("{}/{}".format(basepath, "Immunomodulated"), script_dir)
+    VegvisirUtils.folders("{}/{}".format(basepath,"Vegvisir_checkpoints"), script_dir)
+    VegvisirUtils.folders("{}/{}".format(basepath,"Scripts"), script_dir)
 
     vegvisir_dataset,args = vegvisir.select_dataset(args.dataset_name, script_dir,args,results_dir, update=False)
 
@@ -122,7 +123,7 @@ def parser_args(parser,device,script_dir):
     parser.add_argument('-name', '--dataset-name', type=str, nargs='?',
                         # default="custom_dataset_random",
                         # default="custom_dataset_random_icore_non_anchor",
-                        default="custom_dataset",
+                        default="viral_dataset17",
                         help='Dataset project name, look at vegvisir.available_datasets(). In case the folder is not automatically created, you can manually place it at vegvisir/src/vegvisir/data \n'
                              'custom_dataset: Perform training or prediction (by setting the args.pretrained_model to the folder path with the model checkpoints) on a given dataset. Remember to define also train_path, test_path'
                              'viral_dataset3 : Supervised learning. Only sequences, partitioned into train,validation and (old) test.If args.test = True, then the (old) assigned test is used \n'
@@ -179,7 +180,7 @@ def parser_args(parser,device,script_dir):
                         help='Stress-testing technique (not used in the article). Positions where to perform the mutations. Indicated as string of format [2,5,3], Set to None otherwise')
 
     # Highlight: Model hyperparameters, those marked with HPO* are overridden by the dictionary given to args.config_dict unless it is set to None. The given args.config_dict contains the optimized parameters, do not change unless new data is used to train the model.
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=10,
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=3,
                         help='HPO* . Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
     parser.add_argument('-encoding', type=str, nargs='?', default="blosum", help='HPO* . Sequence encoding type'
@@ -208,7 +209,7 @@ def parser_args(parser,device,script_dir):
     parser.add_argument('-likelihood-scale', type=int, nargs='?', default=80,
                         help='HPO* .Scaling the log p( class | Z) of the variational autoencoder (cold posterior)')
 
-    parser.add_argument('-lt', '--learning-type', type=str, nargs='?', default="supervised",
+    parser.add_argument('-lt', '--learning-type', type=str, nargs='?', default="semisupervised",
                         help='<supervised_no_decoder> simpler model architecture with only an encoder and a classifier'
                              '<unsupervised> Unsupervised learning. No classification is performed \n'
                              '<semisupervised> Semi-supervised model/learning. The likelihood of the class (p(c | z)) is only computed and maximized using the most confident scores. \n '
@@ -222,7 +223,7 @@ def parser_args(parser,device,script_dir):
                         help='<True> Performs Hyperparameter optimization with Ray Tune')
 
     best_config = {1: "{}/BEST_hyperparameter_dict_blosum_vd15_z16.p".format(script_dir),
-                   2: None}
+                   2: None} #None makes use of the hyperparameter values given to argparse
     parser.add_argument('-config-dict', nargs='?', default=best_config[2], type=str2None,
                         help='Path to the HPO optimized hyperparameter dict. Overrules the previous hyperparameters marked as HPO*.\n'
                              'Set to None to use the values in the parser.')

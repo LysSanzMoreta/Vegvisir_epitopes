@@ -6,7 +6,10 @@ Vegvisir (VAE): T-cell epitope classifier
 =======================
 """
 import json
+import multiprocessing
 from argparse import Namespace
+from operator import is_not
+
 import numpy as np
 import vegvisir
 import vegvisir.train_svi as VegvisirTrainSVI
@@ -37,13 +40,13 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
         "lrd":tune.choice([1]),
         "momentum":tune.randn(0.9,0.1)
     }
-    config2 = {"batch_size":tune.choice(np.arange(50,200,10)),
+    config2 = {"batch_size":tune.choice(range(50,200,10)),
         "encoding":tune.choice(["blosum"]),
         #"encoding":tune.choice(["blosum","onehot"]),
-        "likelihood_scale":tune.choice(np.arange(40,100,10)),
+        "likelihood_scale":tune.choice(range(40,100,10)),
         "num_epochs":tune.choice([60]),
         "num_samples":tune.choice([30,40,50,60]),
-        "hidden_dim":tune.choice(np.arange(20,45,10)),
+        "hidden_dim":tune.choice(range(20,45,10)),
         "z_dim": tune.choice([2 * i for i in range(1, 20)]),
         }
 
@@ -71,29 +74,29 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
 
     if args.k_folds > 1:
         print("Initializing Hyperparameter Optimization with K-fold cross validation")
-        result = tune.run(
-            tune.with_parameters(VegvisirTrainSVI.kfold_crossvalidation, dataset_info=dataset_info,
-                                 additional_info=additional_info, args=args),
-            resources_per_trial={"cpu": 35, "gpu": 1, "accelerator_type:RTX": 1},
-            config={**config1, **config2},
-            num_samples=num_ray_samples,
-            scheduler=scheduler,
-            max_failures=0,
-            stop={},  # stop if some criteria in the metrics is met
-            fail_fast=True
-        )
+        train_fn = VegvisirTrainSVI.kfold_crossvalidation
     else:
         print("Initializing Hyperparameter Optimization for single fold")
-        result = tune.run(
-            tune.with_parameters(VegvisirTrainSVI.train_model, dataset_info=dataset_info,additional_info=additional_info,args=args),
-            resources_per_trial={"cpu":35,"gpu":1,"accelerator_type:RTX":1},
-            config={**config1,**config2},
-            num_samples=num_ray_samples,
-            scheduler=scheduler,
-            max_failures=0,
-            stop={}, #stop if some criteria in the metrics is met
-            fail_fast=True
-        )
+        train_fn = VegvisirTrainSVI.train_model
+    # Highlight: Find the name of the GPU, seem to start with the accelerator name
+    gpu_name = [key if "accelerator" in key else None for key in ray.available_resources().keys()]
+    gpu_name = list(filter(partial(is_not, None), gpu_name))
+    if gpu_name:
+        print("GPU accelerator found!")
+        resources_dict = {"cpu":multiprocessing.cpu_count()-1,"gpu":1,gpu_name[0]:1}
+    else:
+        resources_dict = {"cpu":multiprocessing.cpu_count()-1,"gpu":0}
+    result = tune.run(
+        tune.with_parameters(train_fn, dataset_info=dataset_info,additional_info=additional_info,args=args),
+        #resources_per_trial={"cpu":35,"gpu":1,"accelerator_type:RTX":1},
+        resources_per_trial=resources_dict,
+        config={**config1,**config2},
+        num_samples=num_ray_samples,
+        scheduler=scheduler,
+        max_failures=0,
+        stop={}, #stop if some criteria in the metrics is met
+        fail_fast=True
+    )
 
     best_trial = result.get_best_trial("valid_loss", "min", "last")
     print(f"Best trial config: {best_trial.config}")
