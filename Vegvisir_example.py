@@ -140,13 +140,13 @@ def parser_args(parser,device,script_dir):
                              'viral_dataset12: Prediction only .Training only on the unobserved data points with randomly assigned labels. MHC binders without binary targets'
                              'viral_dataset13: Supervised training. Same train dataset as viral_dataset9. The test incluye includes discarded peptides without information about the number o patients tested'
                              'viral_dataset14: Supervised training. Peptide sequences restricted to binders from alleles HLA-A2402, HLA-A2301 and HLA-2407 '
-                             'viral_dataset15: DATASET used in the ARTICLE. Supervised training. Same data points as in viral_dataset9 with different partitioning, everything mixed up proportionally without data leakage.'
+                             'viral_dataset15: Supervised training. DATASET used in the ARTICLE. Supervised training. Same data points as in viral_dataset9 with different partitioning, everything mixed up proportionally without data leakage.'
                              'viral_dataset16: Supervised training. Same as viral_dataset15 restricted to binders to alleles HLA-A2402, HLA-A2301 and HLA-2407'
                              'viral_dataset17: Semisupervised training. Semisupervised equivalent to viral dataset 15 (with added unobserved data points per partition) '
                         )
     # Highlight: Dataset configurations: Use with the default datasets (not necessary with the custom dataset, unless you want to do some stress testing)
     parser.add_argument('-predefined-partitions', type=str2bool, nargs='?', default=True,
-                        help='<True> Divides the dataset into train, validation and test according to pre-specified partitions (in the input file use a COLUMN named partitions)\n'
+                        help='<True> Divides the dataset into train, validation and test according to pre-specified partitions (to activate it, in the input file use a COLUMN named partitions)\n'
                              '<False> Performs a random stratified train, validation and test split')
     parser.add_argument('-num-unobserved', type=int, nargs='?', default=5000,
                         help='Use with datasets for semi supervised training: i.e <viral_dataset6> or <viral_dataset8>. \n'
@@ -199,9 +199,9 @@ def parser_args(parser,device,script_dir):
                         help='Blosum matrix used to to create blosum embeddings, choose one from python/pkgs/biopython-1.76-py37h516909a_0/lib/python3.7/site-packages/Bio/Align/substitution_matrices/data')
 
     parser.add_argument('-k-folds', type=int, nargs='?', default=1,
-                        help='Number of k-folds for k-fold cross validation.\n '
-                             'If set to 1 is a single run where 1 of the partitions is selected randomly'
-                             'as the validation')
+                        help='Number of k-folds for k-fold cross validation (value between 1 and 5).\n '
+                             'If set to 1 is a single run where 1 of the partitions is selected randomly as the validation partition, and the test is partition 6'
+                             'If set to >1 it will perform n kfold validation on n partitions  and the test is partition 6')
     parser.add_argument('-batch-size', type=int, nargs='?', default=100, help='HPO*. Batch size')
     parser.add_argument('-optimizer_name', type=str, nargs='?', default="Adam",
                         help='Gradient optimizer name. Adam with clip gradients is implemented in 2 modes \n '
@@ -232,7 +232,7 @@ def parser_args(parser,device,script_dir):
 
     best_config = {1: "{}/BEST_hyperparameter_dict_blosum_vd15_z16.p".format(script_dir),
                    2: None} #None makes use of the hyperparameter values given to argparse
-    parser.add_argument('-config-dict', nargs='?', default=best_config[2], type=str2None,
+    parser.add_argument('-config-dict', nargs='?', default=best_config[1], type=str2None,
                         help='Path to the HPO optimized hyperparameter dict. Overrules the previous hyperparameters marked as HPO*.\n'
                              'Set to None to use the values in the parser.')
 
@@ -315,9 +315,7 @@ def parser_args(parser,device,script_dir):
     # Highlight: DO NOT CHANGE ANYTHING ELSE DOWN HERE
     args = parser.parse_args()
     dtype_dict = VegvisirUtils.return_dtype_dict() #keep here for the GUI
-    #precision = "64"  #lower precision requires more epochs and risk of underflows, however it is 2x faster
     torch.set_default_dtype(dtype_dict[args.precision][0])
-    #args.__dict__["precision"] = precision
     if args.use_cuda:
         if torch.cuda.is_available():
             print("Using cuda")
