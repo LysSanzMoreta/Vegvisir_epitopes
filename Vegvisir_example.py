@@ -121,7 +121,24 @@ def main(args):
 
     vegvisir.run(vegvisir_dataset,results_dir,args)
 
+
+def flex_add_argument(f):
+    '''Make the add_argument accept (and ignore) the gooey option.'''
+
+    def f_decorated(*args, **kwargs):
+        kwargs.pop('gooey_options', None)
+        return f(*args, **kwargs)
+
+    return f_decorated
+
+
 def parser_args(parser,device,script_dir):
+
+
+    if isinstance(parser,argparse.ArgumentParser):
+        # force to ignore the gooey arguments
+        parser.add_argument = flex_add_argument(parser.add_argument)
+
     parser.add_argument('-name', '--dataset-name', type=str, nargs='?',
                         # default="custom_dataset_random",
                         # default="custom_dataset_random_icore_non_anchor",
@@ -142,7 +159,8 @@ def parser_args(parser,device,script_dir):
                              'viral_dataset14: Supervised training. Peptide sequences restricted to binders from alleles HLA-A2402, HLA-A2301 and HLA-2407 '
                              'viral_dataset15: Supervised training. DATASET used in the ARTICLE. Supervised training. Same data points as in viral_dataset9 with different partitioning, everything mixed up proportionally without data leakage.'
                              'viral_dataset16: Supervised training. Same as viral_dataset15 restricted to binders to alleles HLA-A2402, HLA-A2301 and HLA-2407'
-                             'viral_dataset17: Semisupervised training. Semisupervised equivalent to viral dataset 15 (with added unobserved data points per partition) '
+                             'viral_dataset17: Semisupervised training. Semisupervised equivalent to viral dataset 15 (with added unobserved data points per partition) ',
+                        gooey_options = {"label_color": "#ff33d2"}
                         )
     # Highlight: Dataset configurations: Use with the default datasets (not necessary with the custom dataset, unless you want to do some stress testing)
     parser.add_argument('-predefined-partitions', type=str2bool, nargs='?', default=True,
@@ -171,7 +189,8 @@ def parser_args(parser,device,script_dir):
     parser.add_argument('-prc', '--precision', type=str, nargs='?', default="32",
                         help='Define the type of peptide sequence to use:\n'
                              '32: Float 32, lower precision, faster run, potentially slower convergence (requires more epochs) \n'
-                             '64: Float 64, higher precision, slower run, potentially faster convergence (requires less epochs)')
+                             '64: Float 64, higher precision, slower run, potentially faster convergence (requires less epochs)',gooey_options= {"label_color":"#ff33d2"}) #,gooey_options= {"label_color":"#ff33d2"})
+
 
     # Highlight: Model stress testing
 
@@ -190,7 +209,7 @@ def parser_args(parser,device,script_dir):
     # Highlight: Model hyperparameters, those marked with HPO* are overridden by the dictionary given to args.config_dict unless it is set to None. The given args.config_dict contains the optimized parameters, do not change unless new data is used to train the model.
     parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=3,
                         help='HPO* . Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
-    parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU')
+    parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU',gooey_options= {"label_color":"#ff33d2"})
     parser.add_argument('-encoding', type=str, nargs='?', default="blosum", help='HPO* . Sequence encoding type'
                                                                                  '<blosum> Use the matrix selected in args.subs_matrix to encode the sequences as blosum vectors'
                                                                                  '<onehot> One hot encoding of the sequences  ')
@@ -230,11 +249,12 @@ def parser_args(parser,device,script_dir):
     parser.add_argument('-hpo', type=str2bool, nargs='?', default=False,
                         help='<True> Performs Hyperparameter optimization with Ray Tune')
 
-    best_config = {1: "{}/BEST_hyperparameter_dict_blosum_vd15_z16.p".format(script_dir),
+    best_config = {1: "{}/BEST_hyperparameter_dict_blosum_vd15_z16.p".format(script_dir), #TODO: Make sure it is included in the standalone application
                    2: None} #None makes use of the hyperparameter values given to argparse
     parser.add_argument('-config-dict', nargs='?', default=best_config[1], type=str2None,
                         help='Path to the HPO optimized hyperparameter dict. Overrules the previous hyperparameters marked as HPO*.\n'
-                             'Set to None to use the values in the parser.')
+                             'Set to None to use the values in the parser.',
+                        gooey_options= {"label_color":"#ff33d2"})
 
     # Highlight: Evaluation modes
     parser.add_argument('-train', type=str2bool, nargs='?', default=True, help='<True> Run the model over the training data '

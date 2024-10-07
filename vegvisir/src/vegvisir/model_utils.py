@@ -221,13 +221,15 @@ class Attention5(nn.Module):
         self.weight_k = nn.Parameter(torch.randn((self.gru_hidden_dim, self.gru_hidden_dim)), requires_grad=True).to(device=self.device)
         self.weight_v = nn.Parameter(torch.randn((self.z_dim, self.z_dim)), requires_grad=True).to(device=self.device)
 
+
     def forward(self, encoder_hidden_states,decoder_hidden_states,decoder_final_hidden_state,latent_z_seq, mask=None):
         src_len = latent_z_seq.shape[1]
         #decoder_final_hidden_state = decoder_final_hidden_state.unsqueeze(1).repeat(1, src_len, 1)   # repeat decoder final hidden state src_len times
 
         k = torch.matmul(encoder_hidden_states,self.weight_k)
         q = torch.matmul(decoder_hidden_states,self.weight_q)
-        v = torch.matmul(latent_z_seq,self.weight_v)
+        v = torch.matmul(latent_z_seq,self.weight_v) #in my version of attention we calculate the context vector by weighting the latent representation by the alpha attention scores
+
 
         alignment = torch.matmul(q, k.transpose(1, 2))/ self.temperature #alignment scores
 
