@@ -3136,6 +3136,8 @@ def plot_hidden_dimensions(summary_dict, dataset_info, results_dir,args, method=
                 if encoder_hidden_states.size != 0:
                     #Highlight: Compute the cosine similarity measure (distance = 1 - similarity) among the hidden states of the sequence
                     if sample_mode == "single_sample":
+                        # for seq,seq_mask in zip(encoder_hidden_states,data_mask_seq):
+                        #     VegvisirUtils.information_shift(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len)
                         # Highlight: Encoder
                         encoder_information_shift_weights = Parallel(n_jobs=MAX_WORKERs,backend='loky')(
                             delayed(VegvisirUtils.information_shift)(seq,seq_mask,diag_idx_maxlen,dataset_info.seq_max_len) for seq,seq_mask in

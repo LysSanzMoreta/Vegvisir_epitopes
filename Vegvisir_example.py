@@ -6,6 +6,8 @@ Vegvisir (VAE): T-cell epitope classifier
 =======================
 """
 import warnings
+
+import numpy as np
 import pyro
 import torch
 import argparse
@@ -72,6 +74,7 @@ def define_suffix(args):
             suffix = "{}".format(kmers)
     #name = args.dataset_name + "-" + encoding + "-" + kmers_name
     return encoding + suffix + num_unobserved
+
 def main(args):
     """Executes Vegvisir:
     1) Select the train/validation/test dataset
@@ -118,14 +121,13 @@ def main(args):
 
     vegvisir.run(vegvisir_dataset,results_dir,args)
 
-
 def parser_args(parser,device,script_dir):
     parser.add_argument('-name', '--dataset-name', type=str, nargs='?',
                         # default="custom_dataset_random",
                         # default="custom_dataset_random_icore_non_anchor",
-                        default="viral_dataset17",
+                        default="viral_dataset15",
                         help='Dataset project name, look at vegvisir.available_datasets(). In case the folder is not automatically created, you can manually place it at vegvisir/src/vegvisir/data \n'
-                             'custom_dataset: Perform training or prediction (by setting the args.pretrained_model to the folder path with the model checkpoints) on a given dataset. Remember to define also train_path, test_path'
+                             'custom_dataset: Perform training or prediction (if predicting only,set the args.pretrained_model to the folder path with the model checkpoints) on a given dataset. Remember to define also train_path, test_path'
                              'viral_dataset3 : Supervised learning. Only sequences, partitioned into train,validation and (old) test.If args.test = True, then the (old) assigned test is used \n'
                              'viral_dataset4 : Supervised learning. viral_dataset3 sequences + Peptide Features \n '
                              'viral_dataset5: Supervised learning. Contains additional artificially generated negative data points in the (old) test dataset \n'
@@ -142,7 +144,7 @@ def parser_args(parser,device,script_dir):
                              'viral_dataset16: Supervised training. Same as viral_dataset15 restricted to binders to alleles HLA-A2402, HLA-A2301 and HLA-2407'
                              'viral_dataset17: Semisupervised training. Semisupervised equivalent to viral dataset 15 (with added unobserved data points per partition) '
                         )
-    # Highlight: Dataset configurations: Use with the default datasets (not custom ones)
+    # Highlight: Dataset configurations: Use with the default datasets (not necessary with the custom dataset, unless you want to do some stress testing)
     parser.add_argument('-predefined-partitions', type=str2bool, nargs='?', default=True,
                         help='<True> Divides the dataset into train, validation and test according to pre-specified partitions (in the input file use a COLUMN named partitions)\n'
                              '<False> Performs a random stratified train, validation and test split')
@@ -165,6 +167,12 @@ def parser_args(parser,device,script_dir):
                              '<borders>: The sequences are padded at the beginning and the end. Random choice when the pad is an even number \n'
                              '<replicated_borders>: Padds by replicating the borders of the sequence \n'
                              '<random>: random insertion of zeroes(gaps) along the sequence \n')
+    # Highlight: Pytorch efficiency parameters
+    parser.add_argument('-prc', '--precision', type=str, nargs='?', default="32",
+                        help='Define the type of peptide sequence to use:\n'
+                             '32: Float 32, lower precision, faster run, potentially slower convergence (requires more epochs) \n'
+                             '64: Float 64, higher precision, slower run, potentially faster convergence (requires less epochs)')
+
     # Highlight: Model stress testing
 
     parser.add_argument('-shuffle', '--shuffle_sequence', type=str2bool, nargs='?', default=False,
@@ -209,7 +217,7 @@ def parser_args(parser,device,script_dir):
     parser.add_argument('-likelihood-scale', type=int, nargs='?', default=80,
                         help='HPO* .Scaling the log p( class | Z) of the variational autoencoder (cold posterior)')
 
-    parser.add_argument('-lt', '--learning-type', type=str, nargs='?', default="semisupervised",
+    parser.add_argument('-lt', '--learning-type', type=str, nargs='?', default="supervised",
                         help='<supervised_no_decoder> simpler model architecture with only an encoder and a classifier'
                              '<unsupervised> Unsupervised learning. No classification is performed \n'
                              '<semisupervised> Semi-supervised model/learning. The likelihood of the class (p(c | z)) is only computed and maximized using the most confident scores. \n '
@@ -217,7 +225,7 @@ def parser_args(parser,device,script_dir):
                              '<supervised> Supervised model. All target observations are used to compute the likelihood of the class given the latent representation')
 
     parser.add_argument('-num-samples', '-num_samples', type=int, nargs='?', default=3,
-                        help='HPO* Number of samples from the posterior predictive. Only makes sense when using amortized inference with a guide function')
+                        help='HPO* Number of samples from the posterior predictive, set to minimum 30, unless performing some debugging. Only makes sense when using amortized inference with a guide function')
 
     parser.add_argument('-hpo', type=str2bool, nargs='?', default=False,
                         help='<True> Performs Hyperparameter optimization with Ray Tune')
@@ -306,7 +314,10 @@ def parser_args(parser,device,script_dir):
 
     # Highlight: DO NOT CHANGE ANYTHING ELSE DOWN HERE
     args = parser.parse_args()
-    torch.set_default_dtype(torch.float64)
+    dtype_dict = VegvisirUtils.return_dtype_dict() #keep here for the GUI
+    #precision = "64"  #lower precision requires more epochs and risk of underflows, however it is 2x faster
+    torch.set_default_dtype(dtype_dict[args.precision][0])
+    #args.__dict__["precision"] = precision
     if args.use_cuda:
         if torch.cuda.is_available():
             print("Using cuda")
@@ -314,8 +325,7 @@ def parser_args(parser,device,script_dir):
             torch.set_default_device(device)  # use the device selected above
             args.__dict__["device"] = device
         else:
-            print(
-                "Cuda (gpu) not found falling back to cpu. Depending on availability, please make sure to use cuda:0 (CUDA_VISIBLE_DEVICES=0) or cuda:1 (CUDA_VISIBLE_DEVICES=1)")
+            print("Cuda (gpu) not found falling back to cpu. Depending on availability, please make sure to use cuda:0 (CUDA_VISIBLE_DEVICES=0) or cuda:1 (CUDA_VISIBLE_DEVICES=1)")
             device = "cpu"
             torch.set_default_device(device)
             args.__dict__["device"] = device
@@ -335,7 +345,7 @@ def parser_args(parser,device,script_dir):
     # pyro.set_rng_seed(0)
     # torch.manual_seed(0)
     pyro.enable_validation(False)
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+
     if args.pretrained_model is not None and args.train:
         args_dict = json.load(open("{}/commandline_args.txt".format(args.pretrained_model)))
         args_dict["pretrained_model"] = args.pretrained_model

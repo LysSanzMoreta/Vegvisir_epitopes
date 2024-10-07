@@ -5,7 +5,7 @@ a = Analysis(
     ['Vegvisir_GUI.py'],
     pathex=['vegvisir/src'],
     binaries=[],
-    datas=[],
+    datas=[('vegvisir/src/vegvisir/data/anchor_info_content', 'vegvisir/src/vegvisir/data/anchor_info_content'), ('vegvisir/src/vegvisir/data/common_files', 'vegvisir/src/vegvisir/data/common_files'), ('vegvisir/src/vegvisir/data/benchmark_datasets', 'vegvisir/src/vegvisir/data/benchmark_datasets')],
     hiddenimports=[],
     hookspath=['vegvisir/src/hooks'],
     hooksconfig={},

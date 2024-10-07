@@ -1,5 +1,7 @@
 .idea/*
-.idea (Selective Sync Conflict*
+.idea (Selective Sync Conflict *
+__pycache__ (Selective Sync Conflict)
+__pycache__ (Selective Sync Conflict *)
 build/*
 dist/*
 data/*
@@ -80,3 +82,5 @@ Results_netMHCpan/vegvisir_Generated/
 
 
 __pycache__/
+
+.idea (Selective Sync Conflict)/

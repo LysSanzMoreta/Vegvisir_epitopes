@@ -10,7 +10,7 @@ import json
 import signal
 import warnings
 from argparse import Namespace
-
+from functools import partial
 from scipy import stats
 import time,os,datetime
 from collections import defaultdict
@@ -51,7 +51,7 @@ OutputProcessing = namedtuple("OutputProcessing", ["train_predictive_samples_dic
                                                    "custom_dataset_immunomodulate","immunomodulate_dict","immunomodulate_summary_dict","immunomodulate_latent_space"
                                                    ])
 
-
+dtype_dict = VegvisirUtils.return_dtype_dict()
 def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
     """Regular batch training
     :param pyro.infer svi
@@ -1165,20 +1165,35 @@ def save_script(results_dir:str,output_name:str,script_name:str):
     out_file.write("".join(text))
     out_file.close()
 
-def select_quide(Vegvisir:nn.Module,model_load:namedtuple,n_data:int,choice:str="autodelta"):
+def select_quide(Vegvisir:nn.Module,model_load:namedtuple,args:namedtuple,choice:str="autodelta"):
     """Select the guide type
     :param nn.module Vegvisir
     :param namedtuple model_load
     :param str choice: guide name"""
+
+
 
     print("Using {} as guide".format(choice))
     guide = {"autodelta":AutoDelta(Vegvisir.model),
              "autonormal":AutoNormal(Vegvisir.model,init_scale=0.1),
              "autodiagonalnormal": AutoDiagonalNormal(Vegvisir.model, init_scale=0.1), #Mean Field approximation, only diagonal variance
              "custom":VegvisirGuides.VEGVISIRGUIDES(Vegvisir.model,model_load,Vegvisir)}
-    return guide[choice]
+
+    selected_guide = guide[choice]
+
+    with torch.no_grad():
+        selected_guide.apply(partial(init_weights, args))
+
+    # for name, parameter in selected_guide.named_parameters():
+    #     parameter.to(dtype_dict[args.precision][0])
+    #     print(name)
+    #     print(type(parameter))
+    #     print(parameter.dtype)
+    # exit()
+
+    return selected_guide
     #return poutine.scale(guide[choice],scale=1.0/n_data) #Scale the ELBo to the data size
-def select_model(model_load:namedtuple,results_dir:str,fold:int,args:namedtuple):
+def select_model(model_load:namedtuple, results_dir:str, fold:int, args:namedtuple):
     """Select among the available models at models.py"""
     print(args.learning_type )
     if model_load.seq_max_len == model_load.max_len:
@@ -1205,7 +1220,9 @@ def select_model(model_load:namedtuple,results_dir:str,fold:int,args:namedtuple)
         save_script("{}/Scripts".format(results_dir), "TrainFunction", "train_svi")
     #Initialize the weights
     with torch.no_grad():
-        vegvisir_model.apply(init_weights)
+        # vegvisir_model.half() #this makes it precision float16, not compatible
+        vegvisir_model.apply(partial(init_weights,args))
+
     return vegvisir_model
 def config_build(args:namedtuple,results_dir:str):
     """Select a default configuration dictionary. It can load a string dictionary from the command line (using json) or use the default parameters
@@ -1228,18 +1245,35 @@ def config_build(args:namedtuple,results_dir:str):
         json.dump(config, open('{}/params_dict.txt'.format(results_dir), 'w'), indent=2)
 
     return config
-def init_weights(m):
-    """Xavier or Glorot parameter initialization is meant to be used with Tahn activation
+def init_weights(args,m):
+    """
+    Xavier or Glorot parameter initialization is meant to be used with Tahn activation
     kaiming or He parameter initialization is for ReLU activation
     nn.Linear is initialized with kaiming_uniform by default
+
+    Casting model parameters to lower precision
+
+    :param args: Named tuple
+    :param m : module
+
     Notes:
         -https://shiyan.medium.com/xavier-initialization-and-batch-normalization-my-understanding-b5b91268c25c
         -https://medium.com/ml-cheat-sheet/how-to-avoid-the-vanishing-exploding-gradients-problem-f9ccb4446c5a
     """
+    if isinstance(m, nn.Module):
+        m.to(dtype_dict[args.precision][0])
+    if isinstance(m, nn.Parameter):
+        m.to(dtype_dict[args.precision][0])
+    if isinstance(m, nn.BatchNorm1d):
+        m.to(dtype_dict[args.precision][0])
     if isinstance(m, nn.Module) and hasattr(m, 'weight') and not (isinstance(m,nn.BatchNorm1d) or isinstance(m,nn.Embedding)):
         nn.init.kaiming_normal_(m.weight,nonlinearity="leaky_relu")
         if m.bias is not None:
             nn.init.zeros_(m.bias)
+    # else:
+    #     print("Something else: {}----------------".format(type(m)))
+    #
+    #     #raise ValueError("Do not what to do with this: {}".format(m))
 def reset_weights(m):
     if isinstance(m, nn.Module) and hasattr(m, 'weight') and not (isinstance(m,nn.BatchNorm1d)):
         m.reset_parameters()
@@ -1634,7 +1668,7 @@ def epoch_loop(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
     # if args.learning_type in ["semisupervised","unsupervised"]:
     #     guide = config_enumerate(select_quide(Vegvisir,model_load,n_data,args.guide))
     # else:
-    guide = select_quide(Vegvisir,model_load,n_data,"custom")
+    guide = select_quide(Vegvisir,model_load,args,"custom")
     #svi = SVI(poutine.scale(Vegvisir.model,scale=1.0/n_data), poutine.scale(guide,scale=1.0/n_data), optimizer, loss_func)
     n = 50
     data_args_0 = {"blosum":train_data_blosum.to(args.device)[:n],
@@ -1981,7 +2015,7 @@ def load_model(train_idx,valid_idx,dataset_info,args,additional_info,mode="Valid
         raise ValueError("selected optimizer <{}> not implemented with <{}> clip gradients".format(args.optimizer_name,args.clip_gradients))
     loss_func = Vegvisir.loss()
 
-    guide = select_quide(Vegvisir,model_load,n_data,"custom")
+    guide = select_quide(Vegvisir,model_load,args,choice="custom")
 
     n = 50
     data_args_0 = {"blosum":train_data_blosum.to(args.device)[:n],

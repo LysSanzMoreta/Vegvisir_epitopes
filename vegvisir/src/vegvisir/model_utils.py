@@ -1132,9 +1132,12 @@ class RNN_guide2(nn.Module):
         input_packed = torch.nn.utils.rnn.pack_padded_sequence(input,input_lens.cpu(),batch_first=True,enforce_sorted=False).to(device=self.device)
 
         packed_output, rnn_hidden = self.rnn1(input_packed,init_h_0)
+
         rnn_hidden_states, seq_sizes = torch.nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True,total_length=self.max_len)
+
         seq_idx = torch.arange(seq_sizes.shape[0])
         rnn_hidden_states = self.softplus(rnn_hidden_states)
+
         if rnn_hidden_states.shape[0] > 1:
             rnn_hidden_states = self.bnn(rnn_hidden_states)
 

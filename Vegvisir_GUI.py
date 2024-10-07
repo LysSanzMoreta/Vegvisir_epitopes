@@ -8,7 +8,7 @@ Vegvisir (VAE): T-cell epitope classifier
 
 
 import os,sys
-
+from gooey import Gooey, GooeyParser
 from argparse import RawTextHelpFormatter
 local_repository=True
 
@@ -34,18 +34,11 @@ else:
 
 sys.path.insert(0, os.path.join(script_dir, 'vegvisir/src'))
 
-print("This is the current script path: {}".format(script_dir))
-
-print("This is the system path: {}".format(sys.path))
-
-
-
 
 import vegvisir
 
 import Vegvisir_analysis as VegvisirAnalysis
 
-from gooey import Gooey, GooeyParser
 import Vegvisir_example as VegvisirExample
 
 if "CUDA_VISIBLE_DEVICES" in os.environ:

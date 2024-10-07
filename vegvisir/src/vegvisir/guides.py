@@ -98,9 +98,9 @@ class VEGVISIRGUIDES(EasyGuide):
         else:
             #print("not rotating....")
             pass
-        confidence_scores = batch_data["blosum"][:, 0, 0, 5]
-        confidence_mask = (confidence_scores[..., None] < 0.7).any(-1)  # now we try to predict those with a low confidence score
-        confidence_mask_true = torch.ones_like(confidence_mask).bool()
+        # confidence_scores = batch_data["blosum"][:, 0, 0, 5]
+        # confidence_mask = (confidence_scores[..., None] < 0.7).any(-1)  # now we try to predict those with a low confidence score
+        #confidence_mask_true = torch.ones_like(confidence_mask).bool()
         init_h_0 = self.h_0_GUIDE.expand(self.encoder_guide.num_layers * 2, batch_size,
                                          self.gru_hidden_dim).contiguous().type(self.tensor_type)  # bidirectional
 

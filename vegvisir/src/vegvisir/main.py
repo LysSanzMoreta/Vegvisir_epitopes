@@ -69,7 +69,7 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
 
 
     ray.init(runtime_env={"working_dir": "{}/vegvisir/src".format(dataset_info.script_dir),
-                          'excludes':["/vegvisir/data/","!/vegvisir/data/aminoacid_properties.txt"],
+                          'excludes':["/vegvisir/data/","!/vegvisir/data/common_files/aminoacid_properties.txt"],
                           })
 
     if args.k_folds > 1:

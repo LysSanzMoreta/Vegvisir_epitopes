@@ -30,6 +30,11 @@ from sklearn.metrics import mutual_info_score
 
 PeptideFeatures = namedtuple("PeptideFeatures",["gravy_dict","volume_dict","radius_dict","side_chain_pka_dict","isoelectric_dict","bulkiness_dict"])
 MAX_WORKERs = ( multiprocessing. cpu_count() - 1 )
+def return_dtype_dict():
+    dtype_dict = {"32": [torch.float32, np.float32],  # torch.FloatTensor #default
+                  "64": [torch.float64, np.float64]  # torch.DoubleTensor
+                  }
+    return dtype_dict
 def str2bool(v:str):
     """Converts a string into a boolean, useful for boolean arguments
     :param str v"""
@@ -1271,15 +1276,16 @@ def information_shift(arr:np.ndarray,arr_mask:np.ndarray,diag_idx_maxlen:int,max
         cos_sim_arr = cosine_similarity(arr[idx],arr[idx],correlation_matrix=False) #cosine similarity among all the vectors in the <forward/backward> hidden states
         cos_sim_diag = cos_sim_arr[diag_idx_maxlen[0][:-1],diag_idx_maxlen[1][1:]] #k=1 offset diagonal
         #Highlight: ignore the positions that have paddings
-        n_paddings = (arr_mask.shape[0] - arr_mask.sum()) # max_len - true_len
+        n_paddings = int((arr_mask.shape[0] - arr_mask.sum())) # max_len - true_len
         keep = cos_sim_diag.shape[0] - n_paddings #number of elements in the offset diagonal - number of "False" or paddings along the sequence
+        keep = int(keep)
         if keep <= 0: #when all the sequence is made of paddings or only one position is not a padding, every position gets value 0
             if idx == 0:
                 forward = np.zeros((max_len-1))
             else:
                 backward = np.zeros((max_len-1))
         else:
-            information_shift = 1-cos_sim_diag[:keep] #or cosine distance , the cosine distancevaries between 0 and 2
+            information_shift = 1-cos_sim_diag[:keep] #or cosine distance , the cosine distance varies between 0 and 2 (similarity between -1 and 1)
             #information_shift = np.abs(cos_sim_diag[:-1] -cos_sim_diag[1:])
             #Highlight: Set to 0 the information gain in the padding positions
             information_shift = np.concatenate([information_shift,np.zeros((n_paddings,))])
