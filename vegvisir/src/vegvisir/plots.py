@@ -34,7 +34,7 @@ import torch
 import umap # numpy < 1.23
 import vegvisir.utils as VegvisirUtils
 from sklearn.feature_selection import mutual_info_classif,mutual_info_regression
-from sklearn.metrics import auc, roc_auc_score, roc_curve, confusion_matrix, matthews_corrcoef, precision_recall_curve, average_precision_score, recall_score
+from sklearn.metrics import auc, roc_auc_score, roc_curve, confusion_matrix, matthews_corrcoef, precision_recall_curve, average_precision_score, recall_score,precision_score
 from sklearn.cluster import MiniBatchKMeans,AgglomerativeClustering
 from sklearn.metrics.cluster import adjusted_mutual_info_score
 from joblib import Parallel, delayed
@@ -2940,7 +2940,7 @@ def plot_classification_metrics_per_species(dataset_info,args,predictions_dict,f
                 if predictions_dict[binary_mode] is not None:
                     targets = labels[idx]
                     scores = predictions_dict[binary_mode][idx]
-                    try:
+                    try: #if len(np.unique(targets)) >= 2:
                         #TODO: Change to https://scikit-learn.org/stable/modules/generated/sklearn.metrics.multilabel_confusion_matrix.html
                         tn, fp, fn, tp = confusion_matrix(y_true=targets, y_pred=scores).ravel()
                         confusion_matrix_df = pd.DataFrame([[tp, fp],
@@ -3691,13 +3691,16 @@ def plot_kfold_comparison_helper(metrics_keys,script_dir,folder,overwrite,kfolds
                                                                prob_mode, idx_all, idx_name, save=False)
 
                     binary_predictions = np.argmax(summary_dict[prob_mode],axis=1)
-                    tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=binary_predictions).ravel()
-                    precision = tp / (tp + fp)
 
-                    ap_dict = plot_precision_recall_curve(labels, onehot_labels, summary_dict, args, script_dir, mode, fold,
-                                                "", prob_mode, idx_all, idx_name, save_plot=False)
+                    if args.num_classes == 2: #supervised
+                        tn, fp, fn, tp = confusion_matrix(y_true=labels, y_pred=binary_predictions).ravel()
+                        precision = tp / (tp + fp)
+                    elif args.num_classes == 3: #semisupervised
+                        cm = confusion_matrix(y_true=labels, y_pred=binary_predictions)
+                        precisions = precision_score(y_true=labels, y_pred=binary_predictions, average=None)
+                        precision = np.mean(precisions) #average precision
 
-
+                    ap_dict = plot_precision_recall_curve(labels, onehot_labels, summary_dict, args, script_dir, mode, fold,"", prob_mode, idx_all, idx_name, save_plot=False)
 
                     if mode == "train":
 
@@ -4816,13 +4819,13 @@ def process_nnalign(results_path, seqs_df,stress_dataset,mode="train",save_plot=
     nnalign_results_full = nnalign_results_full[["Peptide", "Prediction","Measure"]]
     nnalign_results_full.columns = ["Icore", "Prediction","targets"]
 
-    if any(x in stress_dataset for x in ["random","shuffled_targets","shuffled"]): #use the targets in the model because the random sed was different
+    if any(x in stress_dataset for x in ["random","shuffled_targets","shuffled"]): #use the targets in the model because the random seed was different
         nnalign_results_full["targets"] = nnalign_results_full["targets"].astype(int)
     else:
         nnalign_results_full.drop("targets",axis=1,inplace=True)
         #nnalign_results_full1 = nnalign_results_full.merge(seqs_df, on="Icore", how="left")
         nnalign_results_full = nnalign_results_full.merge(seqs_df, on="Icore", how="inner")
-
+        nnalign_results_full = nnalign_results_full[nnalign_results_full["targets"] != 2] #apparently some funky supposedly unlabelled data point is in the labelled data (removing duplicates failed), it is only 1
 
     auc_results = calculate_auc(nnalign_results_full["targets"], nnalign_results_full["Prediction"])
     roc_auc_dict = {"NNAlign2.1": auc_results[0]}
@@ -5003,7 +5006,7 @@ def plot_benchmark_vegvisir_helper(vegvisir_folder,overlap_idx,kfolds=5,aggregat
 
     return metrics_results_dict
 
-def plot_benchmark_vegvisir_helper2(vegvisir_folder,overlap_idx,kfolds=5,aggregated_not_overlap=True):
+def plot_benchmark_vegvisir_helper2(args,vegvisir_folder,overlap_idx,kfolds=5,aggregated_not_overlap=True):
 
     metrics_results_dict = defaultdict(lambda: defaultdict(list))
 
@@ -5061,7 +5064,7 @@ def plot_benchmark_vegvisir_helper2(vegvisir_folder,overlap_idx,kfolds=5,aggrega
 
     return metrics_results_dict
 
-def plot_benchmark_vegvisir_helper3(vegvisir_folder,overlap_idx,kfolds=5,aggregated_not_overlap=True):
+def plot_benchmark_vegvisir_helper3(args,vegvisir_folder,overlap_idx,kfolds=5,aggregated_not_overlap=True):
     """Compute Ensembl metrics"""
     metrics_results_dict = defaultdict(lambda: defaultdict(list))
 
@@ -5075,7 +5078,7 @@ def plot_benchmark_vegvisir_helper3(vegvisir_folder,overlap_idx,kfolds=5,aggrega
             if aggregated_not_overlap:
                 results = results[results["Aggregated_overlap"] == False]
             targets = np.array(results["Target_corrected"].tolist())
-            onehot_targets = np.zeros((targets.shape[0], 2))
+            onehot_targets = np.zeros((targets.shape[0], args.num_classes))
             onehot_targets[np.arange(0, targets.shape[0]), targets.astype(int)] = 1
             target_scores = results[["Vegvisir_negative_prob", "Vegvisir_positive_prob"]].to_numpy().astype(float)
             target_scores_list.append(target_scores)
@@ -5091,15 +5094,16 @@ def plot_benchmark_vegvisir_helper3(vegvisir_folder,overlap_idx,kfolds=5,aggrega
         ppv_mod=dict()
         pvals=dict()
         # ROC AUC per class
-        for i in range(2):
-            fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
-            roc_auc[i] = auc(fpr[i], tpr[i])
-            roc_auc["auc01_class_{}".format(i)] = roc_auc_score(onehot_targets[:, i], target_scores[:, i],average="weighted", max_fpr=0.1)
-            precision[i], recall[i], thresholds = precision_recall_curve(onehot_targets[:, i], target_scores[:, i])
-            average_precision[i] = average_precision_score(onehot_targets[:, i], target_scores[:, i])
-            ppv_mod[i] = calculate_ppv_modified(onehot_targets[:, i], target_scores[:, i])
-            lrm = sm.Logit(onehot_targets[:, i], target_scores[:, i]).fit(disp=0)
-            pvals[i] = lrm.pvalues.item()
+        for i in range(args.num_classes):
+            if i <= 1:
+                fpr[i], tpr[i], _ = roc_curve(onehot_targets[:, i], target_scores[:, i])
+                roc_auc[i] = auc(fpr[i], tpr[i])
+                roc_auc["auc01_class_{}".format(i)] = roc_auc_score(onehot_targets[:, i], target_scores[:, i],average="weighted", max_fpr=0.1)
+                precision[i], recall[i], thresholds = precision_recall_curve(onehot_targets[:, i], target_scores[:, i])
+                average_precision[i] = average_precision_score(onehot_targets[:, i], target_scores[:, i])
+                ppv_mod[i] = calculate_ppv_modified(onehot_targets[:, i], target_scores[:, i])
+                lrm = sm.Logit(onehot_targets[:, i], target_scores[:, i]).fit(disp=0)
+                pvals[i] = lrm.pvalues.item()
 
         # metrics_results_dict[mode]["fpr_0"].append(fpr[0])
         # metrics_results_dict[mode]["fpr_1"].append(fpr[1])
@@ -5148,6 +5152,7 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
     train_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_train_test_fold_{}.p".format(vegvisir_folder, 0))
     #valid_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_valid_fold_{}.p".format(vegvisir_folder, 0))
     test_out = torch.load("{}/Vegvisir_checkpoints/model_outputs_test_fold_{}.p".format(vegvisir_folder, 0))
+    args = train_out["args"]
 
     #Highlight: extract the original sequences and the true labels to use them with NNAlign
     dataset_info = train_out["dataset_info"]
@@ -5196,9 +5201,9 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
         test_df = test_df[test_df["Aggregated_overlap"] == False]
 
     if ensemble:
-        metrics_results_dict = plot_benchmark_vegvisir_helper3(vegvisir_folder,other_programs_sequence_overlap,kfolds=5,aggregated_not_overlap=aggregated_not_overlap)
+        metrics_results_dict = plot_benchmark_vegvisir_helper3(args,vegvisir_folder,other_programs_sequence_overlap,kfolds=5,aggregated_not_overlap=aggregated_not_overlap)
     else:
-        metrics_results_dict = plot_benchmark_vegvisir_helper2(vegvisir_folder,other_programs_sequence_overlap,kfolds=5,aggregated_not_overlap=aggregated_not_overlap)
+        metrics_results_dict = plot_benchmark_vegvisir_helper2(args,vegvisir_folder,other_programs_sequence_overlap,kfolds=5,aggregated_not_overlap=aggregated_not_overlap)
 
     metrics_results_train = metrics_results_dict["train"]
     #metrics_results_valid = metrics_results_dict["valid"]
@@ -5272,6 +5277,7 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
         nnalign_results_path_test_full = "Benchmark/Other_Programs/NNAlign_results_19_01_2024/Icore/variable_length_Icore_sequences_viral_dataset15/nnalign_peplen_8-11_iter_100_10523/test_Icore_variable_length_Icore_sequences_viral_dataset15_lg9_13809.evalset.txt"
 
     #train_test_df = pd.concat([train_df,test_df],axis=0)
+
     (nnalign_results_train_roc_auc_dict,nnalign_results_train_auc01_dict, nnalign_results_train_ppv_dict,
      nnalign_results_train_ap_dict,nnalign_results_train_pval_dict,nnalign_results_train_precision_dict,nnalign_results_train_recall_dict) = process_nnalign(nnalign_results_path_train_full,train_df,keyname,mode="train")
     (nnalign_results_test_roc_auc_dict,nnalign_results_test_auc01_dict, nnalign_results_test_ppv_dict,
@@ -5666,10 +5672,7 @@ def plot_benchmarking_results(dict_results_vegvisir,script_dir,keyname="",folder
         fig.suptitle("Benchmark metrics",fontsize=int(fontsize + 5))
 
     #plt.show()
-    #plt.savefig("{}/{}/Benchmarking_{}_{}.jpg".format(script_dir,folder,title,suffix))
-    plt.show()
-    exit()
-    plt.savefig("{}/{}/Benchmarking_{}_{}.svg".format(script_dir, folder, title, suffix))
+    plt.savefig("{}/{}/Benchmarking_{}_{}.jpg".format(script_dir,folder,title,suffix))
     plt.savefig("{}/{}/Benchmarking_{}_{}.pdf".format(script_dir, folder, title, suffix))
 
 def plot_model_stressing_comparison1(dict_results_vegvisir,script_dir,results_folder="Benchmark/Plots",subtitle="",encoding="-blosum",keyname="viral_dataset15",ensemble=False):

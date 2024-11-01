@@ -84,3 +84,7 @@ Results_netMHCpan/vegvisir_Generated/
 __pycache__/
 
 .idea (Selective Sync Conflict)/
+
+run_HPO_ss2.sh
+
+run_HPO_ss.sh

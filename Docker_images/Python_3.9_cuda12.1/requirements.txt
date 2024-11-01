@@ -6,6 +6,7 @@ logomaker
 graphviz
 ray[data,train,tune,serve]
 Gooey
+dataframe_image
 #numba==0.59 --config-settings="--build-option=--ignore-installed"
 #scikit-misc>=0.3.1 --config-settings="--build-option=--ignore-installed"
 #scikit-misc --config-settings="--build-option=--ignore-installed"

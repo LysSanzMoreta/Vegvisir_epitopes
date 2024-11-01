@@ -52,8 +52,10 @@ def dataset_proportions(data,results_dir,type="TrainEval"):
         positives = torch.sum(data[:,0,0] == 1)
         negatives = torch.sum(data[:,0,0] == 0)
 
-    positives_proportion = (positives*100)/torch.tensor([data.shape[0]])
-    negatives_proportion = (negatives*100)/torch.tensor([data.shape[0]])
+
+
+    positives_proportion = (positives*100)/torch.Tensor([data.shape[0]])
+    negatives_proportion = (negatives*100)/torch.Tensor([data.shape[0]])
     f = open("{}/dataset_info.txt".format(results_dir),"a+")
     print("\n{} dataset: \n \t Total number of data points: {} \n \t Number positives : {}; \n \t Proportion positives : {} ; \n \t Number negatives : {} ; \n \t Proportion negatives : {}".format(type,data.shape[0],positives,positives_proportion.item(),negatives,negatives_proportion.item()))
     print("-------------------------------------------------------------",file=f)

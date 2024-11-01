@@ -186,7 +186,7 @@ def parser_args(parser,device,script_dir):
                              '<replicated_borders>: Padds by replicating the borders of the sequence \n'
                              '<random>: random insertion of zeroes(gaps) along the sequence \n')
     # Highlight: Pytorch efficiency parameters
-    parser.add_argument('-prc', '--precision', type=str, nargs='?', default="32",
+    parser.add_argument('-prc', '--precision', type=str, nargs='?', default="64",
                         help='Define the type of peptide sequence to use:\n'
                              '32: Float 32, lower precision, faster run, potentially slower convergence (requires more epochs) \n'
                              '64: Float 64, higher precision, slower run, potentially faster convergence (requires less epochs)',gooey_options= {"label_color":"#ff33d2"}) #,gooey_options= {"label_color":"#ff33d2"})
@@ -207,7 +207,7 @@ def parser_args(parser,device,script_dir):
                         help='Stress-testing technique (not used in the article). Positions where to perform the mutations. Indicated as string of format [2,5,3], Set to None otherwise')
 
     # Highlight: Model hyperparameters, those marked with HPO* are overridden by the dictionary given to args.config_dict unless it is set to None. The given args.config_dict contains the optimized parameters, do not change unless new data is used to train the model.
-    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=3,
+    parser.add_argument('-n', '--num-epochs', type=int, nargs='?', default=1,
                         help='HPO* . Number of epochs + 1  (number of times that the model is run through the entire dataset (all batches) ')
     parser.add_argument('-use-cuda', type=str2bool, nargs='?', default=True, help='True: Use GPU; False: Use CPU',gooey_options= {"label_color":"#ff33d2"})
     parser.add_argument('-encoding', type=str, nargs='?', default="blosum", help='HPO* . Sequence encoding type'
@@ -221,7 +221,7 @@ def parser_args(parser,device,script_dir):
                         help='Number of k-folds for k-fold cross validation (value between 1 and 5).\n '
                              'If set to 1 is a single run where 1 of the partitions is selected randomly as the validation partition, and the test is partition 6'
                              'If set to >1 it will perform n kfold validation on n partitions  and the test is partition 6')
-    parser.add_argument('-batch-size', type=int, nargs='?', default=100, help='HPO*. Batch size')
+    parser.add_argument('-batch-size', type=int, nargs='?', default=170, help='HPO*. Batch size')
     parser.add_argument('-optimizer_name', type=str, nargs='?', default="Adam",
                         help='Gradient optimizer name. Adam with clip gradients is implemented in 2 modes \n '
                              '<ClippedAdam>'
@@ -229,11 +229,11 @@ def parser_args(parser,device,script_dir):
     parser.add_argument('-clip-gradients', type=bool, nargs='?', default=True,
                         help='Computes the 2D Euclidean norm of the gradient to normalize the gradient by that value and \n '
                              ' prevent exploding gradients (small gradients that lead to abscence of training) ')
-    parser.add_argument('-hidden-dim', '--hidden-dim', type=int, nargs='?', default=40,
+    parser.add_argument('-hidden-dim', '--hidden-dim', type=int, nargs='?', default=20,
                         help="HPO*. Global parameter that controls the network's dimensionalities")
-    parser.add_argument('-z-dim', '--z-dim', type=int, nargs='?', default=30,
+    parser.add_argument('-z-dim', '--z-dim', type=int, nargs='?', default=16,
                         help='HPO*. Latent space dimensionality')
-    parser.add_argument('-likelihood-scale', type=int, nargs='?', default=80,
+    parser.add_argument('-likelihood-scale', type=int, nargs='?', default=40,
                         help='HPO* .Scaling the log p( class | Z) of the variational autoencoder (cold posterior)')
 
     parser.add_argument('-lt', '--learning-type', type=str, nargs='?', default="supervised",
@@ -247,17 +247,19 @@ def parser_args(parser,device,script_dir):
                         help='HPO* Number of samples from the posterior predictive, set to minimum 30, unless performing some debugging. Only makes sense when using amortized inference with a guide function')
 
     parser.add_argument('-hpo', type=str2bool, nargs='?', default=False,
-                        help='<True> Performs Hyperparameter optimization with Ray Tune')
+                        help='<True> Performs Hyperparameter optimization with Ray Tune. Overwrites the Train/Valid/Test folders with the last result.\n'
+                             ' Extract the best HPO results using VegvisirUtils.build_hpo_config_dict(folder_name) ')
 
-    best_config = {1: "{}/BEST_hyperparameter_dict_blosum_vd15_z16.p".format(script_dir), #TODO: Make sure it is included in the standalone application
+    best_config = {0: "{}/BEST_hyperparameter_dict_blosum_supervised_vd15_z16.p".format(script_dir), #TODO: Make sure it is included in the standalone application
+                   1: "{}/BEST_hyperparameter_dict_blosum_semisupervised.p".format(script_dir), #TODO: Make sure it is included in the standalone application
                    2: None} #None makes use of the hyperparameter values given to argparse
-    parser.add_argument('-config-dict', nargs='?', default=best_config[1], type=str2None,
+    parser.add_argument('-config-dict', nargs='?', default=best_config[0], type=str2None,
                         help='Path to the HPO optimized hyperparameter dict. Overrules the previous hyperparameters marked as HPO*.\n'
                              'Set to None to use the values in the parser.',
                         gooey_options= {"label_color":"#ff33d2"})
 
     # Highlight: Evaluation modes
-    parser.add_argument('-train', type=str2bool, nargs='?', default=True, help='<True> Run the model over the training data '
+    parser.add_argument('-train', type=str2bool, nargs='?', default=False, help='<True> Run the model over the training data '
                                                                                '\n <False> Makes benchmarking plots (Functions migrated to Vegvisir_analysis) or loads previously trained model, if pargs.pretrained_model is not None')
     parser.add_argument('-validate', type=str2bool, nargs='?', default=False,
                         help='Evaluate the model on the validation dataset. Only needed for model design')
@@ -309,7 +311,7 @@ def parser_args(parser,device,script_dir):
     parser.add_argument('-save-all', type=str2bool, nargs='?', default=False,
                         help='<True> Saves every matrix output from the model. Not recommended'
                              '<False> Only saves a selection of model outputs necessary for benchmarking')
-    parser.add_argument('-plot-all', '--plot-all', type=str2bool, nargs='?', default=True,
+    parser.add_argument('-plot-all', '--plot-all', type=str2bool, nargs='?', default=False,
                         help='<True>: Plots all UMAPs and other computationally expensive plots. Do not use when args.k_folds > 1,\n'
                              ' it saturates the CPU and GPU memory\n'
                              '<False>: Only plots the computationally inexpensive ROC curves')
@@ -396,6 +398,11 @@ def parser_args(parser,device,script_dir):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vegvisir args",formatter_class=RawTextHelpFormatter)
     args = parser_args(parser,device,script_dir)
+
+    # VegvisirUtils.build_hpo_config_dict(hpo_folder="/home/dragon/drive/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset17_2024_10_16_22h39min35s293251ms_HPO_semisupervised_Icorehpo_encoding_5000_unobserved/HyperparamOptimization_results.tsv",
+    #                                     name="semisupervised")
+
+
     if args.train:
         main(args)
     else:

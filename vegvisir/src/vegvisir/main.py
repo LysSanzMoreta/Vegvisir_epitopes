@@ -6,7 +6,10 @@ Vegvisir (VAE): T-cell epitope classifier
 =======================
 """
 import json
+import logging
 import multiprocessing
+import os
+import shutil
 from argparse import Namespace
 from operator import is_not
 
@@ -30,6 +33,8 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
 
     print("Initiating Hyperparameter Optimization ....")
 
+    max_num_epochs = 60
+
     config1 = {
         "lr":tune.choice([1e-4,1e-3,1e-2]),
         "beta1": tune.choice([0.9,0.91,0.92,0.93,0.94]),
@@ -44,7 +49,7 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
         "encoding":tune.choice(["blosum"]),
         #"encoding":tune.choice(["blosum","onehot"]),
         "likelihood_scale":tune.choice(range(40,100,10)),
-        "num_epochs":tune.choice([60]),
+        "num_epochs":tune.choice([max_num_epochs]),
         "num_samples":tune.choice([30,40,50,60]),
         "hidden_dim":tune.choice(range(20,45,10)),
         "z_dim": tune.choice([2 * i for i in range(1, 20)]),
@@ -58,7 +63,7 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
 
 
     num_ray_samples = 100
-    max_num_epochs = 60
+
     scheduler = ASHAScheduler(
         metric="valid_loss",
         mode="min",
@@ -68,9 +73,17 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
     )
 
 
-    ray.init(runtime_env={"working_dir": "{}/vegvisir/src".format(dataset_info.script_dir),
-                          'excludes':["/vegvisir/data/","!/vegvisir/data/common_files/aminoacid_properties.txt"],
-                          })
+    excludes = ["vegvisir/data/{}/*".format(os.path.basename(f.path)) for f in os.scandir("{}/vegvisir/src/vegvisir/data".format(dataset_info.script_dir)) if f.is_dir() and os.path.basename(f.path) not in ["common_files"]]
+
+    excludes2 = ["vegvisir/data/common_files/{}".format(os.path.basename(f.path))for f in os.scandir("{}/vegvisir/src/vegvisir/data/common_files".format(dataset_info.script_dir)) if os.path.basename(f.path) not in ["aminoacid_properties.txt","allele_colors2.tsv","alleles_dict.txt"]]
+
+    ray.init(runtime_env={"working_dir": "{}/vegvisir/src/".format(dataset_info.script_dir),
+                          #'excludes':["!/vegvisir/data/common_files/aminoacid_properties.txt","/vegvisir/data/*"], #not working had to do it manually
+                          'excludes':excludes+excludes2, #"!/vegvisir/data/common_files"
+
+                          },
+            logging_level = logging.DEBUG
+             )
 
     if args.k_folds > 1:
         print("Initializing Hyperparameter Optimization with K-fold cross validation")
@@ -83,9 +96,9 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
     gpu_name = list(filter(partial(is_not, None), gpu_name))
     if gpu_name:
         print("GPU accelerator found!")
-        resources_dict = {"cpu":multiprocessing.cpu_count()-1,"gpu":1,gpu_name[0]:1}
+        resources_dict = {"cpu":multiprocessing.cpu_count()-10,"gpu":1,gpu_name[0]:1}
     else:
-        resources_dict = {"cpu":multiprocessing.cpu_count()-1,"gpu":0}
+        resources_dict = {"cpu":multiprocessing.cpu_count()-10,"gpu":0}
     result = tune.run(
         tune.with_parameters(train_fn, dataset_info=dataset_info,additional_info=additional_info,args=args),
         #resources_per_trial={"cpu":35,"gpu":1,"accelerator_type:RTX":1},
@@ -108,7 +121,8 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
 
     for key,val in best_trial_dict.items():
         if not isinstance(val,str):
-            best_trial_dict[key] = float(val)
+            if val is not None:
+                best_trial_dict[key] = float(val)
 
 
     json.dump(best_trial_dict, open("{}/Best_validation_loss.p".format(additional_info.results_dir), "w+"),indent=2)
@@ -123,7 +137,8 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
 
     for key, val in best_trial_dict.items():
         if not isinstance(val, str):
-            best_trial_dict[key] = float(val)
+            if val is not None:
+                best_trial_dict[key] = float(val)
 
     json.dump(best_trial_dict,open("{}/Best_validation_auc.p".format(additional_info.results_dir),"w+"),indent=2)
 

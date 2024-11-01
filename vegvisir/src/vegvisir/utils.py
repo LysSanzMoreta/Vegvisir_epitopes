@@ -7,6 +7,8 @@ Vegvisir (VAE): T-cell epitope classifier
 """
 import argparse
 import ast,warnings
+import json
+
 import Bio.Align
 import matplotlib
 from Bio.SeqUtils.IsoelectricPoint import IsoelectricPoint as IP
@@ -1962,6 +1964,44 @@ class SeabornFig2Grid():
     def _resize(self, evt=None):
         self.sg.fig.set_size_inches(self.fig.get_size_inches())
 
+def build_hpo_config_dict(hpo_folder:str= "/home/lys/Dropbox/PostDoc/vegvisir/PLOTS_Vegvisir_viral_dataset15_2024_01_15_13h59min02s913856ms_HPO_supervised_Icorehpo_encoding_DONOTDELETE/HyperparamOptimization_results.tsv",
+                          name:str=""):
+    """Extract the Hyperparameter optimization config dict from the HPO folder"""
+
+    pd.set_option('display.max_columns', None)
+    hpo_results = pd.read_csv(hpo_folder,sep="\t")
+
+    #hpo_results_sorted_valid_loss =  hpo_results.sort_values(by=['valid_loss'], ascending=True)
+    # print(hpo_results_sorted_valid_loss["valid_loss"])
+    # print(hpo_results_sorted_valid_loss["ROC_AUC_valid"])
+    hpo_results_sorted_valid_auc =  hpo_results.sort_values(by=['ROC_AUC_valid'], ascending=False).reset_index()
+
+    #print(hpo_results_sorted_valid_auc[["ROC_AUC_valid","valid_loss"]].head(20))
+
+    filter_col = [col for col in hpo_results_sorted_valid_auc if col.startswith('config')]
+    config_df = hpo_results_sorted_valid_auc[filter_col]
+    config_df.columns = [col.replace("config/","") for col in config_df.columns]
+
+    print(config_df[["lr","beta1","beta2","eps","weight_decay","clip_norm","lrd","z_dim","momentum","batch_size","encoding","likelihood_scale","num_epochs","num_samples","hidden_dim"]].head(20))
+
+
+    onehot_encoding = config_df[config_df["encoding"] == "onehot"].reset_index()
+    blosum_encoding = config_df[config_df["encoding"] == "blosum"].reset_index()
+
+
+    def save_best(config_df,idx_best,name=""):
+
+        #best_optimizer_config = config_df[["lr","beta1","beta2","eps","weight_decay","clip_norm","lrd","momentum"]].head(1).to_dict(orient="records")[0]
+        best_optimizer_config = config_df.loc[idx_best,["lr","beta1","beta2","eps","weight_decay","clip_norm","lrd","momentum"]].to_dict()
+        best_general_config = config_df.loc[idx_best,["batch_size", "encoding","likelihood_scale", "num_epochs", "num_samples", "hidden_dim","z_dim"]].to_dict()
+
+        best_hyper_param_dict = {"optimizer_config":best_optimizer_config,
+                                 "general_config":best_general_config}
+        json.dump(best_hyper_param_dict,open("BEST_hyperparameter_dict_{}.p".format(name),"w+"),indent=2)
+
+
+    #save_best(onehot_encoding,1,"onehot")
+    save_best(blosum_encoding,0,f"blosum_{name}")
 
 
 

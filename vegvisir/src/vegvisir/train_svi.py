@@ -1922,6 +1922,8 @@ def train_model(config=None,dataset_info=None,additional_info=None,args=None):
                 warnings.warn("Test == Valid for dataset7, since the test is diffused onto the train and validation")
             else:
                 print("Joining Training & validation datasets to perform testing...")
+
+
             train_idx = (train_idx.int() + valid_idx.int()).bool().to(args.device)
             epoch_loop(train_idx, test_idx, dataset_info, args, additional_info,mode="Test",config=config)
         else:
