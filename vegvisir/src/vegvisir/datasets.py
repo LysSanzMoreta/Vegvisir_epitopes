@@ -24,6 +24,7 @@ except:
 import scipy
 import torch
 from sklearn.cluster import DBSCAN
+#import vegvisir.nnalign as VegvisirNNalign
 import vegvisir.utils as VegvisirUtils
 #import vegvisir.similarities as VegvisirSimilarities
 import vegvisir.load_utils as VegvisirLoadUtils
@@ -56,20 +57,14 @@ DatasetInfo = namedtuple("DatasetInfo",["script_dir","storage_folder","data_arra
 DatasetDivision = namedtuple("DatasetDivision",["all","all_mask","positives","positives_mask","positives_idx","negatives","negatives_mask","negatives_idx","high_confidence_negatives",
                                                 "high_confidence_negatives_mask","high_conf_negatives_idx"])
 SimilarityResults = namedtuple("SimilarityResults",["positional_weights","percent_identity_mean","cosine_similarity_mean","kmers_pid_similarity","kmers_cosine_similarity"])
-dtype_dict = VegvisirUtils.return_dtype_dict()
 
-def get_data_folder_path():#TODO:Not needed
+
+def get_data_folder_path():
     """Extract the frozen file from pyinstaller"""
     # If running in a PyInstaller bundle
     if getattr(sys, 'frozen', False):
         # This is where PyInstaller stores the data
         storage_folder = sys._MEIPASS
-        a = os.path.abspath(os.path.join(os.path.dirname(__file__), "data"))
-        print("sys meipass")
-        print(storage_folder)
-        print("abspath")
-        print(a)
-        exit()
     else:
         # If running as a script, use the normal path
         #base_path = os.path.dirname(__file__)
@@ -81,11 +76,11 @@ def check_and_download_data(storage_folder):
     :param storage_folder: str Loaction of the data folder"""
     dir_name = '{}/common_files'.format(storage_folder) #/home/lys/Dropbox/PostDoc/vegvisir/dist/Vegvisir_GUI/_internal/vegvisir/data/common_files
 
+
     if not os.path.exists(storage_folder):
-        print(f"Data folder {storage_folder} does not exist, creating it")
-        VegvisirUtils.folders("data",storage_folder.replace("/data",""),overwrite=False)
-        VegvisirUtils.folders("data2",storage_folder.replace("/data",""),overwrite=False)
-        #VegvisirUtils.folders("common_files",storage_folder,overwrite=False)
+        print("Data folder does not exist, creating it")
+        VegvisirUtils.folders(storage_folder,overwrite=False)
+        VegvisirUtils.folders(dir_name,overwrite=False)
     download_url = "https://drive.google.com/drive/folders/1tPRGOJ0cQdLyW2GbdI2vnz1Sfr4RSKNf?usp=sharing"
     download_url2 = "https://drive.google.com/drive/folders/1kZScet33u6nC8eKURAAd1HYLUtbOyEP5?usp=sharing" #common_files
     download_url3 = "https://drive.google.com/drive/folders/14eUEgmolm-RnpyGlqy1umAzIXl6uHtuf?usp=sharing" #anchor_info_content
@@ -147,8 +142,8 @@ def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
                  "viral_dataset16":viral_dataset16,
                  "viral_dataset17":viral_dataset17,
                  }
-    storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
-
+    #storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data")) #finds the /data folder of the repository
+    storage_folder = get_data_folder_path()
 
     #Highlight: Check if the data is there, otherwise download it
     check_and_download_data(storage_folder)
@@ -3324,29 +3319,28 @@ def process_data(data:pd.DataFrame,args:namedtuple,storage_folder:str,script_dir
     data_array_blosum_encoding_mask = np.broadcast_to(epitopes_mask[:, None, :, None], (n_data, 2, seq_max_len,corrected_aa_types)).copy()  # I do it like this in case the padding is not represented as 0, otherwise just use bool. Note: The first row of the second dimension is a dummy
     #distance_pid_cosine = VegvisirUtils.euclidean_2d_norm(percent_identity_mean,cosine_similarity_mean) #TODO: What to do with this?
 
-
     data_info = DatasetInfo(script_dir=script_dir,
                             storage_folder=storage_folder,
                             data_array_raw=data_array_raw,
-                            data_array_int=torch.from_numpy(data_array_int.astype(dtype_dict[args.precision][1])),
+                            data_array_int=torch.from_numpy(data_array_int),
                             data_array_int_mask=epitopes_mask,
-                            data_array_blosum_encoding=torch.from_numpy(data_array_blosum_encoding.astype(dtype_dict[args.precision][1])),
-                            data_array_blosum_encoding_mask=torch.from_numpy(data_array_blosum_encoding_mask.astype(dtype_dict[args.precision][1])),
-                            data_array_onehot_encoding=torch.from_numpy(data_array_onehot_encoding.astype(dtype_dict[args.precision][1])),
-                            data_array_onehot_encoding_mask=torch.from_numpy(data_array_blosum_encoding_mask.astype(dtype_dict[args.precision][1])),
-                            data_array_blosum_norm=torch.from_numpy(data_array_blosum_norm.astype(dtype_dict[args.precision][1])),
+                            data_array_blosum_encoding=torch.from_numpy(data_array_blosum_encoding),
+                            data_array_blosum_encoding_mask=torch.from_numpy(data_array_blosum_encoding_mask),
+                            data_array_onehot_encoding=torch.from_numpy(data_array_onehot_encoding),
+                            data_array_onehot_encoding_mask=torch.from_numpy(data_array_blosum_encoding_mask),
+                            data_array_blosum_norm=torch.from_numpy(data_array_blosum_norm),
                             blosum=blosum_array,
                             n_data=n_data,
                             seq_max_len = seq_max_len,
                             max_len=[seq_max_len + len(features_names) if features_names is not None else seq_max_len][0],
                             corrected_aa_types = corrected_aa_types,
                             input_dim=corrected_aa_types,
-                            positional_weights=torch.from_numpy(all_sim_results.positional_weights.astype(dtype_dict[args.precision][1])),
-                            positional_weights_mask=torch.from_numpy(positional_weights_mask.astype(dtype_dict[args.precision][1])),
-                            percent_identity_mean= all_sim_results.percent_identity_mean.astype(dtype_dict[args.precision][1]) if all_sim_results.percent_identity_mean is not None else None,
-                            cosine_similarity_mean= all_sim_results.cosine_similarity_mean.astype(dtype_dict[args.precision][1]) if all_sim_results.cosine_similarity_mean is not None else None,
-                            kmers_pid_similarity=all_sim_results.kmers_pid_similarity.astype(dtype_dict[args.precision][1]) if all_sim_results.kmers_pid_similarity is not None else None,
-                            kmers_cosine_similarity=all_sim_results.kmers_cosine_similarity.astype(dtype_dict[args.precision][1]) if all_sim_results.kmers_cosine_similarity is not None else None,
+                            positional_weights=torch.from_numpy(all_sim_results.positional_weights),
+                            positional_weights_mask=torch.from_numpy(positional_weights_mask),
+                            percent_identity_mean= all_sim_results.percent_identity_mean,
+                            cosine_similarity_mean= all_sim_results.cosine_similarity_mean,
+                            kmers_pid_similarity=all_sim_results.kmers_pid_similarity,
+                            kmers_cosine_similarity=all_sim_results.kmers_cosine_similarity,
                             features_names = features_names,
                             unique_lens=unique_lens,
                             blosum_weighted=blosum_weighted,

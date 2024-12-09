@@ -330,7 +330,7 @@ class VegvisirModel5a_supervised_no_decoder(VEGVISIRModelClass,PyroModule):
             class_logits = self.classifier_model(latent_space, None)
             class_logits = self.logsoftmax(class_logits)  # [N,num_classes]
             pyro.deterministic("class_logits", class_logits, event_dim=1)
-            with pyro.poutine.mask(mask=confidence_mask_true):
+            with pyro.poutine.scale(None,self.likelihood_scale):
                 pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=[None if sample else true_labels][0])  # [N,]
 
         return {"attn_weights": attn_weights}
@@ -454,7 +454,7 @@ class VegvisirModel5a_supervised(VEGVISIRModelClass,PyroModule):
             pyro.deterministic("class_logits", class_logits, event_dim=1) #should be event_dim = 1
             #with pyro.poutine.mask(mask=confidence_mask_true):
                 #pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=None if sample else true_labels)  # [N,]
-            with pyro.poutine.scale(None,self.likelihood_scale):
+            with pyro.poutine.scale(None,self.likelihood_scale): #TODO: Implement https://pyro.ai/examples/custom_objectives.html
                 pyro.sample("predictions", dist.Categorical(logits=class_logits).to_event(1),obs=None if sample else true_labels) #TODO: removed .to_event(1)
 
         return {"attn_weights": outputnn.attn_weights,

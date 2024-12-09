@@ -250,7 +250,7 @@ def parser_args(parser,device,script_dir):
                         help='<True> Performs Hyperparameter optimization with Ray Tune. Overwrites the Train/Valid/Test folders with the last result.\n'
                              ' Extract the best HPO results using VegvisirUtils.build_hpo_config_dict(folder_name) ')
 
-    best_config = {0: "{}/BEST_hyperparameter_dict_blosum_supervised_vd15_z16.p".format(script_dir), #TODO: Make sure it is included in the standalone application
+    best_config = {0: "{}/BEST_hyperparameter_dict_blosum_supervised_vd15_z16.p".format(script_dir), #TODO: Make sure it is included in the standalone application, move to data/hpo ?
                    1: "{}/BEST_hyperparameter_dict_blosum_semisupervised.p".format(script_dir), #TODO: Make sure it is included in the standalone application
                    2: None} #None makes use of the hyperparameter values given to argparse
     parser.add_argument('-config-dict', nargs='?', default=best_config[0], type=str2None,
@@ -259,7 +259,7 @@ def parser_args(parser,device,script_dir):
                         gooey_options= {"label_color":"#ff33d2"})
 
     # Highlight: Evaluation modes
-    parser.add_argument('-train', type=str2bool, nargs='?', default=False, help='<True> Run the model over the training data '
+    parser.add_argument('-train', type=str2bool, nargs='?', default=True, help='<True> Run the model over the training data '
                                                                                '\n <False> Makes benchmarking plots (Functions migrated to Vegvisir_analysis) or loads previously trained model, if pargs.pretrained_model is not None')
     parser.add_argument('-validate', type=str2bool, nargs='?', default=False,
                         help='Evaluate the model on the validation dataset. Only needed for model design')
@@ -293,8 +293,8 @@ def parser_args(parser,device,script_dir):
                         help='Path to text file containing sequences to change their immunogenicity')
 
     #/home/dragon/drive/lys/Dropbox/PostDoc/vegvisir/vegvisir/src/vegvisir/data/benchmark_datasets/Icore/variable_length_Icore_sequences_viral_dataset15_TRAIN.tsv
-    # Highlight: Re-training the model
-    unobserved_sequences = {0: f"{script_dir}/vegvisir/src/vegvisir/data/custom_dataset/unobserved_grouped_alleles_train.tsv",
+    # Highlight: Re-training the model/Using your own sequences
+    unobserved_sequences = {0: f"{script_dir}/vegvisir/src/vegvisir/data/custom_dataset/unobserved_grouped_alleles_train.tsv", #TODO: Move to /data/immunomodulation and upload to drive
                             1: None,
                             2: f"{script_dir}/vegvisir/src/vegvisir/data/benchmark_datasets/Icore/random_variable_length_Icore_sequences_viral_dataset9.tsv",
                             3: f"{script_dir}/vegvisir/src/vegvisir/data/benchmark_datasets/Icore/variable_length_Icore_sequences_viral_dataset9_TRAIN.tsv",
@@ -403,7 +403,7 @@ if __name__ == "__main__":
     #                                     name="semisupervised")
 
 
-    if args.train:
+    if args.train and args.pretrained_model is None:
         main(args)
     else:
         VegvisirAnalysis.analysis_models(args)
