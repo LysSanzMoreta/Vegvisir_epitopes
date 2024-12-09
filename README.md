@@ -83,6 +83,7 @@ python Vegvisir_example.py
       -validate True 
       -k-folds 5 
       -test False 
+      -learning-type "supervised"
       -generate False 
       -immunomodulate False 
       -config-dict BEST_hyperparameter_dict_blosum_supervised_vd15_z16.p # best HPO configuration for dataset in the paper, might want to re-run optimization for your dataset
@@ -95,6 +96,7 @@ python Vegvisir_example.py
       -validate True 
       -k-folds 5 
       -test False 
+      -learning-type "supervised"
       -generate False 
       -immunomodulate False
       -config-dict "BEST_hyperparameter_dict_blosum_supervised_vd15_z16.p" # best HPO configuration for viral_dataset15
@@ -110,6 +112,7 @@ python Vegvisir_example.py
       -train True 
       -validate False 
       -test True 
+      -learning-type "supervised"
       -generate False 
       -immunomodulate False
 ```
@@ -127,6 +130,7 @@ python Vegvisir_example.py
       -train False 
       -validate False 
       -test True 
+      -learning-type "supervised"
       -generate False 
       -immunomodulate False
 ```
@@ -140,6 +144,7 @@ python Vegvisir_example.py
       -train False 
       -validate False 
       -test True 
+      -learning-type "supervised"
       -generate False 
       -immunomodulate False
 ```
@@ -155,6 +160,7 @@ python Vegvisir_example.py
       -train False 
       -validate False 
       -test True 
+      -learning-type "supervised"
       -generate True 
       -immunomodulate False
 ```
@@ -169,6 +175,7 @@ python Vegvisir_example.py
       -train False 
       -validate False 
       -test True 
+      -learning-type "supervised"
       -generate False 
       -immunomodulate True
 ```
@@ -178,6 +185,20 @@ python Vegvisir_example.py
    
     Please train the model first  using Hyperparameter optimization by setting the desired dataset, model and args.hpo == True. 
     At the moment it tries to find if the GPU name starts with "accelerator", please change that if your device appears under a different name when looking under *ray.available_resources()*
+
+python Vegvisir_example.py 
+      -dataset-name "custom_dataset" # do not change the name here, it makes it load the right function
+      -train_path "train_dataset.tsv"  # your train dataset (see format above)
+      -test-path "test_dataset.tsv"   # your test dataset (see format above)
+      -validate True
+      -test False
+      -hpo True
+      -learning-type "supervised"
+      -generate False 
+      -immunomodulate False
+```
+
+
 
 > OUTPUT FOLDERS/FILES MEANING
 
@@ -190,7 +211,7 @@ PLOTS_Vegvisir...
 │   error_loss_....png # -elbo
 │ 
 │ 
-│───Scripts: #The store the python scripts of the model, train configurations etc
+│───Scripts: #They store the python scripts of the model, train configurations etc
 │       GuidesFunctions.py
 │       ...
 └───Test:   
