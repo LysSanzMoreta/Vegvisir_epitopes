@@ -6,13 +6,24 @@ If you find this library useful please cite:
 
 ```
 
+@incollection{vegvisir024,
+  author    = {Lys Sanz Moreta, Ibel Carri, Heli M.García Alvarez and Morten Nielsen},
+  title     = {Vegvisir: Probabilistic model (VAE) for viral T-cell epitope prediction},
+  booktitle = {Machine Learning, Optimization, and Data Science: 10th International Conference, LOD 2024},
+  editor    = {Giuseppe Nicosia, Varun Ojha, Sven Giesselbach,M. Panos Pardalos, Renato Umeton},
+  year      = {2024},
+  publisher = {Springer Nature},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {15508},
+  pages     = {?--?},
+  doi       = {?},
+}
+
 ```
-
-
 
 >INSTALLATION GUIDELINES:
 
-   **Docker**: Find the docker files under the  Docker_images folder
+   **Docker**: Find the docker files under the  -Docker_images- folder
 
    **Isolated Python environment**: `micromamba env create -n vegvisir -f env.yaml` where env.yaml is located in Docker_images/Python_3.*/env.yaml
 
@@ -26,7 +37,7 @@ If you find this library useful please cite:
    - args.dataset_name: `viral_dataset15`
    - args.config_dict: `BEST_hyperparameter_dict_blosum_vd15_z16.p` #best HPO configuration for the supervised dataset
 
-3.If the necessary files are not available in the *vegvisir/src/data* folder, they will be downloaded there. If the download fails, these are the links:
+3.If the necessary files are not already available in the *vegvisir/src/data* folder, they will be downloaded there. If the download fails, these are the links:
 
    - ancho-info-content: https://drive.google.com/drive/folders/1kZScet33u6nC8eKURAAd1HYLUtbOyEP5?usp=sharing
    - common-files: https://drive.google.com/drive/folders/1kZScet33u6nC8eKURAAd1HYLUtbOyEP5?usp=sharing
@@ -48,16 +59,16 @@ If you find this library useful please cite:
 | FAYGKRHKDML	 | 0	      | 5.0	       | HLA-C0602	 | FYGKRHKDML	       | 0	                | 0	                | 0	                                  | 1	                               | 5	              | False	    | 0.0	                   | 0.0	                          | 0        |
 
 
-**REMINDER**: The minimum compulsory column is **Icore** or **Icore_non_anchor** . WARNING: If the other columns are not provided they will be assigned to zeroes, random values etc !! 
-Therefore the accuracy metrics will be meaningless
+**REMINDER**: The minimum compulsory column is **Icore** or **Icore_non_anchor** . **WARNING!!: If the other columns are not provided they will be assigned to zeroes, random values etc !! 
+Therefore the accuracy metrics calculated for those will be meaningless.**
 
 Meaning of input columns:
 
    - *Icore*: Epitope sequence selected as binder by NetMHCpan
    - *Icore-non-anchor*: Icore sequence whose MHC conserved residues have been extracted
    - *target*: True label as marked by the database
-   - *partition*: Value necessary for k-fold 
-   - *target_corrected*: Target value adjusted according to the ratio between Assay_number_of_subjects_responded and Assay_number_of_subjects_tested
+   - *partition*: Value necessary for performing k-fold validation 
+   - *target_corrected*: Target value adjusted according to the ratio between Assay_number_of_subjects_responded and Assay_number_of_subjects_tested (names derived from the IDB database)
    - *allele_encoded*: Number that indicates the tested HLA type for that epitope in an integer-encoded manner (according to some dictionary of choice dummy_dict = {"HLA:00002":0,"HLA:00568":1, ....})
    - *training*: True indicates that the epitope will be used for training, else is in the test dataset
    - *immunodominance_score*: Ratio between Assay_number_of_subjects_responded and Assay_number_of_subjects_tested
@@ -186,6 +197,7 @@ python Vegvisir_example.py
     Please train the model first  using Hyperparameter optimization by setting the desired dataset, model and args.hpo == True. 
     At the moment it tries to find if the GPU name starts with "accelerator", please change that if your device appears under a different name when looking under *ray.available_resources()*
 
+```python
 python Vegvisir_example.py 
       -dataset-name "custom_dataset" # do not change the name here, it makes it load the right function
       -train_path "train_dataset.tsv"  # your train dataset (see format above)
@@ -207,11 +219,11 @@ After running any instance of the model, it will create a folder named **PLOTS_V
 ```
 PLOTS_Vegvisir...
 │   commandline_args.txt #constains the args of the run
-│   accuracies_....png # binary comparison accuracies (not useful for anything other than quick monitoring)
-│   error_loss_....png # -elbo
+│   accuracies_....png #binary comparison accuracies (not useful for anything other than quick monitoring)
+│   error_loss_....png #-elbo
 │ 
 │ 
-│───Scripts: #They store the python scripts of the model, train configurations etc
+│───Scripts:  #They store the python scripts of the model, train configurations etc
 │       GuidesFunctions.py
 │       ...
 └───Test:   
@@ -228,9 +240,17 @@ PLOTS_Vegvisir...
       model_outputs_train_test.p
 ```
 
-Some of the outputs are labelled with a suffix "HIGH_CONFIDENCE", these are the result of manually assigning some of the 
-data points as having a highly confident label (i.e they were tested more often with similar results). They are not that many
-of these data points and the dataset is already small enough, so the metrics/stadistics computed over them are not very meaningful.
 
-Recall that in the paper all metrics are computed over the regression scores (logits) and not the
-binary outputs, to avoid issues with threshold finding.
+
+Some of the outputs are labelled with a suffix "HIGH_CONFIDENCE", these are the result of manually assigning some of the 
+data points as having a highly confident label (i.e they seemed to have been experimentally tested more often with similar results). They are not that many
+of these data points and the dataset is already small enough, so the metrics/stadistics computed over them are not very meaningful. If you set 
+the *confidence_score* for a data point higher than 0.7 (in a scale from 0-1), then it would be put into the "High confidence class".
+
+Recall that in the paper all metrics are computed over the regression scores (average logits) and not the
+binary outputs, to avoid issues with setting a threshold.
+
+
+Do not hesitate to submit an issue/ask questions if something is not clear. 
+
+Leave a star if this repository is useful for your research

@@ -116,7 +116,6 @@ def redefine_class_proportions(dataset,n_positives,n_negatives,positives_proport
             return dataset
     return dataset
 
-
 def trainevaltest_split_kfolds(data,args,results_dir,seq_max_len,max_len,features_names,partition_test,method="predefined_partitions"):
     """Perform kfolds partitions division and test split"""
 

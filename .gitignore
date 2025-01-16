@@ -88,3 +88,5 @@ __pycache__/
 run_HPO_ss2.sh
 
 run_HPO_ss.sh
+
+vegvisir/src/vegvisir/.idea/
