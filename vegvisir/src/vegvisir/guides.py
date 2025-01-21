@@ -21,7 +21,7 @@ from collections import namedtuple
 OutputNN = namedtuple("OutputNN",[])
 
 class VEGVISIRGUIDES(EasyGuide):
-    def __init__(self,vegvisir_model,model_load, Vegvisir):
+    def __init__(self,vegvisir_model:torch.nn.Module,model_load:namedtuple, Vegvisir):
         """The guide provides a valid joint probability density over all the latent random variables in the model or variational distribution."""
         super(VEGVISIRGUIDES, self).__init__(vegvisir_model)
         #self.guide_type = ModelLoad.args.select_guide

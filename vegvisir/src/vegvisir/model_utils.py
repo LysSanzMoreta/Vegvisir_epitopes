@@ -8,6 +8,7 @@ Vegvisir (VAE): T-cell epitope classifier
 import time
 import torch.nn as nn
 import torch
+from typing import Union
 from pyro.nn import PyroModule
 import  vegvisir
 from vegvisir.utils import extract_windows_vectorized
@@ -24,7 +25,7 @@ class Attention1(nn.Module):
         -https://sebastianraschka.com/blog/2023/self-attention-from-scratch.html
     '''
 
-    def __init__(self,aa_types,hidden_dim,embedding_dim ,device, attn_dropout=0.1):
+    def __init__(self,aa_types:int,hidden_dim:int,embedding_dim:int ,device:str, attn_dropout:float=0.1):
         super().__init__()
         self.temperature = self.hidden_size ** 0.5 #d_k**0.5, where d_k == hidden_size
         self.dropout = nn.Dropout(attn_dropout)
@@ -36,7 +37,7 @@ class Attention1(nn.Module):
         self.weight_k = nn.Parameter(torch.randn((self.embedding_dim,self.hidden_dim)),requires_grad=True).to(device)
         self.weight_v = nn.Parameter(torch.randn((self.embedding_dim,self.hidden_dim)),requires_grad=True).to(device)
 
-    def forward(self, input, mask=None):
+    def forward(self, input:torch.Tensor, mask:Union[torch.Tensor,None]=None):
 
         input = self.embedding(input)
 

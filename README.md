@@ -6,7 +6,7 @@ If you find this library useful please cite:
 
 ```
 
-@incollection{vegvisir024,
+@incollection{vegvisir2024,
   author    = {Lys Sanz Moreta, Ibel Carri, Heli M.García Alvarez and Morten Nielsen},
   title     = {Vegvisir: Probabilistic model (VAE) for viral T-cell epitope prediction},
   booktitle = {Machine Learning, Optimization, and Data Science: 10th International Conference, LOD 2024},
@@ -17,6 +17,7 @@ If you find this library useful please cite:
   volume    = {15508},
   pages     = {?--?},
   doi       = {?},
+  url       = {https://link.springer.com/book/9783031824807},
 }
 
 ```
@@ -251,6 +252,8 @@ Recall that in the paper all metrics are computed over the regression scores (av
 binary outputs, to avoid issues with setting a threshold.
 
 
-Do not hesitate to submit an issue/ask questions if something is not clear. 
+#########################################################################################3
+
+Do not hesitate to submit an issue/ask questions if something is not clear or some bugs are found.
 
 Leave a star if this repository is useful for your research

@@ -71,7 +71,7 @@ def get_data_folder_path():
         storage_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "data"))
     return storage_folder
 
-def check_and_download_data(storage_folder):
+def check_and_download_data(storage_folder:str):
     """Checks the existance of the data files, otherwise it downloads them
     :param storage_folder: str Loaction of the data folder"""
     dir_name = '{}/common_files'.format(storage_folder) #/home/lys/Dropbox/PostDoc/vegvisir/dist/Vegvisir_GUI/_internal/vegvisir/data/common_files
@@ -114,7 +114,7 @@ def check_and_download_data(storage_folder):
         gdown.download_folder(download_url, output='{}/anchor_info_content'.format(storage_folder), quiet=True,
                               use_cookies=False, remaining_ok=True)
 
-def select_dataset(dataset_name,script_dir,args,results_dir,update=True):
+def select_dataset(dataset_name:str,script_dir:str,args:namedtuple,results_dir:str,update:bool=True):
     """Selects from available datasets
     :param dataset_name: dataset of choice
     :param script_dir: Path from where the scriptis being executed
@@ -2418,7 +2418,7 @@ def data_class_division(array: np.array,array_mask:np.ndarray,idx:np.ndarray,lab
                                        high_conf_negatives_idx=high_conf_negatives_idx)
     return data_subdivision
 
-def build_exploration_folders(args,storage_folder,filters_dict):
+def build_exploration_folders(args:namedtuple,storage_folder:str,filters_dict:dict):
     """
     Creates folders where to store plots
     :param namedtuple args:
@@ -2462,7 +2462,7 @@ def build_exploration_folders(args,storage_folder,filters_dict):
         VegvisirUtils.folders("negatives","{}/{}/similarities/{}/{}/same_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
         VegvisirUtils.folders("highconfnegatives","{}/{}/similarities/{}/{}/same_allele/diff_len/neighbours1".format(storage_folder,args.dataset_name,args.sequence_type, mode),overwrite=False)
 
-def sample_datapoints_mi(a,b):
+def sample_datapoints_mi(a:np.ndarray,b:np.ndarray):
     """Calculate the number of data points to subsample to equal both classes
     :param np.array a
     :param np.array b
@@ -3386,7 +3386,7 @@ def process_data(data:pd.DataFrame,args:namedtuple,storage_folder:str,script_dir
 #     exit()
 #     VegvisirNNalign.run_nnalign(args,storage_folder)
 
-def set_confidence_score(data):
+def set_confidence_score(data:pd.DataFrame):
     """Assign a confidenc score to the label/class each data point according to degree of testing that the data
      point has been gone through
      :param pd.DataFrame data

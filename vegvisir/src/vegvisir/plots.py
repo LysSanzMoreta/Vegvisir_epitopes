@@ -14,9 +14,7 @@ from collections import defaultdict
 from glob import glob
 from pathlib import Path
 from typing import Union
-
 import dill
-
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.colors import Normalize, BoundaryNorm, LinearSegmentedColormap
@@ -950,7 +948,7 @@ def plot_heatmap(array:np.ndarray, title,file_name):
     plt.clf()
     plt.close(fig)
 
-def plot_logos(sequences_list,results_dir,filename=""):
+def plot_logos(sequences_list:list,results_dir:str,filename:str=""):
     """
     Notes:
     -Logomaker docs: https://github.com/jbkinney/logomaker/blob/master/logomaker/examples/logos_from_datafiles.ipynb
@@ -978,7 +976,7 @@ def plot_logos(sequences_list,results_dir,filename=""):
     logomaker.Logo(ww_counts_df,color_scheme="chemistry")
     plt.savefig("{}/Logos{}.png".format(results_dir,filename))
 
-def plot_umap1(array,labels,storage_folder,args,title_name,file_name):
+def plot_umap1(array:np.ndarray,labels:list,storage_folder:str,args:namedtuple,title_name:str,file_name:str):
     from matplotlib.colors import ListedColormap
     print("Plotting UMAP ---")
     unique = np.unique(labels)
@@ -1005,7 +1003,7 @@ def plot_umap1(array,labels,storage_folder,args,title_name,file_name):
     plt.clf()
     plt.close(fig)
 
-def plot_loss(train_loss,valid_loss,epochs_list,fold,results_dir):
+def plot_loss(train_loss:list,valid_loss:list,epochs_list:list,fold:str,results_dir:str):
     """Plots the model's error loss
     :param list train_loss: list of accumulated error losses during training
     :param list valid_loss: list of accumulated error losses during validation
@@ -1034,7 +1032,7 @@ def plot_loss(train_loss,valid_loss,epochs_list,fold,results_dir):
         plt.close(fig)
         plt.clf()
 
-def plot_accuracy(train_accuracies,valid_accuracies,epochs_list,mode,results_dir):
+def plot_accuracy(train_accuracies: Union[dict,list],valid_accuracies: Union[dict,list],epochs_list:list,mode:str,results_dir:str):
     """Plots the model's accuracies, both for target label and for sequence reconstruction loss
     :param list train_elbo: list of accumulated error losses during training
     :param str results_dict: path to results directory

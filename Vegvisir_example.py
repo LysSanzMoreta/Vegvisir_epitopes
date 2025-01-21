@@ -388,8 +388,7 @@ def parser_args(parser,device,script_dir):
             args_dict["immunomodulate"] = args.immunomodulate
             args_dict["train_path"] = args.train_path
             args_dict["test_path"] = args.test_path
-            warnings.warn(
-                "Overriding some of your current args except <dataset_name>,<sequence_type>,<num_obs_classes>,<num_classes>,<generate>,<iimunomodulate> ...")
+            warnings.warn("Overriding some of your current args except <dataset_name>,<sequence_type>,<num_obs_classes>,<num_classes>,<generate>,<iimunomodulate> ...")
             args = Namespace(**args_dict)
 
     return args

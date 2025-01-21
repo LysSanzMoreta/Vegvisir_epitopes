@@ -14,7 +14,7 @@ from Bio.Seq import Seq
 from sklearn.metrics import mutual_info_score
 
 
-def create_fasta_file(seq_list,ids,file_name,results_dir,dataset_name):
+def create_fasta_file(seq_list:list,ids:list,file_name:str,results_dir:str,dataset_name:str):
     print("Fasta file does not exist, creating it")
     record_list = []
     for seq,id in zip(seq_list,ids):
@@ -24,7 +24,7 @@ def create_fasta_file(seq_list,ids,file_name,results_dir,dataset_name):
     SeqIO.write(record_list,"{}/{}/{}.fasta".format(results_dir,dataset_name,file_name),"fasta")
 
 
-def calculate_mutual_information(seq_list,ids,max_len,mode,results_dir,dataset_name):
+def calculate_mutual_information(seq_list:list,ids:list,max_len:int,mode:str,results_dir:str,dataset_name:str):
 
     if not os.path.exists("{}/{}/{}.fasta".format(results_dir,dataset_name,mode)):
         create_fasta_file(seq_list,ids,mode,results_dir,dataset_name)

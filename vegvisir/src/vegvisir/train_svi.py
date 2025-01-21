@@ -52,7 +52,7 @@ OutputProcessing = namedtuple("OutputProcessing", ["train_predictive_samples_dic
                                                    ])
 
 dtype_dict = VegvisirUtils.return_dtype_dict()
-def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
+def train_loop(svi,Vegvisir:torch.nn.Module,guide:pyro.contrib.easyguide.EasyGuide,data_loader, args,model_load,epoch):
     """Regular batch training
     :param pyro.infer svi
     :param nn.Module,PyroModule Vegvisir: Neural net architecture
@@ -223,7 +223,7 @@ def train_loop(svi,Vegvisir,guide,data_loader, args,model_load,epoch):
                         "latent_z": latent_arr,
                         }
     return train_loss,target_accuracy,predictions_dict,latent_arr, reconstruction_accuracies_dict
-def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
+def valid_loop(svi,Vegvisir:torch.nn.Module,guide:pyro.contrib.easyguide, data_loader:torch.utils.data.DataLoader, args:namedtuple,model_load:namedtuple,epoch):
     """
     Validation/Test loop
     :param svi: pyro infer engine
@@ -386,7 +386,7 @@ def valid_loop(svi,Vegvisir,guide, data_loader, args,model_load,epoch):
                         }
 
     return valid_loss,target_accuracy,predictions_dict,latent_arr, reconstruction_accuracies_dict
-def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
+def sample_loop(svi, Vegvisir:torch.nn.Module,guide:pyro.contrib.easyguide, data_loader:torch.utils.data.DataLoader, args:namedtuple, model_load:namedtuple):
     """
     Sampling from the posterior distribution
     :param svi: pyro infer engine
@@ -576,7 +576,7 @@ def sample_loop(svi, Vegvisir, guide, data_loader, args, model_load):
                         "latent_samples":latent_spaces_samples_arr #all samples from Z
                         }
     return sample_loss, target_accuracy, predictions_dict, latent_observation_arr, reconstruction_accuracies_dict
-def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_info, additional_info,
+def generate_loop(svi, Vegvisir:torch.nn.Module,guide:pyro.contrib.easyguide, data_loader:torch.utils.data.DataLoader, args:namedtuple, model_load:namedtuple, dataset_info, additional_info,
                   train_predictive_samples_dict): #TODO: Merge with immunomodulation loop
     """
     Generation of new sequences from the latent posterior distribution
@@ -869,7 +869,7 @@ def generate_loop(svi, Vegvisir, guide, data_loader, args, model_load, dataset_i
     gc.collect()
 
     return generated_out_dict, latent_space
-def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,dataset_info,additional_info,train_predictive_samples_dict):
+def immunomodulation_loop(svi, Vegvisir:torch.nn.Module,guide:pyro.contrib.easyguide, data_loader:torch.utils.data.DataLoader, args:namedtuple, model_load:namedtuple,dataset_info,additional_info,train_predictive_samples_dict):
     """
     Prediction of the latent representation for the given sequences and generation of new sequences
     from the latent posterior distribution given those predicted latent repretation
@@ -918,7 +918,7 @@ def immunomodulation_loop(svi, Vegvisir, guide, data_loader, args, model_load,da
     custom_features_dicts = VegvisirUtils.build_features_dicts(dataset_info)
     aminoacids_dict_reversed = custom_features_dicts["aminoacids_dict_reversed"]
     train_dataset = torch.concatenate([batch_data["batch_data_int"][:, 1].squeeze(1) for batch_data in data_loader],dim=0).detach().cpu().numpy()
-    # train_raw = np.vectorize(aminoacids_dict_reversed.get)(train_dataset)
+    train_raw = np.vectorize(aminoacids_dict_reversed.get)(train_dataset)
     VegvisirPlots.plot_logos(list(map(lambda seq: "{}".format("".join(seq).replace("#","-")), train_raw.tolist())), additional_info.results_dir, "_TRAIN_raw")
 
     generated_out_dict= defaultdict(lambda: list())
@@ -1198,18 +1198,17 @@ def select_model(model_load:namedtuple, results_dir:str, fold:int, args:namedtup
     print(args.learning_type )
     if model_load.seq_max_len == model_load.max_len:
         if args.learning_type == "supervised":
-            vegvisir_model = VegvisirModels.VegvisirModel5a_supervised(model_load)
+            vegvisir_model = VegvisirModels.VegvisirModel_supervised(model_load)
             #vegvisir_model = VegvisirModels.VegvisirModel5a_supervised_blosum_weighted(model_load)
         elif args.learning_type == "unsupervised":
-            vegvisir_model = VegvisirModels.VegvisirModel5a_unsupervised(model_load)
+            vegvisir_model = VegvisirModels.VegvisirModel_unsupervised(model_load)
         elif args.learning_type == "semisupervised":
-            vegvisir_model = VegvisirModels.VegvisirModel5a_semisupervised(model_load)
+            vegvisir_model = VegvisirModels.VegvisirModel_semisupervised(model_load)
         elif args.learning_type == "supervised_no_decoder":
-            vegvisir_model = VegvisirModels.VegvisirModel5a_supervised_no_decoder(model_load)
+            vegvisir_model = VegvisirModels.VegvisirModel_supervised_no_decoder(model_load)
     else:
         print("Setting to default supervised mode for blosum encoded sequences")
-
-        vegvisir_model = VegvisirModels.VegvisirModel5a_supervised(model_load)
+        vegvisir_model = VegvisirModels.VegvisirModel_supervised(model_load)
     if fold == 0 or fold == "all":
         text_file = open("{}/Hyperparameters.txt".format(results_dir), "a")
         text_file.write("Model Class:  {} \n".format(vegvisir_model.get_class()))

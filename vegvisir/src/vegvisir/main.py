@@ -24,8 +24,7 @@ from functools import partial
 
 AdditionalInfo = namedtuple("AdditionalInfo",["results_dir"])
 
-
-def hyperparameter_optimization(dataset_info,additional_info,args):
+def hyperparameter_optimization(dataset_info:namedtuple,additional_info:namedtuple,args:namedtuple):
     """Initiates Hyperparameter search with Ray-tune
     Notes:
         -Adam parameters: https://www.kdnuggets.com/2022/12/tuning-adam-optimizer-parameters-pytorch.html
@@ -153,7 +152,7 @@ def hyperparameter_optimization(dataset_info,additional_info,args):
 
 def run(dataset_info,results_dir,args):
     """Execute K-fold cross validation over the processed dataset"""
-    additional_info = AdditionalInfo(results_dir=results_dir)
+    additional_info = AdditionalInfo(results_dir=results_dir) #TODO: Simply "update" dataset_info
 
     if args.hpo:
         hyperparameter_optimization(dataset_info, additional_info, args)
