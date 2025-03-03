@@ -37,6 +37,7 @@ import vegvisir.guides as VegvisirGuides
 import vegvisir.mutual_information as VegvisirMI
 from ray.air import session #https://stackoverflow.com/questions/77785794/importerror-cannot-import-name-checkpoint-from-ray-air
 from ray.train import Checkpoint
+from typing import Union
 
 ModelLoad = namedtuple("ModelLoad",["args","max_len","seq_max_len","n_data","input_dim","aa_types","blosum","blosum_weighted","class_weights"])
 minidatasetinfo = namedtuple("minidatasetinfo", ["seq_max_len", "corrected_aa_types","num_classes","num_obs_classes","storage_folder"])
@@ -1244,7 +1245,7 @@ def config_build(args:namedtuple,results_dir:str):
         json.dump(config, open('{}/params_dict.txt'.format(results_dir), 'w'), indent=2)
 
     return config
-def init_weights(args,m):
+def init_weights(args:namedtuple,m:torch.nn.Module):
     """
     Xavier or Glorot parameter initialization is meant to be used with Tahn activation
     kaiming or He parameter initialization is for ReLU activation
@@ -1276,7 +1277,7 @@ def init_weights(args,m):
 def reset_weights(m):
     if isinstance(m, nn.Module) and hasattr(m, 'weight') and not (isinstance(m,nn.BatchNorm1d)):
         m.reset_parameters()
-def clip_backprop(model, clip_value):
+def clip_backprop(model:torch.nn.Module, clip_value:Union[int,float]):
     "Norm Clip the gradients of the model parameters to orient them towards the minimum"
     handles = []
     for p in model.parameters():
@@ -1287,7 +1288,7 @@ def clip_backprop(model, clip_value):
             handle = p.register_hook(func)
             handles.append(handle)
     return handles
-def set_configuration(args,config,results_dir):
+def set_configuration(args:namedtuple,config:dict,results_dir:str):
     """Sets the hyperparameter values, either to
     i) values sampled to perform Hyperparameter Optimization with Ray Tune
     ii) The best configuration defined via HPO

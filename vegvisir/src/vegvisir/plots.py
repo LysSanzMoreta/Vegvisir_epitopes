@@ -1077,7 +1077,7 @@ def plot_accuracy(train_accuracies: Union[dict,list],valid_accuracies: Union[dic
         plt.clf()
         plt.close(fig)
 
-def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,method):
+def plot_classification_score(train_auc:list,valid_auc:list,epochs_list:list,fold: Union[int,float],results_dir:str,method:str):
     """Plots the AUC/AUK scores while training
     :param list train_auc: list of accumulated AUC during training
     :param list valid_auc: list of accumulated AUC during validation
@@ -1097,7 +1097,7 @@ def plot_classification_score(train_auc,valid_auc,epochs_list,fold,results_dir,m
     plt.clf()
     plt.close(fig)
 
-def plot_latent_vector(latent_space,predictions_dict,fold,results_dir,method):
+def plot_latent_vector(latent_space:np.ndarray,predictions_dict:dict,fold:Union[int,float],results_dir:str,method:str):
 
     print("Plotting latent vector...")
     latent_vectors = latent_space[:,6:]
@@ -1137,7 +1137,7 @@ def plot_latent_vector(latent_space,predictions_dict,fold,results_dir,method):
     del latent_vectors,confidence_scores
     gc.collect()
 
-def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clusters,predictions_dict,sample_mode,results_dir,method,vector_name):
+def plot_clusters_features_distributions(dataset_info:namedtuple,cluster_assignments:np.ndarray,n_clusters:Union[int,float],predictions_dict:dict,sample_mode:str,results_dir:str,method:str,vector_name:str):
     """
     Notes:
         - https://www.researchgate.net/publication/15556561_Global_Fold_Determination_from_a_Small_Number_of_Distance_Restraints/figures?lo=1
@@ -1428,8 +1428,13 @@ def plot_clusters_features_distributions(dataset_info,cluster_assignments,n_clus
     
     return features_dict,sequences_raw
 
-def define_colormap(feature,cmap_name):
-    """"""
+def define_colormap(feature:np.ndarray,cmap_name:str):
+    """
+
+    :param feature:
+    :param cmap_name:
+    :return:
+    """
 
     unique_values = np.unique(feature)
     feature, unique_values = VegvisirUtils.replace_nan(feature, unique_values)
@@ -1443,7 +1448,19 @@ def define_colormap(feature,cmap_name):
                         colors_feature=colors_feature,
                         unique_values=unique_values)
 
-def plot_preprocessing(umap_proj,dataset_info,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4):
+def plot_preprocessing(umap_proj:np.ndarray,dataset_info:namedtuple,predictions_dict:dict,sample_mode:str,results_dir:str,method:str,vector_name:str="latent_space_z",n_clusters:Union[int,float]=4):
+    """
+
+    :param umap_proj:
+    :param dataset_info:
+    :param predictions_dict:
+    :param sample_mode:
+    :param results_dir:
+    :param method:
+    :param vector_name:
+    :param n_clusters:
+    :return:
+    """
     print("Preparing UMAP plots of {}...".format(vector_name))
 
     cluster_assignments = MiniBatchKMeans(n_clusters=n_clusters, random_state=0, batch_size=100, max_iter=10,
@@ -1485,7 +1502,21 @@ def plot_preprocessing(umap_proj,dataset_info,predictions_dict,sample_mode,resul
             "tryptophan_coefficients_settings":tryptophan_coefficients_settings
             }
 
-def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
+def plot_scatter(umap_proj:np.ndarray,dataset_info:namedtuple,latent_space:np.ndarray,predictions_dict:dict,sample_mode:str,results_dir:str,method:str,settings:dict,vector_name:str="latent_space_z",n_clusters:Union[int,float]=4):
+    """
+
+    :param umap_proj:
+    :param dataset_info:
+    :param latent_space:
+    :param predictions_dict:
+    :param sample_mode:
+    :param results_dir:
+    :param method:
+    :param settings:
+    :param vector_name:
+    :param n_clusters:
+    :return:
+    """
     print("Plotting scatter UMAP of {}...".format(vector_name))
 
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:, 0])
@@ -1640,7 +1671,7 @@ def plot_scatter(umap_proj,dataset_info,latent_space,predictions_dict,sample_mod
 
     #gc.collect()
 
-def colorbar(mappable):
+def colorbar(mappable:matplotlib.colorbar):
     """Places a figure color bar without squeezing the plot"""
     last_axes = plt.gca()
     ax = mappable.axes
@@ -1651,7 +1682,7 @@ def colorbar(mappable):
     plt.sca(last_axes)
     return cbar
 
-def plot_scatter_reduced(umap_proj,args,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
+def plot_scatter_reduced(umap_proj:np.ndarray,args:namedtuple,dataset_info:namedtuple,latent_space:np.ndarray,predictions_dict:dict,sample_mode:str,results_dir:str,method:str,settings:dict,vector_name:str="latent_space_z",n_clusters:Union[int,float]=4):
     print("Plotting (reduced) scatter UMAP of {}...".format(vector_name))
     storage_folder = os.path.dirname(os.path.abspath(__file__)) + "/data"
 
@@ -1908,7 +1939,7 @@ def plot_scatter_reduced(umap_proj,args,dataset_info,latent_space,predictions_di
 
     #gc.collect()
 
-def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,settings,vector_name="latent_space_z",n_clusters=4):
+def plot_scatter_quantiles(umap_proj:np.ndarray,dataset_info:namedtuple,latent_space:np.ndarray,predictions_dict:dict,sample_mode:str,results_dir:str,method:str,settings:dict,vector_name:str="latent_space_z",n_clusters:Union[int,float]=4):
     print("Plotting scatter (quantiles) UMAP of {}...".format(vector_name))
 
     colors_true = np.vectorize(colors_dict_labels.get)(latent_space[:, 0])
@@ -2127,7 +2158,7 @@ def plot_scatter_quantiles(umap_proj,dataset_info,latent_space,predictions_dict,
     plt.clf()
     plt.close(fig)
 
-def plot_latent_correlations(umap_proj,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name):
+def plot_latent_correlations(umap_proj:np.ndarray,dataset_info:namedtuple,latent_space:np.ndarray,predictions_dict:dict,sample_mode:str,results_dir:str,method:str,vector_name:str):
     """
     :param umap_proj:
     :param dataset_info:
@@ -2181,7 +2212,7 @@ def plot_latent_correlations(umap_proj,dataset_info,latent_space,predictions_dic
     plt.clf()
     plt.close(fig)
 
-def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_space,sample_mode,results_dir,method,vector_name,plot_scatter_correlations=False,calculate_covariance=True,plot_covariance=True,filter_correlations=False):
+def plot_latent_correlations_1d(umap_proj_1d:np.ndarray,args:namedtuple,settings:dict,dataset_info:namedtuple,latent_space:np.ndarray,sample_mode:str,results_dir:str,method:str,vector_name:str,plot_scatter_correlations:bool=False,calculate_covariance:bool=True,plot_covariance:bool=True,filter_correlations:bool=False):
     """
     :param umap_proj:
     :param dataset_info:
@@ -2323,7 +2354,7 @@ def plot_latent_correlations_1d(umap_proj_1d,args,settings,dataset_info,latent_s
                 "spearman_pvalues":spearman_pvalues
                 }
 
-def plot_latent_space(args,dataset_info,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4,plot_correlations=True):
+def plot_latent_space(args:namedtuple,dataset_info:namedtuple,latent_space,predictions_dict,sample_mode,results_dir,method,vector_name="latent_space_z",n_clusters=4,plot_correlations=True):
     """
     -Notes on UMAP: https://www.arxiv-vanity.com/papers/2009.12981/
     """

@@ -109,7 +109,6 @@ def replace_nan(x:np.ndarray,x_unique:np.ndarray,replace_val:Union[int,float]=0.
             np.append(x_unique,[0])
     return x,x_unique
 
-
 def find_mode(a:pd.DataFrame):
     """Find the most common value
     :param pd.DataFrame a
@@ -123,7 +122,6 @@ def find_mode(a:pd.DataFrame):
     # vals,counts = np.unique(a,return_counts=True) #works if there are non nan values
     # index = np.argmax(counts)
     # return vals[index]
-
 
 def aminoacid_names_dict(aa_types:int,zero_characters:list = []):
     """ Returns an aminoacid associated to a integer value
@@ -499,160 +497,6 @@ def view1D(a:np.ndarray): # a is array #TODO: Remove or investigate, is supposed
     a = np.ascontiguousarray(a)
     void_dt = np.dtype((np.void, a.dtype.itemsize * a.shape[1]))
     return a.view(void_dt).ravel()
-
-# def calculate_similarity_matrix_slow(array:np.ndarray, max_len:int, array_mask:np.ndarray, batch_size:int=200, ksize:int=3): #TODO: Remove
-#     """Batched method to calculate the cosine similarity and percent identity/pairwise distance between the blosum encoded sequences.
-#     :param numpy array: Integer representation [n,max_len] or Blosum encoded [n,max_len,aa_types]
-#     NOTE: Use smaller batches for faster results ( obviously to certain extent, check into balancing the batch size and the number of for loops)
-#     returns
-#         percent_identity_mean = (n_data,n_data) : 1 means the two aa sequences are identical.
-#         cosine_similarity_mean = (n_data,n_data):  1 means the two aa sequences are identical.
-#         kmers_pid_similarity = (n_data,n_data)
-#         kmers_cosine_similarity = (n_data,n_data)
-#                             """
-#     # TODO: Make it run with Cython (faster indexing): https://cython.readthedocs.io/en/latest/src/tutorial/cython_tutorial.html
-#     #array = array[:400]
-#     n_data = array.shape[0]
-#     array_mask = array_mask[:n_data]
-#     split_size = [int(array.shape[0] / batch_size) if not batch_size > array.shape[0] else 1][0]
-#     splits = np.array_split(array, split_size)
-#     mask_splits = np.array_split(array_mask, split_size)
-#     print("Generated {} splits from {} data points".format(len(splits),n_data))
-#     idx = list(range(len(splits)))
-#     if ksize >= max_len:
-#         ksize = max_len
-#     overlapping_kmers = extract_windows_vectorized(splits[0], 1, max_len - ksize, ksize,only_windows=True)
-#
-#     diag_idx = np.diag_indices(ksize)
-#     nkmers = overlapping_kmers.shape[0]
-#     diag_idx_nkmers = np.diag_indices(nkmers)
-#     diag_idx_maxlen = np.diag_indices(max_len)
-#
-#     #Highlight: Initialize the storing matrices (in the future perhaps dictionaries? but seems to withstand quite a bit)
-#     percent_identity_mean = np.zeros((n_data,n_data))
-#     cosine_similarity_mean = np.zeros((n_data,n_data))
-#     kmers_pid_similarity = np.zeros((n_data,n_data))
-#     kmers_cosine_similarity = np.zeros((n_data,n_data))
-#
-#     start_store_point = 0
-#     end_store_point = splits[0].shape[0]
-#     start = time.time()
-#     for i in idx:
-#         print("i ------------ {}".format(i))
-#         curr_array = splits[i]
-#         curr_mask = mask_splits[i]
-#         n_data_curr = curr_array.shape[0]
-#         rest_splits = splits.copy()
-#
-#         # Highlight: Define intermediate storing arrays
-#         percent_identity_mean_i = np.zeros((n_data_curr, n_data))
-#         cosine_similarity_mean_i = np.zeros((n_data_curr, n_data))
-#         kmers_pid_similarity_i = np.zeros((n_data_curr, n_data))
-#         kmers_cosine_similarity_i = np.zeros((n_data_curr, n_data))
-#         start_store_point_i = 0
-#         end_store_point_i = rest_splits[0].shape[0]  # initialize
-#         start_i = time.time()
-#         for j, r_j in enumerate(rest_splits):  # calculate distance among all kmers per sequence in the block (n, n_kmers,n_kmers)
-#             # print("j {}".format(j))
-#             r_j_mask = mask_splits[j]
-#             cosine_sim_j = cosine_similarity(curr_array, r_j, correlation_matrix=False)
-#             if np.ndim(curr_array) == 2: #Integer encoded
-#                 pairwise_sim_j = (curr_array[None, :] == r_j[:, None]).astype(int)
-#                 pairwise_matrix_j = (curr_array[:, None, :, None] == r_j[None, :, None, :]).astype(int)
-#             else:
-#                 pairwise_sim_j = (curr_array[:, None] == r_j[None, :]).all((-1)).astype(int)  # .all((-2,-1))
-#                 # TODO: Problem when calculating self.similarity because np.nan == np.nan is False
-#                 pairwise_matrix_j = (curr_array[:, None, :, None] == r_j[None, :, None, :]).all((-1)).astype(float)  # .all((-2,-1))
-#             # Highlight: Create masks to ignore the paddings of the sequences
-#             kmers_mask_curr_i = curr_mask[:, overlapping_kmers]
-#             kmers_mask_r_j = r_j_mask[:, overlapping_kmers]
-#             kmers_mask_ij = (kmers_mask_curr_i[:, None] * kmers_mask_r_j[None, :]).mean(-1)
-#             kmers_mask_ij[kmers_mask_ij != 1.] = 0.
-#             kmers_mask_ij = kmers_mask_ij.astype(bool)
-#             pid_mask_ij = curr_mask[:, None] * r_j_mask[None, :]
-#             # Highlight: further transformations: Basically slice the overlapping kmers and organize them to have shape
-#             #  [m,n,kmers,nkmers,ksize,ksize], where the diagonal contains the pairwise values between the kmers
-#             kmers_matrix_pid_ij = pairwise_matrix_j[:, :, :, overlapping_kmers][:, :, overlapping_kmers].transpose(0, 1, 4, 2,3, 5)
-#             kmers_matrix_cosine_ij = cosine_sim_j[:, :, :, overlapping_kmers][:, :, overlapping_kmers].transpose(0, 1, 4, 2,3, 5)
-#             # Highlight: Apply masks to calculate the similarities_old. NOTE: To get the data with the filled value use k = np.ma.getdata(kmers_matrix_diag_masked)
-#             ##PERCENT IDENTITY (binary pairwise comparison) ###############
-#             percent_identity_mean_ij = np.ma.masked_array(pairwise_sim_j, mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
-#             percent_identity_mean_i[:,start_store_point_i:end_store_point_i] = percent_identity_mean_ij #TODO: Probably no need to store this either
-#             ##COSINE SIMILARITY (pairwise comparison of cosine similarities_old)########################
-#             cosine_similarity_mean_ij = np.ma.masked_array(cosine_sim_j[:, :, diag_idx_maxlen[0], diag_idx_maxlen[1]],mask=~pid_mask_ij, fill_value=0.).mean(-1)  # Highlight: In the mask if True means to mask and ignore!!!!
-#             cosine_similarity_mean_i[:,start_store_point_i:end_store_point_i] = cosine_similarity_mean_ij
-#             # KMERS PERCENT IDENTITY ############
-#             kmers_matrix_pid_diag_ij = kmers_matrix_pid_ij[:, :, :, :, diag_idx[0], diag_idx[1]]  # does not seem expensive
-#             kmers_matrix_pid_diag_mean_ij = np.mean(kmers_matrix_pid_diag_ij, axis=4)[:, :, diag_idx_nkmers[0],diag_idx_nkmers[1]]  # if we mask this only it should be fine
-#             kmers_pid_similarity_ij = np.ma.masked_array(kmers_matrix_pid_diag_mean_ij, mask=~kmers_mask_ij, fill_value=0.).mean(axis=2)
-#             kmers_pid_similarity_i[:,start_store_point_i:end_store_point_i] = kmers_pid_similarity_ij
-#             # KMERS COSINE SIMILARITY ########################
-#             kmers_matrix_cosine_diag_ij = kmers_matrix_cosine_ij[:, :, :, :, diag_idx[0],diag_idx[1]]  # does not seem expensive
-#             kmers_matrix_cosine_diag_mean_ij = np.nanmean(kmers_matrix_cosine_diag_ij, axis=4)[:, :, diag_idx_nkmers[0],diag_idx_nkmers[1]]
-#             kmers_cosine_similarity_ij = np.ma.masked_array(kmers_matrix_cosine_diag_mean_ij, mask=~kmers_mask_ij,fill_value=0.).mean(axis=2)
-#             kmers_cosine_similarity_i[:,start_store_point_i:end_store_point_i] = kmers_cosine_similarity_ij
-#             if i == j:
-#                 # Highlight: round to nearest integer the diagonal values, due to precision issues, it computes 0.999999999 or 1.00000002 instead of 1. sometimes
-#                 # Faster method that unravels the 2D array to 1D. Equivalent to: kmers_cosine_similarity_ij[np.diag_indices_from(cosine_similarity_mean_ij)] = np.rint(np.diagonal(kmers_cosine_similarity_ij))
-#                 kmers_cosine_similarity_ij.ravel()[:kmers_cosine_similarity_ij.shape[1] ** 2:kmers_cosine_similarity_ij.shape[1] + 1] = np.rint(kmers_cosine_similarity_ij.ravel()[:kmers_cosine_similarity_ij.shape[1] ** 2:kmers_cosine_similarity_ij.shape[1] + 1])
-#                 #Faster method that unravels the 2D array to 1D. Equivalent to: cosine_similarity_mean_ij[np.diag_indices_from(cosine_similarity_mean_ij)] = np.rint(np.diagonal(cosine_similarity_mean_ij))
-#                 cosine_similarity_mean_ij.ravel()[:cosine_similarity_mean_ij.shape[1] ** 2:cosine_similarity_mean_ij.shape[1] + 1] = np.rint(cosine_similarity_mean_ij.ravel()[:cosine_similarity_mean_ij.shape[1] ** 2:cosine_similarity_mean_ij.shape[1] + 1])
-#                 #idx = np.argwhere(diag_vals_cosine != 1.)
-#             #Freeing memory: Might help
-#             percent_identity_mean_ij = None
-#             cosine_similarity_mean_ij = None
-#             kmers_pid_similarity_ij = None
-#             kmers_cosine_similarity_ij = None
-#             del percent_identity_mean_ij
-#             del cosine_similarity_mean_ij
-#             del kmers_pid_similarity_ij
-#             del kmers_cosine_similarity_ij
-#             start_store_point_i = end_store_point_i
-#             if j + 1 != len(rest_splits):
-#                 end_store_point_i += rest_splits[j + 1].shape[0]  # it has to be the next r_j
-#         end_i = time.time()
-#         print("Time for finishing loop (i vs j) {}".format(str(datetime.timedelta(seconds=end_i - start_i))))
-#         percent_identity_mean[start_store_point:end_store_point] = percent_identity_mean_i
-#         cosine_similarity_mean[start_store_point:end_store_point] = cosine_similarity_mean_i
-#         kmers_cosine_similarity[start_store_point:end_store_point] = kmers_cosine_similarity_i
-#         kmers_pid_similarity[start_store_point:end_store_point] = kmers_pid_similarity_i
-#         percent_identity_mean_ij = None
-#         cosine_similarity_mean_ij = None
-#         kmers_pid_similarity_ij = None
-#         kmers_cosine_similarity_ij = None
-#         del percent_identity_mean_i
-#         del cosine_similarity_mean_i
-#         del kmers_cosine_similarity_i
-#         del kmers_pid_similarity_i
-#         start_store_point = end_store_point
-#         if i + 1 != len(splits):
-#             end_store_point += splits[i + 1].shape[0]  # it has to be the next curr_array
-#     end = time.time()
-#     print("Overall calculation time {}".format(str(datetime.timedelta(seconds=end - start))))
-#
-#     d = kmers_cosine_similarity.ravel()[:kmers_cosine_similarity.shape[1] ** 2:kmers_cosine_similarity.shape[1] + 1]
-#     idx = np.argwhere(d != 1.)
-#     print(idx)
-#
-#     print("Kmers % ID")
-#     print(kmers_pid_similarity[0][0:4])
-#     print("Kmers Cosine similarity")
-#     print(kmers_cosine_similarity[0][0:4])
-#     print("Percent ID")
-#     print(percent_identity_mean[0][0:4])
-#     print("Cosine similarity")
-#     print(cosine_similarity_mean[0][0:4])
-#     print("--------------------")
-#     print("Kmers % ID")
-#     print(kmers_pid_similarity[1][0:4])
-#     print("Kmers Cosine similarity")
-#     print(kmers_cosine_similarity[1][0:4])
-#     print("Percent ID")
-#     print(percent_identity_mean[1][0:4])
-#     print("Cosine similarity")
-#     print(cosine_similarity_mean[1][0:4])
-#     return np.ma.getdata(percent_identity_mean), np.ma.getdata(cosine_similarity_mean), np.ma.getdata(
-#         kmers_pid_similarity), np.ma.getdata(kmers_cosine_similarity)#TO#TTODO: remove
 
 def calculate_similarity_matrix(array:np.ndarray, max_len:int, array_mask:np.ndarray, batch_size:int=200, ksize:int=3):#TODO: Remove
     """Batched method to calculate the cosine similarity and percent identity/pairwise distance between the blosum encoded sequences.
@@ -1448,7 +1292,6 @@ def calculate_extintioncoefficient(seq:list):
         excoef_cysteines, excoef_cystines = 0,0
     return excoef_cysteines,excoef_cystines
 
-
 def aa_dict_1letter_full():
     amino_acid_dict = {
         'A': 'Alanine',
@@ -1473,7 +1316,6 @@ def aa_dict_1letter_full():
         'Y': 'Tyrosine'
     }
     return  amino_acid_dict
-
 
 class CalculatePeptideFeatures(object):
     """Properties table (radius etc) from https://www.researchgate.net/publication/15556561_Global_Fold_Determination_from_a_Small_Number_of_Distance_Restraints"""
@@ -1684,8 +1526,8 @@ def build_features_dicts(dataset_info:namedtuple):
             "bulkiness_dict":bulkiness_dict,
             "storage_folder":storage_folder}
 
-def merge_in_left_order(x, y, on=None):
-    """Merges 2 arrays preserving the order of the array on the left"""
+def merge_in_left_order(x:pd.DataFrame, y:pd.DataFrame, on=None):
+    """Merges 2 panda dataframes preserving the order of the array on the left"""
     x = x.copy()
     x["Order"] = np.arange(len(x))
     z = x.merge(y, how='left', on=on).set_index("Order").loc[np.arange(len(x)), :]
@@ -1810,82 +1652,6 @@ def squeeze_tensor(required_ndims:int,tensor:torch.Tensor):
     else:
         return tensor
 
-# def clustering_accuracy(binary_arr:np.ndarray):
-#     """Computes a clustering accuracy score"""
-#     maxlen = binary_arr.shape[0]
-#     count_ones, count_zeros = 0, 0
-#     max_count_ones, max_count_zeros = 0, 0
-#     previdx_ones, previdx_zeros = 0, 0
-#     groups_counts_ones, groups_counts_zeros = defaultdict(), defaultdict() #registers the start index of the 1ś clusters
-#     for idx,num in enumerate(binary_arr):
-#         if num != 1:
-#             max_count_ones = max(max_count_ones, count_ones)
-#             if idx == 0:
-#                 groups_counts_ones[previdx_ones] = count_ones #previous index plus 1
-#             else:
-#                 groups_counts_ones[previdx_ones +1] = count_ones #previous index plus 1
-#             previdx_ones=idx
-#             count_ones = 0
-#             count_zeros += 1
-#         else:
-#             max_count_zeros = max(max_count_zeros, count_zeros)
-#             if idx == 0:
-#                 groups_counts_zeros[previdx_zeros] = count_zeros #previous index plus 1
-#             else:
-#                 groups_counts_zeros[previdx_zeros + 1] = count_zeros #previous index plus 1
-#             count_zeros = 0
-#             previdx_zeros=idx
-#             count_ones += 1
-#
-#     if previdx_zeros + 1 < maxlen:
-#         groups_counts_zeros[previdx_zeros + 1] = count_zeros #previous index plus 1, have to add this here
-#     if previdx_ones + 1 < maxlen:
-#         groups_counts_ones[previdx_ones + 1] = count_ones #previous index plus 1, have to add this here
-#
-#     maxcountones = max(max_count_ones, count_ones)
-#     maxcountzeros = max(max_count_zeros, count_zeros)
-#     total_std_idx = np.std(np.arange(maxlen))
-#     total_ones = np.sum(binary_arr)
-#     total_zeros = binary_arr.shape[0] - total_ones
-#
-#
-#     # Highlight: Transform to array keeping only the results for the ones
-#     starting_idx_ones = np.array([key for key, val in groups_counts_ones.items() if val != 0])
-#     idx_ones = np.array(binary_arr == 1)
-#     idx_ones = np.arange(maxlen)[idx_ones]
-#     cluster_sizes_ones = np.array([val for key, val in groups_counts_ones.items() if val != 0])
-#     #counts_array_ones = np.concatenate([starting_idx[:, None], cluster_size[:, None]], axis=1)
-#
-#     if cluster_sizes_ones.size != 0:
-#         std_idx_ones = np.std(idx_ones)
-#         max_size_ones = np.max(cluster_sizes_ones)
-#     else:
-#         std_idx_ones = total_std_idx
-#         max_size_ones = total_ones = 1
-#
-#     starting_idx_zeros = np.array([key for key, val in groups_counts_zeros.items() if val != 0])
-#     idx_zeros = np.array(binary_arr == 0)
-#     idx_zeros = np.arange(maxlen)[idx_zeros]
-#     cluster_sizes_zeros = np.array([val for key, val in groups_counts_zeros.items() if val != 0])
-#
-#     if cluster_sizes_zeros.size != 0:
-#         std_idx_zeros = np.std(idx_zeros)
-#         max_size_zeros = np.max(cluster_sizes_zeros)
-#     else:
-#         std_idx_zeros = total_std_idx
-#         max_size_zeros = total_zeros = 1
-#
-#     score_a = ((max_size_ones*100/total_ones) + (max_size_zeros*100/total_zeros)) / 2
-#     score_b = ((std_idx_ones*100/total_std_idx) + (std_idx_zeros*100/total_std_idx) + 2*(max_size_ones*100/total_ones) + 2*(max_size_zeros*100/total_zeros)) / 6
-#
-#     return {"maxcountones": maxcountones,
-#             "group_counts_ones": groups_counts_ones,
-#             "maxcountzeros": maxcountzeros,
-#             "group_counts_zeros": groups_counts_zeros,
-#             "clustering_score_a" : score_a,
-#             "clustering_score_b" : score_b
-#             }
-
 
 #TODO: Put into new plots_utils.py, however right now it is annoying to change the structure because of dill
 import matplotlib.pyplot as plt
@@ -1893,7 +1659,7 @@ import matplotlib.gridspec as gridspec
 import seaborn as sns;sns.set()
 class SeabornFig2Grid():
     """Class from https://stackoverflow.com/questions/47535866/how-to-iteratively-populate-matplotlib-gridspec-with-a-multipart-seaborn-plot/47624348#47624348"""
-    def __init__(self, seaborngrid, fig,  subplot_spec):
+    def __init__(self, seaborngrid, fig:matplotlib.figure.Figure,  subplot_spec):
         self.fig = fig
         self.sg = seaborngrid
         self.subplot = subplot_spec
@@ -1944,7 +1710,6 @@ class SeabornFig2Grid():
         self._moveaxes(subplots_axes[2], self.subgrid[1:, 3]) #labels bar
         self._moveaxes(subplots_axes[3], self.subgrid[1:, 4:-2]) #heatmap #ax_heatmap
         self._moveaxes(subplots_axes[4], self.subgrid[1:, -1]) #colorbar
-
 
     def _moveaxes(self, ax, gs):
         #https://stackoverflow.com/a/46906599/4124317

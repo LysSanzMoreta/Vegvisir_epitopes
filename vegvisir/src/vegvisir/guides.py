@@ -18,6 +18,9 @@ from pyro.distributions import TransformedDistribution
 from pyro.nn import PyroModule
 from pyro.distributions import constraints
 from collections import namedtuple
+from typing import Union
+
+
 OutputNN = namedtuple("OutputNN",[])
 
 class VEGVISIRGUIDES(EasyGuide):
@@ -55,7 +58,7 @@ class VEGVISIRGUIDES(EasyGuide):
             self.to(device=self.device)
         self.vegvisir_model.build([self.h_0_GUIDE],"guide")
 
-    def guide_supervised_glitch(self, batch_data, batch_mask, epoch,guide_estimates, sample=False):
+    def guide_supervised_glitch(self, batch_data:torch.Tensor, batch_mask:torch.Tensor, epoch:Union[float,int],guide_estimates:dict, sample:bool=False):
         """
         Amortized inference with only sequences, all sites and sequences dependent
         Notes:
@@ -122,7 +125,7 @@ class VEGVISIRGUIDES(EasyGuide):
                 "rnn_hidden_states": rnn_hidden_states,
                 "sampling_type":self.generate_sampling_type} #TODO: Rm
 
-    def guide_supervised(self, batch_data, batch_mask,epoch,guide_estimates,sample=False):
+    def guide_supervised(self, batch_data:torch.Tensor, batch_mask,epoch,guide_estimates,sample=False):
         """
         Amortized inference with only sequences, all sites and sequences dependent
         Notes:

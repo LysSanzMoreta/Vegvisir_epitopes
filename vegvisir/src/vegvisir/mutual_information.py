@@ -12,7 +12,7 @@ from prody import parseMSA,buildDirectInfoMatrix
 from Bio import SeqIO,SeqRecord
 from Bio.Seq import Seq
 from sklearn.metrics import mutual_info_score
-
+from typing import  Union
 
 def create_fasta_file(seq_list:list,ids:list,file_name:str,results_dir:str,dataset_name:str):
     print("Fasta file does not exist, creating it")
@@ -42,7 +42,7 @@ def calculate_mutual_information(seq_list:list,ids:list,max_len:int,mode:str,res
     plt.savefig("{}/{}/Mutual_Information{}".format(results_dir,dataset_name,mode))
 
 
-def calculate_mi(data,data_mask,aa_groups,max_len,mode,results_dir,dataset_name,analysis_mode,save_plot=True):
+def calculate_mi(data:np.ndarray,data_mask:np.ndarray,aa_groups:dict,max_len:Union[int,float],mode:str,results_dir:str,dataset_name:str,analysis_mode:str,save_plot:bool=True):
     """
     I(X,Y) = H(X,Y) - H(Y|X) - H(X|Y) where I is the Information theory and H is the entropy
     :param data:

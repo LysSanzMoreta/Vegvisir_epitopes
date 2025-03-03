@@ -17,7 +17,7 @@ If you find this library useful please cite:
   volume    = {15508},
   pages     = {?--?},
   doi       = {?},
-  url       = {https://link.springer.com/book/9783031824807},
+  url       = {https://link.springer.com/chapter/10.1007/978-3-031-82484-5_9},
 }
 
 ```
@@ -43,7 +43,7 @@ If you find this library useful please cite:
    - ancho-info-content: https://drive.google.com/drive/folders/1kZScet33u6nC8eKURAAd1HYLUtbOyEP5?usp=sharing
    - common-files: https://drive.google.com/drive/folders/1kZScet33u6nC8eKURAAd1HYLUtbOyEP5?usp=sharing
    - viral_dataset15: "https://drive.google.com/drive/folders/1tPRGOJ0cQdLyW2GbdI2vnz1Sfr4RSKNf?usp=sharing
-
+   - pretrained model ensembl; #TODO
 
 > Using your own dataset: 
 
@@ -103,7 +103,7 @@ python Vegvisir_example.py
    b. Using the dataset from the paper:
 ```python
 python Vegvisir_example.py 
-      -dataset-name "viral_dataset15 " 
+      -dataset-name "viral_dataset15" 
       -train True 
       -validate True 
       -k-folds 5 
